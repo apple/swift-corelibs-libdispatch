@@ -161,8 +161,15 @@ dispatch_source_cancel(dispatch_source_t ds)
 #if DISPATCH_DEBUG
 	dispatch_debug(ds, __FUNCTION__);
 #endif
+	// Right after we set the cancel flag, someone else
+	// could potentially invoke the source, do the cancelation, 
+	// unregister the source, and deallocate it. We would
+	// need to therefore retain/release before setting the bit
+
+	_dispatch_retain(ds);
 	dispatch_atomic_or(&ds->ds_atomic_flags, DSF_CANCELED);
 	_dispatch_wakeup(ds);
+	_dispatch_release(ds);
 }
 
 #ifndef DISPATCH_NO_LEGACY
