@@ -142,7 +142,7 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema, dispatch_time_t timeou
 again:
 	// Mach semaphores appear to sometimes spuriously wake up.  Therefore,
 	// we keep a parallel count of the number of times a Mach semaphore is
-	// signaled.
+	// signaled (6880961).
 	while ((orig = dsema->dsema_sent_ksignals)) {
 		if (dispatch_atomic_cmpxchg(&dsema->dsema_sent_ksignals, orig, orig - 1)) {
 			return 0;
@@ -198,7 +198,7 @@ void
 dispatch_group_enter(dispatch_group_t dg)
 {
 	dispatch_semaphore_t dsema = (dispatch_semaphore_t)dg;
-#if defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
+#if defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) && !defined(__llvm__)
 	// This assumes:
 	// 1) Way too much about the optimizer of GCC.
 	// 2) There will never be more than LONG_MAX threads.
@@ -210,7 +210,6 @@ dispatch_group_enter(dispatch_group_t dg)
 		"lock decl	%0\n\t"
 #endif
 		"js 	1f\n\t"
-		"xor	%%eax, %%eax\n\t"
 		"ret\n\t"
 		"1:"
 		: "+m" (dsema->dsema_value)
@@ -227,7 +226,7 @@ DISPATCH_NOINLINE
 long
 dispatch_semaphore_wait(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 {
-#if defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
+#if defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) && !defined(__llvm__)
 	// This assumes:
 	// 1) Way too much about the optimizer of GCC.
 	// 2) There will never be more than LONG_MAX threads.
@@ -295,7 +294,7 @@ DISPATCH_NOINLINE
 long
 dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 {
-#if defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
+#if defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) && !defined(__llvm__)
 	// overflow detection
 	// this assumes way too much about the optimizer of GCC
 	asm(
@@ -372,7 +371,7 @@ again:
 	}
 	// Mach semaphores appear to sometimes spuriously wake up.  Therefore,
 	// we keep a parallel count of the number of times a Mach semaphore is
-	// signaled.
+	// signaled (6880961).
 	dispatch_atomic_inc(&dsema->dsema_group_waiters);
 	// check the values again in case we need to wake any threads
 	if (dsema->dsema_value == dsema->dsema_orig) {
