@@ -2052,11 +2052,41 @@ dispatch_after(dispatch_time_t when, dispatch_queue_t queue, dispatch_block_t wo
 }
 #endif
 
+struct _dispatch_after_time_s {
+	void *datc_ctxt;
+	void (*datc_func)(void *);
+	dispatch_source_t ds;
+};
+
+static void
+_dispatch_after_timer_cancel(void *ctxt)
+{
+	struct _dispatch_after_time_s *datc = ctxt;
+	dispatch_source_t ds = datc->ds;
+
+	free(datc);
+	dispatch_release(ds);	// MUST NOT be _dispatch_release()
+}
+
+static void
+_dispatch_after_timer_callback(void *ctxt)
+{
+	struct _dispatch_after_time_s *datc = ctxt;
+
+	dispatch_assert(datc->datc_func);
+	datc->datc_func(datc->datc_ctxt);
+
+	dispatch_source_cancel(datc->ds);
+}
+
 DISPATCH_NOINLINE
 void
 dispatch_after_f(dispatch_time_t when, dispatch_queue_t queue, void *ctxt, void (*func)(void *))
 {
 	uint64_t delta;
+	struct _dispatch_after_time_s *datc = NULL;
+	dispatch_source_t ds = NULL;
+
 	if (when == DISPATCH_TIME_FOREVER) {
 #if DISPATCH_DEBUG
 		DISPATCH_CLIENT_CRASH("dispatch_after_f() called with 'when' == infinity");
@@ -2064,23 +2094,24 @@ dispatch_after_f(dispatch_time_t when, dispatch_queue_t queue, void *ctxt, void 
 		return;
 	}
 
-	// this function can and should be optimized to not use a dispatch source
-again:
 	delta = _dispatch_timeout(when);
 	if (delta == 0) {
 		return dispatch_async_f(queue, ctxt, func);
 	}
-	if (!dispatch_source_timer_create(DISPATCH_TIMER_INTERVAL, delta, 0, NULL, queue, ^(dispatch_source_t ds) {
-		long err_dom, err_val;
-		if ((err_dom = dispatch_source_get_error(ds, &err_val))) {
-			dispatch_assert(err_dom == DISPATCH_ERROR_DOMAIN_POSIX);
-			dispatch_assert(err_val == ECANCELED);
-			func(ctxt);
-			dispatch_release(ds);	// MUST NOT be _dispatch_release()
-		} else {
-			dispatch_source_cancel(ds);
-		}
-	})) {
-		goto again;
-	}
+
+	// this function should be optimized to not use a dispatch source
+	ds = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, queue);
+	dispatch_assert(ds);
+
+	datc = malloc(sizeof(struct _dispatch_after_time_s));
+	dispatch_assert(datc);
+	datc->datc_ctxt = ctxt;
+	datc->datc_func = func;
+	datc->ds = ds;
+
+	dispatch_set_context(ds, datc);
+	dispatch_source_set_event_handler_f(ds, _dispatch_after_timer_callback);
+	dispatch_source_set_cancel_handler_f(ds, _dispatch_after_timer_cancel);
+	dispatch_source_set_timer(ds, when, 0, 0);
+	dispatch_resume(ds);
 }
