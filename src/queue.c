@@ -562,11 +562,15 @@ dispatch_queue_create(const char *label, dispatch_queue_attr_t attr)
 		}
 #endif
 	}
+#else
+	(void)attr;
 #endif
 
 	return dq;
 
+#if !defined(DISPATCH_NO_LEGACY) && defined(__BLOCKS__)
 out_bad:
+#endif
 	free(dq);
 	return NULL;
 }
@@ -1481,6 +1485,7 @@ _dispatch_get_main_queue_port_4CF(void)
 }
 #endif
 
+#ifndef DISPATCH_NO_LEGACY
 static void
 dispatch_queue_attr_dispose(dispatch_queue_attr_t attr)
 {
@@ -1568,6 +1573,7 @@ dispatch_queue_attr_set_finalizer(dispatch_queue_attr_t attr,
 	return 0;
 }
 #endif
+#endif /* DISPATCH_NO_LEGACY */
 
 static void
 _dispatch_ccache_init(void *context __attribute__((unused)))

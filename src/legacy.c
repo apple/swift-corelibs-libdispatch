@@ -26,10 +26,12 @@
  * earlier revision of the API. These interfaces WILL be removed in the future.
  */
 
+#ifdef __BLOCKS__
 DISPATCH_PUBLIC_API DISPATCH_NONNULL1 DISPATCH_NONNULL2
 dispatch_item_t
 LEGACY_dispatch_call(dispatch_queue_t, dispatch_legacy_block_t work, dispatch_legacy_block_t completion)
 __asm__("_dispatch_call2");
+#endif
 
 DISPATCH_PUBLIC_API DISPATCH_PURE DISPATCH_WARN_RESULT
 dispatch_queue_t
@@ -44,6 +46,7 @@ LEGACY_dispatch_queue_get_current(void)
 	return _dispatch_queue_get_current();
 }
 
+#ifdef __BLOCKS__
 dispatch_item_t
 LEGACY_dispatch_call(dispatch_queue_t dq,
 	dispatch_legacy_block_t dispatch_block,
@@ -78,6 +81,9 @@ LEGACY_dispatch_call(dispatch_queue_t dq,
 
 	return di;
 }
+#endif /* __BLOCKS__ */
+
+#ifndef DISPATCH_NO_LEGACY
 
 sigset_t
 dispatch_event_get_signals(dispatch_event_t de)
@@ -441,4 +447,6 @@ dispatch_source_machport_create_f(mach_port_t mport,
 	ds = dispatch_source_create(type, mport, newflags, dq);
 	return _dispatch_source_create2(ds, attr, ctxt, func);
 }
+
+#endif /* DISPATCH_NO_LEGACY */
 
