@@ -225,11 +225,13 @@ uint64_t _dispatch_get_nanoseconds(void);
 
 void _dispatch_source_drain_kevent(struct kevent *);
 
+#ifndef DISPATCH_NO_LEGACY
 dispatch_source_t
 _dispatch_source_create2(dispatch_source_t ds,
 	dispatch_source_attr_t attr,
 	void *context,
 	dispatch_source_handler_function_t handler);
+#endif
 
 void _dispatch_update_kq(const struct kevent *);
 void _dispatch_run_timers(void);
