@@ -1249,9 +1249,9 @@ _dispatch_source_create2(dispatch_source_t ds,
 
 #ifdef __BLOCKS__
 out_bad:
-#endif
 	free(ds);
 	return NULL;
+#endif
 }
 
 long
