@@ -28,7 +28,6 @@ libdispatch_la_CFLAGS+=-march=i686
 if USE_LEGACY_API
 libdispatch_la_SOURCES+=	\
 	legacy.c
-libdispatch_la_CFLAGS+=-DDISPATCH_NO_LEGACY
 endif
 
 if USE_LIBPTHREAD
