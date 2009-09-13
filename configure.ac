@@ -23,6 +23,19 @@ AC_ARG_WITH([legacy-api],
 AM_CONDITIONAL(USE_LEGACY_API, $use_legacy_api)
 
 #
+# On Mac OS X Snow Leopard, libpispatch_init is automatically invoked during
+# libsyscall process setup.  On other systems, it is tagged as a library
+# constructor to be run by automatically by the runtime linker.
+#
+AC_ARG_WITH([libdispatch-init-constructor],
+  [AS_HELP_STRING([--without-libdispatch-init-constructor],
+    [Don't tag libdispatch_init as a constructor])
+  ],[],[
+    AC_DEFINE(USE_LIBDISPATCH_INIT_CONSTRUCTOR,,Define to tag libdispatch_init as a constructor)
+  ]
+)
+
+#
 # libdispatch has micro-optimized and deeply personal knowledge of the Mac OS
 # implementation details.  Only enable this if explicitly requested, as it
 # will lead to data corruption if applied on systems violating its
