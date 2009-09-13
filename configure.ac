@@ -77,8 +77,20 @@ AC_CHECK_HEADER([mach/mach.h],[
 ])
 
 #
-# Find functions we care about.
+# Find functions and declarations we care about.
 #
+AC_CHECK_DECL([EVFILT_SESSION],[
+  AC_DEFINE(HAVE_EVFILT_SESSION,,Define if EVFILT_SESSION present)
+])
+AC_CHECK_DECL([NOTE_NONE],[
+  AC_DEFINE(HAVE_NOTE_NONE,,Define if NOTE_NONE present)
+])
+AC_CHECK_DECL([NOTE_REAP],[
+  AC_DEFINE(HAVE_NOTE_REAP,,Define if NOTE_REAP present)
+])
+AC_CHECK_DECL([NOTE_SIGNAL],[
+  AC_DEFINE(HAVE_NOTE_SIGNAL,,Define if NOTE_SIGNAL present)
+])
 AC_CHECK_FUNC([pthread_key_init_np],[
   AC_DEFINE(HAVE_PTHREAD_KEY_INIT_NP,,Define if can use preinitialized keys)
 ])
