@@ -3,8 +3,7 @@
 #
 
 AC_PREREQ(2.59)
-AC_INIT([libdispatch], [1.0], [libdispatch-dev@lists.macosforge.org],
-  [libdispatch])
+AC_INIT([libdispatch], [1.0], [libdispatch@macosforge.org], [libdispatch])
 AC_REVISION([$$])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_HEADER([config/config.h])
