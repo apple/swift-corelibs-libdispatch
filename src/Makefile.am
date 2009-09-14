@@ -16,6 +16,7 @@ libdispatch_la_SOURCES=	\
 	time.c
 
 libdispatch_la_CFLAGS=-Wall -Werror
+INCLUDES=@APPLE_LIBC_SOURCE_PATH@ @APPLE_XNU_SOURCE_PATH@
 
 #
 # This will need some refinement: gcc requires a minimum of -march=i486 on
@@ -32,6 +33,20 @@ endif
 
 if USE_LIBPTHREAD
 libdispatch_la_LIBADD=-lpthread
+endif
+
+if USE_MIG
+libdispatch_la_SOURCES+=	\
+	protocolServer.c
+BUILT_SOURCES=			\
+	protocol.h		\
+	protocolServer.c	\
+	protocolServer.h
+CLEANFILES=$BUILT_SOURCES
+
+protocol.h protocolServer.h protocolServer.c: protocol.defs
+	$(MIG) -user /dev/null -header protocol.h -server protocolServer.c \
+	    -sheader protocolServer.h protocol.defs
 endif
 
 #
