@@ -116,7 +116,7 @@
 #define STDC_HEADERS 1
 
 /* Define to use Mac OS X crashreporter info */
-/* #undef USE_APPLE_CRASHREPORTER_INFO */
+#define USE_APPLE_CRASHREPORTER_INFO
 
 /* Define to use non-portablesemaphore optimizations for Mac OS X */
 #define USE_APPLE_SEMAPHORE_OPTIMIZATIONS /**/
