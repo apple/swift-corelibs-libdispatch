@@ -88,39 +88,10 @@ AC_CHECK_HEADER([mach/mach.h],[
 #
 # Find functions and declarations we care about.
 #
-AC_CHECK_DECL([EVFILT_SESSION],[
-  AC_DEFINE(HAVE_EVFILT_SESSION,,Define if EVFILT_SESSION present)
-])
-AC_CHECK_DECL([NOTE_NONE],[
-  AC_DEFINE(HAVE_NOTE_NONE,,Define if NOTE_NONE present)
-])
-AC_CHECK_DECL([NOTE_REAP],[
-  AC_DEFINE(HAVE_NOTE_REAP,,Define if NOTE_REAP present)
-])
-AC_CHECK_DECL([NOTE_SIGNAL],[
-  AC_DEFINE(HAVE_NOTE_SIGNAL,,Define if NOTE_SIGNAL present)
-])
-AC_CHECK_DECL([VQ_UPDATE],[
-  AC_DEFINE(HAVE_VQ_UPDATE,,Define if VQ_UPDATE present)
-])
-AC_CHECK_DECL([VQ_VERYLOWDISK],[
-  AC_DEFINE(HAVE_VQ_VERYLOWDISKL,,Define if VQ_VERYLOWDISK present)
-])
-AC_CHECK_FUNC([pthread_key_init_np],[
-  AC_DEFINE(HAVE_PTHREAD_KEY_INIT_NP,,Define if can use preinitialized keys)
-])
-AC_CHECK_FUNC([mach_absolute_time],[
-  AC_DEFINE(HAVE_MACH_ABSOLUTE_TIME,,Define if mach_absolute_time present)
-])
-AC_CHECK_FUNC([pthread_workqueue_attr_init_np],[
-  AC_DEFINE(HAVE_PTHREAD_WORKQUEUE,,Define if pthread workqueues implemented)
-])
-AC_CHECK_FUNC([malloc_create_zone],[
-  AC_DEFINE(HAVE_MALLOC_ZONES,,Define if malloc zones implemented)
-])
-AC_CHECK_FUNC([sem_init],[
-  AC_DEFINE(HAVE_POSIX_SEM,,Define if POSIX semaphores implemented)
-])
+AC_CHECK_DECLS([EVFILT_SESSION, NOTE_NONE, NOTE_REAP, NOTE_SIGNAL], [], [],
+  [[#include <sys/event.h>]])
+AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK], [], [], [[#include <sys/mount.h>]])
+AC_CHECK_FUNCS([pthread_key_init_np mach_absolute_time pthread_workqueue_attr_init_np malloc_create_zone sem_init])
 
 #
 # Generate Makefiles.
