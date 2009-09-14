@@ -22,7 +22,7 @@ TESTS=	dispatch_apply \
 	dispatch_readsync \
 	nsoperation
 
-all: harness summarize bench $(TESTS)
+all: harness summarize $(TESTS)
 	@lipo -remove x86_64 -output dispatch_timer_bit31 dispatch_timer_bit31 2>/dev/null || true
 
 logs: $(addsuffix .testlog, $(TESTS))
