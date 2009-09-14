@@ -16,7 +16,9 @@ AM_MAINTAINER_MODE
 AC_ARG_WITH([apple-libc-source],
   [AS_HELP_STRING([--with-apple-libc-source],
     [Specify path to Apple Libc source])],
-  [APPLE_LIBC_SOURCE_PATH=-I${withval}/pthreads],
+  [apple_libc_source_path=${withval}/pthreads
+    APPLE_LIBC_SOURCE_PATH=-I$apple_libc_source_path
+    CPPFLAGS="$CPPFLAGS -I$apple_libc_source_path"],
   [APPLE_LIBC_SOURCE_PATH=]
 )
 AC_SUBST([APPLE_LIBC_SOURCE_PATH])
@@ -24,7 +26,9 @@ AC_SUBST([APPLE_LIBC_SOURCE_PATH])
 AC_ARG_WITH([apple-xnu-source],
   [AS_HELP_STRING([--with-apple-xnu-source],
     [Specify path to Apple XNU source])],
-  [APPLE_XNU_SOURCE_PATH=-I${withval}/libkern ],
+  [apple_xnu_source_path=${withval}/libkern
+    APPLE_XNU_SOURCE_PATH=-I$apple_xnu_source_path
+    CPPFLAGS="$CPPFLAGS -I$apple_xnu_source_path"],
   [APPLE_XNU_SOURCE_PATH=]
 )
 AC_SUBST([APPLE_XNU_SOURCE_PATH])
@@ -118,7 +122,7 @@ AM_CONDITIONAL(USE_LIBPTHREAD, $use_libpthread)
 # Checks for header files.
 #
 AC_HEADER_STDC
-AC_CHECK_HEADERS([Availability.h pthread_np.h malloc/malloc.h])
+AC_CHECK_HEADERS([Availability.h pthread_machdep.h pthread_np.h malloc/malloc.h libkern/OSCrossEndian.h libkern/OSAtomic.h])
 
 #
 # We use the availability of mach.h to decide whether to compile in all sorts
