@@ -128,7 +128,7 @@ dispatch_time(dispatch_time_t inval, int64_t delta)
 	// mach clock
 	delta = _dispatch_time_nano2mach(delta);
    	if (inval == 0) {
-		inval = mach_absolute_time();
+		inval = _dispatch_absolute_time();
 	}
 	if (delta >= 0) {
 		if ((int64_t)(inval += delta) <= 0) {
@@ -178,6 +178,6 @@ _dispatch_timeout(dispatch_time_t when)
 		now = _dispatch_get_nanoseconds();
 		return now >= when ? 0 : when - now;
 	}
-	now = mach_absolute_time();
+	now = _dispatch_absolute_time();
 	return now >= when ? 0 : _dispatch_time_mach2nano(when - now);
 }

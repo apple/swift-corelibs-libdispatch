@@ -20,6 +20,7 @@
 
 #include "internal.h"
 
+#ifdef HAVE_MACH
 void *
 dispatch_mach_msg_get_context(mach_msg_header_t *msg)
 {
@@ -63,3 +64,4 @@ _dispatch_CFMachPortCallBack(mach_msg_header_t *msg, mach_msg_header_t *reply,
 
 	return TRUE;
 }
+#endif /* HAVE_MACH */

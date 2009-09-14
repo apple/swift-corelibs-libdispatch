@@ -21,11 +21,19 @@
 #include "internal.h"
 
 // semaphores are too fundamental to use the dispatch_assume*() macros
+#ifdef HAVE_MACH
 #define DISPATCH_SEMAPHORE_VERIFY_KR(x)	do {	\
 		if (x) {	\
 			DISPATCH_CRASH("flawed group/semaphore logic");	\
 		}	\
 	} while (0)
+#else
+#define	DISPATCH_SEMAPHORE_VERIFY_RET(x) do {				\
+		if ((x) == -1) {					\
+			DISPATCH_CRASH("flawed group/semaphore logic");	\
+		}							\
+	} while (0)
+#endif
 
 struct dispatch_semaphore_vtable_s {
 	DISPATCH_VTABLE_HEADER(dispatch_semaphore_s);
@@ -100,6 +108,7 @@ dispatch_semaphore_create(long value)
 	return dsema;
 }
 
+#ifdef HAVE_MACH
 static void
 _dispatch_semaphore_create_port(semaphore_t *s4)
 {
@@ -129,13 +138,32 @@ _dispatch_semaphore_create_port(semaphore_t *s4)
 
 	_dispatch_safe_fork = false;
 }
+#else /* !HAVE_MACH */
+static void
+_dispatch_posix_semaphore_create(sem_t *s4)
+{
+	int ret;
+
+	if (*s4) {
+		return;
+	}
+
+	ret = sem_init(s4, 0, 0);
+	dispatch_assume_zero(ret);
+}
+#endif /* HAVE_MACH */
 
 DISPATCH_NOINLINE
 static long
 _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 {
+#ifdef HAVE_MACH
 	mach_timespec_t _timeout;
 	kern_return_t kr;
+#else
+	struct timespec _timeout;
+	int ret;
+#endif
 	uint64_t nsec;
 	long orig;
 	
@@ -149,7 +177,11 @@ again:
 		}
 	}
 
+#ifdef HAVE_MACH
 	_dispatch_semaphore_create_port(&dsema->dsema_port);
+#else
+	_dispatch_posix_semaphore_create(&dsema->dsema_sem);
+#endif
 
 	// From xnu/osfmk/kern/sync_sema.c:
 	// wait_semaphore->count = -1;  /* we don't keep an actual count */
@@ -161,6 +193,7 @@ again:
 
 	switch (timeout) {
 	default:
+#ifdef HAVE_MACH
 		do {
 			// timeout() already calculates relative time left
 			nsec = _dispatch_timeout(timeout);
@@ -173,20 +206,48 @@ again:
 			DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 			break;
 		}
+#else /* !HAVE_MACH */
+		do {
+			nsec = _dispatch_timeout(timeout);
+			_timeout.tv_sec = (typeof(_timeout.tv_sec))
+			    (nsec / NSEC_PER_SEC);
+			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))
+			    (nsec % NSEC_PER_SEC);
+			ret = slowpath(sem_timedwait(&dsema->dsema_sem,
+			    &_timeout));
+		} while (ret == -1 && errno == EINTR);
+
+		if (ret == -1 && errno != ETIMEDOUT) {
+			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
+			break;
+		}
+#endif /* HAVE_MACH */
 		// Fall through and try to undo what the fast path did to dsema->dsema_value
 	case DISPATCH_TIME_NOW:
 		while ((orig = dsema->dsema_value) < 0) {
 			if (dispatch_atomic_cmpxchg(&dsema->dsema_value, orig, orig + 1)) {
+#ifdef HAVE_MACH
 				return KERN_OPERATION_TIMED_OUT;
+#else
+				errno = ETIMEDOUT;
+				return -1;
+#endif
 			}
 		}
 		// Another thread called semaphore_signal().
 		// Fall through and drain the wakeup.
 	case DISPATCH_TIME_FOREVER:
+#ifdef HAVE_MACH
 		do {
 			kr = semaphore_wait(dsema->dsema_port);
 		} while (kr == KERN_ABORTED);
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
+#else
+		do {
+			ret = sem_wait(&dsema->dsema_sem);
+		} while (ret != 0);
+		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
+#endif
 		break;
 	}
 
@@ -198,7 +259,7 @@ void
 dispatch_group_enter(dispatch_group_t dg)
 {
 	dispatch_semaphore_t dsema = (dispatch_semaphore_t)dg;
-#if defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) && !defined(__llvm__)
+#if defined(USE_APPLE_SEMAPHORE_OPTIMIZATIONS) && defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) && !defined(__llvm__)
 	// This assumes:
 	// 1) Way too much about the optimizer of GCC.
 	// 2) There will never be more than LONG_MAX threads.
@@ -226,7 +287,7 @@ DISPATCH_NOINLINE
 long
 dispatch_semaphore_wait(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 {
-#if defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) && !defined(__llvm__)
+#if defined(USE_APPLE_SEMAPHORE_OPTIMIZATIONS) && defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) && !defined(__llvm__)
 	// This assumes:
 	// 1) Way too much about the optimizer of GCC.
 	// 2) There will never be more than LONG_MAX threads.
@@ -257,9 +318,13 @@ DISPATCH_NOINLINE
 static long
 _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 {
+#ifndef HAVE_MACH
+	int ret;
+#else
 	kern_return_t kr;
 	
 	_dispatch_semaphore_create_port(&dsema->dsema_port);
+#endif
 
 	// Before dsema_sent_ksignals is incremented we can rely on the reference
 	// held by the waiter. However, once this value is incremented the waiter
@@ -270,8 +335,12 @@ _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 	
 	dispatch_atomic_inc(&dsema->dsema_sent_ksignals);
 	
+#ifdef HAVE_MACH
 	kr = semaphore_signal(dsema->dsema_port);
 	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
+#else
+	ret = sem_post(&dsema->dsema_sem);
+#endif
 
 	_dispatch_release(dsema);
 	
@@ -294,7 +363,7 @@ DISPATCH_NOINLINE
 long
 dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 {
-#if defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) && !defined(__llvm__)
+#if defined(USE_APPLE_SEMAPHORE_OPTIMIZATIONS) && defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) && !defined(__llvm__)
 	// overflow detection
 	// this assumes way too much about the optimizer of GCC
 	asm(
@@ -329,16 +398,27 @@ _dispatch_group_wake(dispatch_semaphore_t dsema)
 	struct dispatch_sema_notify_s *tmp, *head = dispatch_atomic_xchg(&dsema->dsema_notify_head, NULL);
 	long rval = dispatch_atomic_xchg(&dsema->dsema_group_waiters, 0);
 	bool do_rel = head;
+#ifdef HAVE_MACH
 	long kr;
+#else
+	int ret;
+#endif
 
 	// wake any "group" waiter or notify blocks
 	
 	if (rval) {
+#ifdef HAVE_MACH
 		_dispatch_semaphore_create_port(&dsema->dsema_waiter_port);
 		do {
 			kr = semaphore_signal(dsema->dsema_waiter_port);
 			DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 		} while (--rval);
+#else
+		do {
+			ret = sem_post(&dsema->dsema_sem);
+			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
+		} while (--rval);
+#endif
 	}
 	while (head) {
 		dispatch_async_f(head->dsn_queue, head->dsn_ctxt, head->dsn_func);
@@ -359,8 +439,13 @@ DISPATCH_NOINLINE
 static long
 _dispatch_group_wait_slow(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 {
+#ifdef HAVE_MACH
 	mach_timespec_t _timeout;
 	kern_return_t kr;
+#else
+	struct timespec _timeout;
+	int ret;
+#endif
 	uint64_t nsec;
 	long orig;
 	
@@ -378,7 +463,9 @@ again:
 		return _dispatch_group_wake(dsema);
 	}
 
+#ifdef HAVE_MACH
 	_dispatch_semaphore_create_port(&dsema->dsema_waiter_port);
+#endif
 	
 	// From xnu/osfmk/kern/sync_sema.c:
 	// wait_semaphore->count = -1;  /* we don't keep an actual count */
@@ -390,6 +477,7 @@ again:
 	
 	switch (timeout) {
 	default:
+#ifdef HAVE_MACH
 		do {
 			nsec = _dispatch_timeout(timeout);
 			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
@@ -400,20 +488,47 @@ again:
 			DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 			break;
 		}
+#else
+		do {
+			nsec = _dispatch_timeout(timeout);
+			_timeout.tv_sec = (typeof(_timeout.tv_sec))
+			    (nsec / NSEC_PER_SEC);
+			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))
+			    (nsec % NSEC_PER_SEC);
+			ret = slowpath(sem_timedwait(&dsema->dsema_sem,
+			    &_timeout));
+		} while (ret == -1 && errno == EINTR);
+		if (ret == 0 || errno != ETIMEDOUT) {
+			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
+			break;
+		}
+#endif
 		// Fall through and try to undo the earlier change to dsema->dsema_group_waiters
 	case DISPATCH_TIME_NOW:
 		while ((orig = dsema->dsema_group_waiters)) {
 			if (dispatch_atomic_cmpxchg(&dsema->dsema_group_waiters, orig, orig - 1)) {
+#ifdef HAVE_MACH
 				return KERN_OPERATION_TIMED_OUT;
+#else
+				errno = ETIMEDOUT;
+				return -1;
+#endif
 			}
 		}
 		// Another thread called semaphore_signal().
 		// Fall through and drain the wakeup.
 	case DISPATCH_TIME_FOREVER:
+#ifdef HAVE_MACH
 		do {
 			kr = semaphore_wait(dsema->dsema_waiter_port);
 		} while (kr == KERN_ABORTED);
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
+#else
+		do {
+			ret = sem_wait(&dsema->dsema_sem);
+		} while (ret == -1 && errno == EINTR);
+		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
+#endif
 		break;
 	}
 
@@ -429,7 +544,12 @@ dispatch_group_wait(dispatch_group_t dg, dispatch_time_t timeout)
 		return 0;
 	}
 	if (timeout == 0) {
+#ifdef HAVE_MACH
 		return KERN_OPERATION_TIMED_OUT;
+#else
+		errno = ETIMEDOUT;
+		return (-1);
+#endif
 	}
 	return _dispatch_group_wait_slow(dsema, timeout);
 }
@@ -474,12 +594,17 @@ dispatch_group_notify_f(dispatch_group_t dg, dispatch_queue_t dq, void *ctxt, vo
 void
 _dispatch_semaphore_dispose(dispatch_semaphore_t dsema)
 {
+#ifdef HAVE_MACH
 	kern_return_t kr;
+#else
+	int ret;
+#endif
 	
 	if (dsema->dsema_value < dsema->dsema_orig) {
 		DISPATCH_CLIENT_CRASH("Semaphore/group object deallocated while in use");
 	}
 	
+#ifdef HAVE_MACH
 	if (dsema->dsema_port) {
 		kr = semaphore_destroy(mach_task_self(), dsema->dsema_port);
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
@@ -488,6 +613,10 @@ _dispatch_semaphore_dispose(dispatch_semaphore_t dsema)
 		kr = semaphore_destroy(mach_task_self(), dsema->dsema_waiter_port);
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 	}
+#else
+	ret = sem_destroy(&dsema->dsema_sem);
+	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
+#endif
 	
 	_dispatch_dispose(dsema);
 }
@@ -498,8 +627,12 @@ _dispatch_semaphore_debug(dispatch_semaphore_t dsema, char *buf, size_t bufsiz)
 	size_t offset = 0;
 	offset += snprintf(&buf[offset], bufsiz - offset, "%s[%p] = { ", dx_kind(dsema), dsema);
 	offset += dispatch_object_debug_attr(dsema, &buf[offset], bufsiz - offset);
-	offset += snprintf(&buf[offset], bufsiz - offset, "port = 0x%u, value = %ld, orig = %ld }",
-					   dsema->dsema_port, dsema->dsema_value, dsema->dsema_orig);
+#ifdef HAVE_MACH
+	offset += snprintf(&buf[offset], bufsiz - offset, "port = 0x%u, ",
+	    dsema->dsema_port);
+#endif
+	offset += snprintf(&buf[offset], bufsiz - offset,
+	    "value = %ld, orig = %ld }", dsema->dsema_value, dsema->dsema_orig);
 	return offset;
 }
 

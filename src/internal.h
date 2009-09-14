@@ -27,8 +27,21 @@
 #ifndef __DISPATCH_INTERNAL__
 #define __DISPATCH_INTERNAL__
 
+#include <config/config.h>
+
 #define __DISPATCH_BUILDING_DISPATCH__
 #define __DISPATCH_INDIRECT__
+
+#ifndef HAVE_MALLOC_CREATE_ZONE
+#include <compat/malloc_zone.h>
+#endif
+
+#ifdef HAVE_AVAILABILITY_H
+#include <Availability.h>
+#else
+#include <compat/Availability.h>
+#endif
+
 #include "dispatch.h"
 #include "base.h"
 #include "time.h"
@@ -54,8 +67,13 @@
 #endif
 
 
+#ifdef HAVE_LIBKERN_OSCROSSENDIAN_H
 #include <libkern/OSCrossEndian.h>
+#endif
+#ifdef HAVE_LIBKERN_OSATOMIC_H
 #include <libkern/OSAtomic.h>
+#endif
+#ifdef HAVE_MACH
 #include <mach/boolean.h>
 #include <mach/clock_types.h>
 #include <mach/clock.h>
@@ -70,7 +88,10 @@
 #include <mach/mig_errors.h>
 #include <mach/host_info.h>
 #include <mach/notify.h>
+#endif /* HAVE_MACH */
+#ifdef HAVE_MALLOC_MALLOC_H
 #include <malloc/malloc.h>
+#endif
 #include <sys/event.h>
 #include <sys/mount.h>
 #include <sys/queue.h>
@@ -89,6 +110,9 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <search.h>
+#if !defined(HAVE_MACH) && defined(HAVE_SEM_INIT)
+#include <semaphore.h>
+#endif
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -261,6 +285,9 @@ __private_extern__ struct _dispatch_hw_config_s {
 #include "semaphore_internal.h"
 #include "source_internal.h"
 
+#ifdef USE_APPLE_CRASHREPORTER_INFO
+
+#ifdef HAVE_MACH
 // MIG_REPLY_MISMATCH means either:
 // 1) A signal handler is NOT using async-safe API. See the sigaction(2) man page for more info.
 // 2) A hand crafted call to mach_msg*() screwed up. Use MIG.
@@ -270,6 +297,7 @@ __private_extern__ struct _dispatch_hw_config_s {
 			_dispatch_hardware_crash();	\
 		}	\
 	} while (0)
+#endif
 
 #if defined(__x86_64__) || defined(__i386__)
 // total hack to ensure that return register of a function is not trashed
@@ -283,7 +311,7 @@ __private_extern__ struct _dispatch_hw_config_s {
 		_dispatch_hardware_crash();	\
 	} while (0)
 
-#else
+#else /* !(defined(__x86_64__) || defined(__i386__)) */
 
 #define DISPATCH_CRASH(x)	do {	\
 		__crashreporter_info__ = "BUG IN LIBDISPATCH: " x;	\
@@ -294,8 +322,21 @@ __private_extern__ struct _dispatch_hw_config_s {
 		__crashreporter_info__ = "BUG IN CLIENT OF LIBDISPATCH: " x;	\
 		_dispatch_hardware_crash();	\
 	} while (0)
+#endif /* defined(__x86_64__) || defined(__i386__) */
 
+#else /* !USE_APPLE_CRASHREPORTER_INFO */
+
+#ifdef HAVE_MACH
+#define DISPATCH_VERIFY_MIG(x) do {	\
+		if ((x) == MIG_REPLY_MISMATCH) {	\
+			_dispatch_hardware_crash();	\
+		}	\
+	} while (0)
 #endif
 
+#define	DISPATCH_CRASH(x)		_dispatch_hardware_crash()
+#define	DISPATCH_CLIENT_CRASH(x)	_dispatch_hardware_crash()
+
+#endif /* USE_APPLE_CRASHREPORTER_INFO */
 
 #endif /* __DISPATCH_INTERNAL__ */

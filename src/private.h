@@ -27,9 +27,11 @@
 #ifndef __DISPATCH_PRIVATE__
 #define __DISPATCH_PRIVATE__
 
+#ifdef HAVE_MACH
 #include <mach/boolean.h>
 #include <mach/mach.h>
 #include <mach/message.h>
+#endif
 #include <unistd.h>
 #include <sys/cdefs.h>
 #include <sys/event.h>
@@ -66,8 +68,13 @@ __BEGIN_DECLS
 
 DISPATCH_NOTHROW
 void
+#ifdef USE_LIBDISPATCH_INIT_CONSTRUCTOR
+libdispatch_init(void) __attribute__ ((constructor));
+#else
 libdispatch_init(void);
+#endif
 
+#ifdef HAVE_MACH
 #define DISPATCH_COCOA_COMPAT 1
 #if DISPATCH_COCOA_COMPAT
 
@@ -94,6 +101,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
 extern void (*_dispatch_end_NSAutoReleasePool)(void *);
 
 #endif
+#endif /* HAVE_MACH */
 
 /* pthreads magic */
 
@@ -102,12 +110,14 @@ DISPATCH_NOTHROW void dispatch_atfork_parent(void);
 DISPATCH_NOTHROW void dispatch_atfork_child(void);
 DISPATCH_NOTHROW void dispatch_init_pthread(pthread_t);
 
+#ifdef HAVE_MACH
 /*
  * Extract the context pointer from a mach message trailer.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
 void *
 dispatch_mach_msg_get_context(mach_msg_header_t *msg);
+#endif
 
 __END_DECLS
 

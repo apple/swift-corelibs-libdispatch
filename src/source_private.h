@@ -111,6 +111,7 @@ enum {
 
 __BEGIN_DECLS
 
+#ifdef HAVE_MACH
 /*!
  * @typedef dispatch_mig_callback_t
  *
@@ -123,6 +124,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
 DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 mach_msg_return_t
 dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz, dispatch_mig_callback_t callback);
+#endif
 
 __END_DECLS
 

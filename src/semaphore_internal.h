@@ -39,8 +39,14 @@ struct dispatch_semaphore_s {
 	long dsema_value;
 	long dsema_orig;
 	size_t dsema_sent_ksignals;
+#ifdef HAVE_MACH
 	semaphore_t dsema_port;
 	semaphore_t dsema_waiter_port;
+#elif defined(HAVE_SEM_INIT)
+	sem_t dsema_sem;
+#else
+#error "No supported semaphore type"
+#endif
 	size_t dsema_group_waiters;
 	struct dispatch_sema_notify_s *dsema_notify_head;
 	struct dispatch_sema_notify_s *dsema_notify_tail;

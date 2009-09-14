@@ -62,6 +62,7 @@ struct dispatch_queue_vtable_s {
 
 #define DISPATCH_QUEUE_MIN_LABEL_SIZE	64
 
+#ifndef DISPATCH_NO_LEGACY
 #define DISPATCH_QUEUE_HEADER \
 	uint32_t dq_running; \
 	uint32_t dq_width; \
@@ -70,6 +71,15 @@ struct dispatch_queue_vtable_s {
 	unsigned long dq_serialnum; \
 	void *dq_finalizer_ctxt; \
 	dispatch_queue_finalizer_function_t dq_finalizer_func
+#else
+#define DISPATCH_QUEUE_HEADER \
+	uint32_t dq_running; \
+	uint32_t dq_width; \
+	struct dispatch_object_s *dq_items_tail; \
+	struct dispatch_object_s *volatile dq_items_head; \
+	unsigned long dq_serialnum; \
+	void *dq_finalizer_ctxt;
+#endif
 
 struct dispatch_queue_s {
 	DISPATCH_STRUCT_HEADER(dispatch_queue_s, dispatch_queue_vtable_s);

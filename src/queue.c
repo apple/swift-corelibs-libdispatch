@@ -19,7 +19,9 @@
  */
 
 #include "internal.h"
+#ifdef HAVE_MACH
 #include "protocol.h"
+#endif
 
 void
 dummy_function(void)
@@ -190,7 +192,9 @@ static const struct dispatch_queue_vtable_s _dispatch_queue_root_vtable = {
 #define MAX_THREAD_COUNT 255
 
 struct dispatch_root_queue_context_s {
+#ifdef HAVE_PTHREAD_WORKQUEUES
 	pthread_workqueue_t dgq_kworkqueue;
+#endif
 	uint32_t dgq_pending;
 	uint32_t dgq_thread_pool_size;
 	dispatch_semaphore_t dgq_thread_mediator;
@@ -449,21 +453,35 @@ static void
 _dispatch_queue_set_width_init(void)
 {
 	size_t valsz = sizeof(uint32_t);
+	int ret;
 
-	errno = 0;
-	sysctlbyname("hw.activecpu", &_dispatch_hw_config.cc_max_active, &valsz, NULL, 0);
-	dispatch_assume_zero(errno);
+#ifdef __APPLE__
+	ret = sysctlbyname("hw.activecpu", &_dispatch_hw_config.cc_max_active,
+	    &valsz, NULL, 0);
+	dispatch_assume_zero(ret);
 	dispatch_assume(valsz == sizeof(uint32_t));
 
-	errno = 0;
-	sysctlbyname("hw.logicalcpu_max", &_dispatch_hw_config.cc_max_logical, &valsz, NULL, 0);
-	dispatch_assume_zero(errno);
+	ret = sysctlbyname("hw.logicalcpu_max",
+	    &_dispatch_hw_config.cc_max_logical, &valsz, NULL, 0);
+	dispatch_assume_zero(ret);
 	dispatch_assume(valsz == sizeof(uint32_t));
 
-	errno = 0;
-	sysctlbyname("hw.physicalcpu_max", &_dispatch_hw_config.cc_max_physical, &valsz, NULL, 0);
-	dispatch_assume_zero(errno);
+	ret = sysctlbyname("hw.physicalcpu_max",
+	    &_dispatch_hw_config.cc_max_physical, &valsz, NULL, 0);
+	dispatch_assume_zero(ret);
 	dispatch_assume(valsz == sizeof(uint32_t));
+#elif defined(__FreeBSD__)
+	ret = sysctlbyname("kern.smp.cpus", &_dispatch_hw_config.cc_max_active,
+	    &valsz, NULL, 0);
+	dispatch_assume_zero(ret);
+	dispatch_assume(valsz == sizeof(uint32_t));
+
+	_dispatch_hw_config.cc_max_logical =
+	    _dispatch_hw_config.cc_max_physical =
+	    _dispatch_hw_config.cc_max_active;
+#else
+#error "_dispatch_queue_set_width_init: no supported way to query CPU count"
+#endif
 }
 
 void
@@ -966,12 +984,24 @@ libdispatch_init(void)
 	dispatch_assert(countof(_dispatch_thread_mediator) == DISPATCH_ROOT_QUEUE_COUNT);
 	dispatch_assert(countof(_dispatch_root_queue_contexts) == DISPATCH_ROOT_QUEUE_COUNT);
 
+#ifdef HAVE_PTHREAD_KEY_INIT_NP
 	_dispatch_thread_key_init_np(dispatch_queue_key, _dispatch_queue_cleanup);
 	_dispatch_thread_key_init_np(dispatch_sema4_key, (void (*)(void *))dispatch_release);	// use the extern release
 	_dispatch_thread_key_init_np(dispatch_cache_key, _dispatch_cache_cleanup2);
 #if DISPATCH_PERF_MON
 	_dispatch_thread_key_init_np(dispatch_bcounter_key, NULL);
 #endif
+#else /* !HAVE_PTHREAD_KEY_INIT_NP */
+	_dispatch_thread_key_create(&dispatch_queue_key,
+	    _dispatch_queue_cleanup);
+	_dispatch_thread_key_create(&dispatch_sema4_key,
+	    (void (*)(void *))dispatch_release); // use the extern release
+	_dispatch_thread_key_create(&dispatch_cache_key,
+	    _dispatch_cache_cleanup2);
+#ifdef DISPATCH_PERF_MON
+	_dispatch_thread_key_create(&dispatch_bcounter_key, NULL);
+#endif
+#endif /* HAVE_PTHREAD_KEY_INIT_NP */
 
 	_dispatch_thread_setspecific(dispatch_queue_key, &_dispatch_main_q);
 
@@ -1040,6 +1070,7 @@ _dispatch_queue_wakeup_main(void)
 }
 #endif
 
+#ifdef HAVE_PTHREAD_WORKQUEUES
 static inline int
 _dispatch_rootq2wq_pri(long idx)
 {
@@ -1060,19 +1091,30 @@ _dispatch_rootq2wq_pri(long idx)
 	return pri;
 #endif
 }
+#endif
 
 static void
 _dispatch_root_queues_init(void *context __attribute__((unused)))
 {
+#ifdef HAVE_PTHREAD_WORKQUEUES
 	bool disable_wq = getenv("LIBDISPATCH_DISABLE_KWQ");
 	pthread_workqueue_attr_t pwq_attr;
+	int r;
+#endif
+#ifdef HAVE_MACH
 	kern_return_t kr;
-	int i, r;
+#else
+	int ret;
+#endif
+	int i;
 
+#ifdef HAVE_PTHREAD_WORKQUEUES
 	r = pthread_workqueue_attr_init_np(&pwq_attr);
 	dispatch_assume_zero(r);
+#endif
 
 	for (i = 0; i < DISPATCH_ROOT_QUEUE_COUNT; i++) {
+#ifdef HAVE_PTHREAD_WORKQUEUES
 		r = pthread_workqueue_attr_setqueuepriority_np(&pwq_attr, _dispatch_rootq2wq_pri(i));
 		dispatch_assume_zero(r);
 		r = pthread_workqueue_attr_setovercommit_np(&pwq_attr, i & 1);
@@ -1089,18 +1131,29 @@ _dispatch_root_queues_init(void *context __attribute__((unused)))
 			if (r != ENOTSUP) {
 				dispatch_assume_zero(r);
 			}
+#endif /* HAVE_PTHREAD_WORKQUEUES */
+#ifdef HAVE_MACH
 			// override the default FIFO behavior for the pool semaphores
 			kr = semaphore_create(mach_task_self(), &_dispatch_thread_mediator[i].dsema_port, SYNC_POLICY_LIFO, 0);
 			DISPATCH_VERIFY_MIG(kr);
 			dispatch_assume_zero(kr);
 			dispatch_assume(_dispatch_thread_mediator[i].dsema_port);
+#else
+			/* XXXRW: POSIX semaphores don't support LIFO? */
+			ret = sem_init(&_dispatch_thread_mediator[i].dsema_sem, 0, 0);
+			dispatch_assume_zero(ret);
+#endif
+#ifdef HAVE_PTHREAD_WORKQUEUES
 		} else {
 			dispatch_assume(_dispatch_root_queue_contexts[i].dgq_kworkqueue);
 		}
+#endif
 	}
 
+#ifdef HAVE_PTHREAD_WORKQUEUES
 	r = pthread_workqueue_attr_destroy_np(&pwq_attr);
 	dispatch_assume_zero(r);
+#endif
 }
 
 bool
@@ -1108,8 +1161,10 @@ _dispatch_queue_wakeup_global(dispatch_queue_t dq)
 {
 	static dispatch_once_t pred;
 	struct dispatch_root_queue_context_s *qc = dq->do_ctxt;
+#ifdef HAVE_PTHREAD_WORKQUEUES
 	pthread_workitem_handle_t wh;
 	unsigned int gen_cnt;
+#endif
 	pthread_t pthr;
 	int r, t_count;
 
@@ -1123,6 +1178,7 @@ _dispatch_queue_wakeup_global(dispatch_queue_t dq)
 
 	dispatch_once_f(&pred, NULL, _dispatch_root_queues_init);
 
+#ifdef HAVE_PTHREAD_WORKQUEUES
 	if (qc->dgq_kworkqueue) {
 		if (dispatch_atomic_cmpxchg(&qc->dgq_pending, 0, 1)) {
 			_dispatch_debug("requesting new worker thread");
@@ -1134,6 +1190,7 @@ _dispatch_queue_wakeup_global(dispatch_queue_t dq)
 		}
 		goto out;
 	}
+#endif
 
 	if (dispatch_semaphore_signal(qc->dgq_thread_mediator)) {
 		goto out;
@@ -1164,7 +1221,7 @@ void
 _dispatch_queue_serial_drain_till_empty(dispatch_queue_t dq)
 {
 #if DISPATCH_PERF_MON
-	uint64_t start = mach_absolute_time();
+	uint64_t start = _dispatch_absolute_time();
 #endif
 	_dispatch_queue_drain(dq);
 #if DISPATCH_PERF_MON
@@ -1390,7 +1447,7 @@ _dispatch_worker_thread2(void *context)
 #endif
 
 #if DISPATCH_PERF_MON
-	uint64_t start = mach_absolute_time();
+	uint64_t start = _dispatch_absolute_time();
 #endif
 	while ((item = fastpath(_dispatch_queue_concurrent_drain_one(dq)))) {
 		_dispatch_continuation_pop(item);
@@ -1413,7 +1470,7 @@ _dispatch_worker_thread2(void *context)
 void
 _dispatch_queue_merge_stats(uint64_t start)
 {
-	uint64_t avg, delta = mach_absolute_time() - start;
+	uint64_t avg, delta = _dispatch_absolute_time() - start;
 	unsigned long count, bucket;
 
 	count = (size_t)_dispatch_thread_getspecific(dispatch_bcounter_key);
@@ -1489,7 +1546,7 @@ _dispatch_get_main_queue_port_4CF(void)
 static void
 dispatch_queue_attr_dispose(dispatch_queue_attr_t attr)
 {
-	dispatch_queue_attr_set_finalizer(attr, NULL);
+	dispatch_queue_attr_set_finalizer_f(attr, NULL, NULL);
 	_dispatch_dispose(attr);
 }
 
@@ -1622,13 +1679,20 @@ _dispatch_cache_cleanup2(void *value)
 
 static char _dispatch_build[16];
 
+/*
+ * XXXRW: What to do here for !Mac OS X?
+ */
 static void
 _dispatch_bug_init(void *context __attribute__((unused)))
 {
+#ifdef __APPLE__
 	int mib[] = { CTL_KERN, KERN_OSVERSION };
 	size_t bufsz = sizeof(_dispatch_build);
 
 	sysctl(mib, 2, _dispatch_build, &bufsz, NULL, 0);
+#else
+	bzero(_dispatch_build, sizeof(_dispatch_build));
+#endif
 }
 
 void
@@ -1641,7 +1705,7 @@ _dispatch_bug(size_t line, long val)
 	dispatch_once_f(&pred, NULL, _dispatch_bug_init);
 	if (last_seen != ra) {
 		last_seen = ra;
-		_dispatch_log("BUG in libdispatch: %s - %lu - 0x%lx", _dispatch_build, line, val);
+		_dispatch_log("BUG in libdispatch: %s - %lu - 0x%lx", _dispatch_build, (unsigned long)line, val);
 	}
 }
 

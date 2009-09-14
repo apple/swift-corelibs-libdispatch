@@ -37,7 +37,9 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+#ifdef HAVE_MACH
 #include <mach/mach_types.h>
+#endif
 
 #define DISPATCH_DEPRECATED __attribute__((deprecated))
 #define DISPATCH_PUBLIC_API __attribute__((visibility("default")))
@@ -49,7 +51,9 @@ struct dispatch_item_s {
 	struct dispatch_item_s *volatile        di_next;
 	dispatch_queue_t                        di_cback_q;
 	uint32_t                                di_flags;
+#ifdef HAVE_MACH
 	semaphore_t                             di_semaphore;
+#endif
 	void *					di_work_func;
 	void *                                  di_work_ctxt;
 	void *					di_cback_func;
@@ -302,11 +306,13 @@ DISPATCH_NONNULL1 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 long
 dispatch_source_get_error(dispatch_source_t source, long* error);
 
+#ifdef HAVE_MACH
 // Use: dispatch_source_get_handle
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
 DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 mach_port_t
 dispatch_source_get_machport(dispatch_source_t source);
+#endif
 
 // Use: dispatch_source_get_handle
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
@@ -414,6 +420,7 @@ dispatch_source_attr_set_context(
 	dispatch_source_attr_t attr,
 	void *context);
 
+#ifdef HAVE_MACH
 // Use: dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, ...)
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
 DISPATCH_MALLOC DISPATCH_NONNULL4 DISPATCH_NONNULL5 DISPATCH_NOTHROW
@@ -424,6 +431,7 @@ dispatch_source_mig_create(
 	dispatch_source_attr_t attr,
 	dispatch_queue_t queue,
 	dispatch_mig_callback_t mig_callback);
+#endif
 
 enum {
 	DISPATCH_TIMER_WALL_CLOCK	= 0x4,
@@ -588,6 +596,7 @@ enum {
 };
 
 // Use: dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, ...)
+#ifdef HAVE_MACH
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
 DISPATCH_MALLOC DISPATCH_NOTHROW
@@ -611,6 +620,7 @@ dispatch_source_machport_create_f(
 	dispatch_queue_t queue,
 	void *h_context,
 	dispatch_source_handler_function_t handler);
+#endif /* HAVE_MACH */
 
 enum {
 	DISPATCH_SOURCE_DATA_ADD = 1,
@@ -691,6 +701,7 @@ dispatch_source_vfs_create_f(
 							 void *h_context,
 							 dispatch_source_handler_function_t handler);
 
+#ifdef HAVE_MACH
 /*
  * Raw Mach message support from MIG source.
  *
@@ -742,6 +753,8 @@ _dispatch_CFMachPortCallBack(mach_msg_header_t *msg, mach_msg_header_t *reply, v
 __private_extern__ boolean_t \
 new_callback(mach_msg_header_t *msg, mach_msg_header_t *reply) \
 { return _dispatch_CFMachPortCallBack(msg, reply, existing_callback); }
+
+#endif /* HAVE_MACH */
 
 __END_DECLS
 

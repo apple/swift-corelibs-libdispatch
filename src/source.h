@@ -26,8 +26,10 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+#ifdef HAVE_MACH
 #include <mach/port.h>
 #include <mach/message.h>
+#endif
 #include <sys/signal.h>
 
 /*!

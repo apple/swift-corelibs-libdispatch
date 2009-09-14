@@ -22,7 +22,9 @@
 
 
 struct __dispatch_benchmark_data_s {
+#ifdef HAVE_MACH_ABSOLUTE_TIME
 	mach_timebase_info_data_t tbi;
+#endif
 	uint64_t loop_cost;
 	void (*func)(void *);
 	void *ctxt;
@@ -38,28 +40,32 @@ _dispatch_benchmark_init(void *context)
 	register void (*f)(void *) = bdata->func;
 	register void *c = bdata->ctxt;
 	register size_t cnt = bdata->count;
+	size_t i = 0;
 	uint64_t start, delta;
 #ifdef __LP64__
 	__uint128_t lcost;
 #else
 	long double lcost;
 #endif
+#ifdef HAVE_MACH_ABSOLUTE_TIME
 	kern_return_t kr;
-	size_t i = 0;
 
 	kr = mach_timebase_info(&bdata->tbi);
 	dispatch_assert_zero(kr);
+#endif
 
-	start = mach_absolute_time();
+	start = _dispatch_absolute_time();
 	do {
 		i++;
 		f(c);
 	} while (i < cnt);
-	delta = mach_absolute_time() - start;
+	delta = _dispatch_absolute_time() - start;
 
 	lcost = delta;
+#ifdef HAVE_MACH_ABSOLUTE_TIME
 	lcost *= bdata->tbi.numer;
 	lcost /= bdata->tbi.denom;
+#endif
 	lcost /= cnt;
 
 	bdata->loop_cost = lcost;
@@ -96,16 +102,20 @@ dispatch_benchmark_f(size_t count, register void *ctxt, register void (*func)(vo
 		return 0;
 	}
 
-	start = mach_absolute_time();
+	start = _dispatch_absolute_time();
 	do {
 		i++;
 		func(ctxt);
 	} while (i < count);
-	delta = mach_absolute_time() - start;
+	delta = _dispatch_absolute_time() - start;
 
 	conversion = delta;
+#ifdef HAVE_MACH_ABSOLUTE_TIME
 	conversion *= bdata.tbi.numer;
 	big_denom = bdata.tbi.denom;
+#else
+	big_denom = delta;
+#endif
 	big_denom *= count;
 	conversion /= big_denom;
 	ns = conversion;

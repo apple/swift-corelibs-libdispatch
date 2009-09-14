@@ -19,8 +19,10 @@
  */
 
 #include "internal.h"
+#ifdef HAVE_MACH
 #include "protocol.h"
 #include "protocolServer.h"
+#endif
 #include <sys/mount.h>
 
 #define DISPATCH_EVFILT_TIMER	(-EVFILT_SYSCOUNT - 1)
@@ -92,15 +94,19 @@ static dispatch_queue_t _dispatch_source_invoke(dispatch_source_t ds);
 static void _dispatch_kevent_merge(dispatch_source_t ds);
 static void _dispatch_kevent_release(dispatch_source_t ds);
 static void _dispatch_kevent_resume(dispatch_kevent_t dk, uint32_t new_flags, uint32_t del_flags);
+#ifdef HAVE_MACH
 static void _dispatch_kevent_machport_resume(dispatch_kevent_t dk, uint32_t new_flags, uint32_t del_flags);
 static void _dispatch_kevent_machport_enable(dispatch_kevent_t dk);
 static void _dispatch_kevent_machport_disable(dispatch_kevent_t dk);
 
 static void _dispatch_drain_mach_messages(struct kevent *ke);
+#endif
 static void _dispatch_timer_list_update(dispatch_source_t ds);
 
+#ifdef HAVE_MACH
 static void
 _dispatch_mach_notify_source_init(void *context __attribute__((unused)));
+#endif
 
 static const char *
 _evfiltstr(short filt)
@@ -114,10 +120,14 @@ _evfiltstr(short filt)
 	_evfilt2(EVFILT_PROC);
 	_evfilt2(EVFILT_SIGNAL);
 	_evfilt2(EVFILT_TIMER);
+#ifdef HAVE_MACH
 	_evfilt2(EVFILT_MACHPORT);
+#endif
 	_evfilt2(EVFILT_FS);
 	_evfilt2(EVFILT_USER);
+#if HAVE_DECL_EVFILT_SESSION
 	_evfilt2(EVFILT_SESSION);
+#endif
 
 	_evfilt2(DISPATCH_EVFILT_TIMER);
 	_evfilt2(DISPATCH_EVFILT_CUSTOM_ADD);
@@ -135,7 +145,11 @@ static TAILQ_HEAD(, dispatch_kevent_s) _dispatch_sources[DSL_HASH_SIZE];
 static dispatch_kevent_t
 _dispatch_kevent_find(uintptr_t ident, short filter)
 {
+#ifdef HAVE_MACH
 	uintptr_t hash = DSL_HASH(filter == EVFILT_MACHPORT ? MACH_PORT_INDEX(ident) : ident);
+#else
+	uintptr_t hash = DSL_HASH(ident);
+#endif
 	dispatch_kevent_t dki;
 
 	TAILQ_FOREACH(dki, &_dispatch_sources[hash], dk_list) {
@@ -150,7 +164,11 @@ static void
 _dispatch_kevent_insert(dispatch_kevent_t dk)
 {
 	uintptr_t ident = dk->dk_kevent.ident;
+#ifdef HAVE_MACH
 	uintptr_t hash = DSL_HASH(dk->dk_kevent.filter == EVFILT_MACHPORT ? MACH_PORT_INDEX(ident) : ident);
+#else
+	uintptr_t hash = DSL_HASH(ident);
+#endif
 
 	TAILQ_INSERT_TAIL(&_dispatch_sources[hash], dk, dk_list);
 }
@@ -306,9 +324,11 @@ _dispatch_kevent_resume(dispatch_kevent_t dk, uint32_t new_flags, uint32_t del_f
 	case DISPATCH_EVFILT_CUSTOM_OR:
 		// these types not registered with kevent
 		return;
+#ifdef HAVE_MACH
 	case EVFILT_MACHPORT:
 		_dispatch_kevent_machport_resume(dk, new_flags, del_flags);
 		break;
+#endif
 	case EVFILT_PROC:
 		if (dk->dk_kevent.flags & EV_ONESHOT) {
 			return;
@@ -413,6 +433,7 @@ _dispatch_source_dispose(dispatch_source_t ds)
 	_dispatch_queue_dispose((dispatch_queue_t)ds);
 }
 
+#ifndef DISPATCH_NO_LEGACY
 static void
 _dispatch_kevent_debugger2(void *context, dispatch_source_t unused __attribute__((unused)))
 {
@@ -457,8 +478,8 @@ _dispatch_kevent_debugger2(void *context, dispatch_source_t unused __attribute__
 		}
 		TAILQ_FOREACH(dk, &_dispatch_sources[i], dk_list) {
 			fprintf(debug_stream, "\t<br><li>DK %p ident %lu filter %s flags 0x%hx fflags 0x%x data 0x%lx udata %p\n",
-					dk, dk->dk_kevent.ident, _evfiltstr(dk->dk_kevent.filter), dk->dk_kevent.flags,
-					dk->dk_kevent.fflags, dk->dk_kevent.data, dk->dk_kevent.udata);
+					dk, (unsigned long)dk->dk_kevent.ident, _evfiltstr(dk->dk_kevent.filter), dk->dk_kevent.flags,
+					dk->dk_kevent.fflags, (unsigned long)dk->dk_kevent.data, dk->dk_kevent.udata);
 			fprintf(debug_stream, "\t\t<ul>\n");
 			TAILQ_FOREACH(ds, &dk->dk_sources, ds_list) {
 				fprintf(debug_stream, "\t\t\t<li>DS %p refcnt 0x%x suspend 0x%x data 0x%lx mask 0x%lx flags 0x%x</li>\n",
@@ -546,21 +567,28 @@ _dispatch_kevent_debugger(void *context __attribute__((unused)))
 out_bad:
 	close(fd);
 }
+#endif /* DISPATCH_NO_LEGACY */
 
 void
 _dispatch_source_drain_kevent(struct kevent *ke)
 {
+#ifndef DISPATCH_NO_LEGACY
 	static dispatch_once_t pred;
+#endif
 	dispatch_kevent_t dk = ke->udata;
 	dispatch_source_t dsi;
 
+#ifndef DISPATCH_NO_LEGACY
 	dispatch_once_f(&pred, NULL, _dispatch_kevent_debugger);
+#endif
 
 	dispatch_debug_kevents(ke, 1, __func__);
 
+#ifdef HAVE_MACH
 	if (ke->filter == EVFILT_MACHPORT) {
 		return _dispatch_drain_mach_messages(ke);
 	}
+#endif
 	dispatch_assert(dk);
 
 	if (ke->flags & EV_ONESHOT) {
@@ -583,9 +611,11 @@ _dispatch_kevent_dispose(dispatch_kevent_t dk)
 	case DISPATCH_EVFILT_CUSTOM_OR:
 		// these sources live on statically allocated lists
 		return;
+#ifdef HAVE_MACH
 	case EVFILT_MACHPORT:
 		_dispatch_kevent_machport_resume(dk, 0, dk->dk_kevent.fflags);
 		break;
+#endif
 	case EVFILT_PROC:
 		if (dk->dk_kevent.flags & EV_ONESHOT) {
 			break;	// implicitly deleted
@@ -599,11 +629,15 @@ _dispatch_kevent_dispose(dispatch_kevent_t dk)
 		break;
 	}
 
+#ifdef HAVE_MACH
 	if (dk->dk_kevent.filter == EVFILT_MACHPORT) {
 		key = MACH_PORT_INDEX(dk->dk_kevent.ident);
 	} else {
+#endif
 		key = dk->dk_kevent.ident;
+#ifdef HAVE_MACH
 	}
+#endif
 
 	TAILQ_REMOVE(&_dispatch_sources[DSL_HASH(key)], dk, dk_list);
 	free(dk);
@@ -923,7 +957,14 @@ const struct dispatch_source_type_s _dispatch_source_type_proc = {
 		.filter = EVFILT_PROC,
 		.flags = EV_CLEAR,
 	},
-	.mask = NOTE_EXIT|NOTE_FORK|NOTE_EXEC|NOTE_SIGNAL|NOTE_REAP,
+	.mask = NOTE_EXIT|NOTE_FORK|NOTE_EXEC
+#if HAVE_DECL_NOTE_SIGNAL
+	    |NOTE_SIGNAL
+#endif
+#if HAVE_DECL_NOTE_REAP
+	    |NOTE_REAP
+#endif
+	    ,
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_signal = {
@@ -937,7 +978,12 @@ const struct dispatch_source_type_s _dispatch_source_type_vnode = {
 		.filter = EVFILT_VNODE,
 		.flags = EV_CLEAR,
 	},
-	.mask = NOTE_DELETE|NOTE_WRITE|NOTE_EXTEND|NOTE_ATTRIB|NOTE_LINK|NOTE_RENAME|NOTE_REVOKE|NOTE_NONE,
+	.mask = NOTE_DELETE|NOTE_WRITE|NOTE_EXTEND|NOTE_ATTRIB|NOTE_LINK|
+	    NOTE_RENAME|NOTE_REVOKE
+#if HAVE_DECL_NOTE_NONE
+	    |NOTE_NONE
+#endif
+	    ,
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_vfs = {
@@ -945,9 +991,18 @@ const struct dispatch_source_type_s _dispatch_source_type_vfs = {
 		.filter = EVFILT_FS,
 		.flags = EV_CLEAR,
 	},
-	.mask = VQ_NOTRESP|VQ_NEEDAUTH|VQ_LOWDISK|VQ_MOUNT|VQ_UNMOUNT|VQ_DEAD|VQ_ASSIST|VQ_NOTRESPLOCK|VQ_UPDATE|VQ_VERYLOWDISK,
+	.mask = VQ_NOTRESP|VQ_NEEDAUTH|VQ_LOWDISK|VQ_MOUNT|VQ_UNMOUNT|VQ_DEAD|
+	    VQ_ASSIST|VQ_NOTRESPLOCK
+#if HAVE_DECL_VQ_UPDATE
+	    |VQ_UPDATE
+#endif
+#if HAVE_DECL_VQ_VERYLOWDISK
+	    |VQ_VERYLOWDISK
+#endif
+	    ,
 };
 
+#ifdef HAVE_MACH
 const struct dispatch_source_type_s _dispatch_source_type_mach_send = {
 	.ke = {
 		.filter = EVFILT_MACHPORT,
@@ -964,6 +1019,7 @@ const struct dispatch_source_type_s _dispatch_source_type_mach_recv = {
 		.fflags = DISPATCH_MACHPORT_RECV,
 	},
 };
+#endif
 
 const struct dispatch_source_type_s _dispatch_source_type_data_add = {
 	.ke = {
@@ -1044,9 +1100,11 @@ dispatch_source_create(dispatch_source_type_t type,
 	ds->ds_dkev = dk;
 	ds->ds_pending_data_mask = dk->dk_kevent.fflags;
 	if ((EV_DISPATCH|EV_ONESHOT) & proto_kev->flags) {
+#ifdef HAVE_MACH
 		if (proto_kev->filter != EVFILT_MACHPORT) {
 			ds->ds_is_level = true;
 		}
+#endif
 		ds->ds_needs_rearm = true;
 	} else if (!(EV_CLEAR & proto_kev->flags)) {
 		// we cheat and use EV_CLEAR to mean a "flag thingy"
@@ -1064,10 +1122,13 @@ dispatch_source_create(dispatch_source_type_t type,
 #endif
 
 	// Some sources require special processing
+#ifdef HAVE_MACH
 	if (type == DISPATCH_SOURCE_TYPE_MACH_SEND) {
 		static dispatch_once_t pred;
 		dispatch_once_f(&pred, NULL, _dispatch_mach_notify_source_init);
-	} else if (type == DISPATCH_SOURCE_TYPE_TIMER) {
+	} else
+#endif
+	if (type == DISPATCH_SOURCE_TYPE_TIMER) {
 		ds->ds_timer.flags = mask;
 	}
 
@@ -1320,7 +1381,7 @@ _dispatch_run_timers2(unsigned int timer)
 	uint64_t now, missed;
 
 	if (timer == DISPATCH_TIMER_INDEX_MACH) {
-		now = mach_absolute_time();
+		now = _dispatch_absolute_time();
 	} else {
 		now = _dispatch_get_nanoseconds();
 	}
@@ -1365,7 +1426,7 @@ _dispatch_run_timers(void)
 	}
 }
 
-#if defined(__i386__) || defined(__x86_64__)
+#if defined(__i386__) || defined(__x86_64__) || !defined(HAVE_MACH_ABSOLUTE_TIME)
 // these architectures always return mach_absolute_time() in nanoseconds
 #define _dispatch_convert_mach2nano(x) (x)
 #define _dispatch_convert_nano2mach(x) (x)
@@ -1452,7 +1513,7 @@ _dispatch_get_next_timer_fire(struct timespec *howsoon)
 		if (ds->ds_timer.flags & DISPATCH_TIMER_WALL_CLOCK) {
 			now = _dispatch_get_nanoseconds();
 		} else {
-			now = mach_absolute_time();
+			now = _dispatch_absolute_time();
 		}
 		if (ds->ds_timer.target <= now) {
 			howsoon->tv_sec = 0;
@@ -1521,7 +1582,7 @@ dispatch_source_set_timer(dispatch_source_t ds,
 	dispatch_suspend(ds);
 	
 	if (start == DISPATCH_TIME_NOW) {
-		start = mach_absolute_time();
+		start = _dispatch_absolute_time();
 	} else if (start == DISPATCH_TIME_FOREVER) {
 		start = INT64_MAX;
 	}
@@ -1542,7 +1603,7 @@ dispatch_source_set_timer(dispatch_source_t ds,
 		params->values.leeway = leeway;
 		params->values.flags |= DISPATCH_TIMER_WALL_CLOCK;
 	} else {
-		// mach clock
+		// absolute clock
 		params->ident = DISPATCH_TIMER_INDEX_MACH;
 		params->values.start = start;
 		params->values.target = start;
@@ -1591,6 +1652,7 @@ dispatch_event_get_nanoseconds(dispatch_source_t ds)
 }
 #endif /* DISPATCH_NO_LEGACY */
 
+#ifdef HAVE_MACH
 static dispatch_source_t _dispatch_mach_notify_source;
 static mach_port_t _dispatch_port_set;
 static mach_port_t _dispatch_event_port;
@@ -2010,3 +2072,4 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz, dispatch_mig_callback
 
 	return kr;
 }
+#endif /* HAVE_MACH */
