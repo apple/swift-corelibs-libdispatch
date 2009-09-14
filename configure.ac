@@ -75,7 +75,7 @@ AM_CONDITIONAL(USE_LIBPTHREAD, $use_libpthread)
 # Checks for header files.
 #
 AC_HEADER_STDC
-AC_CHECK_HEADERS([Availability.h pthread_np.h malloc/malloc.h])
+AC_CHECK_HEADERS([Availability.h pthread_np.h pthread_workqueue.h malloc/malloc.h])
 
 #
 # We use the availability of mach.h to decide whether to compile in all sorts
