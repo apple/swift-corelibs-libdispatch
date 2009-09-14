@@ -18,8 +18,7 @@ AC_ARG_WITH([legacy-api],
   ],[],[
     use_legacy_api=false
     AC_DEFINE(DISPATCH_NO_LEGACY,,Define to compile out legacy API)
-  ]
-)
+  ])
 AM_CONDITIONAL(USE_LEGACY_API, $use_legacy_api)
 
 #
@@ -32,8 +31,7 @@ AC_ARG_WITH([libdispatch-init-constructor],
     [Don't tag libdispatch_init as a constructor])
   ],[],[
     AC_DEFINE(USE_LIBDISPATCH_INIT_CONSTRUCTOR,,Define to tag libdispatch_init as a constructor)
-  ]
-)
+  ])
 
 #
 # libdispatch has micro-optimized and deeply personal knowledge of the Mac OS
@@ -46,16 +44,14 @@ AC_ARG_WITH([apple-tsd-optimizations],
     [Use less portable pthread TSD optimizations for Mac OS X.])
   ],[
     AC_DEFINE(USE_APPLE_TSD_OPTIMIZATIONS,,Define to compile in tsd optimizations)
-  ],[]
-)
+  ],[])
 
 AC_ARG_WITH([apple-semaphore-optimizations],
   [AS_HELP_STRING([--with-apple-semaphore-optimizations],
     [Use less portable semaphore optimizations for Mac OS X.])
   ],[
     AC_DEFINE(USE_APPLE_SEMAPHORE_OPTIMIZATIONS,,Define to compile in semaphore optimizations)
-  ],[]
-)
+  ],[])
 
 AC_PROG_CC
 AC_PROG_INSTALL
