@@ -152,6 +152,16 @@ AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK], [], [], [[#include <sys/mount.h>]])
 AC_CHECK_FUNCS([pthread_key_init_np mach_absolute_time malloc_create_zone sem_init])
 
 #
+# Does the platform support __private_extern__?  There is surely a better way
+# to check this.
+#
+AC_TRY_LINK([], [
+	__private_extern__ int foo;
+], [
+  AC_DEFINE(HAVE_PRIVATE_EXTERN,, Define if __private_extern__ present)
+])
+
+#
 # Generate Makefiles.
 #
 AC_CONFIG_FILES([Makefile src/Makefile])

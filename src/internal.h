@@ -41,6 +41,9 @@
 #else
 #include <compat/Availability.h>
 #endif
+#ifndef HAVE_PRIVATE_EXTERN
+#include <compat/private_extern.h>
+#endif
 
 #include "dispatch.h"
 #include "base.h"
