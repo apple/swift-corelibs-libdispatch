@@ -22,7 +22,7 @@ TESTS=	dispatch_apply \
 	dispatch_readsync \
 	nsoperation
 
-all: harness summarize $(TESTS)
+all: harness summarize bench $(TESTS)
 	@lipo -remove x86_64 -output dispatch_timer_bit31 dispatch_timer_bit31 2>/dev/null || true
 
 logs: $(addsuffix .testlog, $(TESTS))
@@ -56,6 +56,13 @@ endif
 
 harness: harness.o $(OBJS)
 summarize: summarize.o
+bench: bench.o func.o
+	$(CC) $(LDFLAGS) -framework Foundation $(LDLIBS) -o $@ $^
+
+bench.o: bench.mm
+	$(CC) -x objective-c++ $(CFLAGS) -c $^ -o $@
+func.o: func.c
+	$(CC) -x c++ $(CFLAGS) -c $^ -o $@
 
 dispatch_apply: dispatch_apply.o $(OBJS)
 dispatch_api: dispatch_api.o $(OBJS)
