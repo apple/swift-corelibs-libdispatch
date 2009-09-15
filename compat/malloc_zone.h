@@ -21,6 +21,10 @@
 #ifndef __MALLOC_ZONE_H__
 #define __MALLOC_ZONE_H__
 
+#include <sys/types.h>
+
+#include <stdlib.h>
+
 /*
  * Implement malloc zones as a simple wrapper around malloc(3) on systems
  * that don't support them.
