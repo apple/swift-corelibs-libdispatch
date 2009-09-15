@@ -1982,9 +1982,6 @@ _dispatch_mgr_wakeup(dispatch_queue_t dq)
 	static const struct kevent kev = {
 		.ident = 1,
 		.filter = EVFILT_USER,
-#ifdef EV_TRIGGER
-		.flags = EV_TRIGGER,
-#endif
 #ifdef NOTE_TRIGGER
 		.fflags = NOTE_TRIGGER,
 #endif
