@@ -45,16 +45,16 @@
 #include <compat/private_extern.h>
 #endif
 
-#include "dispatch.h"
-#include "base.h"
-#include "time.h"
-#include "queue.h"
-#include "object.h"
-#include "source.h"
-#include "group.h"
-#include "semaphore.h"
-#include "once.h"
-#include "benchmark.h"
+#include <dispatch/dispatch.h>
+#include <dispatch/base.h>
+#include <dispatch/time.h>
+#include <dispatch/queue.h>
+#include <dispatch/object.h>
+#include <dispatch/source.h>
+#include <dispatch/group.h>
+#include <dispatch/semaphore.h>
+#include <dispatch/once.h>
+#include <dispatch/benchmark.h>
 
 /* private.h uses #include_next and must be included last to avoid picking
  * up installed headers. */

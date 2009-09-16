@@ -16,7 +16,8 @@ libdispatch_la_SOURCES=	\
 	time.c
 
 libdispatch_la_CFLAGS=-Wall -Werror
-INCLUDES=@APPLE_LIBC_SOURCE_PATH@ @APPLE_XNU_SOURCE_PATH@
+INCLUDES=-I$(top_builddir) -I$(top_srcdir) \
+	@APPLE_LIBC_SOURCE_PATH@ @APPLE_XNU_SOURCE_PATH@
 
 #
 # This will need some refinement: gcc requires a minimum of -march=i486 on
@@ -48,11 +49,3 @@ protocol.h protocolServer.h protocolServer.c: protocol.defs
 	$(MIG) -user /dev/null -header protocol.h -server protocolServer.c \
 	    -sheader protocolServer.h protocol.defs
 endif
-
-#
-# This hack is needed because the default include line from automake will add
-# -I. to compiler commands.  That leads to the local semaphore.h overriding
-# the one in /usr/local on systems using POSIX semaphores.  We can remove
-# this hack once header files are moved to their own directory.
-#
-DEFAULT_INCLUDES = @am__isrc@ -I.. -I$(top_builddir)/config
