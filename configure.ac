@@ -190,5 +190,5 @@ AC_TRY_LINK([], [
 #
 # Generate Makefiles.
 #
-AC_CONFIG_FILES([Makefile dispatch/Makefile src/Makefile])
+AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile src/Makefile])
 AC_OUTPUT
