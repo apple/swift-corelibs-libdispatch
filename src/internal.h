@@ -38,8 +38,6 @@
 
 #ifdef HAVE_AVAILABILITY_H
 #include <Availability.h>
-#else
-#include <compat/Availability.h>
 #endif
 #ifndef HAVE_PRIVATE_EXTERN
 #include <compat/private_extern.h>
