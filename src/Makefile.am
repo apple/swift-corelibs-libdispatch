@@ -15,7 +15,7 @@ libdispatch_la_SOURCES=	\
 	source.c	\
 	time.c
 
-libdispatch_la_CFLAGS=-Wall -Werror
+libdispatch_la_CFLAGS=-Wall
 INCLUDES=-I$(top_builddir) -I$(top_srcdir) \
 	@APPLE_LIBC_SOURCE_PATH@ @APPLE_XNU_SOURCE_PATH@
 
