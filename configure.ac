@@ -248,6 +248,15 @@ AS_IF([test "x$dispatch_cv_cblocks" != "xno"], [
 AC_SUBST([CBLOCKS_FLAGS])
 
 #
+# Temporary: some versions of clang do not mark __builtin_trap() as
+# __attribute__((__noreturn__)).  Detect and add if required.
+#
+AC_COMPILE_IFELSE([
+  AC_LANG_PROGRAM([void __attribute__((__noreturn__)) temp(void) { __builtin_trap(); }], [])], [
+    AC_DEFINE(HAVE_NORETURN_BUILTIN_TRAP,,[Define if __builtin_trap marked noreturn])
+  ], [])
+
+#
 # Generate Makefiles.
 #
 AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile src/Makefile])

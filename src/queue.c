@@ -884,6 +884,15 @@ _dispatch_queue_set_mainq_drain_state(bool arg)
 }
 #endif
 
+/*
+ * XXXRW: Work-around for possible clang bug in which __builtin_trap() is not
+ * marked noreturn, leading to a build error as dispatch_main() *is* marked
+ * noreturn.  Mask by marking __builtin_trap() as noreturn locally.
+ */
+#ifndef HAVE_NORETURN_BUILTIN_TRAP
+void __builtin_trap(void) __attribute__((__noreturn__));
+#endif
+
 void
 dispatch_main(void)
 {
