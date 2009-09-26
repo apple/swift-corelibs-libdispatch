@@ -19,7 +19,7 @@ libdispatch_la_CFLAGS=-Wall -Werror
 INCLUDES=-I$(top_builddir) -I$(top_srcdir) \
 	@APPLE_LIBC_SOURCE_PATH@ @APPLE_XNU_SOURCE_PATH@
 
-libdispatch_la_CFLAGS+=$(MARCH_FLAGS)
+libdispatch_la_CFLAGS+=$(MARCH_FLAGS) $(CBLOCKS_FLAGS)
 
 if USE_LEGACY_API
 libdispatch_la_SOURCES+=	\
