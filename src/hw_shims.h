@@ -39,7 +39,7 @@
 #if 0 && defined(__i386__) || defined(__x86_64__)
 #define dispatch_atomic_xchg(p, n)	({ typeof(*(p)) _r; asm("xchg %0, %1" : "=r" (_r) : "m" (*(p)), "0" (n)); _r; })
 #else
-#define dispatch_atomic_xchg(p, n)	__sync_lock_test_and_set((p), (n))
+#define dispatch_atomic_xchg(p, n)	((typeof(*(p)))__sync_lock_test_and_set((p), (n)))
 #endif
 #define dispatch_atomic_cmpxchg(p, o, n)	__sync_bool_compare_and_swap((p), (o), (n))
 #define dispatch_atomic_inc(p)	__sync_add_and_fetch((p), 1)
