@@ -58,6 +58,12 @@
 /* Define to 1 if you have the <memory.h> header file. */
 #define HAVE_MEMORY_H 1
 
+/* Define if __builtin_trap marked noreturn */
+#define HAVE_NORETURN_BUILTIN_TRAP /**/
+
+/* Define if __private_extern__ present */
+#define HAVE_PRIVATE_EXTERN /**/
+
 /* Define to 1 if you have the `pthread_key_init_np' function. */
 #define HAVE_PTHREAD_KEY_INIT_NP 1
 
@@ -116,7 +122,7 @@
 #define STDC_HEADERS 1
 
 /* Define to use Mac OS X crashreporter info */
-#define USE_APPLE_CRASHREPORTER_INFO
+#define USE_APPLE_CRASHREPORTER_INFO /**/
 
 /* Define to use non-portablesemaphore optimizations for Mac OS X */
 #define USE_APPLE_SEMAPHORE_OPTIMIZATIONS /**/
