@@ -452,10 +452,10 @@ struct _dispatch_hw_config_s _dispatch_hw_config;
 static void
 _dispatch_queue_set_width_init(void)
 {
+#ifdef __APPLE__
 	size_t valsz = sizeof(uint32_t);
 	int ret;
 
-#ifdef __APPLE__
 	ret = sysctlbyname("hw.activecpu", &_dispatch_hw_config.cc_max_active,
 	    &valsz, NULL, 0);
 	dispatch_assume_zero(ret);
@@ -471,6 +471,9 @@ _dispatch_queue_set_width_init(void)
 	dispatch_assume_zero(ret);
 	dispatch_assume(valsz == sizeof(uint32_t));
 #elif defined(__FreeBSD__)
+	size_t valsz = sizeof(uint32_t);
+	int ret;
+
 	ret = sysctlbyname("kern.smp.cpus", &_dispatch_hw_config.cc_max_active,
 	    &valsz, NULL, 0);
 	dispatch_assume_zero(ret);
