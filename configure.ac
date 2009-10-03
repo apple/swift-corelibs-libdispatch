@@ -172,6 +172,8 @@ AC_CHECK_HEADER([pthread_workqueue.h],
 #
 # Find functions and declarations we care about.
 #
+AC_CHECK_DECLS([CLOCK_UPTIME, CLOCK_MONOTONIC], [], [],
+  [[#include <sys/time.h>]])
 AC_CHECK_DECLS([EVFILT_SESSION, NOTE_NONE, NOTE_REAP, NOTE_SIGNAL], [], [],
   [[#include <sys/event.h>]])
 AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK], [], [], [[#include <sys/mount.h>]])
