@@ -18,8 +18,8 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
-#ifndef __MALLOC_ZONE_H__
-#define __MALLOC_ZONE_H__
+#ifndef __COMPAT_MALLOC_ZONE_H__
+#define __COMPAT_MALLOC_ZONE_H__
 
 #include <sys/types.h>
 
@@ -103,4 +103,4 @@ malloc_set_zone_name(malloc_zone_t *zone, const char *name)
 	/* No-op. */
 }
 
-#endif /* __MALLOC_ZONE_H__ */
+#endif /* __COMPAT_MALLOC_ZONE_H__ */

@@ -18,9 +18,9 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
-#ifndef __APPLE_H__
-#define __APPLE_H__
+#ifndef __COMPAT_PRIVATE_EXTERN_H__
+#define __COMPAT_PRIVATE_EXTERN_H__
 
 #define	__private_extern__	extern
 
-#endif /* __APPLE_H__ */
+#endif /* __COMPAT_PRIVATE_EXTERN_H__ */
