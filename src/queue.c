@@ -896,12 +896,17 @@ void __builtin_trap(void) __attribute__((__noreturn__));
 void
 dispatch_main(void)
 {
+
+#ifdef HAVE_PTHREAD_MAIN_NP
 	if (pthread_main_np()) {
+#endif
 		_dispatch_program_is_probably_callback_driven = true;
 		pthread_exit(NULL);
 		DISPATCH_CRASH("pthread_exit() returned");
+#ifdef HAVE_PTHREAD_MAIN_NP
 	}
 	DISPATCH_CLIENT_CRASH("dispatch_main() must be called on the main thread");
+#endif
 }
 
 static void
