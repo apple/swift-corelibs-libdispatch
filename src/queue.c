@@ -1778,8 +1778,10 @@ _dispatch_pthread_sigmask(int how, sigset_t *set, sigset_t *oset)
 	dispatch_assume_zero(r);
 	r = sigdelset(set, SIGTRAP);
 	dispatch_assume_zero(r);
+#if HAVE_DECL_SIGEMT
 	r = sigdelset(set, SIGEMT);
 	dispatch_assume_zero(r);
+#endif
 	r = sigdelset(set, SIGFPE);
 	dispatch_assume_zero(r);
 	r = sigdelset(set, SIGBUS);
