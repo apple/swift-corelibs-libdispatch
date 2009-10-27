@@ -7,6 +7,7 @@ AC_INIT([libdispatch], [1.0], [libdispatch@macosforge.org], [libdispatch])
 AC_REVISION([$$])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_HEADER([config/config.h])
+AC_CONFIG_MACRO_DIR([m4])
 AM_MAINTAINER_MODE
 
 #
@@ -181,15 +182,7 @@ AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])
 AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK], [], [], [[#include <sys/mount.h>]])
 AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sem_init])
 
-#
-# Does the platform support __private_extern__?  There is surely a better way
-# to check this.
-#
-AC_TRY_LINK([], [
-	__private_extern__ int foo;
-], [
-  AC_DEFINE(HAVE_PRIVATE_EXTERN,, Define if __private_extern__ present)
-])
+DISPATCH_C_PRIVATE_EXTERN
 
 #
 # Detect compiler support for Blocks; perhaps someday -fblocks won't be

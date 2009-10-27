@@ -39,9 +39,6 @@
 #ifdef HAVE_AVAILABILITY_H
 #include <Availability.h>
 #endif
-#ifndef HAVE_PRIVATE_EXTERN
-#include <compat/private_extern.h>
-#endif
 #if !HAVE_DECL_FD_COPY
 #include <compat/fd_copy.h>
 #endif
