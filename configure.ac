@@ -106,7 +106,7 @@ AC_PROG_INSTALL
 AC_PROG_LIBTOOL
 AC_PATH_PROGS(MIG, mig)
 
-AM_INIT_AUTOMAKE(AC_PACKAGE_NAME, AC_PACKAGE_VERSION)
+AM_INIT_AUTOMAKE([foreign])
 
 #
 # This is a bit subtle: on i386 systems without at least -march=i486 defined,
