@@ -483,7 +483,10 @@ _dispatch_queue_set_width_init(void)
 	    _dispatch_hw_config.cc_max_physical =
 	    _dispatch_hw_config.cc_max_active;
 #else
-#error "_dispatch_queue_set_width_init: no supported way to query CPU count"
+#warning "_dispatch_queue_set_width_init: no supported way to query CPU count"
+	_dispatch_hw_config.cc_max_logical =
+	    _dispatch_hw_config.cc_max_physical =
+	    _dispatch_hw_config.cc_max_active = 1;
 #endif
 }
 
