@@ -3,6 +3,7 @@
 #
 
 lib_LTLIBRARIES=libdispatch.la
+noinst_LTLIBRARIES=libshims.la
 
 libdispatch_la_SOURCES=	\
 	apply.c		\
@@ -11,9 +12,11 @@ libdispatch_la_SOURCES=	\
 	once.c		\
 	queue.c		\
 	semaphore.c	\
-	shims.c		\
 	source.c	\
 	time.c
+
+libshims_la_SOURCES=	\
+	shims/mach.c
 
 libdispatch_la_CFLAGS=-Wall
 INCLUDES=-I$(top_builddir) -I$(top_srcdir) \
@@ -26,8 +29,11 @@ libdispatch_la_SOURCES+=	\
 	legacy.c
 endif
 
+libdispatch_la_LIBADD=libshims.la
+libdispatch_la_DEPENDENCIES=libshims.la
+
 if USE_LIBPTHREAD
-libdispatch_la_LIBADD=-lpthread
+libdispatch_la_LIBADD+=-lpthread
 endif
 
 if USE_MIG
