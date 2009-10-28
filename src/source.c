@@ -142,14 +142,22 @@ _evfiltstr(short filt)
 
 static TAILQ_HEAD(, dispatch_kevent_s) _dispatch_sources[DSL_HASH_SIZE];
 
+static inline uintptr_t
+_dispatch_kevent_hash(uintptr_t ident, short filter)
+{
+	uintptr_t value;
+#ifdef HAVE_MACH
+	value = (filter == EVFILT_MACHPORT ? MACH_PORT_INDEX(ident) : ident);
+#else
+	value = ident;
+#endif
+	return DSL_HASH(value);
+}
+
 static dispatch_kevent_t
 _dispatch_kevent_find(uintptr_t ident, short filter)
 {
-#ifdef HAVE_MACH
-	uintptr_t hash = DSL_HASH(filter == EVFILT_MACHPORT ? MACH_PORT_INDEX(ident) : ident);
-#else
-	uintptr_t hash = DSL_HASH(ident);
-#endif
+	uintptr_t hash = _dispatch_kevent_hash(ident, filter);
 	dispatch_kevent_t dki;
 
 	TAILQ_FOREACH(dki, &_dispatch_sources[hash], dk_list) {
@@ -163,12 +171,8 @@ _dispatch_kevent_find(uintptr_t ident, short filter)
 static void
 _dispatch_kevent_insert(dispatch_kevent_t dk)
 {
-	uintptr_t ident = dk->dk_kevent.ident;
-#ifdef HAVE_MACH
-	uintptr_t hash = DSL_HASH(dk->dk_kevent.filter == EVFILT_MACHPORT ? MACH_PORT_INDEX(ident) : ident);
-#else
-	uintptr_t hash = DSL_HASH(ident);
-#endif
+	uintptr_t hash = _dispatch_kevent_hash(dk->dk_kevent.ident,
+					       dk->dk_kevent.filter);
 
 	TAILQ_INSERT_TAIL(&_dispatch_sources[hash], dk, dk_list);
 }
@@ -603,7 +607,7 @@ _dispatch_source_drain_kevent(struct kevent *ke)
 static void
 _dispatch_kevent_dispose(dispatch_kevent_t dk)
 {
-	uintptr_t key;
+	uintptr_t hash;
 
 	switch (dk->dk_kevent.filter) {
 	case DISPATCH_EVFILT_TIMER:
@@ -629,17 +633,9 @@ _dispatch_kevent_dispose(dispatch_kevent_t dk)
 		break;
 	}
 
-#ifdef HAVE_MACH
-	if (dk->dk_kevent.filter == EVFILT_MACHPORT) {
-		key = MACH_PORT_INDEX(dk->dk_kevent.ident);
-	} else {
-#endif
-		key = dk->dk_kevent.ident;
-#ifdef HAVE_MACH
-	}
-#endif
-
-	TAILQ_REMOVE(&_dispatch_sources[DSL_HASH(key)], dk, dk_list);
+	hash = _dispatch_kevent_hash(dk->dk_kevent.ident,
+				     dk->dk_kevent.filter);
+	TAILQ_REMOVE(&_dispatch_sources[hash], dk, dk_list);
 	free(dk);
 }
 
