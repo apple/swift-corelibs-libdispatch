@@ -7,9 +7,21 @@
 /* Define to 1 if you have the <Availability.h> header file. */
 #define HAVE_AVAILABILITY_H 1
 
+/* Define to 1 if you have the declaration of `CLOCK_MONOTONIC', and to 0 if
+   you don't. */
+#define HAVE_DECL_CLOCK_MONOTONIC 0
+
+/* Define to 1 if you have the declaration of `CLOCK_UPTIME', and to 0 if you
+   don't. */
+#define HAVE_DECL_CLOCK_UPTIME 0
+
 /* Define to 1 if you have the declaration of `EVFILT_SESSION', and to 0 if
    you don't. */
 #define HAVE_DECL_EVFILT_SESSION 1
+
+/* Define to 1 if you have the declaration of `FD_COPY', and to 0 if you
+   don't. */
+#define HAVE_DECL_FD_COPY 1
 
 /* Define to 1 if you have the declaration of `NOTE_NONE', and to 0 if you
    don't. */
@@ -22,6 +34,10 @@
 /* Define to 1 if you have the declaration of `NOTE_SIGNAL', and to 0 if you
    don't. */
 #define HAVE_DECL_NOTE_SIGNAL 1
+
+/* Define to 1 if you have the declaration of `SIGEMT', and to 0 if you don't.
+   */
+#define HAVE_DECL_SIGEMT 1
 
 /* Define to 1 if you have the declaration of `VQ_UPDATE', and to 0 if you
    don't. */
@@ -44,7 +60,7 @@
 #define HAVE_LIBKERN_OSCROSSENDIAN_H 1
 
 /* Define if mach is present */
-#define HAVE_MACH /**/
+#define HAVE_MACH 
 
 /* Define to 1 if you have the `mach_absolute_time' function. */
 #define HAVE_MACH_ABSOLUTE_TIME 1
@@ -59,10 +75,10 @@
 #define HAVE_MEMORY_H 1
 
 /* Define if __builtin_trap marked noreturn */
-#define HAVE_NORETURN_BUILTIN_TRAP /**/
+#define HAVE_NORETURN_BUILTIN_TRAP 
 
 /* Define if __private_extern__ present */
-#define HAVE_PRIVATE_EXTERN /**/
+#define HAVE_PRIVATE_EXTERN 
 
 /* Define to 1 if you have the `pthread_key_init_np' function. */
 #define HAVE_PTHREAD_KEY_INIT_NP 1
@@ -70,11 +86,14 @@
 /* Define to 1 if you have the <pthread_machdep.h> header file. */
 #define HAVE_PTHREAD_MACHDEP_H 1
 
+/* Define to 1 if you have the `pthread_main_np' function. */
+#define HAVE_PTHREAD_MAIN_NP 1
+
 /* Define to 1 if you have the <pthread_np.h> header file. */
 /* #undef HAVE_PTHREAD_NP_H */
 
 /* Define if pthread work queues are present */
-#define HAVE_PTHREAD_WORKQUEUES /**/
+#define HAVE_PTHREAD_WORKQUEUES 
 
 /* Define to 1 if you have the `sem_init' function. */
 #define HAVE_SEM_INIT 1
@@ -100,6 +119,10 @@
 /* Define to 1 if you have the <unistd.h> header file. */
 #define HAVE_UNISTD_H 1
 
+/* Define to the sub-directory in which libtool stores uninstalled libraries.
+   */
+#define LT_OBJDIR ".libs/"
+
 /* Name of package */
 #define PACKAGE "libdispatch"
 
@@ -122,16 +145,19 @@
 #define STDC_HEADERS 1
 
 /* Define to use Mac OS X crashreporter info */
-#define USE_APPLE_CRASHREPORTER_INFO /**/
+#define USE_APPLE_CRASHREPORTER_INFO 
 
 /* Define to use non-portablesemaphore optimizations for Mac OS X */
-#define USE_APPLE_SEMAPHORE_OPTIMIZATIONS /**/
+#define USE_APPLE_SEMAPHORE_OPTIMIZATIONS 
 
 /* Define to use non-portable pthread TSD optimizations for Mac OS X) */
-#define USE_APPLE_TSD_OPTIMIZATIONS /**/
+#define USE_APPLE_TSD_OPTIMIZATIONS 
 
 /* Define to tag libdispatch_init as a constructor */
 /* #undef USE_LIBDISPATCH_INIT_CONSTRUCTOR */
 
 /* Version number of package */
 #define VERSION "1.0"
+
+/* Define to a replacement for __private_extern */
+/* #undef __private_extern__ */
