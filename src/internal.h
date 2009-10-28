@@ -229,7 +229,8 @@ long dummy_function_r0(void);
 #define _dispatch_debug(x, args...)	\
 ({	\
 	if (DISPATCH_DEBUG) {	\
-		_dispatch_log("libdispatch: %u\t%p\t" x, __LINE__, _dispatch_thread_self(), ##args);	\
+		_dispatch_log("libdispatch: %u\t%p\t" x, __LINE__,	\
+		    (void *)_dispatch_thread_self(), ##args);	\
 	}	\
 })
 
