@@ -46,6 +46,7 @@ __private_extern__ const char *__crashreporter_info__;
 #define	FD_COPY(f, t)	(void)(*(t) = *(f))
 #endif
 
+#include "shims/malloc_zone.h"
 #include "shims/tsd.h"
 #include "shims/perfmon.h"
 #include "shims/time.h"

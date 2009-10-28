@@ -32,10 +32,6 @@
 #define __DISPATCH_BUILDING_DISPATCH__
 #define __DISPATCH_INDIRECT__
 
-#ifndef HAVE_MALLOC_CREATE_ZONE
-#include <compat/malloc_zone.h>
-#endif
-
 #ifdef HAVE_AVAILABILITY_H
 #include <Availability.h>
 #endif

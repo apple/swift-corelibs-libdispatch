@@ -18,8 +18,8 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
-#ifndef __COMPAT_MALLOC_ZONE_H__
-#define __COMPAT_MALLOC_ZONE_H__
+#ifndef __DISPATCH_SHIMS_MALLOC_ZONE__
+#define __DISPATCH_SHIMS_MALLOC_ZONE__
 
 #include <sys/types.h>
 
@@ -29,6 +29,7 @@
  * Implement malloc zones as a simple wrapper around malloc(3) on systems
  * that don't support them.
  */
+#ifndef HAVE_MALLOC_CREATE_ZONE
 typedef void * malloc_zone_t;
 
 static inline malloc_zone_t *
@@ -102,5 +103,6 @@ malloc_set_zone_name(malloc_zone_t *zone, const char *name)
 
 	/* No-op. */
 }
+#endif
 
-#endif /* __COMPAT_MALLOC_ZONE_H__ */
+#endif /* __DISPATCH_SHIMS_MALLOC_ZONE__ */
