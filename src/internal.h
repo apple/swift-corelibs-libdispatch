@@ -93,6 +93,7 @@
 #include <sys/sysctl.h>
 #include <sys/syslimits.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 
 #ifdef __BLOCKS__
