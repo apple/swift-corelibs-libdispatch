@@ -165,6 +165,11 @@ AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])
 AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK], [], [], [[#include <sys/mount.h>]])
 AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sem_init])
 
+AC_CHECK_HEADERS([sys/cdefs.h], [], [],
+  [#ifdef HAVE_SYS_CDEFS_H
+   #include <sys/cdefs.h>
+   #endif])
+
 DISPATCH_C_PRIVATE_EXTERN
 DISPATCH_C_BLOCKS
 

@@ -91,7 +91,6 @@
 #include <sys/queue.h>
 #include <sys/stat.h>
 #include <sys/sysctl.h>
-#include <sys/syslimits.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <netinet/in.h>
@@ -104,6 +103,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <search.h>
 #if !defined(HAVE_MACH) && defined(HAVE_SEM_INIT)
 #include <semaphore.h>
