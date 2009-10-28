@@ -34,7 +34,6 @@
 #endif
 #include <unistd.h>
 #include <sys/cdefs.h>
-#include <sys/event.h>
 #include <pthread.h>
 
 #ifndef __DISPATCH_BUILDING_DISPATCH__
