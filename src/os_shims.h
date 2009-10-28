@@ -42,6 +42,10 @@
 __private_extern__ const char *__crashreporter_info__;
 #endif
 
+#if !HAVE_DECL_FD_COPY
+#define	FD_COPY(f, t)	(void)(*(t) = *(f))
+#endif
+
 #include "shims/tsd.h"
 #include "shims/perfmon.h"
 #include "shims/time.h"

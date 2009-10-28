@@ -39,9 +39,6 @@
 #ifdef HAVE_AVAILABILITY_H
 #include <Availability.h>
 #endif
-#if !HAVE_DECL_FD_COPY
-#include <compat/fd_copy.h>
-#endif
 
 #include <dispatch/dispatch.h>
 #include <dispatch/base.h>
