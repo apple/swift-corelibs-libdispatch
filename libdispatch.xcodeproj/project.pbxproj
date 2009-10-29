@@ -29,7 +29,6 @@
 		96DF70BE0F38FE3C0074BD99 /* once.c in Sources */ = {isa = PBXBuildFile; fileRef = 96DF70BD0F38FE3C0074BD99 /* once.c */; };
 		FC0B34790FA2851C0080FFA0 /* source_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = FC0B34780FA2851C0080FFA0 /* source_internal.h */; };
 		FC18329F109923A7003403D5 /* mach.c in Sources */ = {isa = PBXBuildFile; fileRef = FC18329E109923A7003403D5 /* mach.c */; };
-		FC1832A5109923C7003403D5 /* malloc_zone.h in Headers */ = {isa = PBXBuildFile; fileRef = FC1832A1109923C7003403D5 /* malloc_zone.h */; };
 		FC1832A6109923C7003403D5 /* perfmon.h in Headers */ = {isa = PBXBuildFile; fileRef = FC1832A2109923C7003403D5 /* perfmon.h */; };
 		FC1832A7109923C7003403D5 /* time.h in Headers */ = {isa = PBXBuildFile; fileRef = FC1832A3109923C7003403D5 /* time.h */; };
 		FC1832A8109923C7003403D5 /* tsd.h in Headers */ = {isa = PBXBuildFile; fileRef = FC1832A4109923C7003403D5 /* tsd.h */; };
@@ -77,7 +76,6 @@
 		D2AAC046055464E500DB518D /* libdispatch.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libdispatch.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		FC0B34780FA2851C0080FFA0 /* source_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = source_internal.h; path = src/source_internal.h; sourceTree = "<group>"; };
 		FC18329E109923A7003403D5 /* mach.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = mach.c; path = src/shims/mach.c; sourceTree = "<group>"; };
-		FC1832A1109923C7003403D5 /* malloc_zone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = malloc_zone.h; path = src/shims/malloc_zone.h; sourceTree = "<group>"; };
 		FC1832A2109923C7003403D5 /* perfmon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = perfmon.h; path = src/shims/perfmon.h; sourceTree = "<group>"; };
 		FC1832A3109923C7003403D5 /* time.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = time.h; path = src/shims/time.h; sourceTree = "<group>"; };
 		FC1832A4109923C7003403D5 /* tsd.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = tsd.h; path = src/shims/tsd.h; sourceTree = "<group>"; };
@@ -127,14 +125,14 @@
 		08FB7795FE84155DC02AAC07 /* Source */ = {
 			isa = PBXGroup;
 			children = (
+				9676A0E00F3E755D00713ADB /* apply.c */,
 				965CD6340F3E806200D4E28D /* benchmark.c */,
 				9661E56A0F3E7DDF00749F3E /* object.c */,
-				9676A0E00F3E755D00713ADB /* apply.c */,
-				FC7BED8A0E8361E600161930 /* queue.c */,
 				96DF70BD0F38FE3C0074BD99 /* once.c */,
-				96032E4A0F5CC8C700241C5F /* time.c */,
+				FC7BED8A0E8361E600161930 /* queue.c */,
 				721F5CCE0F15553500FF03A6 /* semaphore.c */,
 				96A8AA860F41E7A400CD570B /* source.c */,
+				96032E4A0F5CC8C700241C5F /* time.c */,
 				2EC9C9B70E8809EF00E2499A /* legacy.c */,
 				FC7BED950E8361E600161930 /* protocol.defs */,
 				FC18329D10992387003403D5 /* shims */,
@@ -153,19 +151,19 @@
 		C6A0FF2B0290797F04C91782 /* Documentation */ = {
 			isa = PBXGroup;
 			children = (
+				72CC940D0ECCD5720031B751 /* dispatch.3 */,
 				FC678DE80F97E0C300AB5993 /* dispatch_after.3 */,
 				FC678DE90F97E0C300AB5993 /* dispatch_api.3 */,
-				FC678DEA0F97E0C300AB5993 /* dispatch_async.3 */,
-				FC678DEB0F97E0C300AB5993 /* dispatch_group_create.3 */,
-				FC678DEC0F97E0C300AB5993 /* dispatch_time.3 */,
-				72CC940D0ECCD5720031B751 /* dispatch.3 */,
 				960F0E7D0F3FB232000D88BF /* dispatch_apply.3 */,
+				FC678DEA0F97E0C300AB5993 /* dispatch_async.3 */,
 				96859A3D0EF71BAD003EB3FB /* dispatch_benchmark.3 */,
+				FC678DEB0F97E0C300AB5993 /* dispatch_group_create.3 */,
 				72CC940C0ECCD5720031B751 /* dispatch_object.3 */,
 				960F0E7E0F3FB232000D88BF /* dispatch_once.3 */,
+				FC36279C0E933ED80054F1A3 /* dispatch_queue_create.3 */,
 				963FDDE50F3FB6BD00BF2D00 /* dispatch_semaphore_create.3 */,
 				72B54F690EB169EB00DBECBA /* dispatch_source_create.3 */,
-				FC36279C0E933ED80054F1A3 /* dispatch_queue_create.3 */,
+				FC678DEC0F97E0C300AB5993 /* dispatch_time.3 */,
 			);
 			name = Documentation;
 			sourceTree = "<group>";
@@ -181,7 +179,6 @@
 		FC1832A0109923B3003403D5 /* shims */ = {
 			isa = PBXGroup;
 			children = (
-				FC1832A1109923C7003403D5 /* malloc_zone.h */,
 				FC1832A2109923C7003403D5 /* perfmon.h */,
 				FC1832A3109923C7003403D5 /* time.h */,
 				FC1832A4109923C7003403D5 /* tsd.h */,
@@ -192,16 +189,16 @@
 		FC7BEDAA0E83625200161930 /* Public Headers */ = {
 			isa = PBXGroup;
 			children = (
-				96032E4C0F5CC8D100241C5F /* time.h */,
-				721F5C5C0F15520500FF03A6 /* semaphore.h */,
+				72CC942F0ECCD8750031B751 /* base.h */,
+				961B99350F3E83980006BC96 /* benchmark.h */,
+				FC7BED960E8361E600161930 /* dispatch.h */,
+				FC5C9C1D0EADABE3006E462D /* group.h */,
 				961B994F0F3E85C30006BC96 /* object.h */,
 				96C9553A0F3EAEDD000D2CA4 /* once.h */,
-				961B99350F3E83980006BC96 /* benchmark.h */,
-				72CC942F0ECCD8750031B751 /* base.h */,
-				FC7BED960E8361E600161930 /* dispatch.h */,
 				FC7BED8B0E8361E600161930 /* queue.h */,
+				721F5C5C0F15520500FF03A6 /* semaphore.h */,
 				FC7BED8D0E8361E600161930 /* source.h */,
-				FC5C9C1D0EADABE3006E462D /* group.h */,
+				96032E4C0F5CC8D100241C5F /* time.h */,
 			);
 			name = "Public Headers";
 			sourceTree = "<group>";
@@ -211,8 +208,8 @@
 			children = (
 				FC7BED930E8361E600161930 /* private.h */,
 				96BC39BC0F3EBAB100C59689 /* queue_private.h */,
+				FCEF047F0F5661960067401F /* source_private.h */,
 				FC7BED900E8361E600161930 /* legacy.h */,
-				FC1832A0109923B3003403D5 /* shims */,
 			);
 			name = "Private Headers";
 			sourceTree = "<group>";
@@ -221,14 +218,14 @@
 			isa = PBXGroup;
 			children = (
 				FC9C70E7105EC9620074F9CA /* config.h */,
+				96929D820F3EA1020041FF5D /* hw_shims.h */,
+				FC7BED8F0E8361E600161930 /* internal.h */,
 				965ECC200F3EAB71004DDD89 /* object_internal.h */,
+				96929D830F3EA1020041FF5D /* os_shims.h */,
 				96929D950F3EA2170041FF5D /* queue_internal.h */,
 				5A5D13AB0F6B280500197CC3 /* semaphore_internal.h */,
 				FC0B34780FA2851C0080FFA0 /* source_internal.h */,
-				FCEF047F0F5661960067401F /* source_private.h */,
-				96929D820F3EA1020041FF5D /* hw_shims.h */,
-				96929D830F3EA1020041FF5D /* os_shims.h */,
-				FC7BED8F0E8361E600161930 /* internal.h */,
+ 				FC1832A0109923B3003403D5 /* shims */,
 			);
 			name = "Project Headers";
 			sourceTree = "<group>";
@@ -262,7 +259,6 @@
 				5A5D13AC0F6B280500197CC3 /* semaphore_internal.h in Headers */,
 				FC0B34790FA2851C0080FFA0 /* source_internal.h in Headers */,
 				FC9C70E8105EC9620074F9CA /* config.h in Headers */,
-				FC1832A5109923C7003403D5 /* malloc_zone.h in Headers */,
 				FC1832A6109923C7003403D5 /* perfmon.h in Headers */,
 				FC1832A7109923C7003403D5 /* time.h in Headers */,
 				FC1832A8109923C7003403D5 /* tsd.h in Headers */,
