@@ -28,6 +28,11 @@
 		96C9553B0F3EAEDD000D2CA4 /* once.h in Headers */ = {isa = PBXBuildFile; fileRef = 96C9553A0F3EAEDD000D2CA4 /* once.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		96DF70BE0F38FE3C0074BD99 /* once.c in Sources */ = {isa = PBXBuildFile; fileRef = 96DF70BD0F38FE3C0074BD99 /* once.c */; };
 		FC0B34790FA2851C0080FFA0 /* source_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = FC0B34780FA2851C0080FFA0 /* source_internal.h */; };
+		FC18329F109923A7003403D5 /* mach.c in Sources */ = {isa = PBXBuildFile; fileRef = FC18329E109923A7003403D5 /* mach.c */; };
+		FC1832A5109923C7003403D5 /* malloc_zone.h in Headers */ = {isa = PBXBuildFile; fileRef = FC1832A1109923C7003403D5 /* malloc_zone.h */; };
+		FC1832A6109923C7003403D5 /* perfmon.h in Headers */ = {isa = PBXBuildFile; fileRef = FC1832A2109923C7003403D5 /* perfmon.h */; };
+		FC1832A7109923C7003403D5 /* time.h in Headers */ = {isa = PBXBuildFile; fileRef = FC1832A3109923C7003403D5 /* time.h */; };
+		FC1832A8109923C7003403D5 /* tsd.h in Headers */ = {isa = PBXBuildFile; fileRef = FC1832A4109923C7003403D5 /* tsd.h */; };
 		FC5C9C1E0EADABE3006E462D /* group.h in Headers */ = {isa = PBXBuildFile; fileRef = FC5C9C1D0EADABE3006E462D /* group.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		FC7BED990E8361E600161930 /* queue.c in Sources */ = {isa = PBXBuildFile; fileRef = FC7BED8A0E8361E600161930 /* queue.c */; };
 		FC7BED9A0E8361E600161930 /* queue.h in Headers */ = {isa = PBXBuildFile; fileRef = FC7BED8B0E8361E600161930 /* queue.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -37,7 +42,6 @@
 		FC7BEDA20E8361E600161930 /* private.h in Headers */ = {isa = PBXBuildFile; fileRef = FC7BED930E8361E600161930 /* private.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		FC7BEDA40E8361E600161930 /* protocol.defs in Sources */ = {isa = PBXBuildFile; fileRef = FC7BED950E8361E600161930 /* protocol.defs */; settings = {ATTRIBUTES = (Client, Server, ); }; };
 		FC7BEDA50E8361E600161930 /* dispatch.h in Headers */ = {isa = PBXBuildFile; fileRef = FC7BED960E8361E600161930 /* dispatch.h */; settings = {ATTRIBUTES = (Public, ); }; };
-		FC7BEDA60E8361E600161930 /* shims.c in Sources */ = {isa = PBXBuildFile; fileRef = FC7BED970E8361E600161930 /* shims.c */; };
 		FC9C70E8105EC9620074F9CA /* config.h in Headers */ = {isa = PBXBuildFile; fileRef = FC9C70E7105EC9620074F9CA /* config.h */; };
 		FCEF04800F5661960067401F /* source_private.h in Headers */ = {isa = PBXBuildFile; fileRef = FCEF047F0F5661960067401F /* source_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
 /* End PBXBuildFile section */
@@ -72,6 +76,11 @@
 		96DF70BD0F38FE3C0074BD99 /* once.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = once.c; path = src/once.c; sourceTree = "<group>"; };
 		D2AAC046055464E500DB518D /* libdispatch.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libdispatch.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		FC0B34780FA2851C0080FFA0 /* source_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = source_internal.h; path = src/source_internal.h; sourceTree = "<group>"; };
+		FC18329E109923A7003403D5 /* mach.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = mach.c; path = src/shims/mach.c; sourceTree = "<group>"; };
+		FC1832A1109923C7003403D5 /* malloc_zone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = malloc_zone.h; path = src/shims/malloc_zone.h; sourceTree = "<group>"; };
+		FC1832A2109923C7003403D5 /* perfmon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = perfmon.h; path = src/shims/perfmon.h; sourceTree = "<group>"; };
+		FC1832A3109923C7003403D5 /* time.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = time.h; path = src/shims/time.h; sourceTree = "<group>"; };
+		FC1832A4109923C7003403D5 /* tsd.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = tsd.h; path = src/shims/tsd.h; sourceTree = "<group>"; };
 		FC36279C0E933ED80054F1A3 /* dispatch_queue_create.3 */ = {isa = PBXFileReference; explicitFileType = text.man; fileEncoding = 4; name = dispatch_queue_create.3; path = man/dispatch_queue_create.3; sourceTree = "<group>"; };
 		FC5C9C1D0EADABE3006E462D /* group.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = group.h; path = dispatch/group.h; sourceTree = "<group>"; };
 		FC678DE80F97E0C300AB5993 /* dispatch_after.3 */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = dispatch_after.3; path = man/dispatch_after.3; sourceTree = "<group>"; };
@@ -87,7 +96,6 @@
 		FC7BED930E8361E600161930 /* private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = private.h; path = src/private.h; sourceTree = "<group>"; };
 		FC7BED950E8361E600161930 /* protocol.defs */ = {isa = PBXFileReference; explicitFileType = sourcecode.mig; fileEncoding = 4; name = protocol.defs; path = src/protocol.defs; sourceTree = "<group>"; };
 		FC7BED960E8361E600161930 /* dispatch.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = dispatch.h; path = dispatch/dispatch.h; sourceTree = "<group>"; };
-		FC7BED970E8361E600161930 /* shims.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = shims.c; path = src/shims.c; sourceTree = "<group>"; };
 		FC9C70E7105EC9620074F9CA /* config.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = config.h; path = config/config.h; sourceTree = "<group>"; };
 		FCEF047F0F5661960067401F /* source_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = source_private.h; path = src/source_private.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -127,9 +135,9 @@
 				96032E4A0F5CC8C700241C5F /* time.c */,
 				721F5CCE0F15553500FF03A6 /* semaphore.c */,
 				96A8AA860F41E7A400CD570B /* source.c */,
-				FC7BED970E8361E600161930 /* shims.c */,
 				2EC9C9B70E8809EF00E2499A /* legacy.c */,
 				FC7BED950E8361E600161930 /* protocol.defs */,
+				FC18329D10992387003403D5 /* shims */,
 			);
 			name = Source;
 			sourceTree = "<group>";
@@ -162,6 +170,25 @@
 			name = Documentation;
 			sourceTree = "<group>";
 		};
+		FC18329D10992387003403D5 /* shims */ = {
+			isa = PBXGroup;
+			children = (
+				FC18329E109923A7003403D5 /* mach.c */,
+			);
+			name = shims;
+			sourceTree = "<group>";
+		};
+		FC1832A0109923B3003403D5 /* shims */ = {
+			isa = PBXGroup;
+			children = (
+				FC1832A1109923C7003403D5 /* malloc_zone.h */,
+				FC1832A2109923C7003403D5 /* perfmon.h */,
+				FC1832A3109923C7003403D5 /* time.h */,
+				FC1832A4109923C7003403D5 /* tsd.h */,
+			);
+			name = shims;
+			sourceTree = "<group>";
+		};
 		FC7BEDAA0E83625200161930 /* Public Headers */ = {
 			isa = PBXGroup;
 			children = (
@@ -185,6 +212,7 @@
 				FC7BED930E8361E600161930 /* private.h */,
 				96BC39BC0F3EBAB100C59689 /* queue_private.h */,
 				FC7BED900E8361E600161930 /* legacy.h */,
+				FC1832A0109923B3003403D5 /* shims */,
 			);
 			name = "Private Headers";
 			sourceTree = "<group>";
@@ -234,6 +262,10 @@
 				5A5D13AC0F6B280500197CC3 /* semaphore_internal.h in Headers */,
 				FC0B34790FA2851C0080FFA0 /* source_internal.h in Headers */,
 				FC9C70E8105EC9620074F9CA /* config.h in Headers */,
+				FC1832A5109923C7003403D5 /* malloc_zone.h in Headers */,
+				FC1832A6109923C7003403D5 /* perfmon.h in Headers */,
+				FC1832A7109923C7003403D5 /* time.h in Headers */,
+				FC1832A8109923C7003403D5 /* tsd.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -345,7 +377,6 @@
 			files = (
 				FC7BEDA40E8361E600161930 /* protocol.defs in Sources */,
 				FC7BED990E8361E600161930 /* queue.c in Sources */,
-				FC7BEDA60E8361E600161930 /* shims.c in Sources */,
 				2EC9C9B80E8809EF00E2499A /* legacy.c in Sources */,
 				721F5CCF0F15553500FF03A6 /* semaphore.c in Sources */,
 				96DF70BE0F38FE3C0074BD99 /* once.c in Sources */,
@@ -354,6 +385,7 @@
 				965CD6350F3E806200D4E28D /* benchmark.c in Sources */,
 				96A8AA870F41E7A400CD570B /* source.c in Sources */,
 				96032E4B0F5CC8C700241C5F /* time.c in Sources */,
+				FC18329F109923A7003403D5 /* mach.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
