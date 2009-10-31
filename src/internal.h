@@ -27,7 +27,7 @@
 #ifndef __DISPATCH_INTERNAL__
 #define __DISPATCH_INTERNAL__
 
-#include <config/config.h>
+#include "config/config.h"
 
 #define __DISPATCH_BUILDING_DISPATCH__
 #define __DISPATCH_INDIRECT__
