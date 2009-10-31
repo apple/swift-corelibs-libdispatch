@@ -925,13 +925,23 @@ dispatch_source_attr_copy(dispatch_source_attr_t proto)
 struct dispatch_source_type_s {
 	struct kevent ke;
 	uint64_t mask;
+	void (*init)(dispatch_source_t ds, dispatch_source_type_t type,
+	    uintptr_t handle, unsigned long mask, dispatch_queue_t q);
 };
+
+static void
+dispatch_source_type_timer_init(dispatch_source_t ds, dispatch_source_type_t type, uintptr_t handle, unsigned long mask, dispatch_queue_t q)
+{
+	ds->ds_needs_rearm = true;
+	ds->ds_timer.flags = mask;
+}
 
 const struct dispatch_source_type_s _dispatch_source_type_timer = {
 	.ke = {
 		.filter = DISPATCH_EVFILT_TIMER,
 	},
 	.mask = DISPATCH_TIMER_INTERVAL|DISPATCH_TIMER_ONESHOT|DISPATCH_TIMER_ABSOLUTE|DISPATCH_TIMER_WALL_CLOCK,
+	.init = dispatch_source_type_timer_init,
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_read = {
@@ -999,6 +1009,16 @@ const struct dispatch_source_type_s _dispatch_source_type_vfs = {
 };
 
 #ifdef HAVE_MACH
+
+static void
+dispatch_source_type_mach_send_init(dispatch_source_t ds, dispatch_source_type_t type, uintptr_t handle, unsigned long mask, dispatch_queue_t q)
+{
+	static dispatch_once_t pred;
+
+	ds->ds_is_level = false;
+	dispatch_once_f(&pred, NULL, _dispatch_mach_notify_source_init);
+}
+
 const struct dispatch_source_type_s _dispatch_source_type_mach_send = {
 	.ke = {
 		.filter = EVFILT_MACHPORT,
@@ -1006,7 +1026,14 @@ const struct dispatch_source_type_s _dispatch_source_type_mach_send = {
 		.fflags = DISPATCH_MACHPORT_DEAD,
 	},
 	.mask = DISPATCH_MACH_SEND_DEAD,
+	.init = dispatch_source_type_mach_send_init,
 };
+
+static void
+dispatch_source_type_mach_recv_init(dispatch_source_t ds, dispatch_source_type_t type, uintptr_t handle, unsigned long mask, dispatch_queue_t q)
+{
+	ds->ds_is_level = false;
+}
 
 const struct dispatch_source_type_s _dispatch_source_type_mach_recv = {
 	.ke = {
@@ -1014,6 +1041,7 @@ const struct dispatch_source_type_s _dispatch_source_type_mach_recv = {
 		.flags = EV_DISPATCH,
 		.fflags = DISPATCH_MACHPORT_RECV,
 	},
+	.init = dispatch_source_type_mach_recv_init,
 };
 #endif
 
@@ -1096,37 +1124,21 @@ dispatch_source_create(dispatch_source_type_t type,
 	ds->ds_dkev = dk;
 	ds->ds_pending_data_mask = dk->dk_kevent.fflags;
 	if ((EV_DISPATCH|EV_ONESHOT) & proto_kev->flags) {
-#ifdef HAVE_MACH
-		if (proto_kev->filter != EVFILT_MACHPORT) {
-			ds->ds_is_level = true;
-		}
-#endif
+		ds->ds_is_level = true;
 		ds->ds_needs_rearm = true;
 	} else if (!(EV_CLEAR & proto_kev->flags)) {
 		// we cheat and use EV_CLEAR to mean a "flag thingy"
 		ds->ds_is_adder = true;
 	}
 	
-	// If its a timer source, it needs to be re-armed
-	if (type->ke.filter == DISPATCH_EVFILT_TIMER) {
-		ds->ds_needs_rearm = true;
+	// Some sources require special processing
+	if (type->init != NULL) {
+		type->init(ds, type, handle, mask, q);
 	}
-	
 	dispatch_assert(!(ds->ds_is_level && ds->ds_is_adder));
 #if DISPATCH_DEBUG
 	dispatch_debug(ds, __FUNCTION__);
 #endif
-
-	// Some sources require special processing
-#ifdef HAVE_MACH
-	if (type == DISPATCH_SOURCE_TYPE_MACH_SEND) {
-		static dispatch_once_t pred;
-		dispatch_once_f(&pred, NULL, _dispatch_mach_notify_source_init);
-	} else
-#endif
-	if (type == DISPATCH_SOURCE_TYPE_TIMER) {
-		ds->ds_timer.flags = mask;
-	}
 
 	_dispatch_retain(ds->do_targetq);
 	return ds;
