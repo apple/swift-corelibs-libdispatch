@@ -90,6 +90,7 @@ static void _dispatch_source_merge_kevent(dispatch_source_t ds, const struct kev
 static size_t _dispatch_source_debug(dispatch_source_t ds, char* buf, size_t bufsiz);
 static size_t dispatch_source_debug_attr(dispatch_source_t ds, char* buf, size_t bufsiz);
 static dispatch_queue_t _dispatch_source_invoke(dispatch_source_t ds);
+static void _dispatch_source_kevent_resume(dispatch_source_t ds, uint32_t new_flags, uint32_t del_flags);
 
 static void _dispatch_kevent_merge(dispatch_source_t ds);
 static void _dispatch_kevent_release(dispatch_source_t ds);
@@ -313,7 +314,7 @@ _dispatch_kevent_merge(dispatch_source_t ds)
 	// by the dispatch kevent
 	if (do_resume) {
 		dk->dk_kevent.flags |= EV_ADD;
-		_dispatch_kevent_resume(ds->ds_dkev, new_flags, 0);
+		_dispatch_source_kevent_resume(ds, new_flags, 0);
 		ds->ds_is_armed = true;
 	}
 }
@@ -345,6 +346,12 @@ _dispatch_kevent_resume(dispatch_kevent_t dk, uint32_t new_flags, uint32_t del_f
 		}
 		break;
 	}
+}
+
+void
+_dispatch_source_kevent_resume(dispatch_source_t ds, uint32_t new_flags, uint32_t del_flags)
+{
+	_dispatch_kevent_resume(ds->ds_dkev, new_flags, del_flags);
 }
 
 dispatch_queue_t
@@ -397,7 +404,7 @@ _dispatch_source_invoke(dispatch_source_t ds)
 		if (dq != &_dispatch_mgr_q) {
 			return &_dispatch_mgr_q;
 		}
-		_dispatch_kevent_resume(ds->ds_dkev, 0, 0);
+		_dispatch_source_kevent_resume(ds, 0, 0);
 		ds->ds_is_armed = true;
 	}
 
