@@ -17,7 +17,8 @@ libdispatch_la_SOURCES=	\
 	time.c
 
 libshims_la_SOURCES=	\
-	shims/mach.c
+	shims/mach.c	\
+	shims/time.c
 
 libdispatch_la_CFLAGS=-Wall
 INCLUDES=-I$(top_builddir) -I$(top_srcdir) \

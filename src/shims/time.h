@@ -27,6 +27,15 @@
 #ifndef __DISPATCH_SHIMS_TIME__
 #define __DISPATCH_SHIMS_TIME__
 
+#if defined(__i386__) || defined(__x86_64__) || !defined(HAVE_MACH_ABSOLUTE_TIME)
+// these architectures always return mach_absolute_time() in nanoseconds
+#define _dispatch_convert_mach2nano(x) (x)
+#define _dispatch_convert_nano2mach(x) (x)
+#else
+extern uint64_t _dispatch_convert_mach2nano(uint64_t val);
+extern uint64_t _dispatch_convert_nano2mach(uint64_t val);
+#endif
+
 static inline uint64_t
 _dispatch_absolute_time(void)
 {

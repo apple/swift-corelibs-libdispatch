@@ -1443,57 +1443,6 @@ _dispatch_run_timers(void)
 	}
 }
 
-#if defined(__i386__) || defined(__x86_64__) || !defined(HAVE_MACH_ABSOLUTE_TIME)
-// these architectures always return mach_absolute_time() in nanoseconds
-#define _dispatch_convert_mach2nano(x) (x)
-#define _dispatch_convert_nano2mach(x) (x)
-#else
-static mach_timebase_info_data_t tbi;
-static dispatch_once_t tbi_pred;
-
-static void
-_dispatch_convert_init(void *context __attribute__((unused)))
-{
-	dispatch_assume_zero(mach_timebase_info(&tbi));
-}
-
-static uint64_t
-_dispatch_convert_mach2nano(uint64_t val)
-{
-#ifdef __LP64__
-	__uint128_t tmp;
-#else
-	long double tmp;
-#endif
-
-	dispatch_once_f(&tbi_pred, NULL, _dispatch_convert_init);
-
-	tmp = val;
-	tmp *= tbi.numer;
-	tmp /= tbi.denom;
-
-	return tmp;
-}
-
-static uint64_t
-_dispatch_convert_nano2mach(uint64_t val)
-{
-#ifdef __LP64__
-	__uint128_t tmp;
-#else
-	long double tmp;
-#endif
-
-	dispatch_once_f(&tbi_pred, NULL, _dispatch_convert_init);
-
-	tmp = val;
-	tmp *= tbi.denom;
-	tmp /= tbi.numer;
-
-	return tmp;
-}
-#endif
-
 // approx 1 year (60s * 60m * 24h * 365d)
 #define FOREVER_SEC 3153600l
 #define FOREVER_NSEC 31536000000000000ull
