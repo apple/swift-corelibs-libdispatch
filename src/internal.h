@@ -235,15 +235,7 @@ long dummy_function_r0(void);
 })
 
 
-#if DISPATCH_DEBUG
-void dispatch_debug_kevents(struct kevent* kev, size_t count, const char* str);
-#else
-#define dispatch_debug_kevents(x, y, z)
-#endif
-
 uint64_t _dispatch_get_nanoseconds(void);
-
-void _dispatch_source_drain_kevent(struct kevent *);
 
 #ifndef DISPATCH_NO_LEGACY
 dispatch_source_t
@@ -253,7 +245,6 @@ _dispatch_source_create2(dispatch_source_t ds,
 	dispatch_source_handler_function_t handler);
 #endif
 
-void _dispatch_update_kq(const struct kevent *);
 void _dispatch_run_timers(void);
 // Returns howsoon with updated time value, or NULL if no timers active.
 struct timespec *_dispatch_get_next_timer_fire(struct timespec *howsoon);

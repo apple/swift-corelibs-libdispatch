@@ -11,6 +11,7 @@ libdispatch_la_SOURCES=	\
 	object.c	\
 	once.c		\
 	queue.c		\
+	queue_kevent.c	\
 	semaphore.c	\
 	source.c	\
 	time.c

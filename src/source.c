@@ -25,6 +25,8 @@
 #endif
 #include <sys/mount.h>
 
+#include "kevent_internal.h"
+
 #define DISPATCH_EVFILT_TIMER	(-EVFILT_SYSCOUNT - 1)
 #define DISPATCH_EVFILT_CUSTOM_ADD	(-EVFILT_SYSCOUNT - 2)
 #define DISPATCH_EVFILT_CUSTOM_OR	(-EVFILT_SYSCOUNT - 3)

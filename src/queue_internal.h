@@ -89,9 +89,14 @@ struct dispatch_queue_s {
 
 extern struct dispatch_queue_s _dispatch_mgr_q;
 
+#define DISPATCH_ROOT_QUEUE_COUNT (DISPATCH_QUEUE_PRIORITY_COUNT * 2)
+extern struct dispatch_queue_s _dispatch_root_queues[];
+
 void _dispatch_queue_init(dispatch_queue_t dq);
 void _dispatch_queue_drain(dispatch_queue_t dq);
 void _dispatch_queue_dispose(dispatch_queue_t dq);
+void _dispatch_queue_serial_drain_till_empty(dispatch_queue_t dq);
+void _dispatch_force_cache_cleanup(void);
 
 __attribute__((always_inline))
 static inline void
