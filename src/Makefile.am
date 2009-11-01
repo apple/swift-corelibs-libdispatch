@@ -34,10 +34,6 @@ endif
 libdispatch_la_LIBADD=libshims.la
 libdispatch_la_DEPENDENCIES=libshims.la
 
-if USE_LIBPTHREAD
-libdispatch_la_LIBADD+=-lpthread
-endif
-
 if USE_MIG
 libdispatch_la_SOURCES+=	\
 	protocolServer.c

@@ -122,11 +122,7 @@ esac
 # Find libraries we will need
 #
 AC_SEARCH_LIBS(clock_gettime, rt)
-AC_SEARCH_LIBS(pthread_create, pthread,
-  [use_libpthread=true],
-  [use_libpthread=false]
-)
-AM_CONDITIONAL(USE_LIBPTHREAD, $use_libpthread)
+AC_SEARCH_LIBS(pthread_create, pthread)
 
 #
 # Checks for header files.
