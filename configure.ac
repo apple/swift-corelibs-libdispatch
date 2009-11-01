@@ -122,6 +122,7 @@ esac
 # Find libraries we will need
 #
 AC_SEARCH_LIBS(clock_gettime, rt)
+AC_SEARCH_LIBS(kqueue, kqueue)
 AC_SEARCH_LIBS(pthread_create, pthread)
 
 #
