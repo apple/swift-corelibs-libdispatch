@@ -60,7 +60,7 @@
 #define HAVE_LIBKERN_OSCROSSENDIAN_H 1
 
 /* Define if mach is present */
-#define HAVE_MACH 
+#define HAVE_MACH 1
 
 /* Define to 1 if you have the `mach_absolute_time' function. */
 #define HAVE_MACH_ABSOLUTE_TIME 1
@@ -75,10 +75,10 @@
 #define HAVE_MEMORY_H 1
 
 /* Define if __builtin_trap marked noreturn */
-#define HAVE_NORETURN_BUILTIN_TRAP 
+#define HAVE_NORETURN_BUILTIN_TRAP 1
 
 /* Define if __private_extern__ present */
-#define HAVE_PRIVATE_EXTERN 
+#define HAVE_PRIVATE_EXTERN 1
 
 /* Define to 1 if you have the `pthread_key_init_np' function. */
 #define HAVE_PTHREAD_KEY_INIT_NP 1
@@ -93,10 +93,7 @@
 /* #undef HAVE_PTHREAD_NP_H */
 
 /* Define if pthread work queues are present */
-#define HAVE_PTHREAD_WORKQUEUES 
-
-/* Define to 1 if you have the `sem_init' function. */
-#define HAVE_SEM_INIT 1
+#define HAVE_PTHREAD_WORKQUEUES 1
 
 /* Define to 1 if you have the <stdint.h> header file. */
 #define HAVE_STDINT_H 1
@@ -109,6 +106,9 @@
 
 /* Define to 1 if you have the <string.h> header file. */
 #define HAVE_STRING_H 1
+
+/* Define to 1 if you have the <sys/cdefs.h> header file. */
+#define HAVE_SYS_CDEFS_H 1
 
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #define HAVE_SYS_STAT_H 1
@@ -145,16 +145,22 @@
 #define STDC_HEADERS 1
 
 /* Define to use Mac OS X crashreporter info */
-#define USE_APPLE_CRASHREPORTER_INFO 
+#define USE_APPLE_CRASHREPORTER_INFO 1
 
 /* Define to use non-portablesemaphore optimizations for Mac OS X */
-#define USE_APPLE_SEMAPHORE_OPTIMIZATIONS 
+#define USE_APPLE_SEMAPHORE_OPTIMIZATIONS 1
 
 /* Define to use non-portable pthread TSD optimizations for Mac OS X) */
-#define USE_APPLE_TSD_OPTIMIZATIONS 
+#define USE_APPLE_TSD_OPTIMIZATIONS 1
 
 /* Define to tag libdispatch_init as a constructor */
 /* #undef USE_LIBDISPATCH_INIT_CONSTRUCTOR */
+
+/* Define to use Mach semaphores */
+#define USE_MACH_SEM 1
+
+/* Define to use POSIX semaphores */
+/* #undef USE_POSIX_SEM */
 
 /* Version number of package */
 #define VERSION "1.0"
