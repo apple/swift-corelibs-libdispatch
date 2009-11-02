@@ -461,14 +461,14 @@ _dispatch_kevent_debugger2(void *context, dispatch_source_t unused __attribute__
 	c = accept(fd, &sa, &sa_len);
 	if (c == -1) {
 		if (errno != EAGAIN) {
-			dispatch_assume_zero(errno);
+			(void)dispatch_assume_zero(errno);
 		}
 		return;
 	}
 #if 0
 	int r = fcntl(c, F_SETFL, 0);	// disable non-blocking IO
 	if (r == -1) {
-		dispatch_assume_zero(errno);
+		(void)dispatch_assume_zero(errno);
 	}
 #endif
 	debug_stream = fdopen(c, "a");
@@ -542,34 +542,34 @@ _dispatch_kevent_debugger(void *context __attribute__((unused)))
 	}
 	fd = socket(PF_INET, SOCK_STREAM, 0);
 	if (fd == -1) {
-		dispatch_assume_zero(errno);
+		(void)dispatch_assume_zero(errno);
 		return;
 	}
 	r = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (void *)&sock_opt, (socklen_t) sizeof sock_opt);
 	if (r == -1) {
-		dispatch_assume_zero(errno);
+		(void)dispatch_assume_zero(errno);
 		goto out_bad;
 	}
 #if 0
 	r = fcntl(fd, F_SETFL, O_NONBLOCK);
 	if (r == -1) {
-		dispatch_assume_zero(errno);
+		(void)dispatch_assume_zero(errno);
 		goto out_bad;
 	}
 #endif
 	r = bind(fd, &sa_u.sa, sizeof(sa_u));
 	if (r == -1) {
-		dispatch_assume_zero(errno);
+		(void)dispatch_assume_zero(errno);
 		goto out_bad;
 	}
 	r = listen(fd, SOMAXCONN);
 	if (r == -1) {
-		dispatch_assume_zero(errno);
+		(void)dispatch_assume_zero(errno);
 		goto out_bad;
 	}
 	r = getsockname(fd, &sa_u.sa, &slen);
 	if (r == -1) {
-		dispatch_assume_zero(errno);
+		(void)dispatch_assume_zero(errno);
 		goto out_bad;
 	}
 	ds = dispatch_source_read_create_f(fd, NULL, &_dispatch_mgr_q, (void *)(long)fd, _dispatch_kevent_debugger2);
@@ -698,7 +698,7 @@ _dispatch_source_merge_kevent(dispatch_source_t ds, const struct kevent *ke)
 			ke = &fake;
 		} else {
 			// log the unexpected error
-			dispatch_assume_zero(ke->data);
+			(void)dispatch_assume_zero(ke->data);
 			return;
 		}
 	}
@@ -1666,13 +1666,13 @@ _dispatch_port_set_init(void *context __attribute__((unused)))
 
 	kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_PORT_SET, &_dispatch_port_set);
 	DISPATCH_VERIFY_MIG(kr);
-	dispatch_assume_zero(kr);
+	(void)dispatch_assume_zero(kr);
 	kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &_dispatch_event_port);
 	DISPATCH_VERIFY_MIG(kr);
-	dispatch_assume_zero(kr);
+	(void)dispatch_assume_zero(kr);
 	kr = mach_port_move_member(mach_task_self(), _dispatch_event_port, _dispatch_port_set);
 	DISPATCH_VERIFY_MIG(kr);
-	dispatch_assume_zero(kr);
+	(void)dispatch_assume_zero(kr);
 
 	kev.ident = _dispatch_port_set;
 
@@ -1721,7 +1721,7 @@ _dispatch_kevent_machport_resume(dispatch_kevent_t dk, uint32_t new_flags, uint3
 				// They should adopt libdispatch :-P
 				kr = mach_port_deallocate(mach_task_self(), previous);
 				DISPATCH_VERIFY_MIG(kr);
-				dispatch_assume_zero(kr);
+				(void)dispatch_assume_zero(kr);
 			}
 		}
 	}
@@ -1744,7 +1744,7 @@ _dispatch_kevent_machport_resume(dispatch_kevent_t dk, uint32_t new_flags, uint3
 				// log the error
 			} else if (previous) {
 				// the kernel has not consumed the right yet
-				dispatch_assume_zero(_dispatch_send_consume_send_once_right(previous));
+				(void)dispatch_assume_zero(_dispatch_send_consume_send_once_right(previous));
 			}
 		}
 	}
@@ -1765,7 +1765,7 @@ _dispatch_kevent_machport_enable(dispatch_kevent_t dk)
 #endif
 		break;
 	default:
-	 	dispatch_assume_zero(kr);
+	 	(void)dispatch_assume_zero(kr);
 	}
 }
 
@@ -1787,7 +1787,7 @@ _dispatch_kevent_machport_disable(dispatch_kevent_t dk)
 	case 0:
 		break;
 	default:
-		dispatch_assume_zero(kr);
+		(void)dispatch_assume_zero(kr);
 		break;
 	}
 }
@@ -1873,10 +1873,10 @@ _dispatch_mach_notify_port_destroyed(mach_port_t notify __attribute__((unused)),
 {
 	kern_return_t kr;
 	// this function should never be called
-	dispatch_assume_zero(name);
+	(void)dispatch_assume_zero(name);
 	kr = mach_port_mod_refs(mach_task_self(), name, MACH_PORT_RIGHT_RECEIVE, -1);
 	DISPATCH_VERIFY_MIG(kr);
-	dispatch_assume_zero(kr);
+	(void)dispatch_assume_zero(kr);
 	return KERN_SUCCESS;
 }
 
@@ -1884,7 +1884,7 @@ kern_return_t
 _dispatch_mach_notify_no_senders(mach_port_t notify, mach_port_mscount_t mscnt __attribute__((unused)))
 {
 	// this function should never be called
-	dispatch_assume_zero(notify);
+	(void)dispatch_assume_zero(notify);
 	return KERN_SUCCESS;
 }
 
@@ -1929,7 +1929,7 @@ out:
 	// the act of receiving a dead name notification allocates a dead-name right that must be deallocated
 	kr = mach_port_deallocate(mach_task_self(), name);
 	DISPATCH_VERIFY_MIG(kr);
-	//dispatch_assume_zero(kr);
+	//(void)dispatch_assume_zero(kr);
 
 	return KERN_SUCCESS;
 }
@@ -1995,7 +1995,7 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz, dispatch_mig_callback
 			case MACH_RCV_INVALID_NAME:
 				break;
 			default:
-				dispatch_assume_zero(kr);
+				(void)dispatch_assume_zero(kr);
 				break;
 			}
 			break;

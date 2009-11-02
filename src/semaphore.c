@@ -109,7 +109,7 @@ dispatch_semaphore_create(long value)
 		dsema->dsema_orig = value;
 #if USE_POSIX_SEM
 		ret = sem_init(&dsema->dsema_sem, 0, 0);
-		dispatch_assume_zero(ret);
+		(void)dispatch_assume_zero(ret);
 #endif
 	}
 	

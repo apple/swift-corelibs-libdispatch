@@ -447,17 +447,17 @@ _dispatch_queue_set_width_init(void)
 
 	ret = sysctlbyname("hw.activecpu", &_dispatch_hw_config.cc_max_active,
 	    &valsz, NULL, 0);
-	dispatch_assume_zero(ret);
+	(void)dispatch_assume_zero(ret);
 	dispatch_assume(valsz == sizeof(uint32_t));
 
 	ret = sysctlbyname("hw.logicalcpu_max",
 	    &_dispatch_hw_config.cc_max_logical, &valsz, NULL, 0);
-	dispatch_assume_zero(ret);
+	(void)dispatch_assume_zero(ret);
 	dispatch_assume(valsz == sizeof(uint32_t));
 
 	ret = sysctlbyname("hw.physicalcpu_max",
 	    &_dispatch_hw_config.cc_max_physical, &valsz, NULL, 0);
-	dispatch_assume_zero(ret);
+	(void)dispatch_assume_zero(ret);
 	dispatch_assume(valsz == sizeof(uint32_t));
 #elif defined(__FreeBSD__)
 	size_t valsz = sizeof(uint32_t);
@@ -465,8 +465,8 @@ _dispatch_queue_set_width_init(void)
 
 	ret = sysctlbyname("kern.smp.cpus", &_dispatch_hw_config.cc_max_active,
 	    &valsz, NULL, 0);
-	dispatch_assume_zero(ret);
-	dispatch_assume(valsz == sizeof(uint32_t));
+	(void)dispatch_assume_zero(ret);
+	(void)dispatch_assume(valsz == sizeof(uint32_t));
 
 	_dispatch_hw_config.cc_max_logical =
 	    _dispatch_hw_config.cc_max_physical =
@@ -861,10 +861,10 @@ _dispatch_main_q_port_init(void *ctxt __attribute__((unused)))
 
 	kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &main_q_port);
 	DISPATCH_VERIFY_MIG(kr);
-	dispatch_assume_zero(kr);
+	(void)dispatch_assume_zero(kr);
 	kr = mach_port_insert_right(mach_task_self(), main_q_port, main_q_port, MACH_MSG_TYPE_MAKE_SEND);
 	DISPATCH_VERIFY_MIG(kr);
-	dispatch_assume_zero(kr);
+	(void)dispatch_assume_zero(kr);
 
 	_dispatch_program_is_probably_callback_driven = true;
 	_dispatch_safe_fork = false;
@@ -943,10 +943,10 @@ _dispatch_queue_cleanup2(void)
 	if (mp) {
 		kr = mach_port_deallocate(mach_task_self(), mp);
 		DISPATCH_VERIFY_MIG(kr);
-		dispatch_assume_zero(kr);
+		(void)dispatch_assume_zero(kr);
 		kr = mach_port_mod_refs(mach_task_self(), mp, MACH_PORT_RIGHT_RECEIVE, -1);
 		DISPATCH_VERIFY_MIG(kr);
-		dispatch_assume_zero(kr);
+		(void)dispatch_assume_zero(kr);
 	}
 #endif
 }
@@ -1071,7 +1071,7 @@ _dispatch_queue_wakeup_main(void)
 	case MACH_SEND_INVALID_DEST:
 		break;
 	default:
-		dispatch_assume_zero(kr);
+		(void)dispatch_assume_zero(kr);
 		break;
 	}
 
@@ -1120,15 +1120,15 @@ _dispatch_root_queues_init(void *context __attribute__((unused)))
 
 #ifdef HAVE_PTHREAD_WORKQUEUES
 	r = pthread_workqueue_attr_init_np(&pwq_attr);
-	dispatch_assume_zero(r);
+	(void)dispatch_assume_zero(r);
 #endif
 
 	for (i = 0; i < DISPATCH_ROOT_QUEUE_COUNT; i++) {
 #ifdef HAVE_PTHREAD_WORKQUEUES
 		r = pthread_workqueue_attr_setqueuepriority_np(&pwq_attr, _dispatch_rootq2wq_pri(i));
-		dispatch_assume_zero(r);
+		(void)dispatch_assume_zero(r);
 		r = pthread_workqueue_attr_setovercommit_np(&pwq_attr, i & 1);
-		dispatch_assume_zero(r);
+		(void)dispatch_assume_zero(r);
 // some software hangs if the non-overcommitting queues do not overcommit when threads block
 #if 0
 		if (!(i & 1)) {
@@ -1139,20 +1139,20 @@ _dispatch_root_queues_init(void *context __attribute__((unused)))
 		r = 0;
 		if (disable_wq || (r = pthread_workqueue_create_np(&_dispatch_root_queue_contexts[i].dgq_kworkqueue, &pwq_attr))) {
 			if (r != ENOTSUP) {
-				dispatch_assume_zero(r);
+				(void)dispatch_assume_zero(r);
 			}
 #endif /* HAVE_PTHREAD_WORKQUEUES */
 #if USE_MACH_SEM
 			// override the default FIFO behavior for the pool semaphores
 			kr = semaphore_create(mach_task_self(), &_dispatch_thread_mediator[i].dsema_port, SYNC_POLICY_LIFO, 0);
 			DISPATCH_VERIFY_MIG(kr);
-			dispatch_assume_zero(kr);
+			(void)dispatch_assume_zero(kr);
 			dispatch_assume(_dispatch_thread_mediator[i].dsema_port);
 #endif
 #if USE_POSIX_SEM
 			/* XXXRW: POSIX semaphores don't support LIFO? */
 			ret = sem_init(&_dispatch_thread_mediator[i].dsema_sem, 0, 0);
-			dispatch_assume_zero(ret);
+			(void)dispatch_assume_zero(ret);
 #endif
 #ifdef HAVE_PTHREAD_WORKQUEUES
 		} else {
@@ -1163,7 +1163,7 @@ _dispatch_root_queues_init(void *context __attribute__((unused)))
 
 #ifdef HAVE_PTHREAD_WORKQUEUES
 	r = pthread_workqueue_attr_destroy_np(&pwq_attr);
-	dispatch_assume_zero(r);
+	(void)dispatch_assume_zero(r);
 #endif
 }
 
@@ -1195,7 +1195,7 @@ _dispatch_queue_wakeup_global(dispatch_queue_t dq)
 			_dispatch_debug("requesting new worker thread");
 
 			r = pthread_workqueue_additem_np(qc->dgq_kworkqueue, _dispatch_worker_thread2, dq, &wh, &gen_cnt);
-			dispatch_assume_zero(r);
+			(void)dispatch_assume_zero(r);
 		} else {
 			_dispatch_debug("work thread request still pending on global queue: %p", dq);
 		}
@@ -1217,12 +1217,12 @@ _dispatch_queue_wakeup_global(dispatch_queue_t dq)
 
 	while ((r = pthread_create(&pthr, NULL, _dispatch_worker_thread, dq))) {
 		if (r != EAGAIN) {
-			dispatch_assume_zero(r);
+			(void)dispatch_assume_zero(r);
 		}
 		sleep(1);
 	}
 	r = pthread_detach(pthr);
-	dispatch_assume_zero(r);
+	(void)dispatch_assume_zero(r);
 
 out:
 	return false;
@@ -1419,9 +1419,9 @@ _dispatch_worker_thread(void *context)
 
 	// workaround tweaks the kernel workqueue does for us
 	r = sigfillset(&mask);
-	dispatch_assume_zero(r);
+	(void)dispatch_assume_zero(r);
 	r = _dispatch_pthread_sigmask(SIG_BLOCK, &mask, NULL);
-	dispatch_assume_zero(r);
+	(void)dispatch_assume_zero(r);
 
 	do {
 		_dispatch_worker_thread2(context);
@@ -1777,23 +1777,23 @@ _dispatch_pthread_sigmask(int how, sigset_t *set, sigset_t *oset)
 	/* Workaround: 6269619 Not all signals can be delivered on any thread */
 
 	r = sigdelset(set, SIGILL);
-	dispatch_assume_zero(r);
+	(void)dispatch_assume_zero(r);
 	r = sigdelset(set, SIGTRAP);
-	dispatch_assume_zero(r);
+	(void)dispatch_assume_zero(r);
 #if HAVE_DECL_SIGEMT
 	r = sigdelset(set, SIGEMT);
-	dispatch_assume_zero(r);
+	(void)dispatch_assume_zero(r);
 #endif
 	r = sigdelset(set, SIGFPE);
-	dispatch_assume_zero(r);
+	(void)dispatch_assume_zero(r);
 	r = sigdelset(set, SIGBUS);
-	dispatch_assume_zero(r);
+	(void)dispatch_assume_zero(r);
 	r = sigdelset(set, SIGSEGV);
-	dispatch_assume_zero(r);
+	(void)dispatch_assume_zero(r);
 	r = sigdelset(set, SIGSYS);
-	dispatch_assume_zero(r);
+	(void)dispatch_assume_zero(r);
 	r = sigdelset(set, SIGPIPE);
-	dispatch_assume_zero(r);
+	(void)dispatch_assume_zero(r);
 
 	return pthread_sigmask(how, set, oset);
 }

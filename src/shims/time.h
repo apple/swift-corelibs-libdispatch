@@ -50,7 +50,7 @@ _dispatch_absolute_time(void)
 #else
 #error "clock_gettime: no supported absolute time clock"
 #endif
-	dispatch_assume_zero(ret);
+	(void)dispatch_assume_zero(ret);
 
 	/* XXXRW: Some kind of overflow detection needed? */
 	return (ts.tv_sec * NSEC_PER_SEC + ts.tv_nsec);

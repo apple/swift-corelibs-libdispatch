@@ -48,7 +48,8 @@ _dispatch_get_kq_init(void *context __attribute__((unused)))
 		dispatch_assert_zero(errno);
 	}
 
-	dispatch_assume_zero(kevent(_dispatch_kq, &kev, 1, NULL, 0, NULL)); 
+	(void)dispatch_assume_zero(kevent(_dispatch_kq, &kev, 1, NULL, 0,
+	    NULL)); 
 
 	_dispatch_queue_push(_dispatch_mgr_q.do_targetq, &_dispatch_mgr_q);
 }
@@ -112,7 +113,7 @@ _dispatch_mgr_invoke(dispatch_queue_t dq)
 			r = select(FD_SETSIZE, &tmp_rfds, &tmp_wfds, NULL, sel_timeoutp);
 			if (r == -1) {
 				if (errno != EBADF) {
-					dispatch_assume_zero(errno);
+					(void)dispatch_assume_zero(errno);
 					continue;
 				}
 				for (i = 0; i < FD_SETSIZE; i++) {
@@ -166,7 +167,7 @@ _dispatch_mgr_invoke(dispatch_queue_t dq)
 			if (k_err == EBADF) {
 				DISPATCH_CLIENT_CRASH("Do not close random Unix descriptors");
 			}
-			dispatch_assume_zero(k_err);
+			(void)dispatch_assume_zero(k_err);
 			continue;
 		default:
 			_dispatch_mgr_thread2(kev, (size_t)k_cnt);
@@ -225,7 +226,7 @@ _dispatch_update_kq(const struct kevent *kev)
 	if (rval == -1) { 
 		// If we fail to register with kevents, for other reasons aside from
 		// changelist elements.
-		dispatch_assume_zero(errno);
+		(void)dispatch_assume_zero(errno);
 		//kev_copy.flags |= EV_ERROR;
 		//kev_copy.data = error;
 		return;

@@ -45,7 +45,8 @@ static struct _dispatch_host_time_data_s {
 static void
 _dispatch_get_host_time_init(void *context __attribute__((unused)))
 {
-	dispatch_assume_zero(mach_timebase_info(&_dispatch_host_time_data.tbi));
+	(void)dispatch_assume_zero(mach_timebase_info(
+	    &_dispatch_host_time_data.tbi));
 	_dispatch_host_time_data.safe_numer_math = DISPATCH_TIME_FOREVER / _dispatch_host_time_data.tbi.numer;
 }
 
