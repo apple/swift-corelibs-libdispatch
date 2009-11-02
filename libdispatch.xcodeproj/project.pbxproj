@@ -225,7 +225,7 @@
 				96929D950F3EA2170041FF5D /* queue_internal.h */,
 				5A5D13AB0F6B280500197CC3 /* semaphore_internal.h */,
 				FC0B34780FA2851C0080FFA0 /* source_internal.h */,
- 				FC1832A0109923B3003403D5 /* shims */,
+				FC1832A0109923B3003403D5 /* shims */,
 			);
 			name = "Project Headers";
 			sourceTree = "<group>";
@@ -475,6 +475,7 @@
 					"-Wmissing-declarations",
 					"-Wstrict-overflow=4",
 					"-Wstrict-aliasing=2",
+					"-Wno-unused-parameter",
 				);
 			};
 			name = Release;
