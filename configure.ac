@@ -34,6 +34,14 @@ AC_ARG_WITH([apple-xnu-source],
 )
 AC_SUBST([APPLE_XNU_SOURCE_PATH])
 
+AC_CACHE_CHECK([for System.framework/PrivateHeaders], dispatch_cv_system_privateheaders,
+  [AS_IF([test -d /System/Library/Frameworks/System.framework/PrivateHeaders],
+    [dispatch_cv_system_privateheaders=yes], [dispatch_cv_system_privateheaders=no])]
+)
+AS_IF([test "x$dispatch_cv_system_privateheaders" != "xno"],
+  [CPPFLAGS="$CPPFLAGS -I/System/Library/Frameworks/System.framework/PrivateHeaders"]
+)
+
 #
 # Try to build the legacy API only if specifically requested.
 #
