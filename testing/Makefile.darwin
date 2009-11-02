@@ -1,4 +1,7 @@
 # No workie: dispatch_sema
+
+MAKECMD=	$(MAKE) -f Makefile.darwin
+
 TESTS=	dispatch_apply \
 	dispatch_api \
 	dispatch_c99 \
@@ -29,10 +32,10 @@ logs: $(addsuffix .testlog, $(TESTS))
 debuglogs: $(addsuffix .debuglog, $(TESTS))
 
 testbots:
-	$(MAKE) test
+	$(MAKECMD) test
 
 test: clean-logs
-	$(MAKE) _test
+	$(MAKECMD) _test
 
 _test: all logs debuglogs
 	@cat *.testlog *.debuglog
