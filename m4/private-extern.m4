@@ -18,9 +18,9 @@ AC_CACHE_CHECK([for __private_extern__],
                     [dispatch_cv_private_extern=no])])
 
 if test $dispatch_cv_private_extern = yes; then
-  AC_DEFINE(HAVE_PRIVATE_EXTERN,, Define if __private_extern__ present)
+  AC_DEFINE(HAVE_PRIVATE_EXTERN, 1, Define if __private_extern__ present)
 elif test $dispatch_cv_hidden_visibility_attribute = yes; then
-  AC_DEFINE(HAVE_PRIVATE_EXTERN,, Define if __private_extern__ present)
+  AC_DEFINE(HAVE_PRIVATE_EXTERN, 1, Define if __private_extern__ present)
   AC_DEFINE([__private_extern__], [extern __attribute__ ((visibility ("hidden")))],
 	    [Define to a replacement for __private_extern])
 else

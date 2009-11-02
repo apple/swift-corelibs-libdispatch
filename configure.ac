@@ -43,7 +43,7 @@ AC_ARG_ENABLE([legacy-api],
 
 AS_IF([test "x$enable_legacy_api" != "xyes"],
   [use_legacy_api=false
-    AC_DEFINE(DISPATCH_NO_LEGACY,,[Define to compile out legacy API])],
+    AC_DEFINE(DISPATCH_NO_LEGACY, 1,[Define to compile out legacy API])],
   [use_legacy_api=true]
 )
 AM_CONDITIONAL(USE_LEGACY_API, $use_legacy_api)
@@ -59,7 +59,7 @@ AC_ARG_ENABLE([libdispatch-init-constructor],
 )
 
 AS_IF([test "x$enable_libdispatch_init_constructor" != "xno"],
-  [AC_DEFINE(USE_LIBDISPATCH_INIT_CONSTRUCTOR,,
+  [AC_DEFINE(USE_LIBDISPATCH_INIT_CONSTRUCTOR, 1,
     [Define to tag libdispatch_init as a constructor])]
 )
 
@@ -72,7 +72,7 @@ AC_ARG_ENABLE([apple-crashreporter-info],
 )
 
 AS_IF([test "x$enable_apple_crashreporter_info" = "xyes"],
-  [AC_DEFINE(USE_APPLE_CRASHREPORTER_INFO,,
+  [AC_DEFINE(USE_APPLE_CRASHREPORTER_INFO, 1,
     [Define to use Mac OS X crashreporter info])]
 )
 
@@ -88,7 +88,7 @@ AC_ARG_ENABLE([apple-tsd-optimizations],
 )
 
 AS_IF([test "x$enable_apple_tsd_optimizations" = "xyes"],
-  [AC_DEFINE(USE_APPLE_TSD_OPTIMIZATIONS,,
+  [AC_DEFINE(USE_APPLE_TSD_OPTIMIZATIONS, 1,
     [Define to use non-portable pthread TSD optimizations for Mac OS X)])]
 )
 
@@ -98,7 +98,7 @@ AC_ARG_ENABLE([apple-semaphore-optimizations],
 )
 
 AS_IF([test "x$enable_apple_semaphore_optimizations" = "xyes"],
-  [AC_DEFINE(USE_APPLE_SEMAPHORE_OPTIMIZATIONS,,
+  [AC_DEFINE(USE_APPLE_SEMAPHORE_OPTIMIZATIONS, 1,
     [Define to use non-portablesemaphore optimizations for Mac OS X])]
 )
 
@@ -136,7 +136,7 @@ AC_CHECK_HEADERS([Availability.h pthread_machdep.h pthread_np.h malloc/malloc.h 
 # of Machisms, including using Mach ports as event sources, etc.
 #
 AC_CHECK_HEADER([mach/mach.h],
-  [AC_DEFINE(HAVE_MACH,,Define if mach is present)
+  [AC_DEFINE(HAVE_MACH, 1,Define if mach is present)
     have_mach=true],
   [have_mach=false]
 )
@@ -147,7 +147,7 @@ AM_CONDITIONAL(USE_MIG, $have_mach)
 # in support for pthread work queues.
 #
 AC_CHECK_HEADER([pthread_workqueue.h],
-  [AC_DEFINE(HAVE_PTHREAD_WORKQUEUES,,Define if pthread work queues are present)]
+  [AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1,Define if pthread work queues are present)]
 )
 
 #
@@ -173,10 +173,10 @@ AC_CHECK_FUNC([sem_init],
 #
 AC_MSG_CHECKING([what semaphore type to use]);
 AS_IF([test "x$have_mach" = "xtrue"],
-  [AC_DEFINE(USE_MACH_SEM,1,[Define to use Mach semaphores])
+  [AC_DEFINE(USE_MACH_SEM, 1,[Define to use Mach semaphores])
     AC_MSG_RESULT([Mach semaphores])],
   [test "x$have_sem_init" = "xtrue"],
-  [AC_DEFINE(USE_POSIX_SEM,1,[Define to use POSIX semaphores])
+  [AC_DEFINE(USE_POSIX_SEM, 1,[Define to use POSIX semaphores])
     AC_MSG_RESULT([POSIX semaphores])],
   [AC_MSG_ERROR([no supported semaphore type])]
 )
@@ -195,7 +195,7 @@ DISPATCH_C_BLOCKS
 #
 AC_COMPILE_IFELSE([
   AC_LANG_PROGRAM([void __attribute__((__noreturn__)) temp(void) { __builtin_trap(); }], [])], [
-    AC_DEFINE(HAVE_NORETURN_BUILTIN_TRAP,,[Define if __builtin_trap marked noreturn])
+    AC_DEFINE(HAVE_NORETURN_BUILTIN_TRAP, 1,[Define if __builtin_trap marked noreturn])
   ], [])
 
 #
