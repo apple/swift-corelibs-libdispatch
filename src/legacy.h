@@ -51,8 +51,11 @@ struct dispatch_item_s {
 	struct dispatch_item_s *volatile        di_next;
 	dispatch_queue_t                        di_cback_q;
 	uint32_t                                di_flags;
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 	semaphore_t                             di_semaphore;
+#endif
+#if USE_POSIX_SEM
+	/* Legacy API not supported except with Mach semaphores. */
 #endif
 	void *					di_work_func;
 	void *                                  di_work_ctxt;

@@ -137,10 +137,10 @@ AC_CHECK_HEADERS([Availability.h pthread_machdep.h pthread_np.h malloc/malloc.h 
 #
 AC_CHECK_HEADER([mach/mach.h],
   [AC_DEFINE(HAVE_MACH,,Define if mach is present)
-    use_mig=true],
-  [use_mig=false]
+    have_mach=true],
+  [have_mach=false]
 )
-AM_CONDITIONAL(USE_MIG, $use_mig)
+AM_CONDITIONAL(USE_MIG, $have_mach)
 
 #
 # We use the availability of pthread_workqueue.h to decide whether to compile
@@ -160,7 +160,26 @@ AC_CHECK_DECLS([EVFILT_SESSION, NOTE_NONE, NOTE_REAP, NOTE_SIGNAL], [], [],
 AC_CHECK_DECLS([FD_COPY], [], [], [[#include <sys/select.h>]])
 AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])
 AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK], [], [], [[#include <sys/mount.h>]])
-AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sem_init])
+AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone])
+
+AC_CHECK_FUNC([sem_init],
+  [have_sem_init=true],
+  [have_sem_init=false]
+)
+
+#
+# We support both Mach semaphores and POSIX semaphores; if the former are
+# available, prefer them.
+#
+AC_MSG_CHECKING([what semaphore type to use]);
+AS_IF([test "x$have_mach" = "xtrue"],
+  [AC_DEFINE(USE_MACH_SEM,1,[Define to use Mach semaphores])
+    AC_MSG_RESULT([Mach semaphores])],
+  [test "x$have_sem_init" = "xtrue"],
+  [AC_DEFINE(USE_POSIX_SEM,1,[Define to use POSIX semaphores])
+    AC_MSG_RESULT([POSIX semaphores])],
+  [AC_MSG_ERROR([no supported semaphore type])]
+)
 
 AC_CHECK_HEADERS([sys/cdefs.h], [], [],
   [#ifdef HAVE_SYS_CDEFS_H

@@ -1110,9 +1110,10 @@ _dispatch_root_queues_init(void *context __attribute__((unused)))
 	pthread_workqueue_attr_t pwq_attr;
 	int r;
 #endif
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 	kern_return_t kr;
-#else
+#endif
+#if USE_POSIX_SEM
 	int ret;
 #endif
 	int i;
@@ -1141,13 +1142,14 @@ _dispatch_root_queues_init(void *context __attribute__((unused)))
 				dispatch_assume_zero(r);
 			}
 #endif /* HAVE_PTHREAD_WORKQUEUES */
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 			// override the default FIFO behavior for the pool semaphores
 			kr = semaphore_create(mach_task_self(), &_dispatch_thread_mediator[i].dsema_port, SYNC_POLICY_LIFO, 0);
 			DISPATCH_VERIFY_MIG(kr);
 			dispatch_assume_zero(kr);
 			dispatch_assume(_dispatch_thread_mediator[i].dsema_port);
-#else
+#endif
+#if USE_POSIX_SEM
 			/* XXXRW: POSIX semaphores don't support LIFO? */
 			ret = sem_init(&_dispatch_thread_mediator[i].dsema_sem, 0, 0);
 			dispatch_assume_zero(ret);

@@ -21,13 +21,14 @@
 #include "internal.h"
 
 // semaphores are too fundamental to use the dispatch_assume*() macros
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 #define DISPATCH_SEMAPHORE_VERIFY_KR(x)	do {	\
 		if (x) {	\
 			DISPATCH_CRASH("flawed group/semaphore logic");	\
 		}	\
 	} while (0)
-#else
+#endif
+#if USE_POSIX_SEM
 #define	DISPATCH_SEMAPHORE_VERIFY_RET(x) do {				\
 		if ((x) == -1) {					\
 			DISPATCH_CRASH("flawed group/semaphore logic");	\
@@ -108,7 +109,7 @@ dispatch_semaphore_create(long value)
 	return dsema;
 }
 
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 static void
 _dispatch_semaphore_create_port(semaphore_t *s4)
 {
@@ -138,7 +139,8 @@ _dispatch_semaphore_create_port(semaphore_t *s4)
 
 	_dispatch_safe_fork = false;
 }
-#else /* !HAVE_MACH */
+#endif
+#if USE_POSIX_SEM
 static void
 _dispatch_posix_semaphore_create(sem_t *s4)
 {
@@ -151,16 +153,17 @@ _dispatch_posix_semaphore_create(sem_t *s4)
 	ret = sem_init(s4, 0, 0);
 	dispatch_assume_zero(ret);
 }
-#endif /* HAVE_MACH */
+#endif
 
 DISPATCH_NOINLINE
 static long
 _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 {
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 	mach_timespec_t _timeout;
 	kern_return_t kr;
-#else
+#endif
+#if USE_POSIX_SEM
 	struct timespec _timeout;
 	int ret;
 #endif
@@ -177,9 +180,10 @@ again:
 		}
 	}
 
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 	_dispatch_semaphore_create_port(&dsema->dsema_port);
-#else
+#endif
+#if USE_POSIX_SEM
 	_dispatch_posix_semaphore_create(&dsema->dsema_sem);
 #endif
 
@@ -193,7 +197,7 @@ again:
 
 	switch (timeout) {
 	default:
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 		do {
 			// timeout() already calculates relative time left
 			nsec = _dispatch_timeout(timeout);
@@ -206,7 +210,8 @@ again:
 			DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 			break;
 		}
-#else /* !HAVE_MACH */
+#endif
+#if USE_POSIX_SEM
 		do {
 			nsec = _dispatch_timeout(timeout);
 			_timeout.tv_sec = (typeof(_timeout.tv_sec))
@@ -221,14 +226,15 @@ again:
 			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 			break;
 		}
-#endif /* HAVE_MACH */
+#endif
 		// Fall through and try to undo what the fast path did to dsema->dsema_value
 	case DISPATCH_TIME_NOW:
 		while ((orig = dsema->dsema_value) < 0) {
 			if (dispatch_atomic_cmpxchg(&dsema->dsema_value, orig, orig + 1)) {
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 				return KERN_OPERATION_TIMED_OUT;
-#else
+#endif
+#if USE_POSIX_SEM
 				errno = ETIMEDOUT;
 				return -1;
 #endif
@@ -237,12 +243,13 @@ again:
 		// Another thread called semaphore_signal().
 		// Fall through and drain the wakeup.
 	case DISPATCH_TIME_FOREVER:
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 		do {
 			kr = semaphore_wait(dsema->dsema_port);
 		} while (kr == KERN_ABORTED);
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
-#else
+#endif
+#if USE_POSIX_SEM
 		do {
 			ret = sem_wait(&dsema->dsema_sem);
 		} while (ret != 0);
@@ -318,9 +325,10 @@ DISPATCH_NOINLINE
 static long
 _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 {
-#ifndef HAVE_MACH
+#if USE_POSIX_SEM
 	int ret;
-#else
+#endif
+#if USE_MACH_SEM
 	kern_return_t kr;
 	
 	_dispatch_semaphore_create_port(&dsema->dsema_port);
@@ -335,10 +343,11 @@ _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 	
 	dispatch_atomic_inc(&dsema->dsema_sent_ksignals);
 	
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 	kr = semaphore_signal(dsema->dsema_port);
 	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
-#else
+#endif
+#if USE_POSIX_SEM
 	ret = sem_post(&dsema->dsema_sem);
 #endif
 
@@ -398,22 +407,24 @@ _dispatch_group_wake(dispatch_semaphore_t dsema)
 	struct dispatch_sema_notify_s *tmp, *head = dispatch_atomic_xchg(&dsema->dsema_notify_head, NULL);
 	long rval = dispatch_atomic_xchg(&dsema->dsema_group_waiters, 0);
 	bool do_rel = head;
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 	long kr;
-#else
+#endif
+#if USE_POSIX_SEM
 	int ret;
 #endif
 
 	// wake any "group" waiter or notify blocks
 	
 	if (rval) {
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 		_dispatch_semaphore_create_port(&dsema->dsema_waiter_port);
 		do {
 			kr = semaphore_signal(dsema->dsema_waiter_port);
 			DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 		} while (--rval);
-#else
+#endif
+#if USE_POSIX_SEM
 		do {
 			ret = sem_post(&dsema->dsema_sem);
 			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
@@ -439,10 +450,11 @@ DISPATCH_NOINLINE
 static long
 _dispatch_group_wait_slow(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 {
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 	mach_timespec_t _timeout;
 	kern_return_t kr;
-#else
+#endif
+#if USE_POSIX_SEM
 	struct timespec _timeout;
 	int ret;
 #endif
@@ -463,7 +475,7 @@ again:
 		return _dispatch_group_wake(dsema);
 	}
 
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 	_dispatch_semaphore_create_port(&dsema->dsema_waiter_port);
 #endif
 	
@@ -477,7 +489,7 @@ again:
 	
 	switch (timeout) {
 	default:
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 		do {
 			nsec = _dispatch_timeout(timeout);
 			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
@@ -488,7 +500,8 @@ again:
 			DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 			break;
 		}
-#else
+#endif
+#if USE_POSIX_SEM
 		do {
 			nsec = _dispatch_timeout(timeout);
 			_timeout.tv_sec = (typeof(_timeout.tv_sec))
@@ -507,9 +520,10 @@ again:
 	case DISPATCH_TIME_NOW:
 		while ((orig = dsema->dsema_group_waiters)) {
 			if (dispatch_atomic_cmpxchg(&dsema->dsema_group_waiters, orig, orig - 1)) {
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 				return KERN_OPERATION_TIMED_OUT;
-#else
+#endif
+#if USE_POSIX_SEM
 				errno = ETIMEDOUT;
 				return -1;
 #endif
@@ -518,12 +532,13 @@ again:
 		// Another thread called semaphore_signal().
 		// Fall through and drain the wakeup.
 	case DISPATCH_TIME_FOREVER:
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 		do {
 			kr = semaphore_wait(dsema->dsema_waiter_port);
 		} while (kr == KERN_ABORTED);
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
-#else
+#endif
+#if USE_POSIX_SEM
 		do {
 			ret = sem_wait(&dsema->dsema_sem);
 		} while (ret == -1 && errno == EINTR);
@@ -544,9 +559,10 @@ dispatch_group_wait(dispatch_group_t dg, dispatch_time_t timeout)
 		return 0;
 	}
 	if (timeout == 0) {
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 		return KERN_OPERATION_TIMED_OUT;
-#else
+#endif
+#if USE_POSIX_SEM
 		errno = ETIMEDOUT;
 		return (-1);
 #endif
@@ -594,9 +610,10 @@ dispatch_group_notify_f(dispatch_group_t dg, dispatch_queue_t dq, void *ctxt, vo
 void
 _dispatch_semaphore_dispose(dispatch_semaphore_t dsema)
 {
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 	kern_return_t kr;
-#else
+#endif
+#if USE_POSIX_SEM
 	int ret;
 #endif
 	
@@ -604,7 +621,7 @@ _dispatch_semaphore_dispose(dispatch_semaphore_t dsema)
 		DISPATCH_CLIENT_CRASH("Semaphore/group object deallocated while in use");
 	}
 	
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 	if (dsema->dsema_port) {
 		kr = semaphore_destroy(mach_task_self(), dsema->dsema_port);
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
@@ -613,7 +630,8 @@ _dispatch_semaphore_dispose(dispatch_semaphore_t dsema)
 		kr = semaphore_destroy(mach_task_self(), dsema->dsema_waiter_port);
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 	}
-#else
+#endif
+#if USE_POSIX_SEM
 	ret = sem_destroy(&dsema->dsema_sem);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #endif
@@ -627,7 +645,7 @@ _dispatch_semaphore_debug(dispatch_semaphore_t dsema, char *buf, size_t bufsiz)
 	size_t offset = 0;
 	offset += snprintf(&buf[offset], bufsiz - offset, "%s[%p] = { ", dx_kind(dsema), dsema);
 	offset += dispatch_object_debug_attr(dsema, &buf[offset], bufsiz - offset);
-#ifdef HAVE_MACH
+#if USE_MACH_SEM
 	offset += snprintf(&buf[offset], bufsiz - offset, "port = 0x%u, ",
 	    dsema->dsema_port);
 #endif

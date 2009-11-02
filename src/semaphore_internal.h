@@ -39,10 +39,12 @@ struct dispatch_semaphore_s {
 	long dsema_value;
 	long dsema_orig;
 	size_t dsema_sent_ksignals;
-#ifdef HAVE_MACH
+#if USE_MACH_SEM && USE_POSIX_SEM
+#error "Too many supported semaphore types"
+#elif USE_MACH_SEM
 	semaphore_t dsema_port;
 	semaphore_t dsema_waiter_port;
-#elif defined(HAVE_SEM_INIT)
+#elif USE_POSIX_SEM
 	sem_t dsema_sem;
 #else
 #error "No supported semaphore type"

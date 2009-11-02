@@ -105,7 +105,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <search.h>
-#if !defined(HAVE_MACH) && defined(HAVE_SEM_INIT)
+#if USE_POSIX_SEM
 #include <semaphore.h>
 #endif
 #include <signal.h>
