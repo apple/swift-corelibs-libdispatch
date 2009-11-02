@@ -201,5 +201,5 @@ AC_COMPILE_IFELSE([
 #
 # Generate Makefiles.
 #
-AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile src/Makefile])
+AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile src/Makefile testing/Makefile])
 AC_OUTPUT
