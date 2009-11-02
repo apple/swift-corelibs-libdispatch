@@ -86,6 +86,9 @@ dispatch_semaphore_t
 dispatch_semaphore_create(long value)
 {
 	dispatch_semaphore_t dsema;
+#if USE_POSIX_SEM
+	int ret;
+#endif
 	
 	// If the internal value is negative, then the absolute of the value is
 	// equal to the number of waiting threads. Therefore it is bogus to
@@ -104,6 +107,10 @@ dispatch_semaphore_create(long value)
 		dsema->do_targetq = dispatch_get_global_queue(0, 0);
 		dsema->dsema_value = value;
 		dsema->dsema_orig = value;
+#if USE_POSIX_SEM
+		ret = sem_init(&dsema->dsema_sem, 0, 0);
+		dispatch_assume_zero(ret);
+#endif
 	}
 	
 	return dsema;
@@ -140,20 +147,6 @@ _dispatch_semaphore_create_port(semaphore_t *s4)
 	_dispatch_safe_fork = false;
 }
 #endif
-#if USE_POSIX_SEM
-static void
-_dispatch_posix_semaphore_create(sem_t *s4)
-{
-	int ret;
-
-	if (*s4) {
-		return;
-	}
-
-	ret = sem_init(s4, 0, 0);
-	dispatch_assume_zero(ret);
-}
-#endif
 
 DISPATCH_NOINLINE
 static long
@@ -182,9 +175,6 @@ again:
 
 #if USE_MACH_SEM
 	_dispatch_semaphore_create_port(&dsema->dsema_port);
-#endif
-#if USE_POSIX_SEM
-	_dispatch_posix_semaphore_create(&dsema->dsema_sem);
 #endif
 
 	// From xnu/osfmk/kern/sync_sema.c:
