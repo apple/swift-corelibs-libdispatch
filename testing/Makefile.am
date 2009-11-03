@@ -11,6 +11,7 @@ if HAVE_BLOCKS
 BLOCKS_TESTS=				\
 	dispatch_after			\
 	dispatch_apply			\
+	dispatch_drift			\
 	dispatch_group			\
 	dispatch_pingpong		\
 	dispatch_read			\
@@ -35,7 +36,6 @@ TESTS+=$(BLOCKS_TESTS)
 #
 BROKEN_TESTS=				\
 	dispatch_cffd			\
-	dispatch_drift			\
 	dispatch_proc			\
 	dispatch_readsync		\
 	dispatch_starfish		\
