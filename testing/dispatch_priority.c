@@ -20,11 +20,14 @@
 
 #include <stdio.h>
 #include <dispatch/dispatch.h>
-#include <dispatch/queue_private.h>
+#define	__DISPATCH_INDIRECT__
+#include <src/queue_private.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <assert.h>
+#if HAVE_TARGETCONDITIONALS_H
 #include <TargetConditionals.h>
+#endif
 
 #include "dispatch_test.h"
 

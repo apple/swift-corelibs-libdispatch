@@ -24,7 +24,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#if HAVE_LIBKERN_OSATOMIC_H
 #include <libkern/OSAtomic.h>
+#endif
 
 #include "dispatch_test.h"
 
