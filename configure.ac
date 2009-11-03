@@ -140,6 +140,16 @@ AC_HEADER_STDC
 AC_CHECK_HEADERS([TargetConditionals.h pthread_machdep.h pthread_np.h malloc/malloc.h libkern/OSCrossEndian.h libkern/OSAtomic.h])
 
 #
+# Core Services is tested in one of the GCD regression tests, so test for its
+# presence using its header file.
+#
+AC_CHECK_HEADER([CoreServices/CoreServices.h],
+  [have_coreservices=true],
+  [have_coreservices=false]
+)
+AM_CONDITIONAL(HAVE_CORESERVICES, $have_coreservices)
+
+#
 # We use the availability of mach.h to decide whether to compile in all sorts
 # of Machisms, including using Mach ports as event sources, etc.
 #

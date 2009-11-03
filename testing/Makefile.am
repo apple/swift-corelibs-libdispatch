@@ -7,6 +7,15 @@ noinst_LTLIBRARIES=libtest.la
 libtest_la_SOURCES=			\
 	dispatch_test.c
 
+TESTS=					\
+	dispatch_api			\
+	dispatch_c99			\
+	dispatch_cascade		\
+	dispatch_debug			\
+	dispatch_priority		\
+	dispatch_starfish		\
+	queue_finalizer
+
 if HAVE_BLOCKS
 BLOCKS_TESTS=				\
 	dispatch_after			\
@@ -20,24 +29,20 @@ BLOCKS_TESTS=				\
 	dispatch_timer_bit31		\
 	dispatch_timer_bit63
 endif
-
-TESTS=					\
-	dispatch_api			\
-	dispatch_c99			\
-	dispatch_cascade		\
-	dispatch_debug			\
-	dispatch_priority		\
-	dispatch_starfish		\
-	queue_finalizer
-
 TESTS+=$(BLOCKS_TESTS)
+
+if HAVE_CORESERVICES
+CORESERVICES_TESTS=			\
+	dispatch_cffd
+dispatch_cffd_LDFLAGS=-framework CoreFoundation
+endif
+TESTS+=$(CORESERVICES_TESTS)
 
 #
 # XXX: By broken, we mean non-portable.  We should instead test for the OS
 # features they depend on, or port them as required.
 #
 BROKEN_TESTS=				\
-	dispatch_cffd			\
 	dispatch_proc			\
 	dispatch_timer_set_time
 
