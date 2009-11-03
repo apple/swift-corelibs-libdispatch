@@ -19,7 +19,7 @@
  */
 
 #include "internal.h"
-#ifdef HAVE_MACH
+#if HAVE_MACH
 #include "protocol.h"
 #endif
 
@@ -184,7 +184,7 @@ static const struct dispatch_queue_vtable_s _dispatch_queue_root_vtable = {
 #define MAX_THREAD_COUNT 255
 
 struct dispatch_root_queue_context_s {
-#ifdef HAVE_PTHREAD_WORKQUEUES
+#if HAVE_PTHREAD_WORKQUEUES
 	pthread_workqueue_t dgq_kworkqueue;
 #endif
 	uint32_t dgq_pending;
@@ -894,13 +894,13 @@ void
 dispatch_main(void)
 {
 
-#ifdef HAVE_PTHREAD_MAIN_NP
+#if HAVE_PTHREAD_MAIN_NP
 	if (pthread_main_np()) {
 #endif
 		_dispatch_program_is_probably_callback_driven = true;
 		pthread_exit(NULL);
 		DISPATCH_CRASH("pthread_exit() returned");
-#ifdef HAVE_PTHREAD_MAIN_NP
+#if HAVE_PTHREAD_MAIN_NP
 	}
 	DISPATCH_CLIENT_CRASH("dispatch_main() must be called on the main thread");
 #endif
@@ -997,7 +997,7 @@ libdispatch_init(void)
 	dispatch_assert(countof(_dispatch_thread_mediator) == DISPATCH_ROOT_QUEUE_COUNT);
 	dispatch_assert(countof(_dispatch_root_queue_contexts) == DISPATCH_ROOT_QUEUE_COUNT);
 
-#ifdef HAVE_PTHREAD_KEY_INIT_NP
+#if HAVE_PTHREAD_KEY_INIT_NP
 	_dispatch_thread_key_init_np(dispatch_queue_key, _dispatch_queue_cleanup);
 	_dispatch_thread_key_init_np(dispatch_sema4_key, (void (*)(void *))dispatch_release);	// use the extern release
 	_dispatch_thread_key_init_np(dispatch_cache_key, _dispatch_cache_cleanup2);
@@ -1083,7 +1083,7 @@ _dispatch_queue_wakeup_main(void)
 }
 #endif
 
-#ifdef HAVE_PTHREAD_WORKQUEUES
+#if HAVE_PTHREAD_WORKQUEUES
 static inline int
 _dispatch_rootq2wq_pri(long idx)
 {
@@ -1109,7 +1109,7 @@ _dispatch_rootq2wq_pri(long idx)
 static void
 _dispatch_root_queues_init(void *context __attribute__((unused)))
 {
-#ifdef HAVE_PTHREAD_WORKQUEUES
+#if HAVE_PTHREAD_WORKQUEUES
 	bool disable_wq = getenv("LIBDISPATCH_DISABLE_KWQ");
 	pthread_workqueue_attr_t pwq_attr;
 	int r;
@@ -1122,13 +1122,13 @@ _dispatch_root_queues_init(void *context __attribute__((unused)))
 #endif
 	int i;
 
-#ifdef HAVE_PTHREAD_WORKQUEUES
+#if HAVE_PTHREAD_WORKQUEUES
 	r = pthread_workqueue_attr_init_np(&pwq_attr);
 	(void)dispatch_assume_zero(r);
 #endif
 
 	for (i = 0; i < DISPATCH_ROOT_QUEUE_COUNT; i++) {
-#ifdef HAVE_PTHREAD_WORKQUEUES
+#if HAVE_PTHREAD_WORKQUEUES
 		r = pthread_workqueue_attr_setqueuepriority_np(&pwq_attr, _dispatch_rootq2wq_pri(i));
 		(void)dispatch_assume_zero(r);
 		r = pthread_workqueue_attr_setovercommit_np(&pwq_attr, i & 1);
@@ -1158,14 +1158,14 @@ _dispatch_root_queues_init(void *context __attribute__((unused)))
 			ret = sem_init(&_dispatch_thread_mediator[i].dsema_sem, 0, 0);
 			(void)dispatch_assume_zero(ret);
 #endif
-#ifdef HAVE_PTHREAD_WORKQUEUES
+#if HAVE_PTHREAD_WORKQUEUES
 		} else {
 			dispatch_assume(_dispatch_root_queue_contexts[i].dgq_kworkqueue);
 		}
 #endif
 	}
 
-#ifdef HAVE_PTHREAD_WORKQUEUES
+#if HAVE_PTHREAD_WORKQUEUES
 	r = pthread_workqueue_attr_destroy_np(&pwq_attr);
 	(void)dispatch_assume_zero(r);
 #endif
@@ -1176,7 +1176,7 @@ _dispatch_queue_wakeup_global(dispatch_queue_t dq)
 {
 	static dispatch_once_t pred;
 	struct dispatch_root_queue_context_s *qc = dq->do_ctxt;
-#ifdef HAVE_PTHREAD_WORKQUEUES
+#if HAVE_PTHREAD_WORKQUEUES
 	pthread_workitem_handle_t wh;
 	unsigned int gen_cnt;
 #endif
@@ -1193,7 +1193,7 @@ _dispatch_queue_wakeup_global(dispatch_queue_t dq)
 
 	dispatch_once_f(&pred, NULL, _dispatch_root_queues_init);
 
-#ifdef HAVE_PTHREAD_WORKQUEUES
+#if HAVE_PTHREAD_WORKQUEUES
 	if (qc->dgq_kworkqueue) {
 		if (dispatch_atomic_cmpxchg(&qc->dgq_pending, 0, 1)) {
 			_dispatch_debug("requesting new worker thread");

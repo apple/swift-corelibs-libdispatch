@@ -37,7 +37,7 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 #include <mach/mach_types.h>
 #endif
 
@@ -309,7 +309,7 @@ DISPATCH_NONNULL1 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 long
 dispatch_source_get_error(dispatch_source_t source, long* error);
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 // Use: dispatch_source_get_handle
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
 DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_NOTHROW
@@ -423,7 +423,7 @@ dispatch_source_attr_set_context(
 	dispatch_source_attr_t attr,
 	void *context);
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 // Use: dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, ...)
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
 DISPATCH_MALLOC DISPATCH_NONNULL4 DISPATCH_NONNULL5 DISPATCH_NOTHROW
@@ -599,7 +599,7 @@ enum {
 };
 
 // Use: dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, ...)
-#ifdef HAVE_MACH
+#if HAVE_MACH
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
 DISPATCH_MALLOC DISPATCH_NOTHROW
@@ -704,7 +704,7 @@ dispatch_source_vfs_create_f(
 							 void *h_context,
 							 dispatch_source_handler_function_t handler);
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 /*
  * Raw Mach message support from MIG source.
  *

@@ -32,7 +32,7 @@
 #define __DISPATCH_BUILDING_DISPATCH__
 #define __DISPATCH_INDIRECT__
 
-#ifdef HAVE_AVAILABILITY_H
+#if HAVE_AVAILABILITY_H
 #include <Availability.h>
 #endif
 
@@ -64,13 +64,13 @@
 #endif
 
 
-#ifdef HAVE_LIBKERN_OSCROSSENDIAN_H
+#if HAVE_LIBKERN_OSCROSSENDIAN_H
 #include <libkern/OSCrossEndian.h>
 #endif
-#ifdef HAVE_LIBKERN_OSATOMIC_H
+#if HAVE_LIBKERN_OSATOMIC_H
 #include <libkern/OSAtomic.h>
 #endif
-#ifdef HAVE_MACH
+#if HAVE_MACH
 #include <mach/boolean.h>
 #include <mach/clock_types.h>
 #include <mach/clock.h>
@@ -86,7 +86,7 @@
 #include <mach/host_info.h>
 #include <mach/notify.h>
 #endif /* HAVE_MACH */
-#ifdef HAVE_MALLOC_MALLOC_H
+#if HAVE_MALLOC_MALLOC_H
 #include <malloc/malloc.h>
 #endif
 #include <sys/event.h>
@@ -277,7 +277,7 @@ __private_extern__ struct _dispatch_hw_config_s {
 
 #if USE_APPLE_CRASHREPORTER_INFO
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 // MIG_REPLY_MISMATCH means either:
 // 1) A signal handler is NOT using async-safe API. See the sigaction(2) man page for more info.
 // 2) A hand crafted call to mach_msg*() screwed up. Use MIG.
@@ -316,7 +316,7 @@ __private_extern__ struct _dispatch_hw_config_s {
 
 #else /* !USE_APPLE_CRASHREPORTER_INFO */
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 #define DISPATCH_VERIFY_MIG(x) do {	\
 		if ((x) == MIG_REPLY_MISMATCH) {	\
 			_dispatch_hardware_crash();	\

@@ -27,7 +27,7 @@
 #ifndef __DISPATCH_PRIVATE__
 #define __DISPATCH_PRIVATE__
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 #include <mach/boolean.h>
 #include <mach/mach.h>
 #include <mach/message.h>
@@ -73,7 +73,7 @@ libdispatch_init(void) __attribute__ ((constructor));
 libdispatch_init(void);
 #endif
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 #define DISPATCH_COCOA_COMPAT 1
 #if DISPATCH_COCOA_COMPAT
 
@@ -109,7 +109,7 @@ DISPATCH_NOTHROW void dispatch_atfork_parent(void);
 DISPATCH_NOTHROW void dispatch_atfork_child(void);
 DISPATCH_NOTHROW void dispatch_init_pthread(pthread_t);
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 /*
  * Extract the context pointer from a mach message trailer.
  */

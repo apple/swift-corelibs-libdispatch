@@ -20,7 +20,7 @@
 
 #include "internal.h"
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 void *
 dispatch_mach_msg_get_context(mach_msg_header_t *msg)
 {

@@ -22,7 +22,7 @@
 
 
 struct __dispatch_benchmark_data_s {
-#ifdef HAVE_MACH_ABSOLUTE_TIME
+#if HAVE_MACH_ABSOLUTE_TIME
 	mach_timebase_info_data_t tbi;
 #endif
 	uint64_t loop_cost;
@@ -47,7 +47,7 @@ _dispatch_benchmark_init(void *context)
 #else
 	long double lcost;
 #endif
-#ifdef HAVE_MACH_ABSOLUTE_TIME
+#if HAVE_MACH_ABSOLUTE_TIME
 	kern_return_t kr;
 
 	kr = mach_timebase_info(&bdata->tbi);
@@ -62,7 +62,7 @@ _dispatch_benchmark_init(void *context)
 	delta = _dispatch_absolute_time() - start;
 
 	lcost = delta;
-#ifdef HAVE_MACH_ABSOLUTE_TIME
+#if HAVE_MACH_ABSOLUTE_TIME
 	lcost *= bdata->tbi.numer;
 	lcost /= bdata->tbi.denom;
 #endif
@@ -110,7 +110,7 @@ dispatch_benchmark_f(size_t count, register void *ctxt, register void (*func)(vo
 	delta = _dispatch_absolute_time() - start;
 
 	conversion = delta;
-#ifdef HAVE_MACH_ABSOLUTE_TIME
+#if HAVE_MACH_ABSOLUTE_TIME
 	conversion *= bdata.tbi.numer;
 	big_denom = bdata.tbi.denom;
 #else

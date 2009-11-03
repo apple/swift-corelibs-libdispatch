@@ -111,7 +111,7 @@ enum {
 
 __BEGIN_DECLS
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 /*!
  * @typedef dispatch_mig_callback_t
  *

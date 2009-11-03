@@ -19,7 +19,7 @@
  */
 
 #include "internal.h"
-#ifdef HAVE_MACH
+#if HAVE_MACH
 #include "protocol.h"
 #include "protocolServer.h"
 #endif
@@ -113,7 +113,7 @@ static void _dispatch_source_kevent_resume(dispatch_source_t ds, uint32_t new_fl
 static void _dispatch_kevent_merge(dispatch_source_t ds);
 static void _dispatch_kevent_release(dispatch_source_t ds);
 static void _dispatch_kevent_resume(dispatch_kevent_t dk, uint32_t new_flags, uint32_t del_flags);
-#ifdef HAVE_MACH
+#if HAVE_MACH
 static void _dispatch_kevent_machport_resume(dispatch_kevent_t dk, uint32_t new_flags, uint32_t del_flags);
 static void _dispatch_kevent_machport_enable(dispatch_kevent_t dk);
 static void _dispatch_kevent_machport_disable(dispatch_kevent_t dk);
@@ -122,7 +122,7 @@ static void _dispatch_drain_mach_messages(struct kevent *ke);
 #endif
 static void _dispatch_timer_list_update(dispatch_source_t ds);
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 static void
 _dispatch_mach_notify_source_init(void *context __attribute__((unused)));
 #endif
@@ -139,7 +139,7 @@ _evfiltstr(short filt)
 	_evfilt2(EVFILT_PROC);
 	_evfilt2(EVFILT_SIGNAL);
 	_evfilt2(EVFILT_TIMER);
-#ifdef HAVE_MACH
+#if HAVE_MACH
 	_evfilt2(EVFILT_MACHPORT);
 #endif
 	_evfilt2(EVFILT_FS);
@@ -165,7 +165,7 @@ static inline uintptr_t
 _dispatch_kevent_hash(uintptr_t ident, short filter)
 {
 	uintptr_t value;
-#ifdef HAVE_MACH
+#if HAVE_MACH
 	value = (filter == EVFILT_MACHPORT ? MACH_PORT_INDEX(ident) : ident);
 #else
 	value = ident;
@@ -347,7 +347,7 @@ _dispatch_kevent_resume(dispatch_kevent_t dk, uint32_t new_flags, uint32_t del_f
 	case DISPATCH_EVFILT_CUSTOM_OR:
 		// these types not registered with kevent
 		return;
-#ifdef HAVE_MACH
+#if HAVE_MACH
 	case EVFILT_MACHPORT:
 		_dispatch_kevent_machport_resume(dk, new_flags, del_flags);
 		break;
@@ -613,7 +613,7 @@ _dispatch_source_drain_kevent(struct kevent *ke)
 
 	dispatch_debug_kevents(ke, 1, __func__);
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 	if (ke->filter == EVFILT_MACHPORT) {
 		return _dispatch_drain_mach_messages(ke);
 	}
@@ -640,7 +640,7 @@ _dispatch_kevent_dispose(dispatch_kevent_t dk)
 	case DISPATCH_EVFILT_CUSTOM_OR:
 		// these sources live on statically allocated lists
 		return;
-#ifdef HAVE_MACH
+#if HAVE_MACH
 	case EVFILT_MACHPORT:
 		_dispatch_kevent_machport_resume(dk, 0, dk->dk_kevent.fflags);
 		break;
@@ -1037,7 +1037,7 @@ const struct dispatch_source_type_s _dispatch_source_type_vfs = {
 	    ,
 };
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 
 static void
 dispatch_source_type_mach_send_init(dispatch_source_t ds, dispatch_source_type_t type, uintptr_t handle, unsigned long mask, dispatch_queue_t q)
@@ -1638,7 +1638,7 @@ dispatch_event_get_nanoseconds(dispatch_source_t ds)
 }
 #endif /* DISPATCH_NO_LEGACY */
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 static dispatch_source_t _dispatch_mach_notify_source;
 static mach_port_t _dispatch_port_set;
 static mach_port_t _dispatch_event_port;

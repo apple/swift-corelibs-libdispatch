@@ -27,7 +27,7 @@
 #ifndef __DISPATCH_SHIMS_TSD__
 #define __DISPATCH_SHIMS_TSD__
 
-#ifdef HAVE_PTHREAD_KEY_INIT_NP
+#if HAVE_PTHREAD_KEY_INIT_NP
 static const unsigned long dispatch_queue_key = __PTK_LIBDISPATCH_KEY0;
 static const unsigned long dispatch_sema4_key = __PTK_LIBDISPATCH_KEY1;
 static const unsigned long dispatch_cache_key = __PTK_LIBDISPATCH_KEY2;
@@ -100,7 +100,7 @@ _dispatch_thread_getspecific(pthread_key_t k)
 }
 #endif /* USE_APPLE_TSD_OPTIMIZATIONS */
 
-#ifdef HAVE_PTHREAD_KEY_INIT_NP
+#if HAVE_PTHREAD_KEY_INIT_NP
 static inline void
 _dispatch_thread_key_init_np(unsigned long k, void (*d)(void *))
 {

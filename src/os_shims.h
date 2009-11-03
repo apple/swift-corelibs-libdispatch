@@ -28,13 +28,13 @@
 #define __DISPATCH_OS_SHIMS__
 
 #include <pthread.h>
-#ifdef HAVE_PTHREAD_MACHDEP_H
+#if HAVE_PTHREAD_MACHDEP_H
 #include <pthread_machdep.h>
 #endif
-#ifdef HAVE_PTHREAD_WORKQUEUES
+#if HAVE_PTHREAD_WORKQUEUES
 #include <pthread_workqueue.h>
 #endif
-#ifdef HAVE_PTHREAD_NP_H
+#if HAVE_PTHREAD_NP_H
 #include <pthread_np.h>
 #endif
 
