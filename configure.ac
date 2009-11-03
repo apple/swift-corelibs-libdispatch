@@ -180,6 +180,12 @@ AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])
 AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK], [], [], [[#include <sys/mount.h>]])
 AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone])
 
+AC_CHECK_DECLS([POSIX_SPAWN_START_SUSPENDED],
+  [have_posix_spawn_start_suspended=true]
+  [have_posix_spawn_start_suspended=false]
+)
+AM_CONDITIONAL(HAVE_POSIX_SPAWN_START_SUSPENDED, $have_posix_spawn_start_suspended)
+
 AC_CHECK_FUNC([sem_init],
   [have_sem_init=true],
   [have_sem_init=false]

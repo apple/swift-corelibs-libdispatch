@@ -38,12 +38,17 @@ dispatch_cffd_LDFLAGS=-framework CoreFoundation
 endif
 TESTS+=$(CORESERVICES_TESTS)
 
+if HAVE_POSIX_SPAWN_START_SUSPENDED
+POSIX_SPAWN_START_SUSPENDED_TESTS=	\
+	dispatch_proc
+endif
+TESTS+=$(POSIX_SPAWN_START_SUSPENDED_TESTS)
+
 #
 # XXX: By broken, we mean non-portable.  We should instead test for the OS
 # features they depend on, or port them as required.
 #
 BROKEN_TESTS=				\
-	dispatch_proc			\
 	dispatch_timer_set_time
 
 BROKEN_TOOLS=				\
