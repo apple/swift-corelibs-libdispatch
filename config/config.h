@@ -4,9 +4,6 @@
 /* Define to compile out legacy API */
 /* #undef DISPATCH_NO_LEGACY */
 
-/* Define to 1 if you have the <Availability.h> header file. */
-#define HAVE_AVAILABILITY_H 1
-
 /* Define to 1 if you have the declaration of `CLOCK_MONOTONIC', and to 0 if
    you don't. */
 #define HAVE_DECL_CLOCK_MONOTONIC 0
