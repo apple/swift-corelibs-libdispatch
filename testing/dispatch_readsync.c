@@ -19,6 +19,8 @@
  */
 
 #include <dispatch/dispatch.h>
+#define __DISPATCH_INDIRECT__
+#include "src/queue_private.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdint.h>

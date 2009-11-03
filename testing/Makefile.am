@@ -15,6 +15,7 @@ BLOCKS_TESTS=				\
 	dispatch_group			\
 	dispatch_pingpong		\
 	dispatch_read			\
+	dispatch_readsync		\
 	dispatch_sema			\
 	dispatch_timer_bit31		\
 	dispatch_timer_bit63
@@ -37,7 +38,6 @@ TESTS+=$(BLOCKS_TESTS)
 BROKEN_TESTS=				\
 	dispatch_cffd			\
 	dispatch_proc			\
-	dispatch_readsync		\
 	dispatch_starfish		\
 	dispatch_timer_set_time
 
