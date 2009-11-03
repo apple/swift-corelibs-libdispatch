@@ -23,6 +23,7 @@
 
 #ifdef __APPLE__
 #include <Availability.h>
+#include <TargetConditionals.h>
 #endif
 #include <sys/cdefs.h>
 #include <stddef.h>

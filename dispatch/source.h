@@ -26,7 +26,7 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
-#ifdef HAVE_MACH
+#if TARGET_OS_MAC
 #include <mach/port.h>
 #include <mach/message.h>
 #endif
