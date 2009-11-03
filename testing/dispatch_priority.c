@@ -21,7 +21,7 @@
 #include <stdio.h>
 #include <dispatch/dispatch.h>
 #define	__DISPATCH_INDIRECT__
-#include <src/queue_private.h>
+#include "src/queue_private.h"
 #include <unistd.h>
 #include <stdlib.h>
 #include <assert.h>
