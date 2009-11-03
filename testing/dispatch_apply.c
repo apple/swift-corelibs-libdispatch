@@ -19,11 +19,11 @@
  */
 
 #include <dispatch/dispatch.h>
+#include "src/hw_shims.h"
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <assert.h>
-#include <libkern/OSAtomic.h>
 
 #include "dispatch_test.h"
 
@@ -39,7 +39,7 @@ main(void)
 	test_ptr_notnull("dispatch_get_concurrent_queue", queue);
 
 	dispatch_apply(final, queue, ^(size_t i __attribute__((unused))) {
-		OSAtomicIncrement32(&count);
+		dispatch_atomic_inc(&count);
 	});
 
 	test_long("count", count, final);

@@ -10,6 +10,7 @@ libtest_la_SOURCES=			\
 if HAVE_BLOCKS
 BLOCKS_TESTS=				\
 	dispatch_after			\
+	dispatch_apply			\
 	dispatch_group			\
 	dispatch_pingpong		\
 	dispatch_read			\
@@ -33,7 +34,6 @@ TESTS+=$(BLOCKS_TESTS)
 # features they depend on, or port them as required.
 #
 BROKEN_TESTS=				\
-	dispatch_apply			\
 	dispatch_cffd			\
 	dispatch_drift			\
 	dispatch_proc			\
