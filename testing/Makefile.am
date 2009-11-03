@@ -27,6 +27,7 @@ TESTS=					\
 	dispatch_cascade		\
 	dispatch_debug			\
 	dispatch_priority		\
+	dispatch_starfish		\
 	queue_finalizer
 
 TESTS+=$(BLOCKS_TESTS)
@@ -38,7 +39,6 @@ TESTS+=$(BLOCKS_TESTS)
 BROKEN_TESTS=				\
 	dispatch_cffd			\
 	dispatch_proc			\
-	dispatch_starfish		\
 	dispatch_timer_set_time
 
 BROKEN_TOOLS=				\

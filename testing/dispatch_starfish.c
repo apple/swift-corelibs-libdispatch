@@ -18,13 +18,14 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
-#include <mach/mach.h>
-#include <mach/mach_time.h>
 #include <dispatch/dispatch.h>
+#include "src/internal.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#if HAVE_TARGETCONDITIONALS_H
 #include <TargetConditionals.h>
+#endif
 
 #include "dispatch_test.h"
 
@@ -40,7 +41,6 @@ static dispatch_queue_t queues[COUNT];
 static size_t lap_count_down = LAPS;
 static size_t count_down;
 static uint64_t start;
-static mach_timebase_info_data_t tbi;
 
 static void do_test(void);
 
@@ -55,10 +55,8 @@ collect(void *context __attribute__((unused)))
 		return;
 	}
 
-	delta = mach_absolute_time() - start;
-	delta *= tbi.numer;
-	delta /= tbi.denom;
-	math = delta;
+	delta = _dispatch_absolute_time() - start;
+	math = delta = _dispatch_convert_mach2nano(delta);
 	math /= COUNT * COUNT * 2ul + COUNT * 2ul;
 
 	printf("lap: %ld\n", lap_count_down);
@@ -125,14 +123,10 @@ void
 do_test(void)
 {
 	size_t i;
-	kern_return_t kr;
 
 	count_down = COUNT;
 
-	kr = mach_timebase_info(&tbi);
-	assert(kr == 0);
-
-	start = mach_absolute_time();
+	start = _dispatch_absolute_time();
 
 	for (i = 0; i < COUNT; i++) {
 		char buf[1000];
