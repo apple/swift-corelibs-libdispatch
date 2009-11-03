@@ -32,10 +32,6 @@
 #define __DISPATCH_BUILDING_DISPATCH__
 #define __DISPATCH_INDIRECT__
 
-#if HAVE_AVAILABILITY_H
-#include <Availability.h>
-#endif
-
 #include <dispatch/dispatch.h>
 #include <dispatch/base.h>
 #include <dispatch/time.h>
