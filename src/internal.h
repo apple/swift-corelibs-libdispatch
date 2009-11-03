@@ -52,7 +52,10 @@
 #include "queue_private.h"
 #include "source_private.h"
 #include "private.h"
+
+#ifndef DISPATCH_NO_LEGACY
 #include "legacy.h"
+#endif
 /* More #includes at EOF (dependent on the contents of internal.h) ... */
 
 /* The "_debug" library build */

@@ -67,7 +67,7 @@ struct dispatch_source_s {
 			char dq_label[8];
 			dispatch_kevent_t ds_dkev;
 			
-			dispatch_source_handler_function_t ds_handler_func;
+			dispatch_function_t ds_handler_func;
 			void *ds_handler_ctxt;
 			
 			void *ds_cancel_handler;

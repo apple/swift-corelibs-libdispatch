@@ -19,6 +19,8 @@
  */
 
 #include "internal.h"
+
+#ifndef DISPATCH_NO_LEGACY
 #include "legacy.h"
 
 /*
@@ -82,8 +84,6 @@ LEGACY_dispatch_call(dispatch_queue_t dq,
 	return di;
 }
 #endif /* __BLOCKS__ */
-
-#ifndef DISPATCH_NO_LEGACY
 
 sigset_t
 dispatch_event_get_signals(dispatch_event_t de)

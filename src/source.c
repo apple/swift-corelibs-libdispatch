@@ -27,6 +27,22 @@
 
 #include "kevent_internal.h"
 
+#ifdef DISPATCH_NO_LEGACY
+enum {
+	DISPATCH_TIMER_WALL_CLOCK	= 0x4,
+};
+enum {
+	DISPATCH_TIMER_INTERVAL	= 0x0,
+	DISPATCH_TIMER_ONESHOT	= 0x1,
+	DISPATCH_TIMER_ABSOLUTE	= 0x3,
+};
+enum {
+	DISPATCH_MACHPORT_DEAD = 0x1,
+	DISPATCH_MACHPORT_RECV = 0x2,
+	DISPATCH_MACHPORT_DELETED = 0x4,
+};
+#endif
+
 #define DISPATCH_EVFILT_TIMER	(-EVFILT_SYSCOUNT - 1)
 #define DISPATCH_EVFILT_CUSTOM_ADD	(-EVFILT_SYSCOUNT - 2)
 #define DISPATCH_EVFILT_CUSTOM_OR	(-EVFILT_SYSCOUNT - 3)
@@ -739,7 +755,11 @@ _dispatch_source_latch_and_call(dispatch_source_t ds)
 	}
 	if (dispatch_assume(prev)) {
 		if (ds->ds_handler_func) {
-			ds->ds_handler_func(ds->ds_handler_ctxt, ds);
+#ifndef DISPATCH_NO_LEGACY
+			((dispatch_source_handler_function_t)ds->ds_handler_func)(ds->ds_handler_ctxt, ds);
+#else
+			ds->ds_handler_func(ds->ds_handler_ctxt);
+#endif
 		}
 	}
 }
@@ -1275,7 +1295,7 @@ _dispatch_source_create2(dispatch_source_t ds,
 
 	ds->ds_is_legacy = true;
 
-	ds->ds_handler_func = handler;
+	ds->ds_handler_func = (dispatch_function_t)handler;
 	ds->ds_handler_ctxt = context;
 		
 	if (attr && attr != DISPATCH_SOURCE_CREATE_SUSPENDED) {
@@ -1303,7 +1323,7 @@ _dispatch_source_create2(dispatch_source_t ds,
 	}
 
 	// all legacy sources get a cancellation event on the normal event handler.
-	dispatch_source_handler_function_t func = ds->ds_handler_func;
+	dispatch_function_t func = ds->ds_handler_func;
 	dispatch_source_handler_t block = ds->ds_handler_ctxt;
 	void *ctxt = ds->ds_handler_ctxt;
 	bool handler_is_block = ds->ds_handler_is_block;
@@ -1315,7 +1335,7 @@ _dispatch_source_create2(dispatch_source_t ds,
 		});
 	} else {
 		ds->ds_cancel_handler = _dispatch_Block_copy(^{
-			func(ctxt, ds);
+			((dispatch_source_handler_function_t)func)(ctxt, ds);
 		});
 	}
 #endif

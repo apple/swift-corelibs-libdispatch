@@ -35,6 +35,7 @@ dispatch_mach_msg_get_context(mach_msg_header_t *msg)
 	return context;
 }
 
+#ifndef DISPATCH_NO_LEGACY
 /*
  * Raw Mach message support
  */
@@ -64,4 +65,5 @@ _dispatch_CFMachPortCallBack(mach_msg_header_t *msg, mach_msg_header_t *reply,
 
 	return TRUE;
 }
+#endif
 #endif /* HAVE_MACH */

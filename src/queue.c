@@ -130,6 +130,7 @@ struct dispatch_queue_attr_vtable_s {
 struct dispatch_queue_attr_s {
 	DISPATCH_STRUCT_HEADER(dispatch_queue_attr_s, dispatch_queue_attr_vtable_s);
 
+#ifndef DISPATCH_NO_LEGACY
 	// Public:
 	int qa_priority;
 	void* finalizer_ctxt;
@@ -137,6 +138,7 @@ struct dispatch_queue_attr_s {
 
 	// Private:
 	unsigned long qa_flags;
+#endif
 };
 
 static int _dispatch_pthread_sigmask(int how, sigset_t *set, sigset_t *oset);
@@ -951,6 +953,7 @@ _dispatch_queue_cleanup2(void)
 #endif
 }
 
+#ifndef DISPATCH_NO_LEGACY
 dispatch_queue_t
 dispatch_get_concurrent_queue(long pri)
 {
@@ -961,6 +964,7 @@ dispatch_get_concurrent_queue(long pri)
 	}
 	return _dispatch_get_root_queue(pri, false);
 }
+#endif
 
 static void
 _dispatch_queue_cleanup(void *ctxt)
