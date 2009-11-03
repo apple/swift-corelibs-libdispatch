@@ -32,16 +32,16 @@
 #define __DISPATCH_BUILDING_DISPATCH__
 #define __DISPATCH_INDIRECT__
 
-#include <dispatch/dispatch.h>
-#include <dispatch/base.h>
-#include <dispatch/time.h>
-#include <dispatch/queue.h>
-#include <dispatch/object.h>
-#include <dispatch/source.h>
-#include <dispatch/group.h>
-#include <dispatch/semaphore.h>
-#include <dispatch/once.h>
-#include <dispatch/benchmark.h>
+#include "dispatch/dispatch.h"
+#include "dispatch/base.h"
+#include "dispatch/time.h"
+#include "dispatch/queue.h"
+#include "dispatch/object.h"
+#include "dispatch/source.h"
+#include "dispatch/group.h"
+#include "dispatch/semaphore.h"
+#include "dispatch/once.h"
+#include "dispatch/benchmark.h"
 
 /* private.h uses #include_next and must be included last to avoid picking
  * up installed headers. */
