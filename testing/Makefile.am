@@ -7,20 +7,26 @@ noinst_LTLIBRARIES=libtest.la
 libtest_la_SOURCES=			\
 	dispatch_test.c
 
-TESTS=					\
+if HAVE_BLOCKS
+BLOCKS_TESTS=				\
 	dispatch_after			\
+	dispatch_group			\
+	dispatch_pingpong		\
+	dispatch_read			\
+	dispatch_sema			\
+	dispatch_timer_bit31		\
+	dispatch_timer_bit63
+endif
+
+TESTS=					\
 	dispatch_api			\
 	dispatch_c99			\
 	dispatch_cascade		\
 	dispatch_debug			\
-	dispatch_group			\
-	dispatch_pingpong		\
 	dispatch_priority		\
-	dispatch_read			\
-	dispatch_sema			\
-	dispatch_timer_bit31		\
-	dispatch_timer_bit63		\
 	queue_finalizer
+
+TESTS+=$(BLOCKS_TESTS)
 
 #
 # XXX: By broken, we mean non-portable.  We should instead test for the OS

@@ -54,8 +54,11 @@ AS_IF([test "x$dispatch_cv_cblocks" != "xno"], [
       ])
     ])
     CFLAGS="$saveCFLAGS"
+    have_cblocks=true
 ], [
     CBLOCKS_FLAGS=""
+    have_cblocks=false
 ])
+AM_CONDITIONAL(HAVE_BLOCKS, $have_cblocks)
 AC_SUBST([CBLOCKS_FLAGS])
 ])
