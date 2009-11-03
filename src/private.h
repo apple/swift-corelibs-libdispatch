@@ -67,7 +67,7 @@ __BEGIN_DECLS
 
 DISPATCH_NOTHROW
 void
-#ifdef USE_LIBDISPATCH_INIT_CONSTRUCTOR
+#if USE_LIBDISPATCH_INIT_CONSTRUCTOR
 libdispatch_init(void) __attribute__ ((constructor));
 #else
 libdispatch_init(void);

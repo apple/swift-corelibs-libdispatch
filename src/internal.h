@@ -275,7 +275,7 @@ __private_extern__ struct _dispatch_hw_config_s {
 #include "semaphore_internal.h"
 #include "source_internal.h"
 
-#ifdef USE_APPLE_CRASHREPORTER_INFO
+#if USE_APPLE_CRASHREPORTER_INFO
 
 #ifdef HAVE_MACH
 // MIG_REPLY_MISMATCH means either:

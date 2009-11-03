@@ -38,7 +38,7 @@
 #include <pthread_np.h>
 #endif
 
-#ifdef USE_APPLE_CRASHREPORTER_INFO
+#if USE_APPLE_CRASHREPORTER_INFO
 __private_extern__ const char *__crashreporter_info__;
 #endif
 
