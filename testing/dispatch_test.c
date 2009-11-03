@@ -1,3 +1,6 @@
+#include <sys/types.h>
+#include <sys/wait.h>
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
