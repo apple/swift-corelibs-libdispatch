@@ -137,7 +137,7 @@ AC_SEARCH_LIBS(pthread_create, pthread)
 # Checks for header files.
 #
 AC_HEADER_STDC
-AC_CHECK_HEADERS([Availability.h pthread_machdep.h pthread_np.h malloc/malloc.h libkern/OSCrossEndian.h libkern/OSAtomic.h])
+AC_CHECK_HEADERS([Availability.h TargetConditionals.h pthread_machdep.h pthread_np.h malloc/malloc.h libkern/OSCrossEndian.h libkern/OSAtomic.h])
 
 #
 # We use the availability of mach.h to decide whether to compile in all sorts
