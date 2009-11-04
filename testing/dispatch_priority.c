@@ -18,6 +18,8 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
+#include "config/config.h"
+
 #include <stdio.h>
 #include <dispatch/dispatch.h>
 #define	__DISPATCH_INDIRECT__

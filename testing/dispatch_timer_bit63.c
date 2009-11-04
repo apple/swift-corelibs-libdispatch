@@ -18,6 +18,8 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
+#include "config/config.h"
+
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>

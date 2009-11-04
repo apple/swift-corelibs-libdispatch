@@ -24,6 +24,8 @@
  * Stress test for dispatch read and write sources.
  */
 
+#include "config/config.h"
+
 #include <dispatch/dispatch.h>
 
 #include <assert.h>

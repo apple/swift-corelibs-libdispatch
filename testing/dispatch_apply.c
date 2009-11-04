@@ -18,8 +18,11 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
+#include "config/config.h"
+
 #include <dispatch/dispatch.h>
 #include "src/hw_shims.h"
+
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>

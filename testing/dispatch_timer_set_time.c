@@ -1,3 +1,5 @@
+#include "config/config.h"
+
 #include <sys/time.h>
 #include <assert.h>
 #include <stdio.h>

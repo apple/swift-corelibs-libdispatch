@@ -18,6 +18,8 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
+#include "config/config.h"
+
 #include <dispatch/dispatch.h>
 #define __DISPATCH_INDIRECT__
 #include "src/queue_private.h"
