@@ -115,7 +115,7 @@ AC_PROG_INSTALL
 AC_PROG_LIBTOOL
 AC_PATH_PROGS(MIG, mig)
 
-AC_CHECK_TARGET_TOOLS(LEAKS, leaks)
+AC_PATH_PROG(LEAKS, leaks)
 AS_IF([test "x$LEAKS" != "x"],
   [AC_DEFINE(HAVE_LEAKS, 1, [Define if Apple leaks program is present])]
 )
