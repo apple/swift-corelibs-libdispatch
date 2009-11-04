@@ -65,4 +65,3 @@ _dispatch_convert_nano2mach(uint64_t val)
         return tmp;
 }
 #endif
-
