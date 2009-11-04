@@ -194,7 +194,7 @@ struct timespec
 _dispatch_timeout_ts(dispatch_time_t when)
 {
 	struct timespec ts_realtime;
-	uint64_t abstime;
+	uint64_t abstime, realtime;
 	int ret;
 
 	if (when == 0) {
@@ -220,8 +220,10 @@ _dispatch_timeout_ts(dispatch_time_t when)
 	abstime = _dispatch_absolute_time();
 	ret = clock_gettime(CLOCK_REALTIME, &ts_realtime);
 	(void)dispatch_assume_zero(ret);
-	ts_realtime.tv_sec += (when - abstime) / NSEC_PER_SEC;
-	ts_realtime.tv_nsec += (when - abstime) % NSEC_PER_SEC;
+	realtime = ts_realtime.tv_sec * NSEC_PER_SEC + ts_realtime.tv_nsec +
+	    (when - abstime);
+	ts_realtime.tv_sec = realtime / NSEC_PER_SEC;
+	ts_realtime.tv_nsec = realtime % NSEC_PER_SEC;
 	return (ts_realtime);
 }
 #endif
