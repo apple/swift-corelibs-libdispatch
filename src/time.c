@@ -197,8 +197,6 @@ _dispatch_timeout_ts(dispatch_time_t when)
 	uint64_t abstime;
 	int ret;
 
-	printf("_dispatch_timeout_ts: req %ld\n", (int64_t)when);
-
 	if (when == 0) {
 		ret = clock_gettime(CLOCK_REALTIME, &ts_realtime);
 		(void)dispatch_assume_zero(ret);
