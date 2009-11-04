@@ -220,7 +220,6 @@ _dispatch_timeout_ts(dispatch_time_t when)
 	abstime = _dispatch_absolute_time();
 	ret = clock_gettime(CLOCK_REALTIME, &ts_realtime);
 	(void)dispatch_assume_zero(ret);
-	printf("now is %d.%lu\n", ts_realtime.tv_sec, ts_realtime.tv_nsec);
 	ts_realtime.tv_sec += (when - abstime) / NSEC_PER_SEC;
 	ts_realtime.tv_nsec += (when - abstime) % NSEC_PER_SEC;
 	return (ts_realtime);
