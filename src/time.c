@@ -184,44 +184,47 @@ _dispatch_timeout(dispatch_time_t when)
 }
 
 #if USE_POSIX_SEM
-#ifdef HAVE_MACH_ABSOLUTE_TIME
-#error "Cannot currently use USE_POSIX_SEM and HAVE_MACH_ABSOLUTE_TIME together"
-#endif
 /*
  * Unlike Mach semaphores, POSIX semaphores take an absolute, real time as an
  * argument to sem_timedwait().  This routine converts from dispatch_time_t
  * but assumes the caller has already handled the possibility of
  * DISPATCH_TIME_FOREVER.
- *
- * XXXRW: Does not currently with with mach_absolute_time()/
  */
 struct timespec
 _dispatch_timeout_ts(dispatch_time_t when)
 {
-	struct timespec ts;
+	struct timespec ts_realtime;
+	uint64_t abstime;
 	int ret;
 
+	printf("_dispatch_timeout_ts: req %ld\n", (int64_t)when);
+
 	if (when == 0) {
-		when = _dispatch_absolute_time();
-		ts.tv_sec = when / NSEC_PER_SEC;
-		ts.tv_nsec = when % NSEC_PER_SEC;
-		return (ts);
+		ret = clock_gettime(CLOCK_REALTIME, &ts_realtime);
+		(void)dispatch_assume_zero(ret);
+		return (ts_realtime);
 	}
 	if ((int64_t)when < 0) {
-		when = -(int64_t)when + _dispatch_absolute_time();
-		ts.tv_sec = when / NSEC_PER_SEC;
-		ts.tv_nsec = when % NSEC_PER_SEC;
-		return (ts);
+		ret = clock_gettime(CLOCK_REALTIME, &ts_realtime);
+		(void)dispatch_assume_zero(ret);
+		when = -(int64_t)when + ts_realtime.tv_sec * NSEC_PER_SEC +
+		    ts_realtime.tv_nsec;
+		ts_realtime.tv_sec = when / NSEC_PER_SEC;
+		ts_realtime.tv_nsec = when % NSEC_PER_SEC;
+		return (ts_realtime);
 	}
 
 	/*
-	 * XXXRW: This code assumes that dispatch_time_t absolute times are
-	 * with respect to CLOCK_REALTIME.  If we want to support
-	 * USE_POSIX_SEM with mach_absolute_time(), a conversion is required
-	 * here.
+	 * Rebase 'when': (when - abstime) + realtime.
+	 *
+	 * XXXRW: Should we cache this delta to avoid system calls?
 	 */
-	ts.tv_sec = when / NSEC_PER_SEC;
-	ts.tv_nsec = when % NSEC_PER_SEC;
-	return (ts);
+	abstime = _dispatch_absolute_time();
+	ret = clock_gettime(CLOCK_REALTIME, &ts_realtime);
+	(void)dispatch_assume_zero(ret);
+	printf("now is %d.%lu\n", ts_realtime.tv_sec, ts_realtime.tv_nsec);
+	ts_realtime.tv_sec += (when - abstime) / NSEC_PER_SEC;
+	ts_realtime.tv_nsec += (when - abstime) % NSEC_PER_SEC;
+	return (ts_realtime);
 }
 #endif

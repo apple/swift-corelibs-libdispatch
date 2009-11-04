@@ -43,7 +43,13 @@ _dispatch_absolute_time(void)
 	struct timespec ts;
 	int ret;
 
-	ret = clock_gettime(CLOCK_REALTIME, &ts);
+#if HAVE_DECL_CLOCK_UPTIME
+	ret = clock_gettime(CLOCK_UPTIME, &ts);
+#elif HAVE_DECL_CLOCK_MONOTONIC
+	ret = clock_gettime(CLOCK_MONOTONIC, &ts);
+#else
+#error "clock_gettime: no supported absolute time clock"
+#endif
 	(void)dispatch_assume_zero(ret);
 
 	/* XXXRW: Some kind of overflow detection needed? */
