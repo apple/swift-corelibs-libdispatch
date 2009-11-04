@@ -208,7 +208,7 @@ again:
 			    &_timeout));
 		} while (ret == -1 && errno == EINTR);
 
-		if (ret == -1 && errno != ETIMEDOUT) {
+		if (!(ret == -1 && errno == ETIMEDOUT)) {
 			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 			break;
 		}
