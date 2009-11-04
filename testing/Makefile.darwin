@@ -46,7 +46,7 @@ _test: all logs debuglogs
 SRCS = dispatch_test.c
 OBJS = $(SRCS:%.c=%.o)
 ARCHS=i386 x86_64 ppc
-CFLAGS = -Werror -Wall -Wextra -Wshadow -mdynamic-no-pic -Os -g $(patsubst %, -arch %,$(ARCHS)) -DDISPATCH_NO_LEGACY
+CFLAGS = -Werror -Wall -Wextra -Wshadow -mdynamic-no-pic -Os -g $(patsubst %, -arch %,$(ARCHS)) -DDISPATCH_NO_LEGACY -I..
 CPPFLAGS = $(CFLAGS)
 LDFLAGS = $(patsubst %, -arch %,$(ARCHS))
 LDLIBS = -lstdc++
