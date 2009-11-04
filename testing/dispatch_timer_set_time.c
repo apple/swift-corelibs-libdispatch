@@ -6,6 +6,9 @@
 
 #include <dispatch/dispatch.h>
 
+#define	__DISPATCH_INDIRECT__
+#include "src/legacy.h"
+
 #include "dispatch_test.h"
 
 int main(void)

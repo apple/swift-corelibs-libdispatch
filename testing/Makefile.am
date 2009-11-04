@@ -46,13 +46,16 @@ POSIX_SPAWN_START_SUSPENDED_TESTS=	\
 endif
 TESTS+=$(POSIX_SPAWN_START_SUSPENDED_TESTS)
 
+if USE_LEGACY_API
+LEGACY_TESTS=				\
+	dispatch_timer_set_time
+endif
+TESTS+=$(LEGACY_TESTS)
+
 #
 # XXX: By broken, we mean non-portable.  We should instead test for the OS
 # features they depend on, or port them as required.
 #
-BROKEN_TESTS=				\
-	dispatch_timer_set_time
-
 BROKEN_TOOLS=				\
 	harness				\
 	nsoperation
@@ -66,5 +69,5 @@ noinst_PROGRAMS+=$(TOOLS)
 
 INCLUDES=-I$(top_builddir) -I$(top_srcdir)
 LDADD=libtest.la ../src/libdispatch.la
-CFLAGS=-Werror -Wall -DDISPATCH_NO_LEGACY $(MARCH_FLAGS) $(CBLOCKS_FLAGS)
+CFLAGS=-Werror -Wall $(MARCH_FLAGS) $(CBLOCKS_FLAGS)
 
