@@ -256,7 +256,7 @@ void
 dispatch_group_enter(dispatch_group_t dg)
 {
 	dispatch_semaphore_t dsema = (dispatch_semaphore_t)dg;
-#if defined(USE_APPLE_SEMAPHORE_OPTIMIZATIONS) && defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) && !defined(__llvm__)
+#if USE_APPLE_SEMAPHORE_OPTIMIZATIONS && defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) && !defined(__llvm__)
 	// This assumes:
 	// 1) Way too much about the optimizer of GCC.
 	// 2) There will never be more than LONG_MAX threads.
@@ -284,7 +284,7 @@ DISPATCH_NOINLINE
 long
 dispatch_semaphore_wait(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 {
-#if defined(USE_APPLE_SEMAPHORE_OPTIMIZATIONS) && defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) && !defined(__llvm__)
+#if USE_APPLE_SEMAPHORE_OPTIMIZATIONS && defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) && !defined(__llvm__)
 	// This assumes:
 	// 1) Way too much about the optimizer of GCC.
 	// 2) There will never be more than LONG_MAX threads.
@@ -362,7 +362,7 @@ DISPATCH_NOINLINE
 long
 dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 {
-#if defined(USE_APPLE_SEMAPHORE_OPTIMIZATIONS) && defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) && !defined(__llvm__)
+#if USE_APPLE_SEMAPHORE_OPTIMIZATIONS && defined(__OPTIMIZE__) && defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__)) && !defined(__llvm__)
 	// overflow detection
 	// this assumes way too much about the optimizer of GCC
 	asm(
