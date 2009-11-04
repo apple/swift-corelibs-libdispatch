@@ -69,5 +69,5 @@ noinst_PROGRAMS+=$(TOOLS)
 
 INCLUDES=-I$(top_builddir) -I$(top_srcdir)
 LDADD=libtest.la ../src/libdispatch.la
-CFLAGS=-Werror -Wall $(MARCH_FLAGS) $(CBLOCKS_FLAGS)
+CFLAGS=-Wall $(MARCH_FLAGS) $(CBLOCKS_FLAGS)
 
