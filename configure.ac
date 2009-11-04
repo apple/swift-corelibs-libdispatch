@@ -111,6 +111,7 @@ AS_IF([test "x$enable_apple_semaphore_optimizations" = "xyes"],
 )
 
 AC_PROG_CC
+AC_PROG_CXX
 AC_PROG_INSTALL
 AC_PROG_LIBTOOL
 AC_PATH_PROGS(MIG, mig)

@@ -18,8 +18,8 @@ TESTS=					\
 
 dispatch_c99_CFLAGS=-std=c99
 
-if HAVE_BLOCKS
-BLOCKS_TESTS=				\
+if HAVE_CBLOCKS
+CBLOCKS_TESTS=				\
 	dispatch_after			\
 	dispatch_apply			\
 	dispatch_drift			\
@@ -31,7 +31,14 @@ BLOCKS_TESTS=				\
 	dispatch_timer_bit31		\
 	dispatch_timer_bit63
 endif
-TESTS+=$(BLOCKS_TESTS)
+TESTS+=$(CBLOCKS_TESTS)
+
+if HAVE_CXXBLOCKS
+CXXBLOCKS_TESTS=			\
+	dispatch_plusplus
+dispatch_plusplus_SOURCES=dispatch_plusplus.cpp
+endif
+TESTS+=$(CXXBLOCKS_TESTS)
 
 if HAVE_CORESERVICES
 CORESERVICES_TESTS=			\
@@ -70,4 +77,5 @@ noinst_PROGRAMS+=$(TOOLS)
 INCLUDES=-I$(top_builddir) -I$(top_srcdir)
 LDADD=libtest.la ../src/libdispatch.la
 CFLAGS=-Wall $(MARCH_FLAGS) $(CBLOCKS_FLAGS)
+CXXFLAGS=-Wall $(MARCH_FLAGS) $(CXXBLOCKS_FLAGS)
 
