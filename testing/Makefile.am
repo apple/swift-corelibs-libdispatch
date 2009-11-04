@@ -16,6 +16,8 @@ TESTS=					\
 	dispatch_starfish		\
 	queue_finalizer
 
+dispatch_c99_CFLAGS=-std=c99
+
 if HAVE_BLOCKS
 BLOCKS_TESTS=				\
 	dispatch_after			\
