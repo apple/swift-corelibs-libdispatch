@@ -123,14 +123,17 @@ test_stop(void) {
 
 void
 test_stop_after_delay(void *delay) {
+#if HAVE_LEAKS
 	int res;
 	pid_t pid;
 	char pidstr[10];
+#endif
 
 	if (delay != NULL) {
 		sleep((int)(intptr_t)delay);
 	}
 
+#if HAVE_LEAKS
 	if (getenv("NOLEAKS")) _exit(EXIT_SUCCESS);
 
 	/* leaks doesn't work against debug variant malloc */
@@ -146,6 +149,6 @@ test_stop_after_delay(void *delay) {
 	} else {
 		perror(args[0]);
 	}
-	
+#endif
 	_exit(EXIT_SUCCESS);
 }
