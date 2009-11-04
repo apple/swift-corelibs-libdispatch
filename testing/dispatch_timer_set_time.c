@@ -4,12 +4,9 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/time.h>
-
-#include <dispatch/dispatch.h>
 
 #define	__DISPATCH_INDIRECT__
-#include "src/legacy.h"
+#include "src/internal.h"
 
 #include "dispatch_test.h"
 
