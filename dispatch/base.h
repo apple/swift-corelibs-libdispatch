@@ -53,10 +53,10 @@ typedef union {
 typedef void (*dispatch_function_t)(void *);
 
 #ifdef __cplusplus
-#define DISPATCH_DECL(name) typedef struct name##_s : public dispatch_object_s {} *name##_t;
+#define DISPATCH_DECL(name) typedef struct name##_s : public dispatch_object_s {} *name##_t
 #else
 /*! @parseOnly */
-#define DISPATCH_DECL(name) typedef struct name##_s *name##_t;
+#define DISPATCH_DECL(name) typedef struct name##_s *name##_t
 #endif
 
 #ifdef __GNUC__
