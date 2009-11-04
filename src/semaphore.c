@@ -203,11 +203,7 @@ again:
 #endif
 #if USE_POSIX_SEM
 		do {
-			nsec = _dispatch_timeout(timeout);
-			_timeout.tv_sec = (typeof(_timeout.tv_sec))
-			    (nsec / NSEC_PER_SEC);
-			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))
-			    (nsec % NSEC_PER_SEC);
+			_timeout = _dispatch_timeout_ts(timeout);
 			ret = slowpath(sem_timedwait(&dsema->dsema_sem,
 			    &_timeout));
 		} while (ret == -1 && errno == EINTR);
@@ -339,6 +335,7 @@ _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 #endif
 #if USE_POSIX_SEM
 	ret = sem_post(&dsema->dsema_sem);
+	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #endif
 
 	_dispatch_release(dsema);
@@ -493,11 +490,7 @@ again:
 #endif
 #if USE_POSIX_SEM
 		do {
-			nsec = _dispatch_timeout(timeout);
-			_timeout.tv_sec = (typeof(_timeout.tv_sec))
-			    (nsec / NSEC_PER_SEC);
-			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))
-			    (nsec % NSEC_PER_SEC);
+			_timeout = _dispatch_timeout_ts(timeout);
 			ret = slowpath(sem_timedwait(&dsema->dsema_sem,
 			    &_timeout));
 		} while (ret == -1 && errno == EINTR);

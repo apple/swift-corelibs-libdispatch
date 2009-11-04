@@ -254,6 +254,9 @@ void _dispatch_put_thread_semaphore(dispatch_semaphore_t);
 bool _dispatch_source_testcancel(dispatch_source_t);
 
 uint64_t _dispatch_timeout(dispatch_time_t when);
+#if USE_POSIX_SEM
+struct timespec _dispatch_timeout_ts(dispatch_time_t when);
+#endif
 
 __private_extern__ bool _dispatch_safe_fork;
 

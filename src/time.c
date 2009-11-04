@@ -182,3 +182,46 @@ _dispatch_timeout(dispatch_time_t when)
 	now = _dispatch_absolute_time();
 	return now >= when ? 0 : _dispatch_time_mach2nano(when - now);
 }
+
+#if USE_POSIX_SEM
+#ifdef HAVE_MACH_ABSOLUTE_TIME
+#error "Cannot currently use USE_POSIX_SEM and HAVE_MACH_ABSOLUTE_TIME together"
+#endif
+/*
+ * Unlike Mach semaphores, POSIX semaphores take an absolute, real time as an
+ * argument to sem_timedwait().  This routine converts from dispatch_time_t
+ * but assumes the caller has already handled the possibility of
+ * DISPATCH_TIME_FOREVER.
+ *
+ * XXXRW: Does not currently with with mach_absolute_time()/
+ */
+struct timespec
+_dispatch_timeout_ts(dispatch_time_t when)
+{
+	struct timespec ts;
+	int ret;
+
+	if (when == 0) {
+		when = _dispatch_absolute_time();
+		ts.tv_sec = when / NSEC_PER_SEC;
+		ts.tv_nsec = when % NSEC_PER_SEC;
+		return (ts);
+	}
+	if ((int64_t)when < 0) {
+		when = -(int64_t)when + _dispatch_absolute_time();
+		ts.tv_sec = when / NSEC_PER_SEC;
+		ts.tv_nsec = when % NSEC_PER_SEC;
+		return (ts);
+	}
+
+	/*
+	 * XXXRW: This code assumes that dispatch_time_t absolute times are
+	 * with respect to CLOCK_REALTIME.  If we want to support
+	 * USE_POSIX_SEM with mach_absolute_time(), a conversion is required
+	 * here.
+	 */
+	ts.tv_sec = when / NSEC_PER_SEC;
+	ts.tv_nsec = when % NSEC_PER_SEC;
+	return (ts);
+}
+#endif
