@@ -1839,20 +1839,26 @@ dispatch_source_mig_create(mach_port_t mport, size_t max_msg_size, dispatch_sour
 #endif /* DISPATCH_NO_LEGACY */
 
 static void
+_dispatch_mach_notify_source2(void *context)
+{
+	dispatch_source_t ds = context;
+	const size_t maxsz = MAX(
+		sizeof(union __RequestUnion___dispatch_send_libdispatch_internal_protocol_subsystem),
+		sizeof(union __ReplyUnion___dispatch_libdispatch_internal_protocol_subsystem));
+
+	dispatch_mig_server(ds, maxsz, libdispatch_internal_protocol_server);
+}
+
+static void
 _dispatch_mach_notify_source_init(void *context __attribute__((unused)))
 {
-	size_t maxsz = sizeof(union __RequestUnion___dispatch_send_libdispatch_internal_protocol_subsystem);
-
-	if (sizeof(union __ReplyUnion___dispatch_libdispatch_internal_protocol_subsystem) > maxsz) {
-		maxsz = sizeof(union __ReplyUnion___dispatch_libdispatch_internal_protocol_subsystem);
-	}
-
 	_dispatch_get_port_set();
 
-	_dispatch_mach_notify_source = dispatch_source_mig_create(_dispatch_event_port,
-			maxsz, NULL, &_dispatch_mgr_q, libdispatch_internal_protocol_server);
-
+	_dispatch_mach_notify_source = dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, _dispatch_event_port, 0, &_dispatch_mgr_q);
 	dispatch_assert(_dispatch_mach_notify_source);
+	dispatch_set_context(_dispatch_mach_notify_source, _dispatch_mach_notify_source);
+	dispatch_source_set_event_handler_f(_dispatch_mach_notify_source, _dispatch_mach_notify_source2);
+	dispatch_resume(_dispatch_mach_notify_source);
 }
 
 kern_return_t
