@@ -32,6 +32,10 @@
    don't. */
 #define HAVE_DECL_NOTE_SIGNAL 1
 
+/* Define to 1 if you have the declaration of `POSIX_SPAWN_START_SUSPENDED',
+   and to 0 if you don't. */
+#define HAVE_DECL_POSIX_SPAWN_START_SUSPENDED 1
+
 /* Define to 1 if you have the declaration of `SIGEMT', and to 0 if you don't.
    */
 #define HAVE_DECL_SIGEMT 1
@@ -49,6 +53,9 @@
 
 /* Define to 1 if you have the <inttypes.h> header file. */
 #define HAVE_INTTYPES_H 1
+
+/* Define if Apple leaks program is present */
+#define HAVE_LEAKS 1
 
 /* Define to 1 if you have the <libkern/OSAtomic.h> header file. */
 #define HAVE_LIBKERN_OSATOMIC_H 1
