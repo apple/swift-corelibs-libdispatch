@@ -155,12 +155,12 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema, dispatch_time_t timeou
 #if USE_MACH_SEM
 	mach_timespec_t _timeout;
 	kern_return_t kr;
+	uint64_t nsec;
 #endif
 #if USE_POSIX_SEM
 	struct timespec _timeout;
 	int ret;
 #endif
-	uint64_t nsec;
 	long orig;
 	
 again:
@@ -440,12 +440,12 @@ _dispatch_group_wait_slow(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 #if USE_MACH_SEM
 	mach_timespec_t _timeout;
 	kern_return_t kr;
+	uint64_t nsec;
 #endif
 #if USE_POSIX_SEM
 	struct timespec _timeout;
 	int ret;
 #endif
-	uint64_t nsec;
 	long orig;
 	
 again:
@@ -494,7 +494,8 @@ again:
 			ret = slowpath(sem_timedwait(&dsema->dsema_sem,
 			    &_timeout));
 		} while (ret == -1 && errno == EINTR);
-		if (ret == 0 || errno != ETIMEDOUT) {
+
+		if (!(ret == -1 && errno == ETIMEDOUT)) {
 			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 			break;
 		}
