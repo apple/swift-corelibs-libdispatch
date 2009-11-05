@@ -13,10 +13,13 @@ TESTS=					\
 	dispatch_cascade		\
 	dispatch_debug			\
 	dispatch_priority		\
+	dispatch_priority2		\
 	dispatch_starfish		\
 	queue_finalizer
 
 dispatch_c99_CFLAGS=-std=c99
+dispatch_priority2_SOURCES=dispatch_priority.c
+dispatch_priority2_CFLAGS=-DUSE_SET_TARGET_QUEUE=1
 
 if HAVE_CBLOCKS
 CBLOCKS_TESTS=				\
