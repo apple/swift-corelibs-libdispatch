@@ -272,7 +272,7 @@ __BEGIN_DECLS
  * The dispatch queue to which the event handler block will be submited.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_MALLOC DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_NOTHROW
 dispatch_source_t
 dispatch_source_create(dispatch_source_type_t type,
 	uintptr_t handle,
@@ -294,7 +294,7 @@ dispatch_source_create(dispatch_source_type_t type,
  */
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_event_handler(dispatch_source_t source,
 	dispatch_block_t handler);
@@ -317,7 +317,7 @@ dispatch_source_set_event_handler(dispatch_source_t source,
  * The result of passing NULL in this parameter is undefined.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_event_handler_f(dispatch_source_t source,
 	dispatch_function_t handler);
@@ -351,7 +351,7 @@ dispatch_source_set_event_handler_f(dispatch_source_t source,
  */
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_cancel_handler(dispatch_source_t source,
 	dispatch_block_t cancel_handler);
@@ -376,7 +376,7 @@ dispatch_source_set_cancel_handler(dispatch_source_t source,
  * context of the dispatch source at the time the handler call is made.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_cancel_handler_f(dispatch_source_t source,
 	dispatch_function_t cancel_handler);
@@ -404,7 +404,7 @@ dispatch_source_set_cancel_handler_f(dispatch_source_t source,
  * The result of passing NULL in this parameter is undefined.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_source_cancel(dispatch_source_t source);
 
@@ -422,7 +422,7 @@ dispatch_source_cancel(dispatch_source_t source);
  * Non-zero if canceled and zero if not canceled.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 long
 dispatch_source_testcancel(dispatch_source_t source);
 
@@ -451,7 +451,7 @@ dispatch_source_testcancel(dispatch_source_t source);
  *  DISPATCH_SOURCE_TYPE_WRITE:           file descriptor (int)
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
 uintptr_t
 dispatch_source_get_handle(dispatch_source_t source);
 
@@ -480,7 +480,7 @@ dispatch_source_get_handle(dispatch_source_t source);
  *  DISPATCH_SOURCE_TYPE_WRITE:           n/a
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
 unsigned long
 dispatch_source_get_mask(dispatch_source_t source);
 
@@ -516,7 +516,7 @@ dispatch_source_get_mask(dispatch_source_t source);
  *  DISPATCH_SOURCE_TYPE_WRITE:           estimated buffer space available
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
 unsigned long
 dispatch_source_get_data(dispatch_source_t source);
 
@@ -537,7 +537,7 @@ dispatch_source_get_data(dispatch_source_t source);
  * and will not result in the submission of the event handler block.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_source_merge_data(dispatch_source_t source, unsigned long value);
 
@@ -573,7 +573,7 @@ dispatch_source_merge_data(dispatch_source_t source, unsigned long value);
  * all timers even when a leeway value of zero is specified.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_source_set_timer(dispatch_source_t source,
 	dispatch_time_t start,

@@ -110,4 +110,10 @@ typedef void (*dispatch_function_t)(void *);
 #define DISPATCH_MALLOC
 #endif
 
+#if __GNUC__
+#define DISPATCH_EXPORT extern __attribute__((visibility("default")))
+#else
+#define DISPATCH_EXPORT extern
+#endif
+
 #endif

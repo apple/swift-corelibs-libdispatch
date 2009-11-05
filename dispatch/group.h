@@ -50,7 +50,7 @@ __BEGIN_DECLS
  * The newly created group, or NULL on failure.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_WARN_RESULT
+DISPATCH_EXPORT DISPATCH_WARN_RESULT
 dispatch_group_t
 dispatch_group_create(void);
 
@@ -79,7 +79,7 @@ dispatch_group_create(void);
  */
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL
 void
 dispatch_group_async(dispatch_group_t group,
 	dispatch_queue_t queue,
@@ -113,7 +113,7 @@ dispatch_group_async(dispatch_group_t group,
  * dispatch_group_async_f().
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL1 DISPATCH_NONNULL2 DISPATCH_NONNULL4
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL2 DISPATCH_NONNULL4
 void
 dispatch_group_async_f(dispatch_group_t group,
 	dispatch_queue_t queue,
@@ -156,7 +156,7 @@ dispatch_group_async_f(dispatch_group_t group,
  * within the specified timeout) or non-zero on error (i.e. timed out).
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL
 long
 dispatch_group_wait(dispatch_group_t group, dispatch_time_t timeout);
 
@@ -192,7 +192,7 @@ dispatch_group_wait(dispatch_group_t group, dispatch_time_t timeout);
  */
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL
 void
 dispatch_group_notify(dispatch_group_t group,
 	dispatch_queue_t queue,
@@ -222,7 +222,7 @@ dispatch_group_notify(dispatch_group_t group,
  * dispatch_group_notify_f().
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL1 DISPATCH_NONNULL2 DISPATCH_NONNULL4
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL2 DISPATCH_NONNULL4
 void
 dispatch_group_notify_f(dispatch_group_t group,
 	dispatch_queue_t queue,
@@ -245,7 +245,7 @@ dispatch_group_notify_f(dispatch_group_t group,
  * The result of passing NULL in this parameter is undefined.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NOTHROW DISPATCH_NONNULL_ALL
+DISPATCH_EXPORT DISPATCH_NOTHROW DISPATCH_NONNULL_ALL
 void
 dispatch_group_enter(dispatch_group_t group);
 
@@ -264,7 +264,7 @@ dispatch_group_enter(dispatch_group_t group);
  * The result of passing NULL in this parameter is undefined.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NOTHROW DISPATCH_NONNULL_ALL
+DISPATCH_EXPORT DISPATCH_NOTHROW DISPATCH_NONNULL_ALL
 void
 dispatch_group_leave(dispatch_group_t group);
 

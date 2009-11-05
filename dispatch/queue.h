@@ -143,7 +143,7 @@ __BEGIN_DECLS
  */
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_async(dispatch_queue_t queue, dispatch_block_t block);
 #endif
@@ -173,7 +173,7 @@ dispatch_async(dispatch_queue_t queue, dispatch_block_t block);
  * The result of passing NULL in this parameter is undefined.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_async_f(dispatch_queue_t queue,
 	void *context,
@@ -211,7 +211,7 @@ dispatch_async_f(dispatch_queue_t queue,
  */
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_sync(dispatch_queue_t queue, dispatch_block_t block);
 #endif
@@ -239,7 +239,7 @@ dispatch_sync(dispatch_queue_t queue, dispatch_block_t block);
  * The result of passing NULL in this parameter is undefined.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_sync_f(dispatch_queue_t queue,
 	void *context,
@@ -272,7 +272,7 @@ dispatch_sync_f(dispatch_queue_t queue,
  */
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_apply(size_t iterations, dispatch_queue_t queue, void (^block)(size_t));
 #endif
@@ -304,7 +304,7 @@ dispatch_apply(size_t iterations, dispatch_queue_t queue, void (^block)(size_t))
  * The result of passing NULL in this parameter is undefined.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL2 DISPATCH_NONNULL4 DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NONNULL4 DISPATCH_NOTHROW
 void
 dispatch_apply_f(size_t iterations, dispatch_queue_t queue,
 	void *context,
@@ -326,7 +326,7 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t queue,
  * Returns the current queue.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_queue_t
 dispatch_get_current_queue(void);
 
@@ -397,7 +397,7 @@ enum {
  * Returns the requested global queue.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_queue_t
 dispatch_get_global_queue(long priority, unsigned long flags);
 
@@ -426,7 +426,7 @@ dispatch_get_global_queue(long priority, unsigned long flags);
  * The newly created dispatch queue.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_MALLOC DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_queue_t
 dispatch_queue_create(const char *label, dispatch_queue_attr_t attr);
 
@@ -444,7 +444,7 @@ dispatch_queue_create(const char *label, dispatch_queue_attr_t attr);
  * The label of the queue. The result may be NULL.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 const char *
 dispatch_queue_get_label(dispatch_queue_t queue);
 
@@ -477,7 +477,7 @@ dispatch_queue_get_label(dispatch_queue_t queue);
  * The result of passing NULL in this parameter is undefined.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_set_target_queue(dispatch_object_t object, dispatch_queue_t queue);
 
@@ -495,7 +495,7 @@ dispatch_set_target_queue(dispatch_object_t object, dispatch_queue_t queue);
  * main thread do not need to call dispatch_main().
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NOTHROW DISPATCH_NORETURN
+DISPATCH_EXPORT DISPATCH_NOTHROW DISPATCH_NORETURN
 void
 dispatch_main(void);
 
@@ -523,7 +523,7 @@ dispatch_main(void);
  */
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL2 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_after(dispatch_time_t when,
 	dispatch_queue_t queue,
@@ -556,7 +556,7 @@ dispatch_after(dispatch_time_t when,
  * The result of passing NULL in this parameter is undefined.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL2 DISPATCH_NONNULL4 DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NONNULL4 DISPATCH_NOTHROW
 void
 dispatch_after_f(dispatch_time_t when,
 	dispatch_queue_t queue,

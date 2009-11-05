@@ -56,7 +56,7 @@ typedef long dispatch_once_t;
  */
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_once(dispatch_once_t *predicate, dispatch_block_t block);
 #ifdef __GNUC__
@@ -65,7 +65,7 @@ dispatch_once(dispatch_once_t *predicate, dispatch_block_t block);
 #endif
 
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_once_f(dispatch_once_t *predicate, void *context, void (*function)(void *));
 #ifdef __GNUC__

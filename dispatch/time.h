@@ -80,7 +80,7 @@ typedef uint64_t dispatch_time_t;
  * A new dispatch_time_t.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NOTHROW
 dispatch_time_t
 dispatch_time(dispatch_time_t when, int64_t delta);
 
@@ -104,7 +104,7 @@ dispatch_time(dispatch_time_t when, int64_t delta);
  * A new dispatch_time_t.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NOTHROW
 dispatch_time_t
 dispatch_walltime(const struct timespec *when, int64_t delta);
 
