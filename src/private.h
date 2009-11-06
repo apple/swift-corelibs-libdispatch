@@ -33,7 +33,9 @@
 #include <mach/message.h>
 #endif
 #include <unistd.h>
+#if HAVE_SYS_CDEFS_H
 #include <sys/cdefs.h>
+#endif
 #include <pthread.h>
 
 #ifndef __DISPATCH_BUILDING_DISPATCH__
