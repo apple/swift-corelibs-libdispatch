@@ -80,16 +80,6 @@ malloc_zone_realloc(malloc_zone_t *zone, void *ptr, size_t size)
 	return (realloc(ptr, size));
 }
 
-static inline void *
-malloc_zone_memalign(malloc_zone_t *zone, size_t alignment, size_t size)
-{
-	void *ptr;
-
-	if (posix_memalign(&ptr, alignment, size) < 0)
-		return (NULL);
-	return (ptr);
-}
-
 static inline void
 malloc_zone_free(malloc_zone_t *zone, void *ptr)
 {
