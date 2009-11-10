@@ -1096,6 +1096,7 @@ dispatch_source_create(dispatch_source_type_t type,
 {
 	const struct kevent *proto_kev = &type->ke;
 	dispatch_source_t ds = NULL;
+	static char source_label[sizeof(ds->dq_label)] = "source";
 	dispatch_kevent_t dk = NULL;
 
 	// input validation
@@ -1139,7 +1140,7 @@ dispatch_source_create(dispatch_source_type_t type,
 
 	// Initialize as a queue first, then override some settings below.
 	_dispatch_queue_init((dispatch_queue_t)ds);
-	strlcpy(ds->dq_label, "source", sizeof(ds->dq_label));
+	memcpy(ds->dq_label, source_label, sizeof(source_label));
 
 	// Dispatch Object
 	ds->do_vtable = &_dispatch_source_kevent_vtable;
