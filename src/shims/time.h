@@ -27,13 +27,56 @@
 #ifndef __DISPATCH_SHIMS_TIME__
 #define __DISPATCH_SHIMS_TIME__
 
+#ifndef __DISPATCH_INDIRECT__
+#error "Please #include <dispatch/dispatch.h> instead of this file directly."
+#endif
+
 #if defined(__i386__) || defined(__x86_64__) || !defined(HAVE_MACH_ABSOLUTE_TIME)
 // these architectures always return mach_absolute_time() in nanoseconds
-#define _dispatch_convert_mach2nano(x) (x)
-#define _dispatch_convert_nano2mach(x) (x)
+#define _dispatch_time_mach2nano(x) (x)
+#define _dispatch_time_nano2mach(x) (x)
 #else
-extern uint64_t _dispatch_convert_mach2nano(uint64_t val);
-extern uint64_t _dispatch_convert_nano2mach(uint64_t val);
+typedef struct _dispatch_host_time_data_s {
+	long double frac;
+	bool ratio_1_to_1;
+	dispatch_once_t pred;
+} _dispatch_host_time_data_s;
+__private_extern__ _dispatch_host_time_data_s _dispatch_host_time_data;
+__private_extern__ void _dispatch_get_host_time_init(void *context);
+
+static inline uint64_t
+_dispatch_time_mach2nano(uint64_t machtime)
+{
+	_dispatch_host_time_data_s *const data = &_dispatch_host_time_data;
+	dispatch_once_f(&data->pred, NULL, _dispatch_get_host_time_init);
+
+	return machtime * data->frac;
+}
+
+static inline int64_t
+_dispatch_time_nano2mach(int64_t nsec)
+{
+	_dispatch_host_time_data_s *const data = &_dispatch_host_time_data;
+	dispatch_once_f(&data->pred, NULL, _dispatch_get_host_time_init);
+
+	if (slowpath(_dispatch_host_time_data.ratio_1_to_1)) {
+		return nsec;
+	}
+
+	long double big_tmp = nsec;
+
+	// Divide by tbi.numer/tbi.denom to convert nsec to Mach absolute time
+	big_tmp /= data->frac;
+
+	// Clamp to a 64bit signed int
+	if (slowpath(big_tmp > INT64_MAX)) {
+		return INT64_MAX;
+	}
+	if (slowpath(big_tmp < INT64_MIN)) {
+		return INT64_MIN;
+	}
+	return big_tmp;
+}
 #endif
 
 static inline uint64_t

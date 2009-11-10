@@ -18,50 +18,19 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
+#include "internal.h"
+
 // for architectures that don't always return mach_absolute_time() in nanoseconds
-#if !defined(__i386__) && !defined(__x86_64__) && defined(HAVE_MACH_ABSOLUTE_TIME)
-static mach_timebase_info_data_t tbi;
-static dispatch_once_t tbi_pred;
+#if !(defined(__i386__) || defined(__x86_64__) || !defined(HAVE_MACH_ABSOLUTE_TIME))
+_dispatch_host_time_data_s _dispatch_host_time_data;
 
-static void
-_dispatch_convert_init(void *context __attribute__((unused)))
+void
+_dispatch_get_host_time_init(void *context __attribute__((unused)))
 {
-        dispatch_assume_zero(mach_timebase_info(&tbi));
-}
-
-uint64_t
-_dispatch_convert_mach2nano(uint64_t val)
-{
-#ifdef __LP64__
-        __uint128_t tmp;
-#else
-        long double tmp;
-#endif
-
-        dispatch_once_f(&tbi_pred, NULL, _dispatch_convert_init);
-
-        tmp = val;
-        tmp *= tbi.numer;
-        tmp /= tbi.denom;
-
-        return tmp;
-}
-
-uint64_t
-_dispatch_convert_nano2mach(uint64_t val)
-{
-#ifdef __LP64__
-        __uint128_t tmp;
-#else
-        long double tmp;
-#endif
-
-        dispatch_once_f(&tbi_pred, NULL, _dispatch_convert_init);
-
-        tmp = val;
-        tmp *= tbi.denom;
-        tmp /= tbi.numer;
-
-        return tmp;
+	mach_timebase_info_data_t tbi;
+	(void)dispatch_assume_zero(mach_timebase_info(&tbi));
+	_dispatch_host_time_data.frac = tbi.numer;
+	_dispatch_host_time_data.frac /= tbi.denom;
+	_dispatch_host_time_data.ratio_1_to_1 = (tbi.numer == tbi.denom);
 }
 #endif

@@ -58,7 +58,7 @@ collect(void *context __attribute__((unused)))
 	}
 
 	delta = _dispatch_absolute_time() - start;
-	math = delta = _dispatch_convert_mach2nano(delta);
+	math = delta = _dispatch_time_mach2nano(delta);
 	math /= COUNT * COUNT * 2ul + COUNT * 2ul;
 
 	printf("lap: %ld\n", lap_count_down);

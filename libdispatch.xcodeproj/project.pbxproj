@@ -27,6 +27,7 @@
 		96BC39BD0F3EBAB100C59689 /* queue_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 96BC39BC0F3EBAB100C59689 /* queue_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		96C9553B0F3EAEDD000D2CA4 /* once.h in Headers */ = {isa = PBXBuildFile; fileRef = 96C9553A0F3EAEDD000D2CA4 /* once.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		96DF70BE0F38FE3C0074BD99 /* once.c in Sources */ = {isa = PBXBuildFile; fileRef = 96DF70BD0F38FE3C0074BD99 /* once.c */; };
+		E4BF990110A89607007655D0 /* time.c in Sources */ = {isa = PBXBuildFile; fileRef = E4BF990010A89607007655D0 /* time.c */; };
 		FC0B34790FA2851C0080FFA0 /* source_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = FC0B34780FA2851C0080FFA0 /* source_internal.h */; };
 		FC18329F109923A7003403D5 /* mach.c in Sources */ = {isa = PBXBuildFile; fileRef = FC18329E109923A7003403D5 /* mach.c */; };
 		FC1832A6109923C7003403D5 /* perfmon.h in Headers */ = {isa = PBXBuildFile; fileRef = FC1832A2109923C7003403D5 /* perfmon.h */; };
@@ -74,6 +75,7 @@
 		96C9553A0F3EAEDD000D2CA4 /* once.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = once.h; path = dispatch/once.h; sourceTree = "<group>"; };
 		96DF70BD0F38FE3C0074BD99 /* once.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = once.c; path = src/once.c; sourceTree = "<group>"; };
 		D2AAC046055464E500DB518D /* libdispatch.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libdispatch.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		E4BF990010A89607007655D0 /* time.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = time.c; path = src/shims/time.c; sourceTree = "<group>"; };
 		FC0B34780FA2851C0080FFA0 /* source_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = source_internal.h; path = src/source_internal.h; sourceTree = "<group>"; };
 		FC18329E109923A7003403D5 /* mach.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = mach.c; path = src/shims/mach.c; sourceTree = "<group>"; };
 		FC1832A2109923C7003403D5 /* perfmon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = perfmon.h; path = src/shims/perfmon.h; sourceTree = "<group>"; };
@@ -172,6 +174,7 @@
 			isa = PBXGroup;
 			children = (
 				FC18329E109923A7003403D5 /* mach.c */,
+				E4BF990010A89607007655D0 /* time.c */,
 			);
 			name = shims;
 			sourceTree = "<group>";
@@ -382,6 +385,7 @@
 				96A8AA870F41E7A400CD570B /* source.c in Sources */,
 				96032E4B0F5CC8C700241C5F /* time.c in Sources */,
 				FC18329F109923A7003403D5 /* mach.c in Sources */,
+				E4BF990110A89607007655D0 /* time.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

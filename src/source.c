@@ -1511,7 +1511,7 @@ _dispatch_get_next_timer_fire(struct timespec *howsoon)
 		// verified that the target is greater than now.
 		delta_tmp = ds->ds_timer.target - now;
 		if (!(ds->ds_timer.flags & DISPATCH_TIMER_WALL_CLOCK)) {
-			delta_tmp = _dispatch_convert_mach2nano(delta_tmp);
+			delta_tmp = _dispatch_time_mach2nano(delta_tmp);
 		}
 		if (delta_tmp < delta) {
 			delta = delta_tmp;
@@ -1572,6 +1572,9 @@ dispatch_source_set_timer(dispatch_source_t ds,
 	} else if (start == DISPATCH_TIME_FOREVER) {
 		start = INT64_MAX;
 	}
+	if ((int64_t)leeway < 0) {
+		leeway = INT64_MAX;
+	}
 
 	while (!(params = malloc(sizeof(struct dispatch_set_timer_params)))) {
 		sleep(1);
@@ -1593,8 +1596,8 @@ dispatch_source_set_timer(dispatch_source_t ds,
 		params->ident = DISPATCH_TIMER_INDEX_MACH;
 		params->values.start = start;
 		params->values.target = start;
-		params->values.interval = _dispatch_convert_nano2mach(interval);
-		params->values.leeway = _dispatch_convert_nano2mach(leeway);
+		params->values.interval = _dispatch_time_nano2mach(interval);
+		params->values.leeway = _dispatch_time_nano2mach(leeway);
 		params->values.flags &= ~DISPATCH_TIMER_WALL_CLOCK;
 	}
 
@@ -1633,7 +1636,7 @@ dispatch_event_get_nanoseconds(dispatch_source_t ds)
 	if (ds->ds_timer.flags & DISPATCH_TIMER_WALL_CLOCK) {
 		return ds->ds_timer.interval;
 	} else {
-		return _dispatch_convert_mach2nano(ds->ds_timer.interval);
+		return _dispatch_time_mach2nano(ds->ds_timer.interval);
 	}
 }
 #endif /* DISPATCH_NO_LEGACY */
