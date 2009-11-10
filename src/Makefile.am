@@ -36,14 +36,16 @@ libdispatch_la_DEPENDENCIES=libshims.la
 
 if USE_MIG
 libdispatch_la_SOURCES+=	\
+	protocolUser.c		\
 	protocolServer.c
 BUILT_SOURCES=			\
 	protocol.h		\
+	protocolUser.c		\
 	protocolServer.c	\
 	protocolServer.h
 CLEANFILES=$BUILT_SOURCES
 
-protocol.h protocolServer.h protocolServer.c: protocol.defs
-	$(MIG) -user /dev/null -header protocol.h -server protocolServer.c \
-	    -sheader protocolServer.h protocol.defs
+protocol.h protocolUser.c protocolServer.h protocolServer.c: protocol.defs
+	$(MIG) -user protocolUser.c -header protocol.h \
+	    -server protocolServer.c -sheader protocolServer.h protocol.defs
 endif
