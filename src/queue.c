@@ -1706,7 +1706,7 @@ _dispatch_bug_init(void *context __attribute__((unused)))
 
 	sysctl(mib, 2, _dispatch_build, &bufsz, NULL, 0);
 #else
-	bzero(_dispatch_build, sizeof(_dispatch_build));
+	memset(_dispatch_build, 0, sizeof(_dispatch_build));
 #endif
 }
 
