@@ -184,7 +184,7 @@ AC_CHECK_DECLS([EVFILT_SESSION, NOTE_NONE, NOTE_REAP, NOTE_SIGNAL], [], [],
 AC_CHECK_DECLS([FD_COPY], [], [], [[#include <sys/select.h>]])
 AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])
 AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK], [], [], [[#include <sys/mount.h>]])
-AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone])
+AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sysconf])
 
 AC_CHECK_DECLS([POSIX_SPAWN_START_SUSPENDED],
   [have_posix_spawn_start_suspended=true],
