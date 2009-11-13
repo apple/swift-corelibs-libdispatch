@@ -14,6 +14,7 @@ libdispatch_la_SOURCES=	\
 	queue_kevent.c	\
 	semaphore.c	\
 	source.c	\
+	source_kevent.c	\
 	time.c
 
 libshims_la_SOURCES=	\

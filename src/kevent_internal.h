@@ -29,6 +29,19 @@
 
 #include <internal.h>
 
+struct dispatch_kevent_s {
+	TAILQ_ENTRY(dispatch_kevent_s) dk_list;
+	TAILQ_HEAD(, dispatch_source_s) dk_sources;
+	struct kevent dk_kevent;
+};
+
+#define DISPATCH_EVFILT_TIMER	(-EVFILT_SYSCOUNT - 1)
+#define DISPATCH_EVFILT_CUSTOM_ADD	(-EVFILT_SYSCOUNT - 2)
+#define DISPATCH_EVFILT_CUSTOM_OR	(-EVFILT_SYSCOUNT - 3)
+#define DISPATCH_EVFILT_SYSCOUNT	(EVFILT_SYSCOUNT + 3)
+
+extern const struct dispatch_source_vtable_s _dispatch_source_kevent_vtable;
+
 #if DISPATCH_DEBUG
 void dispatch_debug_kevents(struct kevent* kev, size_t count, const char* str);
 #else
@@ -37,5 +50,6 @@ void dispatch_debug_kevents(struct kevent* kev, size_t count, const char* str);
 
 void _dispatch_source_drain_kevent(struct kevent *);
 void _dispatch_update_kq(const struct kevent *);
+
 
 #endif /* __DISPATCH_KEVENT_INTERNAL__ */
