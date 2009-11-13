@@ -109,7 +109,7 @@ enum {
 	DISPATCH_PROC_REAP = 0x10000000,
 };
 
-__BEGIN_DECLS
+__DISPATCH_BEGIN_DECLS
 
 #if HAVE_MACH
 /*!
@@ -126,6 +126,6 @@ mach_msg_return_t
 dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz, dispatch_mig_callback_t callback);
 #endif
 
-__END_DECLS
+__DISPATCH_END_DECLS
 
 #endif

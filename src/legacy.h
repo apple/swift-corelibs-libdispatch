@@ -93,7 +93,7 @@ typedef void (^dispatch_queue_finalizer_t)(dispatch_queue_t queue);
 
 typedef void (*dispatch_queue_finalizer_function_t)(void *, dispatch_queue_t);
 
-__BEGIN_DECLS
+__DISPATCH_BEGIN_DECLS
 
 /*!
  * @function dispatch_queue_attr_create
@@ -759,6 +759,6 @@ new_callback(mach_msg_header_t *msg, mach_msg_header_t *reply) \
 
 #endif /* HAVE_MACH */
 
-__END_DECLS
+__DISPATCH_END_DECLS
 
 #endif

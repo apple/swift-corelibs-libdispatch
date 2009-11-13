@@ -26,7 +26,7 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
-__BEGIN_DECLS
+__DISPATCH_BEGIN_DECLS
 
 /*!
  * @typedef dispatch_once_t
@@ -72,6 +72,6 @@ dispatch_once_f(dispatch_once_t *predicate, void *context, void (*function)(void
 #define dispatch_once_f(x, y, z) do { if (__builtin_expect(*(x), ~0l) != ~0l) dispatch_once_f((x), (y), (z)); } while (0)
 #endif
 
-__END_DECLS
+__DISPATCH_END_DECLS
 
 #endif

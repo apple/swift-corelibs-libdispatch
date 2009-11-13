@@ -111,7 +111,7 @@ DISPATCH_DECL(dispatch_queue_attr);
 typedef void (^dispatch_block_t)(void);
 #endif
 
-__BEGIN_DECLS
+__DISPATCH_BEGIN_DECLS
 
 /*!
  * @function dispatch_async
@@ -563,6 +563,6 @@ dispatch_after_f(dispatch_time_t when,
 	void *context,
 	dispatch_function_t work);
 
-__END_DECLS
+__DISPATCH_END_DECLS
 
 #endif

@@ -32,7 +32,7 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
-__BEGIN_DECLS
+__DISPATCH_BEGIN_DECLS
 
 
 /*!
@@ -117,6 +117,6 @@ extern const struct dispatch_queue_offsets_s {
 } dispatch_queue_offsets;
 
 
-__END_DECLS
+__DISPATCH_END_DECLS
 
 #endif

@@ -33,7 +33,7 @@
  */
 DISPATCH_DECL(dispatch_group);
 
-__BEGIN_DECLS
+__DISPATCH_BEGIN_DECLS
 
 /*!
  * @function dispatch_group_create
@@ -268,6 +268,6 @@ DISPATCH_EXPORT DISPATCH_NOTHROW DISPATCH_NONNULL_ALL
 void
 dispatch_group_leave(dispatch_group_t group);
 
-__END_DECLS
+__DISPATCH_END_DECLS
 
 #endif

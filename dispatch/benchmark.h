@@ -32,7 +32,7 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
-__BEGIN_DECLS
+__DISPATCH_BEGIN_DECLS
 
 /*!
  * @function dispatch_benchmark
@@ -78,6 +78,6 @@ DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_NOTHROW
 uint64_t
 dispatch_benchmark_f(size_t count, void *ctxt, void (*func)(void *));
 
-__END_DECLS
+__DISPATCH_END_DECLS
 
 #endif

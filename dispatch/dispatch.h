@@ -25,11 +25,18 @@
 #include <Availability.h>
 #include <TargetConditionals.h>
 #endif
-#include <sys/cdefs.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
+
+#if defined(__cplusplus)
+#define __DISPATCH_BEGIN_DECLS	extern "C" {
+#define __DISPATCH_END_DECLS	}
+#else 
+#define __DISPATCH_BEGIN_DECLS
+#define __DISPATCH_END_DECLS
+#endif
 
 #ifndef __OSX_AVAILABLE_STARTING
 #define	__OSX_AVAILABLE_STARTING(x, y)

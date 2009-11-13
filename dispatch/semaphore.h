@@ -34,7 +34,7 @@
  */
 DISPATCH_DECL(dispatch_semaphore);
 
-__BEGIN_DECLS
+__DISPATCH_BEGIN_DECLS
 
 /*!
  * @function dispatch_semaphore_create
@@ -107,6 +107,6 @@ DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 long
 dispatch_semaphore_signal(dispatch_semaphore_t dsema);
 
-__END_DECLS
+__DISPATCH_END_DECLS
 
 #endif /* __DISPATCH_SEMAPHORE__ */

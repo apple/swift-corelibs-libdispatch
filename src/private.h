@@ -65,7 +65,7 @@
 /* LEGACY: Use DISPATCH_API_VERSION */
 #define LIBDISPATCH_VERSION DISPATCH_API_VERSION
 
-__BEGIN_DECLS
+__DISPATCH_BEGIN_DECLS
 
 DISPATCH_NOTHROW
 void
@@ -120,6 +120,6 @@ void *
 dispatch_mach_msg_get_context(mach_msg_header_t *msg);
 #endif
 
-__END_DECLS
+__DISPATCH_END_DECLS
 
 #endif

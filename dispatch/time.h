@@ -28,7 +28,7 @@
 
 #include <stdint.h>
 
-__BEGIN_DECLS
+__DISPATCH_BEGIN_DECLS
 
 struct timespec;
 
@@ -108,6 +108,6 @@ DISPATCH_EXPORT DISPATCH_NOTHROW
 dispatch_time_t
 dispatch_walltime(const struct timespec *when, int64_t delta);
 
-__END_DECLS
+__DISPATCH_END_DECLS
 
 #endif

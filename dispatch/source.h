@@ -240,7 +240,7 @@ enum {
 	DISPATCH_VNODE_REVOKE = 0x40,
 };
 
-__BEGIN_DECLS
+__DISPATCH_BEGIN_DECLS
 
 /*!
  * @function dispatch_source_create
@@ -580,6 +580,6 @@ dispatch_source_set_timer(dispatch_source_t source,
 	uint64_t interval,
 	uint64_t leeway);
 
-__END_DECLS
+__DISPATCH_END_DECLS
 
 #endif
