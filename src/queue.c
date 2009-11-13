@@ -473,6 +473,13 @@ _dispatch_queue_set_width_init(void)
 	_dispatch_hw_config.cc_max_logical =
 	    _dispatch_hw_config.cc_max_physical =
 	    _dispatch_hw_config.cc_max_active;
+#elif HAVE_SYSCONF && defined(_SC_NPROCESSORS_ONLN)
+	_dispatch_hw_config.cc_max_active = (int)sysconf(_SC_NPROCESSORS_ONLN);
+	if (_dispatch_hw_config.cc_max_active < 0)
+		_dispatch_hw_config.cc_max_active = 1;
+	_dispatch_hw_config.cc_max_logical =
+	    _dispatch_hw_config.cc_max_physical =
+	    _dispatch_hw_config.cc_max_active;
 #else
 #warning "_dispatch_queue_set_width_init: no supported way to query CPU count"
 	_dispatch_hw_config.cc_max_logical =
