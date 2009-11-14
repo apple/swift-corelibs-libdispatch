@@ -54,7 +54,7 @@ install-data-hook:
 	cd $(DESTDIR)$(mandir)/man3 && $(LN_S)				\
 		dispatch_object.3 dispatch_suspend.3
 	cd $(DESTDIR)$(mandir)/man3 && $(LN_S)				\
-		dispatch_object.3 dispacth_resume.3
+		dispatch_object.3 dispatch_resume.3
 	cd $(DESTDIR)$(mandir)/man3 && $(LN_S)				\
 		dispatch_object.3 dispatch_get_context.3
 	cd $(DESTDIR)$(mandir)/man3 && $(LN_S)				\
