@@ -95,6 +95,7 @@ extern struct dispatch_queue_s _dispatch_root_queues[];
 void _dispatch_queue_init(dispatch_queue_t dq);
 void _dispatch_queue_drain(dispatch_queue_t dq);
 void _dispatch_queue_dispose(dispatch_queue_t dq);
+void _dispatch_queue_push_list_slow(dispatch_queue_t dq, struct dispatch_object_s *obj);
 void _dispatch_queue_serial_drain_till_empty(dispatch_queue_t dq);
 void _dispatch_force_cache_cleanup(void);
 
@@ -105,17 +106,14 @@ _dispatch_queue_push_list(dispatch_queue_t dq, dispatch_object_t _head, dispatch
 	struct dispatch_object_s *prev, *head = _head._do, *tail = _tail._do;
 
 	tail->do_next = NULL;
-	_dispatch_retain(dq);
 	prev = fastpath(dispatch_atomic_xchg(&dq->dq_items_tail, tail));
 	if (prev) {
 		// if we crash here with a value less than 0x1000, then we are at a known bug in client code
 		// for example, see _dispatch_queue_dispose or _dispatch_atfork_child
 		prev->do_next = head;
 	} else {
-		dq->dq_items_head = head;
-		_dispatch_wakeup(dq);
+		_dispatch_queue_push_list_slow(dq, head);
 	}
-	_dispatch_release(dq);
 }
 
 #define _dispatch_queue_push(x, y) _dispatch_queue_push_list((x), (y), (y))

@@ -620,6 +620,22 @@ _dispatch_queue_dispose(dispatch_queue_t dq)
 	_dispatch_dispose(dq);
 }
 
+DISPATCH_NOINLINE 
+void
+_dispatch_queue_push_list_slow(dispatch_queue_t dq, struct dispatch_object_s *obj)
+{
+	// The queue must be retained before dq_items_head is written in order
+	// to ensure that the reference is still valid when _dispatch_wakeup is
+	// called. Otherwise, if preempted between the assignment to
+	// dq_items_head and _dispatch_wakeup, the blocks submitted to the
+	// queue may release the last reference to the queue when invoked by
+	// _dispatch_queue_drain. <rdar://problem/6932776>
+	_dispatch_retain(dq);
+	dq->dq_items_head = obj;
+	_dispatch_wakeup(dq);
+	_dispatch_release(dq);
+}
+
 DISPATCH_NOINLINE
 static void
 _dispatch_barrier_async_f_slow(dispatch_queue_t dq, void *context, dispatch_function_t func)
