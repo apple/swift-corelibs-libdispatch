@@ -716,8 +716,9 @@ dispatch_async_f(dispatch_queue_t dq, void *ctxt, dispatch_function_t func)
 }
 
 struct dispatch_barrier_sync_slow2_s {
+	dispatch_queue_t dbss2_dq;
 	dispatch_function_t dbss2_func;
-	dispatch_function_t dbss2_ctxt;
+	dispatch_function_t dbss2_ctxt;	
 	dispatch_semaphore_t dbss2_sema;
 };
 
@@ -726,7 +727,13 @@ _dispatch_barrier_sync_f_slow_invoke(void *ctxt)
 {
 	struct dispatch_barrier_sync_slow2_s *dbss2 = ctxt;
 
-	dbss2->dbss2_func(dbss2->dbss2_ctxt);
+	dispatch_assert(dbss2->dbss2_dq == dispatch_get_current_queue());
+	// ALL blocks on the main queue, must be run on the main thread
+	if (dbss2->dbss2_dq == dispatch_get_main_queue()) {
+		dbss2->dbss2_func(dbss2->dbss2_ctxt);
+	} else {
+		dispatch_suspend(dbss2->dbss2_dq);
+	}
 	dispatch_semaphore_signal(dbss2->dbss2_sema);
 }
 
@@ -734,9 +741,15 @@ DISPATCH_NOINLINE
 static void
 _dispatch_barrier_sync_f_slow(dispatch_queue_t dq, void *ctxt, dispatch_function_t func)
 {
+	
+	// It's preferred to execute synchronous blocks on the current thread
+	// due to thread-local side effects, garbage collection, etc. However,
+	// blocks submitted to the main thread MUST be run on the main thread
+	
 	struct dispatch_barrier_sync_slow2_s dbss2 = {
+		.dbss2_dq = dq,
 		.dbss2_func = func,
-		.dbss2_ctxt = ctxt,
+		.dbss2_ctxt = ctxt,		
 		.dbss2_sema = _dispatch_get_thread_semaphore(),
 	};
 	struct dispatch_barrier_sync_slow_s {
@@ -746,17 +759,17 @@ _dispatch_barrier_sync_f_slow(dispatch_queue_t dq, void *ctxt, dispatch_function
 		.dc_func = _dispatch_barrier_sync_f_slow_invoke,
 		.dc_ctxt = &dbss2,
 	};
-
+	
+	dispatch_queue_t old_dq = _dispatch_thread_getspecific(dispatch_queue_key);
 	_dispatch_queue_push(dq, (void *)&dbss);
+	dispatch_semaphore_wait(dbss2.dbss2_sema, DISPATCH_TIME_FOREVER);
 
-	while (dispatch_semaphore_wait(dbss2.dbss2_sema, dispatch_time(0, 3ull * NSEC_PER_SEC))) {
-		if (DISPATCH_OBJECT_SUSPENDED(dq)) {
-			continue;
-		}
-		if (_dispatch_queue_trylock(dq)) {
-			_dispatch_queue_drain(dq);
-			_dispatch_queue_unlock(dq);
-		}
+	if (dq != dispatch_get_main_queue()) {
+		_dispatch_thread_setspecific(dispatch_queue_key, dq);
+		func(ctxt);
+		_dispatch_workitem_inc();
+		_dispatch_thread_setspecific(dispatch_queue_key, old_dq);
+		dispatch_resume(dq);
 	}
 	_dispatch_put_thread_semaphore(dbss2.dbss2_sema);
 }
@@ -765,6 +778,13 @@ _dispatch_barrier_sync_f_slow(dispatch_queue_t dq, void *ctxt, dispatch_function
 void
 dispatch_barrier_sync(dispatch_queue_t dq, void (^work)(void))
 {
+	// Blocks submitted to the main queue MUST be run on the main thread,
+	// therefore we must Block_copy in order to notify the thread-local
+	// garbage collector that the objects are transferring to the main thread
+	if (dq == dispatch_get_main_queue()) {
+		dispatch_block_t block = Block_copy(work);
+		return dispatch_barrier_sync_f(dq, block, _dispatch_call_block_and_release);
+	}	
 	struct Block_basic *bb = (void *)work;
 
 	dispatch_barrier_sync_f(dq, work, (dispatch_function_t)bb->Block_invoke);
