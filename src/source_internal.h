@@ -103,7 +103,6 @@ dispatch_queue_t _dispatch_source_invoke(dispatch_source_t ds);
 bool _dispatch_source_probe(dispatch_source_t ds);
 void _dispatch_source_dispose(dispatch_source_t ds);
 size_t _dispatch_source_debug(dispatch_source_t ds, char* buf, size_t bufsiz);
-void _dispatch_source_merge_kevent(dispatch_source_t ds, const struct kevent *ke);
 
 void _dispatch_source_kevent_resume(dispatch_source_t ds, uint32_t new_flags, uint32_t del_flags);
 void _dispatch_kevent_merge(dispatch_source_t ds);
@@ -113,7 +112,7 @@ void _dispatch_timer_list_update(dispatch_source_t ds);
 struct dispatch_source_type_s {
         struct kevent ke;
         uint64_t mask;
-        void (*init) (dispatch_source_t ds,
+        bool (*init) (dispatch_source_t ds,
                       dispatch_source_type_t type,
 		      uintptr_t handle,
 		      unsigned long mask,

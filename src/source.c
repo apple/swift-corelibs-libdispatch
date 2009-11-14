@@ -25,8 +25,6 @@
 #endif
 #include <sys/mount.h>
 
-#include "kevent_internal.h"
-
 #ifndef DISPATCH_NO_LEGACY
 struct dispatch_source_attr_vtable_s {
 	DISPATCH_VTABLE_HEADER(dispatch_source_attr_s);
@@ -392,49 +390,18 @@ dispatch_source_create(dispatch_source_type_t type,
 	unsigned long mask,
 	dispatch_queue_t q)
 {
-	const struct kevent *proto_kev = &type->ke;
 	dispatch_source_t ds = NULL;
 	static char source_label[sizeof(ds->dq_label)] = "source";
-	dispatch_kevent_t dk = NULL;
 
 	// input validation
 	if (type == NULL || (mask & ~type->mask)) {
 		goto out_bad;
 	}
 
-	switch (type->ke.filter) {
-	case EVFILT_SIGNAL:
-		if (handle >= NSIG) {
-			goto out_bad;
-		}
-		break;
-	case EVFILT_FS:
-	case DISPATCH_EVFILT_CUSTOM_ADD:
-	case DISPATCH_EVFILT_CUSTOM_OR:
-	case DISPATCH_EVFILT_TIMER:
-		if (handle) {
-			goto out_bad;
-		}
-		break;
-	default:
-		break;
-	}
-	
 	ds = calloc(1ul, sizeof(struct dispatch_source_s));
 	if (slowpath(!ds)) {
 		goto out_bad;
 	}
-	dk = calloc(1ul, sizeof(struct dispatch_kevent_s));
-	if (slowpath(!dk)) {
-		goto out_bad;
-	}
-
-	dk->dk_kevent = *proto_kev;
-	dk->dk_kevent.ident = handle;
-	dk->dk_kevent.flags |= EV_ADD|EV_ENABLE;
-	dk->dk_kevent.fflags |= (uint32_t)mask;
-	dk->dk_kevent.udata = dk;
-	TAILQ_INIT(&dk->dk_sources);
 
 	// Initialize as a queue first, then override some settings below.
 	_dispatch_queue_init((dispatch_queue_t)ds);
@@ -447,22 +414,10 @@ dispatch_source_create(dispatch_source_type_t type,
 	// do_targetq will be retained below, past point of no-return
 	ds->do_targetq = q;
 
-	// Dispatch Source
-	ds->ds_ident_hack = dk->dk_kevent.ident;
-	ds->ds_dkev = dk;
-	ds->ds_pending_data_mask = dk->dk_kevent.fflags;
-	if ((EV_DISPATCH|EV_ONESHOT) & proto_kev->flags) {
-		ds->ds_is_level = true;
-		ds->ds_needs_rearm = true;
-	} else if (!(EV_CLEAR & proto_kev->flags)) {
-		// we cheat and use EV_CLEAR to mean a "flag thingy"
-		ds->ds_is_adder = true;
+	if (slowpath(!type->init(ds, type, handle, mask, q))) {
+		goto out_bad;
 	}
-	
-	// Some sources require special processing
-	if (type->init != NULL) {
-		type->init(ds, type, handle, mask, q);
-	}
+
 	dispatch_assert(!(ds->ds_is_level && ds->ds_is_adder));
 #if DISPATCH_DEBUG
 	dispatch_debug(ds, __FUNCTION__);
@@ -473,7 +428,6 @@ dispatch_source_create(dispatch_source_type_t type,
 	
 out_bad:
 	free(ds);
-	free(dk);
 	return NULL;
 }
 

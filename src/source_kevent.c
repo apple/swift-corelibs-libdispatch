@@ -67,6 +67,7 @@ static struct dispatch_kevent_s _dispatch_kevent_data_add = {
 	.dk_sources = TAILQ_HEAD_INITIALIZER(_dispatch_kevent_data_add.dk_sources),
 };
 
+static void _dispatch_source_merge_kevent(dispatch_source_t ds, const struct kevent *ke);
 static void _dispatch_kevent_resume(dispatch_kevent_t dk, uint32_t new_flags, uint32_t del_flags);
 #if HAVE_MACH
 static void _dispatch_kevent_machport_resume(dispatch_kevent_t dk, uint32_t new_flags, uint32_t del_flags);
@@ -563,11 +564,65 @@ dispatch_source_merge_data(dispatch_source_t ds, unsigned long val)
 	_dispatch_source_merge_kevent(ds, &kev);
 }
 
-static void
+static bool
+dispatch_source_type_kevent_init(dispatch_source_t ds, dispatch_source_type_t type, uintptr_t handle, unsigned long mask, dispatch_queue_t q)
+{
+	const struct kevent *proto_kev = &type->ke;
+	dispatch_kevent_t dk = NULL;
+
+	switch (type->ke.filter) {
+	case EVFILT_SIGNAL:
+		if (handle >= NSIG) {
+			return false;
+		}
+		break;
+	case EVFILT_FS:
+	case DISPATCH_EVFILT_CUSTOM_ADD:
+	case DISPATCH_EVFILT_CUSTOM_OR:
+	case DISPATCH_EVFILT_TIMER:
+		if (handle) {
+			return false;
+		}
+		break;
+	default:
+		break;
+	}
+
+	dk = calloc(1ul, sizeof(struct dispatch_kevent_s));
+	if (slowpath(!dk)) {
+		return false;
+	}
+
+	dk->dk_kevent = *proto_kev;
+	dk->dk_kevent.ident = handle;
+	dk->dk_kevent.flags |= EV_ADD|EV_ENABLE;
+	dk->dk_kevent.fflags |= (uint32_t)mask;
+	dk->dk_kevent.udata = dk;
+	TAILQ_INIT(&dk->dk_sources);
+
+	// Dispatch Source
+	ds->ds_ident_hack = dk->dk_kevent.ident;
+	ds->ds_dkev = dk;
+	ds->ds_pending_data_mask = dk->dk_kevent.fflags;
+	if ((EV_DISPATCH|EV_ONESHOT) & proto_kev->flags) {
+		ds->ds_is_level = true;
+		ds->ds_needs_rearm = true;
+	} else if (!(EV_CLEAR & proto_kev->flags)) {
+		// we cheat and use EV_CLEAR to mean a "flag thingy"
+		ds->ds_is_adder = true;
+	}
+	return true;
+}
+
+static bool
 dispatch_source_type_timer_init(dispatch_source_t ds, dispatch_source_type_t type, uintptr_t handle, unsigned long mask, dispatch_queue_t q)
 {
+	if (!dispatch_source_type_kevent_init(ds, type, handle, mask, q)) {
+		return false;
+	}
 	ds->ds_needs_rearm = true;
 	ds->ds_timer.flags = mask;
+	return true;
 }
 
 const struct dispatch_source_type_s _dispatch_source_type_timer = {
@@ -583,6 +638,7 @@ const struct dispatch_source_type_s _dispatch_source_type_read = {
 		.filter = EVFILT_READ,
 		.flags = EV_DISPATCH,
 	},
+	.init = dispatch_source_type_kevent_init,
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_write = {
@@ -590,6 +646,7 @@ const struct dispatch_source_type_s _dispatch_source_type_write = {
 		.filter = EVFILT_WRITE,
 		.flags = EV_DISPATCH,
 	},
+	.init = dispatch_source_type_kevent_init,
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_proc = {
@@ -605,12 +662,14 @@ const struct dispatch_source_type_s _dispatch_source_type_proc = {
 	    |NOTE_REAP
 #endif
 	    ,
+	.init = dispatch_source_type_kevent_init,
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_signal = {
 	.ke = {
 		.filter = EVFILT_SIGNAL,
 	},
+	.init = dispatch_source_type_kevent_init,
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_vnode = {
@@ -624,6 +683,7 @@ const struct dispatch_source_type_s _dispatch_source_type_vnode = {
 	    |NOTE_NONE
 #endif
 	    ,
+	.init = dispatch_source_type_kevent_init,
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_vfs = {
@@ -640,17 +700,22 @@ const struct dispatch_source_type_s _dispatch_source_type_vfs = {
 	    |VQ_VERYLOWDISK
 #endif
 	    ,
+	.init = dispatch_source_type_kevent_init,
 };
 
 #if HAVE_MACH
 
-static void
+static bool
 dispatch_source_type_mach_send_init(dispatch_source_t ds, dispatch_source_type_t type, uintptr_t handle, unsigned long mask, dispatch_queue_t q)
 {
 	static dispatch_once_t pred;
 
+	if (!dispatch_source_type_kevent_init(ds, type, handle, mask, q)) {
+		return false;
+	}
 	ds->ds_is_level = false;
 	dispatch_once_f(&pred, NULL, _dispatch_mach_notify_source_init);
+	return true;
 }
 
 const struct dispatch_source_type_s _dispatch_source_type_mach_send = {
@@ -663,10 +728,14 @@ const struct dispatch_source_type_s _dispatch_source_type_mach_send = {
 	.init = dispatch_source_type_mach_send_init,
 };
 
-static void
+static bool
 dispatch_source_type_mach_recv_init(dispatch_source_t ds, dispatch_source_type_t type, uintptr_t handle, unsigned long mask, dispatch_queue_t q)
 {
+	if (!dispatch_source_type_kevent_init(ds, type, handle, mask, q)) {
+		return false;
+	}
 	ds->ds_is_level = false;
+	return true;
 }
 
 const struct dispatch_source_type_s _dispatch_source_type_mach_recv = {
@@ -683,6 +752,7 @@ const struct dispatch_source_type_s _dispatch_source_type_data_add = {
 	.ke = {
 		.filter = DISPATCH_EVFILT_CUSTOM_ADD,
 	},
+	.init = dispatch_source_type_kevent_init,
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_data_or = {
@@ -691,6 +761,7 @@ const struct dispatch_source_type_s _dispatch_source_type_data_or = {
 		.flags = EV_CLEAR,
 		.fflags = ~0,
 	},
+	.init = dispatch_source_type_kevent_init,
 };
 
 // Updates the ordered list of timers based on next fire date for changes to ds.
