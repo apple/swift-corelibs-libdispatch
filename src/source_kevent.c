@@ -567,10 +567,10 @@ dispatch_source_merge_data(dispatch_source_t ds, unsigned long val)
 static bool
 dispatch_source_type_kevent_init(dispatch_source_t ds, dispatch_source_type_t type, uintptr_t handle, unsigned long mask, dispatch_queue_t q)
 {
-	const struct kevent *proto_kev = &type->ke;
+	const struct kevent *proto_kev = type->opaque;
 	dispatch_kevent_t dk = NULL;
 
-	switch (type->ke.filter) {
+	switch (proto_kev->filter) {
 	case EVFILT_SIGNAL:
 		if (handle >= NSIG) {
 			return false;
@@ -625,35 +625,43 @@ dispatch_source_type_timer_init(dispatch_source_t ds, dispatch_source_type_t typ
 	return true;
 }
 
+static const struct kevent _dispatch_source_type_timer_ke = {
+	.filter = DISPATCH_EVFILT_TIMER,
+};
+
 const struct dispatch_source_type_s _dispatch_source_type_timer = {
-	.ke = {
-		.filter = DISPATCH_EVFILT_TIMER,
-	},
+	.opaque = (void *)&_dispatch_source_type_timer_ke,
 	.mask = DISPATCH_TIMER_INTERVAL|DISPATCH_TIMER_ONESHOT|DISPATCH_TIMER_ABSOLUTE|DISPATCH_TIMER_WALL_CLOCK,
 	.init = dispatch_source_type_timer_init,
 };
 
+static const struct kevent _dispatch_source_type_read_ke = {
+	.filter = EVFILT_READ,
+	.flags = EV_DISPATCH,
+};
+
 const struct dispatch_source_type_s _dispatch_source_type_read = {
-	.ke = {
-		.filter = EVFILT_READ,
-		.flags = EV_DISPATCH,
-	},
+	.opaque = (void *)&_dispatch_source_type_read_ke,
 	.init = dispatch_source_type_kevent_init,
+};
+
+static const struct kevent _dispatch_source_type_write_ke = {
+	.filter = EVFILT_WRITE,
+	.flags = EV_DISPATCH,
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_write = {
-	.ke = {
-		.filter = EVFILT_WRITE,
-		.flags = EV_DISPATCH,
-	},
+	.opaque = (void *)&_dispatch_source_type_write_ke,
 	.init = dispatch_source_type_kevent_init,
 };
 
+static const struct kevent _dispatch_source_type_proc_ke = {
+	.filter = EVFILT_PROC,
+	.flags = EV_CLEAR,
+};
+
 const struct dispatch_source_type_s _dispatch_source_type_proc = {
-	.ke = {
-		.filter = EVFILT_PROC,
-		.flags = EV_CLEAR,
-	},
+	.opaque = (void *)&_dispatch_source_type_proc_ke,
 	.mask = NOTE_EXIT|NOTE_FORK|NOTE_EXEC
 #if HAVE_DECL_NOTE_SIGNAL
 	    |NOTE_SIGNAL
@@ -665,18 +673,22 @@ const struct dispatch_source_type_s _dispatch_source_type_proc = {
 	.init = dispatch_source_type_kevent_init,
 };
 
+static const struct kevent _dispatch_source_type_signal_ke = {
+	.filter = EVFILT_SIGNAL,
+};
+
 const struct dispatch_source_type_s _dispatch_source_type_signal = {
-	.ke = {
-		.filter = EVFILT_SIGNAL,
-	},
+	.opaque = (void *)&_dispatch_source_type_signal_ke,
 	.init = dispatch_source_type_kevent_init,
 };
 
+static const struct kevent _dispatch_source_type_vnode_ke = {
+	.filter = EVFILT_VNODE,
+	.flags = EV_CLEAR,
+};
+
 const struct dispatch_source_type_s _dispatch_source_type_vnode = {
-	.ke = {
-		.filter = EVFILT_VNODE,
-		.flags = EV_CLEAR,
-	},
+	.opaque = (void *)&_dispatch_source_type_vnode_ke,
 	.mask = NOTE_DELETE|NOTE_WRITE|NOTE_EXTEND|NOTE_ATTRIB|NOTE_LINK|
 	    NOTE_RENAME|NOTE_REVOKE
 #if HAVE_DECL_NOTE_NONE
@@ -686,11 +698,13 @@ const struct dispatch_source_type_s _dispatch_source_type_vnode = {
 	.init = dispatch_source_type_kevent_init,
 };
 
+static const struct kevent _dispatch_source_type_vfs_ke = {
+	.filter = EVFILT_FS,
+	.flags = EV_CLEAR,
+};
+
 const struct dispatch_source_type_s _dispatch_source_type_vfs = {
-	.ke = {
-		.filter = EVFILT_FS,
-		.flags = EV_CLEAR,
-	},
+	.opaque = (void *)&_dispatch_source_type_vfs_ke,
 	.mask = VQ_NOTRESP|VQ_NEEDAUTH|VQ_LOWDISK|VQ_MOUNT|VQ_UNMOUNT|VQ_DEAD|
 	    VQ_ASSIST|VQ_NOTRESPLOCK
 #if HAVE_DECL_VQ_UPDATE
@@ -718,12 +732,14 @@ dispatch_source_type_mach_send_init(dispatch_source_t ds, dispatch_source_type_t
 	return true;
 }
 
+static const struct kevent _dispatch_source_type_mach_send_ke = {
+	.filter = EVFILT_MACHPORT,
+	.flags = EV_DISPATCH,
+	.fflags = DISPATCH_MACHPORT_DEAD,
+};
+
 const struct dispatch_source_type_s _dispatch_source_type_mach_send = {
-	.ke = {
-		.filter = EVFILT_MACHPORT,
-		.flags = EV_DISPATCH,
-		.fflags = DISPATCH_MACHPORT_DEAD,
-	},
+	.opaque = (void *)&_dispatch_source_type_mach_send_ke,
 	.mask = DISPATCH_MACH_SEND_DEAD,
 	.init = dispatch_source_type_mach_send_init,
 };
@@ -738,29 +754,35 @@ dispatch_source_type_mach_recv_init(dispatch_source_t ds, dispatch_source_type_t
 	return true;
 }
 
+static const struct kevent _dispatch_source_type_mach_recv_ke = {
+	.filter = EVFILT_MACHPORT,
+	.flags = EV_DISPATCH,
+	.fflags = DISPATCH_MACHPORT_RECV,
+};
+
 const struct dispatch_source_type_s _dispatch_source_type_mach_recv = {
-	.ke = {
-		.filter = EVFILT_MACHPORT,
-		.flags = EV_DISPATCH,
-		.fflags = DISPATCH_MACHPORT_RECV,
-	},
+	.opaque = (void *)&_dispatch_source_type_mach_recv_ke,
 	.init = dispatch_source_type_mach_recv_init,
 };
 #endif
 
+static const struct kevent _dispatch_source_type_data_add_ke = {
+	.filter = DISPATCH_EVFILT_CUSTOM_ADD,
+};
+
 const struct dispatch_source_type_s _dispatch_source_type_data_add = {
-	.ke = {
-		.filter = DISPATCH_EVFILT_CUSTOM_ADD,
-	},
+	.opaque = (void *)&_dispatch_source_type_data_add_ke,
 	.init = dispatch_source_type_kevent_init,
 };
 
+static const struct kevent _dispatch_source_type_data_or_ke = {
+	.filter = DISPATCH_EVFILT_CUSTOM_OR,
+	.flags = EV_CLEAR,
+	.fflags = ~0,
+};
+
 const struct dispatch_source_type_s _dispatch_source_type_data_or = {
-	.ke = {
-		.filter = DISPATCH_EVFILT_CUSTOM_OR,
-		.flags = EV_CLEAR,
-		.fflags = ~0,
-	},
+	.opaque = (void *)&_dispatch_source_type_data_or_ke,
 	.init = dispatch_source_type_kevent_init,
 };
 

@@ -110,7 +110,7 @@ void _dispatch_kevent_release(dispatch_source_t ds);
 void _dispatch_timer_list_update(dispatch_source_t ds);
 
 struct dispatch_source_type_s {
-        struct kevent ke;
+        void *opaque;
         uint64_t mask;
         bool (*init) (dispatch_source_t ds,
                       dispatch_source_type_t type,
