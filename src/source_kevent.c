@@ -101,6 +101,9 @@ _evfiltstr(short filt)
 #if HAVE_DECL_EVFILT_SESSION
 	_evfilt2(EVFILT_SESSION);
 #endif
+#if HAVE_DECL_EVFILT_LIO
+	_evilt2(EVFILT_LIO);
+#endif
 
 	_evfilt2(DISPATCH_EVFILT_TIMER);
 	_evfilt2(DISPATCH_EVFILT_CUSTOM_ADD);
