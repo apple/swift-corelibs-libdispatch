@@ -115,7 +115,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
+#if HAVE_UNISTD_H
 #include <unistd.h>
+#endif
 
 #define DISPATCH_NOINLINE	__attribute__((noinline))
 
