@@ -143,7 +143,7 @@ AC_SEARCH_LIBS(pthread_create, pthread)
 # Checks for header files.
 #
 AC_HEADER_STDC
-AC_CHECK_HEADERS([TargetConditionals.h pthread_machdep.h pthread_np.h malloc/malloc.h libkern/OSCrossEndian.h libkern/OSAtomic.h])
+AC_CHECK_HEADERS([TargetConditionals.h pthread_machdep.h pthread_np.h malloc/malloc.h libkern/OSCrossEndian.h libkern/OSAtomic.h sys/sysctl.h])
 
 #
 # Core Services is tested in one of the GCD regression tests, so test for its

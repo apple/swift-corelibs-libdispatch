@@ -88,7 +88,9 @@
 #include <sys/mount.h>
 #include <sys/queue.h>
 #include <sys/stat.h>
+#if HAVE_SYS_SYSCTL_H
 #include <sys/sysctl.h>
+#endif
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <netinet/in.h>
