@@ -25,15 +25,15 @@ libdispatch_la_CFLAGS=-Wall
 INCLUDES=-I$(top_builddir) -I$(top_srcdir) \
 	@APPLE_LIBC_SOURCE_PATH@ @APPLE_XNU_SOURCE_PATH@
 
-libdispatch_la_CFLAGS+=$(MARCH_FLAGS) $(CBLOCKS_FLAGS)
+libdispatch_la_CFLAGS+=$(MARCH_FLAGS) $(CBLOCKS_FLAGS) $(KQUEUE_CFLAGS)
 
 if USE_LEGACY_API
 libdispatch_la_SOURCES+=	\
 	legacy.c
 endif
 
-libdispatch_la_LIBADD=libshims.la
-libdispatch_la_DEPENDENCIES=libshims.la
+libdispatch_la_LIBADD=libshims.la $(KQUEUE_LIBS)
+libdispatch_la_DEPENDENCIES=libshims.la $(KQUEUE_LIBS)
 
 if USE_MIG
 libdispatch_la_SOURCES+=	\

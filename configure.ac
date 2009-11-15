@@ -136,8 +136,14 @@ esac
 # Find libraries we will need
 #
 AC_SEARCH_LIBS(clock_gettime, rt)
-AC_SEARCH_LIBS(kqueue, kqueue)
 AC_SEARCH_LIBS(pthread_create, pthread)
+
+#
+# Prefer native kqueue(2); otherwise use libkqueue if present.
+#
+AC_CHECK_HEADER(sys/event.h, [],
+  [PKG_CHECK_MODULES(KQUEUE, libkqueue)]
+)
 
 #
 # Checks for header files.
