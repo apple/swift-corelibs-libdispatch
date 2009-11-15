@@ -16,6 +16,10 @@
    don't. */
 #define HAVE_DECL_CLOCK_UPTIME 0
 
+/* Define to 1 if you have the declaration of `EVFILT_LIO', and to 0 if you
+   don't. */
+#define HAVE_DECL_EVFILT_LIO 0
+
 /* Define to 1 if you have the declaration of `EVFILT_SESSION', and to 0 if
    you don't. */
 #define HAVE_DECL_EVFILT_SESSION 1
@@ -115,11 +119,17 @@
 /* Define to 1 if you have the <string.h> header file. */
 #define HAVE_STRING_H 1
 
+/* Define to 1 if you have the `sysconf' function. */
+#define HAVE_SYSCONF 1
+
 /* Define to 1 if you have the <sys/cdefs.h> header file. */
 #define HAVE_SYS_CDEFS_H 1
 
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #define HAVE_SYS_STAT_H 1
+
+/* Define to 1 if you have the <sys/sysctl.h> header file. */
+#define HAVE_SYS_SYSCTL_H 1
 
 /* Define to 1 if you have the <sys/types.h> header file. */
 #define HAVE_SYS_TYPES_H 1
