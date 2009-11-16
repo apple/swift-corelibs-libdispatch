@@ -33,7 +33,7 @@ libdispatch_la_SOURCES+=	\
 endif
 
 libdispatch_la_LIBADD=libshims.la $(KQUEUE_LIBS)
-libdispatch_la_DEPENDENCIES=libshims.la $(KQUEUE_LIBS)
+libdispatch_la_DEPENDENCIES=libshims.la
 
 if USE_MIG
 libdispatch_la_SOURCES+=	\
