@@ -186,7 +186,8 @@ AC_CHECK_HEADER([pthread_workqueue.h],
 AC_CHECK_DECLS([CLOCK_UPTIME, CLOCK_MONOTONIC, CLOCK_REALTIME], [], [],
   [[#include <time.h>]])
 AC_CHECK_DECLS([EVFILT_LIO, EVFILT_SESSION, NOTE_NONE, NOTE_REAP, NOTE_SIGNAL], [], [],
-  [[#include <sys/event.h>]])
+  [[#include <sys/types.h>
+#include <sys/event.h>]])
 AC_CHECK_DECLS([FD_COPY], [], [], [[#include <sys/select.h>]])
 AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])
 AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK], [], [], [[#include <sys/mount.h>]])
