@@ -102,7 +102,7 @@ _evfiltstr(short filt)
 	_evfilt2(EVFILT_SESSION);
 #endif
 #if HAVE_DECL_EVFILT_LIO
-	_evilt2(EVFILT_LIO);
+	_evfilt2(EVFILT_LIO);
 #endif
 
 	_evfilt2(DISPATCH_EVFILT_TIMER);
