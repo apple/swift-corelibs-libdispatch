@@ -110,6 +110,7 @@ AS_IF([test "x$enable_apple_semaphore_optimizations" = "xyes"],
     [Define to use non-portablesemaphore optimizations for Mac OS X])]
 )
 
+AC_USE_SYSTEM_EXTENSIONS
 AC_PROG_CC
 AC_PROG_CXX
 AC_PROG_INSTALL
