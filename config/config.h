@@ -36,6 +36,10 @@
    don't. */
 #define HAVE_DECL_NOTE_REAP 1
 
+/* Define to 1 if you have the declaration of `NOTE_REVOKE', and to 0 if you
+   don't. */
+#define HAVE_DECL_NOTE_REVOKE 1
+
 /* Define to 1 if you have the declaration of `NOTE_SIGNAL', and to 0 if you
    don't. */
 #define HAVE_DECL_NOTE_SIGNAL 1
@@ -185,6 +189,39 @@
 
 /* Version number of package */
 #define VERSION "1.0"
+
+/* Define to 1 if on AIX 3.
+   System headers sometimes define this.
+   We just want to avoid a redefinition error message.  */
+#ifndef _ALL_SOURCE
+/* # undef _ALL_SOURCE */
+#endif
+
+/* Enable GNU extensions on systems that have them.  */
+#ifndef _GNU_SOURCE
+# define _GNU_SOURCE 1
+#endif
+
+/* Define to 1 if on MINIX. */
+/* #undef _MINIX */
+
+/* Define to 2 if the system does not provide POSIX.1 features except with
+   this defined. */
+/* #undef _POSIX_1_SOURCE */
+
+/* Define to 1 if you need to in order for `stat' and other things to work. */
+/* #undef _POSIX_SOURCE */
+
+/* Enable extensions on Solaris.  */
+#ifndef __EXTENSIONS__
+# define __EXTENSIONS__ 1
+#endif
+#ifndef _POSIX_PTHREAD_SEMANTICS
+# define _POSIX_PTHREAD_SEMANTICS 1
+#endif
+#ifndef _TANDEM_SOURCE
+# define _TANDEM_SOURCE 1
+#endif
 
 /* Define to a replacement for __private_extern */
 /* #undef __private_extern__ */
