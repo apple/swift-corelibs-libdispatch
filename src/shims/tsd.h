@@ -115,6 +115,6 @@ _dispatch_thread_key_create(pthread_key_t *key, void (*destructor)(void *))
 }
 #endif
 
-#define _dispatch_thread_self pthread_self
+#define _dispatch_thread_self (uintptr_t)pthread_self
 
 #endif /* __DISPATCH_SHIMS_TSD__ */
