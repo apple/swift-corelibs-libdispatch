@@ -131,7 +131,7 @@ async_read(object_t obj,
 While
 .Fn dispatch_sync
 can replace a lock, it cannot replace a recursive lock. Unlike locks, queues
-support both asynchronous and synchrnous operations, and those operations are
+support both asynchronous and synchronous operations, and those operations are
 ordered by definition. A recursive call to
 .Fn dispatch_sync
 causes a simple deadlock as the currently executing block waits for the next
