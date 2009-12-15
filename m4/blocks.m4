@@ -36,7 +36,7 @@ AS_IF([test "x$dispatch_cv_cblocks" != "xno"], [
     # should force that linkage already.
     #
     saveCFLAGS="$CFLAGS"
-    CFLAGS="$CFLAGS -fblocks"
+    CFLAGS="$CFLAGS -fblocks -O0"
     AC_MSG_CHECKING([whether additional libraries are required for the Blocks runtime])
     AC_TRY_LINK([], [
 	^{ int j; j=0; }();
@@ -83,7 +83,7 @@ AS_IF([test "x$dispatch_cv_cxxblocks" != "xno"], [
     CXXBLOCKS_FLAGS="$dispatch_cv_cxxblocks"
 
     saveCXXFLAGS="$CXXFLAGS"
-    CXXFLAGS="$CXXFLAGS -fblocks"
+    CXXFLAGS="$CXXFLAGS -fblocks -O0"
     AC_MSG_CHECKING([whether additional libraries are required for the Blocks runtime])
     AC_TRY_LINK([], [
 	^{ int j; j=0; }();
