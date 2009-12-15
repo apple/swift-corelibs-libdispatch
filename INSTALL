@@ -75,7 +75,7 @@ as part of Mac OS X's libSystem:
 	libdispatch contains hand-optimized assembly for use with libdispatch
 	semaphores.
 
-  Generating the Mac OS X Snow Leopard config.h
+  Typical configuration commands
 
 The following command lines create the default config.h required to build
 libdispatch with libSystem in Mac OS X Snow Leopard:
@@ -89,3 +89,8 @@ libdispatch with libSystem in Mac OS X Snow Leopard:
 	    --enable-apple-crashreporter-info \
 	    --enable-apple-tsd-optimizations \
 	    --enable-apple-semaphore-optimizations
+
+Typical configuration line for FreeBSD 8.x and 9.x:
+
+	sh autogen.sh
+	CC=clang ./configure --with-blocks-runtime=/usr/local/lib
