@@ -63,6 +63,9 @@
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #define HAVE_DLFCN_H 1
 
+/* Define to 1 if you have the `getprogname' function. */
+#define HAVE_GETPROGNAME 1
+
 /* Define to 1 if you have the <inttypes.h> header file. */
 #define HAVE_INTTYPES_H 1
 
@@ -95,6 +98,9 @@
 
 /* Define if __private_extern__ present */
 #define HAVE_PRIVATE_EXTERN 1
+
+/* Define to 1 if you have the `program_invocation_short_name' function. */
+/* #undef HAVE_PROGRAM_INVOCATION_SHORT_NAME */
 
 /* Define to 1 if you have the `pthread_key_init_np' function. */
 #define HAVE_PTHREAD_KEY_INIT_NP 1
