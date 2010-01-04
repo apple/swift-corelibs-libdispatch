@@ -205,7 +205,7 @@ a cancellation handler is required for file descriptor and mach port based
 sources in order to safely close the descriptor or destroy the port. Closing the
 descriptor or port before the cancellation handler has run may result in a race
 condition: if a new descriptor is allocated with the same value as the recently
-cosed descriptor while the source's event handler is still running, the event
+closed descriptor while the source's event handler is still running, the event
 handler may read/write data to the wrong descriptor.
 .Pp
 .Sh DISPATCH SOURCE TYPES
