@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2009 Apple Inc. All rights reserved.
+ * Copyright (c) 2009-2010 Mark Heily <mark@heily.com>
+ * All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -25,7 +26,7 @@
 static inline char *
 getprogname(void)
 {
-# if HAVE_PROGRAM_INVOCATION_SHORT_NAME
+# if HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME
     return program_invocation_short_name;
 # else
 #   error getprogname(3) is not available on this platform
