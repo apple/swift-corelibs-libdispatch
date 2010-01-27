@@ -1171,18 +1171,17 @@ _dispatch_root_queues_init(void *context __attribute__((unused)))
 #endif
 
 	for (i = 0; i < DISPATCH_ROOT_QUEUE_COUNT; i++) {
-#if HAVE_PTHREAD_WORKQUEUES
-		r = pthread_workqueue_attr_setqueuepriority_np(&pwq_attr, _dispatch_rootq2wq_pri(i));
-		(void)dispatch_assume_zero(r);
-		r = pthread_workqueue_attr_setovercommit_np(&pwq_attr, i & 1);
-		(void)dispatch_assume_zero(r);
 // some software hangs if the non-overcommitting queues do not overcommit when threads block
 #if 0
 		if (!(i & 1)) {
 			dispatch_root_queue_contexts[i].dgq_thread_pool_size = _dispatch_hw_config.cc_max_active;
 		}
 #endif
-
+#if HAVE_PTHREAD_WORKQUEUES
+		r = pthread_workqueue_attr_setqueuepriority_np(&pwq_attr, _dispatch_rootq2wq_pri(i));
+		(void)dispatch_assume_zero(r);
+		r = pthread_workqueue_attr_setovercommit_np(&pwq_attr, i & 1);
+		(void)dispatch_assume_zero(r);
 		r = 0;
 		if (disable_wq || (r = pthread_workqueue_create_np(&_dispatch_root_queue_contexts[i].dgq_kworkqueue, &pwq_attr))) {
 			if (r != ENOTSUP) {
