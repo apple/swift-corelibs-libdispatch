@@ -87,11 +87,9 @@ dispatch_release(dispatch_object_t dou)
 		return;
 	}
 	if (oldval == 1) {
-#ifndef DISPATCH_NO_LEGACY
 		if (dou._do->do_vtable == (void*)&_dispatch_source_kevent_vtable) {
-			return _dispatch_source_legacy_xref_release(dou._ds);
+			return _dispatch_source_xref_release(dou._ds);
 		}
-#endif
 		if (slowpath(DISPATCH_OBJECT_SUSPENDED(dou._do))) {
 			// Arguments for and against this assert are within 6705399
 			DISPATCH_CLIENT_CRASH("Release of a suspended object");

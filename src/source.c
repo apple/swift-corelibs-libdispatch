@@ -60,25 +60,26 @@ dispatch_source_cancel(dispatch_source_t ds)
 	_dispatch_release(ds);
 }
 
-#ifndef DISPATCH_NO_LEGACY
+DISPATCH_NOINLINE
 void
-_dispatch_source_legacy_xref_release(dispatch_source_t ds)
+_dispatch_source_xref_release(dispatch_source_t ds)
 {
+#ifndef DISPATCH_NO_LEGACY
 	if (ds->ds_is_legacy) {
 		if (!(ds->ds_timer.flags & DISPATCH_TIMER_ONESHOT)) {
 			dispatch_source_cancel(ds);
 		}
-
 		// Clients often leave sources suspended at the last release
 		dispatch_atomic_and(&ds->do_suspend_cnt, DISPATCH_OBJECT_SUSPEND_LOCK);
-	} else if (slowpath(DISPATCH_OBJECT_SUSPENDED(ds))) {
+	} else
+#endif
+	if (slowpath(DISPATCH_OBJECT_SUSPENDED(ds))) {
 		// Arguments for and against this assert are within 6705399
 		DISPATCH_CLIENT_CRASH("Release of a suspended object");
 	}
 	_dispatch_wakeup(ds);
 	_dispatch_release(ds);
 }
-#endif /* DISPATCH_NO_LEGACY */
 
 long
 dispatch_source_testcancel(dispatch_source_t ds)
