@@ -72,7 +72,7 @@ enum {
 	unsigned int do_suspend_cnt;	\
 	struct dispatch_queue_s *do_targetq;	\
 	void *do_ctxt; \
-	void *do_finalizer
+	dispatch_function_t do_finalizer
 
 #define DISPATCH_OBJECT_GLOBAL_REFCNT	(~0u)
 #define DISPATCH_OBJECT_SUSPEND_LOCK		1u	// "word and bit" must be a power of two to be safely subtracted

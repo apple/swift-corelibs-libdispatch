@@ -20,15 +20,14 @@
 
 #include "internal.h"
 
-
 void
-dispatch_debug(dispatch_object_t dou, const char *msg, ...)
+dispatch_debug(dispatch_object_t obj, const char *msg, ...)
 {
 	va_list ap;
 
 	va_start(ap, msg);
 
-	dispatch_debugv(dou._do, msg, ap);
+	dispatch_debugv(obj, msg, ap);
 
 	va_end(ap);
 }
@@ -39,8 +38,10 @@ dispatch_debugv(dispatch_object_t dou, const char *msg, va_list ap)
 	char buf[4096];
 	size_t offs;
 
-	if (dou._do && dou._do->do_vtable->do_debug) {
-		offs = dx_debug(dou._do, buf, sizeof(buf));
+	struct dispatch_object_s *obj = DO_CAST(dou);
+
+	if (obj && obj->do_vtable->do_debug) {
+		offs = dx_debug(obj, buf, sizeof(buf));
 	} else {
 		offs = snprintf(buf, sizeof(buf), "NULL vtable slot");
 	}
@@ -53,10 +54,12 @@ dispatch_debugv(dispatch_object_t dou, const char *msg, va_list ap)
 void
 dispatch_retain(dispatch_object_t dou)
 {
-	if (dou._do->do_xref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) {
+	struct dispatch_object_s *obj = DO_CAST(dou);
+
+	if (obj->do_xref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) {
 		return; // global object
 	}
-	if ((dispatch_atomic_inc(&dou._do->do_xref_cnt) - 1) == 0) {
+	if ((dispatch_atomic_inc(&obj->do_xref_cnt) - 1) == 0) {
 		DISPATCH_CLIENT_CRASH("Resurrection of an object");
 	}
 }
@@ -64,10 +67,12 @@ dispatch_retain(dispatch_object_t dou)
 void
 _dispatch_retain(dispatch_object_t dou)
 {
-	if (dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) {
+	struct dispatch_object_s *obj = DO_CAST(dou);
+
+	if (obj->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) {
 		return; // global object
 	}
-	if ((dispatch_atomic_inc(&dou._do->do_ref_cnt) - 1) == 0) {
+	if ((dispatch_atomic_inc(&obj->do_ref_cnt) - 1) == 0) {
 		DISPATCH_CLIENT_CRASH("Resurrection of an object");
 	}
 }
@@ -75,26 +80,28 @@ _dispatch_retain(dispatch_object_t dou)
 void
 dispatch_release(dispatch_object_t dou)
 {
-	typeof(dou._do->do_xref_cnt) oldval;
+	struct dispatch_object_s *obj = DO_CAST(dou);
 
-	if (dou._do->do_xref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) {
+	unsigned int oldval;
+
+	if (obj->do_xref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) {
 		return;
 	}
 
-	oldval = dispatch_atomic_dec(&dou._do->do_xref_cnt) + 1;
+	oldval = dispatch_atomic_dec(&obj->do_xref_cnt) + 1;
 	
 	if (fastpath(oldval > 1)) {
 		return;
 	}
 	if (oldval == 1) {
-		if (dou._do->do_vtable == (void*)&_dispatch_source_kevent_vtable) {
-			return _dispatch_source_xref_release(dou._ds);
+		if ((uintptr_t)obj->do_vtable == (uintptr_t)&_dispatch_source_kevent_vtable) {
+			return _dispatch_source_xref_release((dispatch_source_t)obj);
 		}
-		if (slowpath(DISPATCH_OBJECT_SUSPENDED(dou._do))) {
+		if (slowpath(DISPATCH_OBJECT_SUSPENDED(obj))) {
 			// Arguments for and against this assert are within 6705399
 			DISPATCH_CLIENT_CRASH("Release of a suspended object");
 		}
-		return _dispatch_release(dou._do);
+		return _dispatch_release(obj);
 	}
 	DISPATCH_CLIENT_CRASH("Over-release of an object");
 }
@@ -102,13 +109,15 @@ dispatch_release(dispatch_object_t dou)
 void
 _dispatch_dispose(dispatch_object_t dou)
 {
-	dispatch_queue_t tq = dou._do->do_targetq;
-	dispatch_function_t func = dou._do->do_finalizer;
-	void *ctxt = dou._do->do_ctxt;
+	struct dispatch_object_s *obj = DO_CAST(dou);
 
-	dou._do->do_vtable = (void *)0x200;
+	dispatch_queue_t tq = obj->do_targetq;
+	dispatch_function_t func = obj->do_finalizer;
+	void *ctxt = obj->do_ctxt;
 
-	free(dou._do);
+	obj->do_vtable = (struct dispatch_object_vtable_s *)0x200;
+
+	free(obj);
 
 	if (func && ctxt) {
 		dispatch_async_f(tq, ctxt, func);
@@ -119,26 +128,28 @@ _dispatch_dispose(dispatch_object_t dou)
 void
 _dispatch_release(dispatch_object_t dou)
 {
-	typeof(dou._do->do_ref_cnt) oldval;
+	struct dispatch_object_s *obj = DO_CAST(dou);
 
-	if (dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) {
+	unsigned int oldval;
+
+	if (obj->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) {
 		return; // global object
 	}
 
-	oldval = dispatch_atomic_dec(&dou._do->do_ref_cnt) + 1;
+	oldval = dispatch_atomic_dec(&obj->do_ref_cnt) + 1;
 	
 	if (fastpath(oldval > 1)) {
 		return;
 	}
 	if (oldval == 1) {
-		if (dou._do->do_next != DISPATCH_OBJECT_LISTLESS) {
+		if (obj->do_next != DISPATCH_OBJECT_LISTLESS) {
 			DISPATCH_CRASH("release while enqueued");
 		}
-		if (dou._do->do_xref_cnt) {
+		if (obj->do_xref_cnt) {
 			DISPATCH_CRASH("release while external references exist");
 		}
 
-		return dx_dispose(dou._do);
+		return dx_dispose(obj);
 	}
 	DISPATCH_CRASH("over-release");
 }
@@ -146,42 +157,61 @@ _dispatch_release(dispatch_object_t dou)
 void *
 dispatch_get_context(dispatch_object_t dou)
 {
-	return dou._do->do_ctxt;
+	struct dispatch_object_s *obj = DO_CAST(dou);
+
+	return obj->do_ctxt;
 }
 
 void
 dispatch_set_context(dispatch_object_t dou, void *context)
 {
-	if (dou._do->do_ref_cnt != DISPATCH_OBJECT_GLOBAL_REFCNT) {
-		dou._do->do_ctxt = context;
+	struct dispatch_object_s *obj = DO_CAST(dou);
+
+	if (obj->do_ref_cnt != DISPATCH_OBJECT_GLOBAL_REFCNT) {
+		obj->do_ctxt = context;
 	}
 }
 
 void
 dispatch_set_finalizer_f(dispatch_object_t dou, dispatch_function_t finalizer)
 {
-	dou._do->do_finalizer = finalizer;
+	struct dispatch_object_s *obj = DO_CAST(dou);
+
+	obj->do_finalizer = finalizer;
 }
 
 void
 dispatch_suspend(dispatch_object_t dou)
 {
-	if (slowpath(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT)) {
+	struct dispatch_object_s *obj = DO_CAST(dou);
+
+	if (slowpath(obj->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT)) {
 		return;
 	}
-	dispatch_atomic_add(&dou._do->do_suspend_cnt, DISPATCH_OBJECT_SUSPEND_INTERVAL);
+	(void)dispatch_atomic_add(&obj->do_suspend_cnt, DISPATCH_OBJECT_SUSPEND_INTERVAL);
 }
 
 void
 dispatch_resume(dispatch_object_t dou)
 {
-	if (slowpath(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT)) {
+	struct dispatch_object_s *obj = DO_CAST(dou);
+
+	// Global objects cannot be suspended or resumed. This also has the
+	// side effect of saturating the suspend count of an object and
+	// guarding against resuming due to overflow.
+	if (slowpath(obj->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT)) {
 		return;
 	}
-	switch (dispatch_atomic_sub(&dou._do->do_suspend_cnt, DISPATCH_OBJECT_SUSPEND_INTERVAL) + DISPATCH_OBJECT_SUSPEND_INTERVAL) {
+
+	// Switch on the previous value of the suspend count.  If the previous
+	// value was a single suspend interval, the object should be resumed.
+	// If the previous value was less than the suspend interval, the object
+	// has been over-resumed.
+	switch (dispatch_atomic_sub(&obj->do_suspend_cnt, DISPATCH_OBJECT_SUSPEND_INTERVAL) + DISPATCH_OBJECT_SUSPEND_INTERVAL) {
 	case DISPATCH_OBJECT_SUSPEND_INTERVAL:
-		_dispatch_wakeup(dou._do);
+		_dispatch_wakeup(obj);
 		break;
+	case DISPATCH_OBJECT_SUSPEND_LOCK:
 	case 0:
 		DISPATCH_CLIENT_CRASH("Over-resume of an object");
 		break;
@@ -193,6 +223,8 @@ dispatch_resume(dispatch_object_t dou)
 size_t
 dispatch_object_debug_attr(dispatch_object_t dou, char* buf, size_t bufsiz)
 {
+	struct dispatch_object_s *obj = DO_CAST(dou);
+
 	return snprintf(buf, bufsiz, "refcnt = 0x%x, suspend_cnt = 0x%x, ",
-					dou._do->do_ref_cnt, dou._do->do_suspend_cnt);
+					obj->do_ref_cnt, obj->do_suspend_cnt);
 }

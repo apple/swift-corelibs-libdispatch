@@ -137,8 +137,13 @@
 #define NSEC_PER_USEC 1000ull
 
 /* I wish we had __builtin_expect_range() */
+#if __GNUC__
 #define fastpath(x)	((typeof(x))__builtin_expect((long)(x), ~0l))
 #define slowpath(x)	((typeof(x))__builtin_expect((long)(x), 0l))
+#else
+#define fastpath(x) (x)
+#define slowpath(x) (x)
+#endif
 
 void _dispatch_bug(size_t line, long val) __attribute__((__noinline__));
 void _dispatch_abort(size_t line, long val) __attribute__((__noinline__,__noreturn__));
@@ -215,7 +220,11 @@ void _dispatch_logv(const char *msg, va_list) __attribute__((__noinline__,__form
 		}	\
 	} while (0)
 
-
+#if __GNUC__
+#define DO_CAST(x) ((struct dispatch_object_s *)(x)._do)
+#else
+#define DO_CAST(x) ((struct dispatch_object_s *)(x))
+#endif
 
 #ifdef __BLOCKS__
 dispatch_block_t _dispatch_Block_copy(dispatch_block_t block);
