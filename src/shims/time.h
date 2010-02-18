@@ -50,7 +50,7 @@ _dispatch_time_mach2nano(uint64_t machtime)
 	_dispatch_host_time_data_s *const data = &_dispatch_host_time_data;
 	dispatch_once_f(&data->pred, NULL, _dispatch_get_host_time_init);
 
-	return machtime * data->frac;
+	return (uint64_t)(machtime * data->frac);
 }
 
 static inline int64_t
@@ -63,7 +63,7 @@ _dispatch_time_nano2mach(int64_t nsec)
 		return nsec;
 	}
 
-	long double big_tmp = nsec;
+	long double big_tmp = (long double)nsec;
 
 	// Divide by tbi.numer/tbi.denom to convert nsec to Mach absolute time
 	big_tmp /= data->frac;
@@ -75,14 +75,16 @@ _dispatch_time_nano2mach(int64_t nsec)
 	if (slowpath(big_tmp < INT64_MIN)) {
 		return INT64_MIN;
 	}
-	return big_tmp;
+	return (int64_t)big_tmp;
 }
 #endif
 
 static inline uint64_t
 _dispatch_absolute_time(void)
 {
-#ifndef HAVE_MACH_ABSOLUTE_TIME
+#if HAVE_MACH_ABSOLUTE_TIME
+	return mach_absolute_time();
+#else
 	struct timespec ts;
 	int ret;
 
@@ -97,8 +99,6 @@ _dispatch_absolute_time(void)
 
 	/* XXXRW: Some kind of overflow detection needed? */
 	return (ts.tv_sec * NSEC_PER_SEC + ts.tv_nsec);
-#else
-	return mach_absolute_time();
 #endif
 }
 

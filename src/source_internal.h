@@ -147,7 +147,7 @@ extern const struct dispatch_source_type_s _dispatch_source_type_signal;
 extern const struct dispatch_source_type_s _dispatch_source_type_vnode;
 extern const struct dispatch_source_type_s _dispatch_source_type_vfs;
 
-#ifdef HAVE_MACH
+#if HAVE_MACH
 extern const struct dispatch_source_type_s _dispatch_source_type_mach_send;
 extern const struct dispatch_source_type_s _dispatch_source_type_mach_recv;
 #endif
