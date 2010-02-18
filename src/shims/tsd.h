@@ -35,13 +35,13 @@ static const unsigned long dispatch_bcounter_key = __PTK_LIBDISPATCH_KEY3;
 //__PTK_LIBDISPATCH_KEY4
 //__PTK_LIBDISPATCH_KEY5
 #else
-pthread_key_t dispatch_queue_key;
-pthread_key_t dispatch_sema4_key;
-pthread_key_t dispatch_cache_key;
-pthread_key_t dispatch_bcounter_key;
+extern pthread_key_t dispatch_queue_key;
+extern pthread_key_t dispatch_sema4_key;
+extern pthread_key_t dispatch_cache_key;
+extern pthread_key_t dispatch_bcounter_key;
 #endif
 
-#ifdef USE_APPLE_TSD_OPTIMIZATIONS
+#if USE_APPLE_TSD_OPTIMIZATIONS
 #define SIMULATE_5491082 1
 #ifndef _PTHREAD_TSD_OFFSET
 #define _PTHREAD_TSD_OFFSET 0
