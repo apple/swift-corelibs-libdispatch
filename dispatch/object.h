@@ -41,12 +41,12 @@ __DISPATCH_BEGIN_DECLS
  * The message to log above and beyond the introspection.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW __attribute__((__format__(printf,2,3)))
+DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW DISPATCH_FORMAT(printf,2,3)
 void
 dispatch_debug(dispatch_object_t object, const char *message, ...);
 
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW __attribute__((__format__(printf,2,0)))
+DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW DISPATCH_FORMAT(printf,2,0)
 void
 dispatch_debugv(dispatch_object_t object, const char *message, va_list ap);
 

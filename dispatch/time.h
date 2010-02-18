@@ -42,7 +42,11 @@ struct timespec;
 #ifdef NSEC_PER_USEC
 #undef NSEC_PER_USEC
 #endif
+#ifdef NSEC_PER_MSEC
+#undef NSEC_PER_MSEC
+#endif
 #define NSEC_PER_SEC 1000000000ull
+#define NSEC_PER_MSEC 1000000ull
 #define USEC_PER_SEC 1000000ull
 #define NSEC_PER_USEC 1000ull
 

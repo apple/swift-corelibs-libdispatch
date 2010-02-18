@@ -346,7 +346,7 @@ dispatch_get_current_queue(void);
  * the main thread before main() is called.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
-extern struct dispatch_queue_s _dispatch_main_q;
+DISPATCH_EXPORT struct dispatch_queue_s _dispatch_main_q;
 #define dispatch_get_main_queue() (&_dispatch_main_q)
 
 /*!

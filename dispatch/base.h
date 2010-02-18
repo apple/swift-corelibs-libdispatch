@@ -79,6 +79,7 @@ typedef void (*dispatch_function_t)(void *);
 #define DISPATCH_PURE __attribute__((__pure__))
 #define DISPATCH_WARN_RESULT __attribute__((__warn_unused_result__))
 #define DISPATCH_MALLOC __attribute__((__malloc__))
+#define DISPATCH_FORMAT(...) __attribute__((__format__(__VA_ARGS__)))
 #else
 /*! @parseOnly */
 #define DISPATCH_NORETURN
@@ -108,6 +109,8 @@ typedef void (*dispatch_function_t)(void *);
 #define DISPATCH_WARN_RESULT
 /*! @parseOnly */
 #define DISPATCH_MALLOC
+/*! @parseOnly */
+#define DISPATCH_FORMAT(...)
 #endif
 
 #if __GNUC__
