@@ -79,15 +79,17 @@ released. The result of releasing all references to a dispatch object while in
 a suspended state is undefined.
 .Sh CONTEXT POINTERS
 Dispatch queues and sources support supplemental context pointers. The value of
-the context point may be retrieved and updated with
+the context pointer may be retrieved and updated with
 .Fn dispatch_get_context
 and
 .Fn dispatch_set_context
 respectively.
 The
 .Fn dispatch_set_finalizer_f
-specifies an optional per-object finalizer function to that is invoked
-asynchronously when the last reference to the object is released. This gives the
+specifies an optional per-object finalizer function that is invoked
+asynchronously if the context pointer is not NULL when the last
+reference to the object is released.
+This gives the
 application an opportunity to free the context data associated with the object.
 .Pp
 The result of getting or setting the context of an object that is not a

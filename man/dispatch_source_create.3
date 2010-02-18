@@ -175,7 +175,7 @@ block
 need not be reentrant safe, as it is not resubmitted to the target
 .Fa queue
 until any prior invocation for that dispatch source has completed.
-When the hander is set, the dispatch source will perform a
+When the handler is set, the dispatch source will perform a
 .Fn Block_copy
 on the
 .Fa handler
@@ -221,11 +221,11 @@ handler via a call to
 The data will be merged with the source's pending data via an atomic add or
 logic OR (based on the source's type), and the event handler block will be
 submitted to the source's target queue. The
-.Fa mask
-and
 .Fa data
-are application defined. These sources have no
+is application defined. These sources have no
 .Fa handle
+or
+.Fa mask
 and zero should be used.
 .Pp
 .Vt DISPATCH_SOURCE_TYPE_MACH_SEND
