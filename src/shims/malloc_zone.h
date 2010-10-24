@@ -68,11 +68,13 @@ malloc_zone_calloc(malloc_zone_t *zone, size_t num_items, size_t size)
 	return (calloc(num_items, size));
 }
 
+#if !TARGET_OS_WIN32
 static inline void *
 malloc_zone_realloc(malloc_zone_t *zone, void *ptr, size_t size)
 {
 	return (realloc(ptr, size));
 }
+#endif
 
 static inline void
 malloc_zone_free(malloc_zone_t *zone, void *ptr)
