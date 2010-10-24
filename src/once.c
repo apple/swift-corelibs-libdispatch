@@ -27,9 +27,9 @@
 void
 dispatch_once(dispatch_once_t *val, void (^block)(void))
 {
-	struct Block_basic *bb = (void *)block;
+	struct Block_basic *bb = (struct Block_basic *)(void *)block;
 
-	dispatch_once_f(val, block, (void *)bb->Block_invoke);
+	dispatch_once_f(val, block, (dispatch_function_t)bb->Block_invoke);
 }
 #endif
 

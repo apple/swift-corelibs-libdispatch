@@ -34,7 +34,7 @@ struct __dispatch_benchmark_data_s {
 static void
 _dispatch_benchmark_init(void *context)
 {
-	struct __dispatch_benchmark_data_s *bdata = context;
+	struct __dispatch_benchmark_data_s *bdata = (struct __dispatch_benchmark_data_s *)context;
 	// try and simulate performance of real benchmark as much as possible
 	// keep 'f', 'c' and 'cnt' in registers
 	register void (*f)(void *) = bdata->func;
@@ -75,8 +75,8 @@ _dispatch_benchmark_init(void *context)
 uint64_t
 dispatch_benchmark(size_t count, void (^block)(void))
 {
-	struct Block_basic *bb = (void *)block;
-	return dispatch_benchmark_f(count, block, (void *)bb->Block_invoke);
+	struct Block_basic *bb = (struct Block_basic *)(void *)block;
+	return dispatch_benchmark_f(count, block, (dispatch_function_t)bb->Block_invoke);
 }
 #endif
 
@@ -84,7 +84,7 @@ uint64_t
 dispatch_benchmark_f(size_t count, register void *ctxt, register void (*func)(void *))
 {
 	static struct __dispatch_benchmark_data_s bdata = {
-		.func = (void *)dummy_function,
+		.func = (dispatch_function_t)dummy_function,
 		.count = 10000000ul, // ten million
 	};
 	static dispatch_once_t pred;
