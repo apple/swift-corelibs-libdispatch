@@ -1200,6 +1200,10 @@ _dispatch_root_queues_init(void *context __attribute__((unused)))
 			ret = sem_init(&_dispatch_thread_mediator[i].dsema_sem, 0, 0);
 			(void)dispatch_assume_zero(ret);
 #endif
+#if USE_WIN32_SEM
+			_dispatch_thread_mediator[i].dsema_handle = CreateSemaphore(NULL, 0, LONG_MAX, NULL);
+			dispatch_assume(_dispatch_thread_mediator[i].dsema_handle);
+#endif
 #if HAVE_PTHREAD_WORKQUEUES
 		} else {
 			dispatch_assume(_dispatch_root_queue_contexts[i].dgq_kworkqueue);

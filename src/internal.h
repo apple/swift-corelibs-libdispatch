@@ -29,6 +29,37 @@
 
 #include "config/config.h"
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
+#if TARGET_OS_WIN32
+// Include Win32 headers early in order to minimize the
+// likelihood of name pollution from dispatch headers.
+
+#ifndef WINVER
+#define WINVER 0x502
+#endif
+
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x502
+#endif
+
+#ifndef _MSC_VER
+#define _MSC_VER 1400
+#pragma warning(disable:4159)
+#endif
+
+#define WIN32_LEAN_AND_MEAN 1
+#define _CRT_SECURE_NO_DEPRECATE 1
+#define _CRT_SECURE_NO_WARNINGS 1
+
+#define BOOL WINBOOL
+#include <Windows.h>
+#undef BOOL
+
+#endif /* TARGET_OS_WIN32 */
+
 #define __DISPATCH_BUILDING_DISPATCH__
 #define __DISPATCH_INDIRECT__
 
@@ -96,6 +127,9 @@
 #include <netinet/in.h>
 
 #ifdef __BLOCKS__
+#if TARGET_OS_WIN32
+#define BLOCK_EXPORT extern "C" __declspec(dllexport)
+#endif /* TARGET_OS_WIN32 */
 #include <Block_private.h>
 #include <Block.h>
 #endif /* __BLOCKS__ */

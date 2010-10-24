@@ -23,12 +23,22 @@
 uint64_t 
 _dispatch_get_nanoseconds(void)
 {
+#if !TARGET_OS_WIN32
 	struct timeval now;
 	int r = gettimeofday(&now, NULL);
 	dispatch_assert_zero(r);
 	dispatch_assert(sizeof(NSEC_PER_SEC) == 8);
 	dispatch_assert(sizeof(NSEC_PER_USEC) == 8);
 	return now.tv_sec * NSEC_PER_SEC + now.tv_usec * NSEC_PER_USEC;
+#else /* TARGET_OS_WIN32 */
+	// FILETIME is 100-nanosecond intervals since January 1, 1601 (UTC).
+	FILETIME ft;
+	ULARGE_INTEGER li;
+	GetSystemTimeAsFileTime(&ft);
+	li.LowPart = ft.dwLowDateTime;
+	li.HighPart = ft.dwHighDateTime;
+	return li.QuadPart * 100ull;
+#endif /* TARGET_OS_WIN32 */
 }
 
 dispatch_time_t

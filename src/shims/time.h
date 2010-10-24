@@ -31,8 +31,19 @@
 #error "Please #include <dispatch/dispatch.h> instead of this file directly."
 #endif
 
-#if defined(__i386__) || defined(__x86_64__) || !defined(HAVE_MACH_ABSOLUTE_TIME)
-// these architectures always return mach_absolute_time() in nanoseconds
+uint64_t _dispatch_get_nanoseconds(void);
+
+#if TARGET_OS_WIN32
+static inline unsigned int
+sleep(unsigned int seconds)
+{
+	Sleep(seconds * 1000); // milliseconds
+	return 0;
+}
+#endif
+
+#if (defined(__i386__) || defined(__x86_64__)) && HAVE_MACH_ABSOLUTE_TIME
+// x86 currently implements mach time in nanoseconds; this is NOT likely to change
 #define _dispatch_time_mach2nano(x) (x)
 #define _dispatch_time_nano2mach(x) (x)
 #else
@@ -84,6 +95,12 @@ _dispatch_absolute_time(void)
 {
 #if HAVE_MACH_ABSOLUTE_TIME
 	return mach_absolute_time();
+#elif TARGET_OS_WIN32
+	LARGE_INTEGER now;
+	if (!QueryPerformanceCounter(&now)) {
+		return 0;
+	}
+	return now.QuadPart;
 #else
 	struct timespec ts;
 	int ret;
