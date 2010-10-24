@@ -39,7 +39,7 @@
  * The handle is a process identifier (pid_t).
  */
 #define DISPATCH_SOURCE_TYPE_VFS (&_dispatch_source_type_vfs)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 extern const struct dispatch_source_type_s _dispatch_source_type_vfs;
 
 /*!
@@ -120,7 +120,7 @@ __DISPATCH_BEGIN_DECLS
  */
 typedef boolean_t (*dispatch_mig_callback_t)(mach_msg_header_t *message, mach_msg_header_t *reply);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_NA)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 mach_msg_return_t
 dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz, dispatch_mig_callback_t callback);
