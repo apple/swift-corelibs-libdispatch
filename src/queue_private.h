@@ -50,25 +50,25 @@ enum {
 
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_barrier_sync(dispatch_queue_t queue, dispatch_block_t block);
 #endif
 
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_barrier_sync_f(dispatch_queue_t dq, void *context, dispatch_function_t work);
 
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_barrier_async(dispatch_queue_t queue, dispatch_block_t block);
 #endif
 
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_barrier_async_f(dispatch_queue_t dq, void *context, dispatch_function_t work);
 
@@ -94,7 +94,7 @@ dispatch_barrier_async_f(dispatch_queue_t dq, void *context, dispatch_function_t
 #define DISPATCH_QUEUE_WIDTH_MAX_LOGICAL_CPUS	-3
 
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_queue_set_width(dispatch_queue_t dq, long width);
 
