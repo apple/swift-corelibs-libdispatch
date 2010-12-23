@@ -48,21 +48,21 @@ char *labels[PRIORITIES] = { "LOW", "DEFAULT", "HIGH" };
 int priorities[PRIORITIES] = { DISPATCH_QUEUE_PRIORITY_LOW, DISPATCH_QUEUE_PRIORITY_DEFAULT, DISPATCH_QUEUE_PRIORITY_HIGH };
 
 union {
-	size_t count;
+	long count;
 	char padding[64];
 } counts[PRIORITIES];
 
-#define ITERATIONS (size_t)(PRIORITIES * BLOCKS * 0.50)
-size_t iterations = ITERATIONS;
+#define ITERATIONS (long)(PRIORITIES * BLOCKS * 0.50)
+long iterations = ITERATIONS;
 
 void
 histogram(void) {
-	size_t maxcount = BLOCKS;
-	size_t sc[PRIORITIES];
+	long maxcount = BLOCKS;
+	long sc[PRIORITIES];
 	
-	size_t total = 0;
+	long total = 0;
 	
-	size_t x,y;
+	long x,y;
 	for (y = 0; y < PRIORITIES; ++y) {
 		sc[y] = counts[y].count;
 	}
@@ -86,10 +86,10 @@ histogram(void) {
 void
 cpubusy(void* context)
 {
-	size_t *count = context;
-	size_t iterdone;
+	long *count = context;
+	long iterdone;
 
-	size_t idx;
+	long idx;
 	for (idx = 0; idx < LOOP_COUNT; ++idx) {
 		if (done) break;
 	}
@@ -132,7 +132,7 @@ main(int argc __attribute__((unused)), char* argv[] __attribute__((unused)))
 		test_ptr_notnull("q[i]", q[i]);
 		assert(q[i]);
 		dispatch_set_target_queue(q[i], dispatch_get_global_queue(priorities[i], 0));
-		dispatch_queue_set_width(q[i], DISPATCH_QUEUE_WIDTH_MAX_LOGICAL_CPUS);
+		dispatch_queue_set_width(q[i], DISPATCH_QUEUE_WIDTH_MAX_LOGICAL_CPUS); 
 	}
 #else
 	test_start("Dispatch Priority");

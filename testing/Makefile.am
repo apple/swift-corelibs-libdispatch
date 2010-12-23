@@ -5,7 +5,10 @@
 noinst_LTLIBRARIES=libtest.la
 
 libtest_la_SOURCES=			\
-	dispatch_test.c
+	dispatch_test.c			\
+	shims/asprintf.c		\
+	shims/arc4random.c		\
+	shims/fgetln.c
 
 TESTS=					\
 	dispatch_api			\

@@ -1,6 +1,8 @@
 #include <errno.h>
+#include "os_shims.h"
+#include <dispatch/dispatch.h>
 
-__BEGIN_DECLS
+__DISPATCH_BEGIN_DECLS
 
 void test_start(const char* desc);
 void test_stop(void);
@@ -30,4 +32,5 @@ void _test_double_less_than(const char* file, long line, const char* desc, doubl
 void _test_errno(const char* file, long line, const char* desc, long actual, long expected);
 #define test_errno(a,b,c) _test_errno(__FILE__, __LINE__, a, b, c)
 
-__END_DECLS
+__DISPATCH_END_DECLS
+

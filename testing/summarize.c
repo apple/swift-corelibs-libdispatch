@@ -18,7 +18,7 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
-#include "config/config.h"
+#include "os_shims.h"
 
 #include <stdio.h>
 #include <stdlib.h>
