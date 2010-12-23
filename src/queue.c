@@ -1206,7 +1206,7 @@ _dispatch_root_queues_init(void *context __attribute__((unused)))
 #endif
 #if HAVE_PTHREAD_WORKQUEUES
 		} else {
-			dispatch_assume(_dispatch_root_queue_contexts[i].dgq_kworkqueue);
+			(void)dispatch_assume(_dispatch_root_queue_contexts[i].dgq_kworkqueue);
 		}
 #endif
 	}

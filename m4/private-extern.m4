@@ -4,10 +4,12 @@
 #
 AC_DEFUN([DISPATCH_C_PRIVATE_EXTERN], [
 
+AC_LANG_WERROR
+
 AC_CACHE_CHECK([for __attribute__((visibility("hidden")))],
     dispatch_cv_hidden_visibility_attribute, [
-        AC_TRY_LINK([], 
-                    [extern __attribute__ ((visibility ("hidden"))) int foo;],
+	AC_TRY_LINK([int foo; extern __attribute__ ((visibility ("hidden"))) int foo;], 
+		[foo = 0;],
                     [dispatch_cv_hidden_visibility_attribute=yes],
                     [dispatch_cv_hidden_visibility_attribute=no])])
 

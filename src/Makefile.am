@@ -36,6 +36,10 @@ endif
 libdispatch_la_LIBADD=libshims.la $(KQUEUE_LIBS)
 libdispatch_la_DEPENDENCIES=libshims.la
 
+if USE_LIBPTHREAD_WORKQUEUE
+libdispatch_la_LIBADD+=-lpthread_workqueue
+endif
+
 if USE_MIG
 libdispatch_la_SOURCES+=	\
 	protocolUser.c		\

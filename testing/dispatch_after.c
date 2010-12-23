@@ -29,7 +29,7 @@
 #include "dispatch_test.h"
 #include <Block.h>
 
-void done(void *arg __unused) {
+void done(void *arg __attribute__((unused))) {
     sleep(1);
     test_stop();
 }

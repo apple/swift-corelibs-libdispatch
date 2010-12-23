@@ -328,7 +328,14 @@
 			isa = PBXProject;
 			buildConfigurationList = 1DEB91EF08733DB70010E9CD /* Build configuration list for PBXProject "libdispatch" */;
 			compatibilityVersion = "Xcode 3.1";
+			developmentRegion = English;
 			hasScannedForEncodings = 1;
+			knownRegions = (
+				English,
+				Japanese,
+				French,
+				German,
+			);
 			mainGroup = 08FB7794FE84155DC02AAC07 /* libdispatch */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -403,7 +410,10 @@
 				GCC_ENABLE_CPP_RTTI = NO;
 				GCC_ENABLE_OBJC_EXCEPTIONS = NO;
 				GCC_OPTIMIZATION_LEVEL = s;
-				GCC_PREPROCESSOR_DEFINITIONS = "__DARWIN_NON_CANCELABLE=1";
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DISPATCH_NO_LEGACY=1",
+					"__DARWIN_NON_CANCELABLE=1",
+				);
 				GENERATE_MASTER_OBJECT_FILE = NO;
 				INSTALL_PATH = /usr/local/lib/system;
 				LINK_WITH_STANDARD_LIBRARIES = NO;

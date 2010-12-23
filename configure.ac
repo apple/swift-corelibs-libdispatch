@@ -182,6 +182,13 @@ AC_CHECK_HEADER([pthread_workqueue.h],
 )
 
 #
+# Check if libpthread_workqueue.so exists
+#
+AC_CHECK_LIB(pthread_workqueue, pthread_workqueue_init_np,
+        have_lpwq=true, have_lpwq=false)
+AM_CONDITIONAL(USE_LIBPTHREAD_WORKQUEUE, $have_lpwq)
+
+#
 # Find functions and declarations we care about.
 #
 AC_CHECK_DECLS([CLOCK_UPTIME, CLOCK_MONOTONIC, CLOCK_REALTIME], [], [],
@@ -193,7 +200,7 @@ AC_CHECK_DECLS([FD_COPY], [], [], [[#include <sys/select.h>]])
 AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])
 AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK], [], [], [[#include <sys/mount.h>]])
 AC_CHECK_DECLS([program_invocation_short_name], [], [], [[#include <errno.h>]])
-AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sysconf getprogname])
+AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sysconf getprogname getexecname])
 
 AC_CHECK_DECLS([POSIX_SPAWN_START_SUSPENDED],
   [have_posix_spawn_start_suspended=true],
