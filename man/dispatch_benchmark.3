@@ -11,6 +11,10 @@
 .Fo dispatch_benchmark
 .Fa "size_t count" "void (^block)(void)"
 .Fc
+.Ft uint64_t
+.Fo dispatch_benchmark_f
+.Fa "size_t count" "void *context" "void (*function)(void *)"
+.Fc
 .Sh DESCRIPTION
 The
 .Fn dispatch_benchmark
