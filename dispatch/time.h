@@ -1,20 +1,20 @@
 /*
- * Copyright (c) 2008-2009 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
@@ -28,7 +28,7 @@
 
 #include <stdint.h>
 
-__DISPATCH_BEGIN_DECLS
+__BEGIN_DECLS
 
 struct timespec;
 
@@ -54,7 +54,7 @@ struct timespec;
  * @typedef dispatch_time_t
  *
  * @abstract
- * An somewhat abstract representation of time; where zero means "now" and
+ * A somewhat abstract representation of time; where zero means "now" and
  * DISPATCH_TIME_FOREVER means "infinity" and every value in between is an
  * opaque encoding.
  */
@@ -84,7 +84,7 @@ typedef uint64_t dispatch_time_t;
  * A new dispatch_time_t.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_time_t
 dispatch_time(dispatch_time_t when, int64_t delta);
 
@@ -108,10 +108,10 @@ dispatch_time(dispatch_time_t when, int64_t delta);
  * A new dispatch_time_t.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_time_t
 dispatch_walltime(const struct timespec *when, int64_t delta);
 
-__DISPATCH_END_DECLS
+__END_DECLS
 
 #endif

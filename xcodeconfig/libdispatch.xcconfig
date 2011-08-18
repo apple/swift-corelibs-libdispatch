@@ -1,0 +1,67 @@
+//
+// Copyright (c) 2010-2011 Apple Inc. All rights reserved.
+//
+// @APPLE_APACHE_LICENSE_HEADER_START@
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// @APPLE_APACHE_LICENSE_HEADER_END@
+//
+
+#include "<DEVELOPER_DIR>/Makefiles/CoreOS/Xcode/BSD.xcconfig"
+SUPPORTED_PLATFORMS = macosx iphoneos iphonesimulator
+ARCHS[sdk=iphonesimulator*] = $(NATIVE_ARCH_32_BIT) // Override BSD.xcconfig ARCHS <rdar://problem/9303721>
+PRODUCT_NAME = libdispatch
+PRODUCT_NAME[sdk=iphonesimulator*] = libdispatch_sim
+EXECUTABLE_PREFIX =
+LD_DYLIB_INSTALL_NAME = /usr/lib/system/$(EXECUTABLE_NAME)
+INSTALL_PATH = /usr/lib/system
+INSTALL_PATH[sdk=iphonesimulator*] = $(SDKROOT)/usr/lib/system
+PUBLIC_HEADERS_FOLDER_PATH = /usr/include/dispatch
+PUBLIC_HEADERS_FOLDER_PATH[sdk=iphonesimulator*] = $(SDKROOT)/usr/include/dispatch
+PRIVATE_HEADERS_FOLDER_PATH = /usr/local/include/dispatch
+PRIVATE_HEADERS_FOLDER_PATH[sdk=iphonesimulator*] = $(SDKROOT)/usr/local/include/dispatch
+HEADER_SEARCH_PATHS = $(SDKROOT)/System/Library/Frameworks/System.framework/PrivateHeaders $(PROJECT_DIR)
+INSTALLHDRS_SCRIPT_PHASE = YES
+ALWAYS_SEARCH_USER_PATHS = NO
+BUILD_VARIANTS = normal debug profile
+ONLY_ACTIVE_ARCH = NO
+GCC_VERSION = com.apple.compilers.llvm.clang.1_0
+GCC_STRICT_ALIASING = YES
+GCC_SYMBOLS_PRIVATE_EXTERN = YES
+GCC_CW_ASM_SYNTAX = NO
+GCC_ENABLE_CPP_EXCEPTIONS = NO
+GCC_ENABLE_CPP_RTTI = NO
+GCC_ENABLE_OBJC_EXCEPTIONS = NO
+GCC_ENABLE_PASCAL_STRINGS = NO
+GCC_WARN_SHADOW = YES
+GCC_WARN_64_TO_32_BIT_CONVERSION = YES
+GCC_WARN_ABOUT_RETURN_TYPE = YES
+GCC_WARN_ABOUT_MISSING_PROTOTYPES = YES
+GCC_WARN_ABOUT_MISSING_NEWLINE = YES
+GCC_WARN_UNUSED_VARIABLE = YES
+GCC_TREAT_WARNINGS_AS_ERRORS = YES
+GCC_OPTIMIZATION_LEVEL = s
+GCC_THUMB_SUPPORT[arch=armv6] = NO
+GCC_PREPROCESSOR_DEFINITIONS = __DARWIN_NON_CANCELABLE=1
+GCC_PREPROCESSOR_DEFINITIONS[sdk=iphonesimulator*] = $(GCC_PREPROCESSOR_DEFINITIONS) USE_LIBDISPATCH_INIT_CONSTRUCTOR=1 DISPATCH_USE_PTHREAD_ATFORK=1 DISPATCH_USE_DIRECT_TSD=0
+WARNING_CFLAGS = -Wall -Wextra -Waggregate-return -Wfloat-equal -Wpacked -Wmissing-declarations -Wstrict-overflow=4 -Wstrict-aliasing=2
+OTHER_CFLAGS = -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-exceptions -fdiagnostics-show-option -fverbose-asm -momit-leaf-frame-pointer
+OTHER_CFLAGS_debug = -fstack-protector -fno-inline -O0 -DDISPATCH_DEBUG=1
+OTHER_CFLAGS_profile = -DDISPATCH_PROFILE=1
+GENERATE_PROFILING_CODE = NO
+GENERATE_MASTER_OBJECT_FILE = NO
+DYLIB_CURRENT_VERSION = $(CURRENT_PROJECT_VERSION)
+UMBRELLA_LDFLAGS = -umbrella System
+UMBRELLA_LDFLAGS[sdk=iphonesimulator*] =
+OTHER_LDFLAGS = $(OTHER_LDFLAGS) $(UMBRELLA_LDFLAGS) $(CR_LDFLAGS)

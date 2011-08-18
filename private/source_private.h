@@ -1,20 +1,20 @@
 /*
- * Copyright (c) 2008-2009 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
@@ -40,7 +40,16 @@
  */
 #define DISPATCH_SOURCE_TYPE_VFS (&_dispatch_source_type_vfs)
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-extern const struct dispatch_source_type_s _dispatch_source_type_vfs;
+DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vfs;
+
+/*!
+ * @const DISPATCH_SOURCE_TYPE_VM
+ * @discussion A dispatch source that monitors virtual memory
+ * The mask is a mask of desired events from dispatch_source_vm_flags_t.
+ */
+#define DISPATCH_SOURCE_TYPE_VM (&_dispatch_source_type_vm)
+__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
+DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vm;
 
 /*!
  * @enum dispatch_source_vfs_flags_t
@@ -91,11 +100,17 @@ enum {
 /*!
  * @enum dispatch_source_mach_send_flags_t
  *
- * @constant DISPATCH_MACH_SEND_DELETED
- * The receive right corresponding to the given send right was destroyed.
+ * @constant DISPATCH_MACH_SEND_POSSIBLE
+ * The mach port corresponding to the given send right has space available
+ * for messages. Delivered only once a mach_msg() to that send right with
+ * options MACH_SEND_MSG|MACH_SEND_TIMEOUT|MACH_SEND_NOTIFY has returned
+ * MACH_SEND_TIMED_OUT (and not again until the next such mach_msg() timeout).
+ * NOTE: The source must have registered the send right for monitoring with the
+ *       system for such a mach_msg() to arm the send-possible notifcation, so
+ *       the initial send attempt must occur from a source registration handler.
  */
 enum {
-	DISPATCH_MACH_SEND_DELETED = 0x2,
+	DISPATCH_MACH_SEND_POSSIBLE = 0x8,
 };
 
 /*!
@@ -109,23 +124,40 @@ enum {
 	DISPATCH_PROC_REAP = 0x10000000,
 };
 
-__DISPATCH_BEGIN_DECLS
+/*!
+ * @enum dispatch_source_vm_flags_t
+ *
+ * @constant DISPATCH_VM_PRESSURE
+ * The VM has experienced memory pressure.
+ */
 
-#if HAVE_MACH
+enum {
+	DISPATCH_VM_PRESSURE = 0x80000000,
+};
+
+#if TARGET_IPHONE_SIMULATOR // rdar://problem/9219483
+#define DISPATCH_VM_PRESSURE DISPATCH_VNODE_ATTRIB
+#endif
+
+__BEGIN_DECLS
+
+#if TARGET_OS_MAC
 /*!
  * @typedef dispatch_mig_callback_t
  *
  * @abstract
  * The signature of a function that handles Mach message delivery and response.
  */
-typedef boolean_t (*dispatch_mig_callback_t)(mach_msg_header_t *message, mach_msg_header_t *reply);
+typedef boolean_t (*dispatch_mig_callback_t)(mach_msg_header_t *message,
+		mach_msg_header_t *reply);
 
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 mach_msg_return_t
-dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz, dispatch_mig_callback_t callback);
+dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
+		dispatch_mig_callback_t callback);
 #endif
 
-__DISPATCH_END_DECLS
+__END_DECLS
 
 #endif

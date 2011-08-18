@@ -1,4 +1,4 @@
-.\" Copyright (c) 2008-2009 Apple Inc. All rights reserved.
+.\" Copyright (c) 2008-2010 Apple Inc. All rights reserved.
 .Dd May 1, 2009
 .Dt dispatch_object 3
 .Os Darwin
@@ -58,7 +58,7 @@ The invocation of blocks on dispatch queues or dispatch sources may be suspended
 or resumed with the functions
 .Fn dispatch_suspend
 and
-.Fn dispatch_resume 
+.Fn dispatch_resume
 respectively.
 The dispatch framework always checks the suspension status before executing a
 block, but such changes never affect a block during execution (non-preemptive).
@@ -69,8 +69,9 @@ a dispatch source is undefined.
 .Pp
 .Em Important :
 suspension applies to all aspects of the dispatch object life cycle, including
-the finalizer function and cancellation handler. Therefore it is important to
-balance calls to
+the finalizer function and cancellation handler. Suspending an object causes it
+to be retained and resuming an object causes it to be released. Therefore it is
+important to balance calls to
 .Fn dispatch_suspend
 and
 .Fn dispatch_resume
@@ -91,6 +92,7 @@ asynchronously if the context pointer is not NULL when the last
 reference to the object is released.
 This gives the
 application an opportunity to free the context data associated with the object.
+The finalizer will be run on the object's target queue.
 .Pp
 The result of getting or setting the context of an object that is not a
 dispatch queue or a dispatch source is undefined.
@@ -99,4 +101,5 @@ dispatch queue or a dispatch source is undefined.
 .Xr dispatch_group_create 3 ,
 .Xr dispatch_queue_create 3 ,
 .Xr dispatch_semaphore_create 3 ,
-.Xr dispatch_source_create 3
+.Xr dispatch_source_create 3 ,
+.Xr dispatch_set_target_queue 3

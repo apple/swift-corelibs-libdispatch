@@ -1,28 +1,13 @@
 /* config/config.h.  Generated from config.h.in by configure.  */
 /* config/config.h.in.  Generated from configure.ac by autoheader.  */
 
-/* Define to compile out legacy API */
-/* #undef DISPATCH_NO_LEGACY */
-
 /* Define to 1 if you have the declaration of `CLOCK_MONOTONIC', and to 0 if
    you don't. */
 #define HAVE_DECL_CLOCK_MONOTONIC 0
 
-/* Define to 1 if you have the declaration of `CLOCK_REALTIME', and to 0 if
-   you don't. */
-#define HAVE_DECL_CLOCK_REALTIME 0
-
 /* Define to 1 if you have the declaration of `CLOCK_UPTIME', and to 0 if you
    don't. */
 #define HAVE_DECL_CLOCK_UPTIME 0
-
-/* Define to 1 if you have the declaration of `EVFILT_LIO', and to 0 if you
-   don't. */
-#define HAVE_DECL_EVFILT_LIO 0
-
-/* Define to 1 if you have the declaration of `EVFILT_SESSION', and to 0 if
-   you don't. */
-#define HAVE_DECL_EVFILT_SESSION 1
 
 /* Define to 1 if you have the declaration of `FD_COPY', and to 0 if you
    don't. */
@@ -35,10 +20,6 @@
 /* Define to 1 if you have the declaration of `NOTE_REAP', and to 0 if you
    don't. */
 #define HAVE_DECL_NOTE_REAP 1
-
-/* Define to 1 if you have the declaration of `NOTE_REVOKE', and to 0 if you
-   don't. */
-#define HAVE_DECL_NOTE_REVOKE 1
 
 /* Define to 1 if you have the declaration of `NOTE_SIGNAL', and to 0 if you
    don't. */
@@ -100,9 +81,6 @@
 /* Define if __builtin_trap marked noreturn */
 #define HAVE_NORETURN_BUILTIN_TRAP 1
 
-/* Define if __private_extern__ present */
-#define HAVE_PRIVATE_EXTERN 1
-
 /* Define to 1 if you have the `pthread_key_init_np' function. */
 #define HAVE_PTHREAD_KEY_INIT_NP 1
 
@@ -139,9 +117,6 @@
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #define HAVE_SYS_STAT_H 1
 
-/* Define to 1 if you have the <sys/sysctl.h> header file. */
-#define HAVE_SYS_SYSCTL_H 1
-
 /* Define to 1 if you have the <sys/types.h> header file. */
 #define HAVE_SYS_TYPES_H 1
 
@@ -165,22 +140,16 @@
 #define PACKAGE_NAME "libdispatch"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "libdispatch 1.0"
+#define PACKAGE_STRING "libdispatch 1.1"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "libdispatch"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "1.0"
+#define PACKAGE_VERSION "1.1"
 
 /* Define to 1 if you have the ANSI C header files. */
 #define STDC_HEADERS 1
-
-/* Define to use Mac OS X crashreporter info */
-#define USE_APPLE_CRASHREPORTER_INFO 1
-
-/* Define to use non-portablesemaphore optimizations for Mac OS X */
-#define USE_APPLE_SEMAPHORE_OPTIMIZATIONS 1
 
 /* Define to use non-portable pthread TSD optimizations for Mac OS X) */
 #define USE_APPLE_TSD_OPTIMIZATIONS 1
@@ -195,7 +164,7 @@
 /* #undef USE_POSIX_SEM */
 
 /* Version number of package */
-#define VERSION "1.0"
+#define VERSION "1.1"
 
 /* Define to 1 if on AIX 3.
    System headers sometimes define this.
@@ -219,6 +188,9 @@
 /* Define to 1 if you need to in order for `stat' and other things to work. */
 /* #undef _POSIX_SOURCE */
 
+/* Define if using Darwin $NOCANCEL */
+#define __DARWIN_NON_CANCELABLE 1
+
 /* Enable extensions on Solaris.  */
 #ifndef __EXTENSIONS__
 # define __EXTENSIONS__ 1
@@ -229,6 +201,3 @@
 #ifndef _TANDEM_SOURCE
 # define _TANDEM_SOURCE 1
 #endif
-
-/* Define to a replacement for __private_extern */
-/* #undef __private_extern__ */

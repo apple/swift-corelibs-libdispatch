@@ -1,20 +1,20 @@
 /*
- * Copyright (c) 2008-2009 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
@@ -33,14 +33,14 @@
  */
 DISPATCH_DECL(dispatch_group);
 
-__DISPATCH_BEGIN_DECLS
+__BEGIN_DECLS
 
 /*!
  * @function dispatch_group_create
  *
  * @abstract
  * Creates new group with which blocks may be associated.
- * 
+ *
  * @discussion
  * This function creates a new group with which blocks may be associated.
  * The dispatch group may be used to wait for the completion of the blocks it
@@ -50,7 +50,7 @@ __DISPATCH_BEGIN_DECLS
  * The newly created group, or NULL on failure.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_WARN_RESULT
+DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_group_t
 dispatch_group_create(void);
 
@@ -79,7 +79,7 @@ dispatch_group_create(void);
  */
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NONNULL_ALL
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_group_async(dispatch_group_t group,
 	dispatch_queue_t queue,
@@ -113,7 +113,7 @@ dispatch_group_async(dispatch_group_t group,
  * dispatch_group_async_f().
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL2 DISPATCH_NONNULL4
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL2 DISPATCH_NONNULL4 DISPATCH_NOTHROW
 void
 dispatch_group_async_f(dispatch_group_t group,
 	dispatch_queue_t queue,
@@ -124,11 +124,11 @@ dispatch_group_async_f(dispatch_group_t group,
  * @function dispatch_group_wait
  *
  * @abstract
- * Wait synchronously for the previously submitted blocks to complete;
- * returns if the blocks have not completed within the specified timeout.
+ * Wait synchronously until all the blocks associated with a group have
+ * completed or until the specified timeout has elapsed.
  *
  * @discussion
- * This function waits  for the completion of the blocks associated with the
+ * This function waits for the completion of the blocks associated with the
  * given dispatch group, and returns after all blocks have completed or when
  * the specified timeout has elapsed. When a timeout occurs, the group is
  * restored to its original state.
@@ -156,7 +156,7 @@ dispatch_group_async_f(dispatch_group_t group,
  * within the specified timeout) or non-zero on error (i.e. timed out).
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NONNULL_ALL
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 long
 dispatch_group_wait(dispatch_group_t group, dispatch_time_t timeout);
 
@@ -164,8 +164,8 @@ dispatch_group_wait(dispatch_group_t group, dispatch_time_t timeout);
  * @function dispatch_group_notify
  *
  * @abstract
- * Schedule a block to be submitted to a queue when a group of previously
- * submitted blocks have completed.
+ * Schedule a block to be submitted to a queue when all the blocks associated
+ * with a group have completed.
  *
  * @discussion
  * This function schedules a notification block to be submitted to the specified
@@ -173,7 +173,7 @@ dispatch_group_wait(dispatch_group_t group, dispatch_time_t timeout);
  *
  * If no blocks are associated with the dispatch group (i.e. the group is empty)
  * then the notification block will be submitted immediately.
- * 
+ *
  * The group will be empty at the time the notification block is submitted to
  * the target queue. The group may either be released with dispatch_release()
  * or reused for additional operations.
@@ -192,7 +192,7 @@ dispatch_group_wait(dispatch_group_t group, dispatch_time_t timeout);
  */
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NONNULL_ALL
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_group_notify(dispatch_group_t group,
 	dispatch_queue_t queue,
@@ -203,8 +203,8 @@ dispatch_group_notify(dispatch_group_t group,
  * @function dispatch_group_notify_f
  *
  * @abstract
- * Schedule a function to be submitted to a queue when a group of previously
- * submitted functions have completed.
+ * Schedule a function to be submitted to a queue when all the blocks
+ * associated with a group have completed.
  *
  * @discussion
  * See dispatch_group_notify() for details.
@@ -223,6 +223,7 @@ dispatch_group_notify(dispatch_group_t group,
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL2 DISPATCH_NONNULL4
+DISPATCH_NOTHROW
 void
 dispatch_group_notify_f(dispatch_group_t group,
 	dispatch_queue_t queue,
@@ -245,7 +246,7 @@ dispatch_group_notify_f(dispatch_group_t group,
  * The result of passing NULL in this parameter is undefined.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NOTHROW DISPATCH_NONNULL_ALL
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_group_enter(dispatch_group_t group);
 
@@ -264,10 +265,10 @@ dispatch_group_enter(dispatch_group_t group);
  * The result of passing NULL in this parameter is undefined.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NOTHROW DISPATCH_NONNULL_ALL
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_group_leave(dispatch_group_t group);
 
-__DISPATCH_END_DECLS
+__END_DECLS
 
 #endif

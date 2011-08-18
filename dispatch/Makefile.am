@@ -4,10 +4,12 @@
 
 dispatchdir=$(includedir)/dispatch
 
-dispatch_HEADERS=		\
+dispatch_HEADERS=	\
 	base.h			\
+	data.h			\
 	dispatch.h		\
 	group.h			\
+	io.h			\
 	object.h		\
 	once.h			\
 	queue.h			\
