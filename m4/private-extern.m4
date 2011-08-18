@@ -19,7 +19,15 @@ AC_CACHE_CHECK([for __private_extern__],
                     [dispatch_cv_private_extern=yes],
                     [dispatch_cv_private_extern=no])])
 
-if test $dispatch_cv_private_extern = yes; then
+if test $host_os = "linux-gnu" ; then
+  #
+  # WORKAROUND: Building with clang and the GNU linker causes this error:
+  #
+  # /usr/bin/ld: .libs/libdispatch_la-apply.o: relocation R_X86_64_PC32 against symbol `_dispatch_hw_config' can not be used when making a shared object; recompile with -fPIC
+  #
+  AC_DEFINE([__private_extern__], [extern],
+	    [Define to a replacement for __private_extern])
+elif test $dispatch_cv_private_extern = yes; then
   AC_DEFINE(HAVE_PRIVATE_EXTERN, 1, Define if __private_extern__ present)
 elif test $dispatch_cv_hidden_visibility_attribute = yes; then
   AC_DEFINE(HAVE_PRIVATE_EXTERN, 1, Define if __private_extern__ present)
