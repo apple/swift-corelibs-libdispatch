@@ -48,6 +48,10 @@
    and to 0 if you don't. */
 #define HAVE_DECL_POSIX_SPAWN_START_SUSPENDED 1
 
+/* Define to 1 if you have the declaration of `program_invocation_short_name',
+   and to 0 if you don't. */
+#define HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME 0
+
 /* Define to 1 if you have the declaration of `SIGEMT', and to 0 if you don't.
    */
 #define HAVE_DECL_SIGEMT 1
@@ -98,9 +102,6 @@
 
 /* Define if __private_extern__ present */
 #define HAVE_PRIVATE_EXTERN 1
-
-/* Define to 1 if you have the `program_invocation_short_name' function. */
-/* #undef HAVE_PROGRAM_INVOCATION_SHORT_NAME */
 
 /* Define to 1 if you have the `pthread_key_init_np' function. */
 #define HAVE_PTHREAD_KEY_INIT_NP 1
