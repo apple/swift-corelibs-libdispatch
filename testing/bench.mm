@@ -1,20 +1,20 @@
 /*
- * Copyright (c) 2008-2009 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
@@ -37,6 +37,8 @@
 #endif
 #include <dispatch/dispatch.h>
 #include <dispatch/private.h>
+
+//#define BENCH_SLOW 1
 
 extern "C" {
 __private_extern__ void func(void);
@@ -74,16 +76,19 @@ force_a_thread(void *arg)
 }
 
 static volatile int32_t global;
+static volatile int64_t w_global;
 
-static const size_t cnt = 10000000;
-static const size_t cnt2 = 100000;
+#if TARGET_OS_EMBEDDED
+static const size_t cnt = 5000000;
+#else
+static const size_t cnt = 200000000;
+#endif
+static const size_t cnt2 = cnt/100;
 
 static uint64_t bfs;
 static long double loop_cost;
 static long double cycles_per_nanosecond;
 static mach_timebase_info_data_t tbi;
-
-//static void func2(void *, dispatch_item_t di);
 
 static void __attribute__((noinline))
 print_result(uint64_t s, const char *str)
@@ -107,10 +112,12 @@ print_result(uint64_t s, const char *str)
 	}
 
 	dd *= cycles_per_nanosecond;
+	dd = roundl(dd * 200.0)/200.0;
 
 	printf("%-45s%15.3Lf cycles\n", str, dd);
 }
 
+#if BENCH_SLOW || !TARGET_OS_EMBEDDED
 static void __attribute__((noinline))
 print_result2(uint64_t s, const char *str)
 {
@@ -131,6 +138,7 @@ print_result2(uint64_t s, const char *str)
 
 	printf("%-45s%15.3Lf cycles\n", str, dd);
 }
+#endif
 
 #if defined(__i386__) || defined(__x86_64__)
 static inline uint64_t
@@ -174,7 +182,6 @@ fixed_free_lifo(struct fml *fml)
 int
 main(void)
 {
-	NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
 	pthread_mutex_t plock = PTHREAD_MUTEX_INITIALIZER;
 	OSSpinLock slock = OS_SPINLOCK_INIT;
 	BasicObject *bo;
@@ -182,7 +189,9 @@ main(void)
 	pthread_t pthr_pause;
 	dispatch_queue_t q, mq;
 	kern_return_t kr;
+#if BENCH_SLOW
 	semaphore_t sem;
+#endif
 	uint64_t freq;
 	uint64_t s;
 	size_t freq_len = sizeof(freq);
@@ -196,7 +205,10 @@ main(void)
 
 	cycles_per_nanosecond = (long double)freq / (long double)NSEC_PER_SEC;
 
+#if BENCH_SLOW
+	NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
 	assert(pool);
+#endif
 
 	/* Malloc has different logic for threaded apps. */
 	r = pthread_create(&pthr_pause, NULL, force_a_thread, NULL);
@@ -230,11 +242,19 @@ main(void)
 
 	printf("\nLoop cost subtracted from the following:\n\n");
 
+#if TARGET_OS_EMBEDDED
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
 		mach_absolute_time();
 	}
 	print_result(s, "mach_absolute_time():");
+#else
+	s = mach_absolute_time();
+	for (i = cnt2; i; i--) {
+		mach_absolute_time();
+	}
+	print_result2(s, "mach_absolute_time():");
+#endif
 
 #if defined(__i386__) || defined(__x86_64__)
 	s = mach_absolute_time();
@@ -244,6 +264,7 @@ main(void)
 	print_result(s, "rdtsc():");
 #endif
 
+#if BENCH_SLOW
 	s = mach_absolute_time();
 	for (i = cnt2; i; i--) {
 		pthread_t pthr;
@@ -278,12 +299,6 @@ main(void)
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		pthread_yield_np();
-	}
-	print_result(s, "pthread_yield_np():");
-
-	s = mach_absolute_time();
-	for (i = cnt; i; i--) {
 		free(malloc(32));
 	}
 	print_result(s, "free(malloc(32)):");
@@ -308,6 +323,7 @@ main(void)
 		assert(strtoull("18446744073709551615", NULL, 0) == ~0ull);
 	}
 	print_result(s, "strtoull(\"18446744073709551615\") == ~0ull:");
+#endif
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
@@ -325,16 +341,17 @@ main(void)
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		[bo method];
-	}
-	print_result(s, "Empty ObjC call:");
-
-	s = mach_absolute_time();
-	for (i = cnt; i; i--) {
 		bc->virtfunc();
 	}
 	print_result(s, "Empty C++ virtual call:");
 
+	s = mach_absolute_time();
+	for (i = cnt; i; i--) {
+		[bo method];
+	}
+	print_result(s, "Empty ObjC call:");
+
+#if BENCH_SLOW
 	s = mach_absolute_time();
 	for (i = cnt2; i; i--) {
 		[bo description];
@@ -344,14 +361,15 @@ main(void)
 	[pool release];
 
 	pool = NULL;
+#endif
 
-#if defined(__i386__) || defined(__x86_64__)
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
 		asm("nop");
 	}
 	print_result(s, "raw 'nop':");
 
+#if defined(__i386__) || defined(__x86_64__)
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
 		asm("pause");
@@ -385,10 +403,106 @@ main(void)
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		int prev;
-		asm volatile("cmpxchg %1,%2" : "=a" (prev) : "r" (0l), "m" (global), "0" (1l));
+		long prev;
+		asm volatile("cmpxchg %1,%2"
+				: "=a" (prev) : "r" (0l), "m" (global), "0" (1l));
 	}
 	print_result(s, "'cmpxchg' without the 'lock' prefix:");
+
+	s = mach_absolute_time();
+	for (i = cnt; i; i--) {
+		unsigned long _clbr;
+#ifdef __LP64__
+		asm volatile("cpuid" : "=a" (_clbr)
+				: "0" (0) : "rbx", "rcx", "rdx", "cc", "memory");
+#else
+#ifdef __llvm__
+		asm volatile("cpuid" : "=a" (_clbr) : "0" (0)
+				: "ebx", "ecx", "edx", "cc", "memory" );
+#else // gcc does not allow inline i386 asm to clobber ebx
+		asm volatile("pushl %%ebx\n\tcpuid\n\tpopl %%ebx"
+				: "=a" (_clbr) : "0" (0) : "ecx", "edx", "cc", "memory" );
+#endif
+#endif
+	}
+	print_result(s, "'cpuid' instruction:");
+
+#elif defined(__arm__)
+
+#include <arm/arch.h>
+
+#if !defined(_ARM_ARCH_7) && defined(__thumb__)
+#error "GCD requires instructions unvailable in ARMv6 Thumb1"
+#endif
+
+#ifdef _ARM_ARCH_7
+	s = mach_absolute_time();
+	for (i = cnt; i; i--) {
+		asm("yield");
+	}
+	print_result(s, "raw 'yield':");
+#endif
+
+	s = mach_absolute_time();
+	for (i = cnt; i; i--) {
+#ifdef _ARM_ARCH_7
+		asm volatile("dmb ish" : : : "memory");
+#else
+		asm volatile("mcr	p15, 0, %0, c7, c10, 5" : : "r" (0) : "memory");
+#endif
+	}
+	print_result(s, "'dmb ish' instruction:");
+
+#ifdef _ARM_ARCH_7
+	s = mach_absolute_time();
+	for (i = cnt; i; i--) {
+		asm volatile("dmb ishst" : : : "memory");
+	}
+	print_result(s, "'dmb ishst' instruction:");
+#endif
+
+	s = mach_absolute_time();
+	for (i = cnt; i; i--) {
+#ifdef _ARM_ARCH_7
+		asm volatile("dsb ish" : : : "memory");
+#else
+		asm volatile("mcr	p15, 0, %0, c7, c10, 4" : : "r" (0) : "memory");
+#endif
+	}
+	print_result(s, "'dsb ish' instruction:");
+
+#if BENCH_SLOW
+	s = mach_absolute_time();
+	for (i = cnt; i; i--) {
+		register long _swtch_pri asm("ip") = -59;
+		asm volatile("svc	0x80" : : "r" (_swtch_pri) : "r0", "memory");
+	}
+	print_result(s, "swtch_pri syscall:");
+
+	s = mach_absolute_time();
+	for (i = cnt; i; i--) {
+		register long _r0 asm("r0") = 0, _r1 asm("r1") = 1, _r2 asm("r2") = 1;
+		register long _thread_switch asm("ip") = -61;
+		asm volatile("svc	0x80" : "+r" (_r0)
+				: "r" (_r1), "r" (_r2), "r" (_thread_switch): "memory");
+	}
+	print_result(s, "thread_switch syscall:");
+#endif
+
+#endif // __arm__
+
+#if BENCH_SLOW
+	s = mach_absolute_time();
+	for (i = cnt; i; i--) {
+		pthread_yield_np();
+	}
+	print_result(s, "pthread_yield_np():");
+
+	s = mach_absolute_time();
+	for (i = cnt2; i; i--) {
+		usleep(0);
+	}
+	print_result2(s, "usleep(0):");
 #endif
 
 	s = mach_absolute_time();
@@ -415,7 +529,31 @@ main(void)
 	for (i = cnt; i; i--) {
 		OSAtomicIncrement32Barrier(&global);
 	}
-	print_result(s, "OSAtomic increment:");
+	print_result(s, "OSAtomicIncrement32Barrier:");
+
+	global = 0;
+
+	s = mach_absolute_time();
+	for (i = cnt; i; i--) {
+		OSAtomicIncrement32(&global);
+	}
+	print_result(s, "OSAtomicIncrement32:");
+
+	w_global = 0;
+
+	s = mach_absolute_time();
+	for (i = cnt; i; i--) {
+		OSAtomicIncrement64Barrier(&w_global);
+	}
+	print_result(s, "OSAtomicIncrement64Barrier:");
+
+	w_global = 0;
+
+	s = mach_absolute_time();
+	for (i = cnt; i; i--) {
+		OSAtomicIncrement64(&w_global);
+	}
+	print_result(s, "OSAtomicIncrement64:");
 
 	global = 0;
 
@@ -425,6 +563,8 @@ main(void)
 			do {
 #if defined(__i386__) || defined(__x86_64__)
 				asm("pause");
+#elif defined(__arm__) && defined _ARM_ARCH_7
+				asm("yield");
 #endif
 			} while (global);
 		}
@@ -437,7 +577,7 @@ main(void)
 		OSSpinLockLock(&slock);
 		OSSpinLockUnlock(&slock);
 	}
-	print_result(s, "OS spin lock/unlock:");
+	print_result(s, "OSSpinLock/Unlock:");
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
@@ -477,11 +617,13 @@ main(void)
 	print_result(s, "dispatch_barrier_sync_f:");
 
 	s = mach_absolute_time();
-	dispatch_apply_f(cnt, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), NULL, (void (*)(void *, size_t))func);
-	s += loop_cost; /* cancel out the implicit subtraction done by the next line */
+	dispatch_apply_f(cnt,
+			dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
+			NULL, (void (*)(void *, size_t))func);
+	s += loop_cost; // cancel out the implicit subtraction done by the next line
 	print_result(s, "dispatch_apply_f():");
 
-	// we do a "double backflip" to hit the fast-path of the enqueue/dequeue logic
+	// do a "double backflip" to hit the fast-path of the enqueue/dequeue logic
 	bfs = mach_absolute_time();
 	dispatch_async_f(dispatch_get_main_queue(), &bf_cnt, backflip);
 	dispatch_async_f(dispatch_get_main_queue(), &bf_cnt, backflip);

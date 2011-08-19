@@ -1,48 +1,48 @@
 /*
- * Copyright (c) 2008-2009 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
-#include "config/config.h"
-
+#include <mach/mach.h>
+#include <mach/mach_time.h>
 #include <dispatch/dispatch.h>
-#include "src/internal.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
-#if HAVE_TARGETCONDITIONALS_H
 #include <TargetConditionals.h>
-#endif
 
+#include <bsdtests.h>
 #include "dispatch_test.h"
 
-#if TARGET_OS_EMBEDDED
-#define COUNT	300ul
-#define LAPS	10ul
-#else
 #define COUNT	1000ul
 #define LAPS	10ul
+
+#if TARGET_OS_EMBEDDED
+#define ACCEPTABLE_LATENCY 3000
+#else
+#define ACCEPTABLE_LATENCY 1000
 #endif
 
 static dispatch_queue_t queues[COUNT];
 static size_t lap_count_down = LAPS;
 static size_t count_down;
 static uint64_t start;
+static mach_timebase_info_data_t tbi;
 
 static void do_test(void);
 
@@ -57,13 +57,15 @@ collect(void *context __attribute__((unused)))
 		return;
 	}
 
-	delta = _dispatch_absolute_time() - start;
-	math = delta = _dispatch_time_mach2nano(delta);
+	delta = mach_absolute_time() - start;
+	delta *= tbi.numer;
+	delta /= tbi.denom;
+	math = delta;
 	math /= COUNT * COUNT * 2ul + COUNT * 2ul;
 
 	printf("lap: %ld\n", lap_count_down);
 	printf("count: %lu\n", COUNT);
-	printf("delta: %ju ns\n", (uintmax_t)delta);
+	printf("delta: %llu ns\n", delta);
 	printf("math: %Lf ns / lap\n", math);
 
 	for (i = 0; i < COUNT; i++) {
@@ -72,7 +74,7 @@ collect(void *context __attribute__((unused)))
 
 	// our malloc could be a lot better,
 	// this result is really a malloc torture test
-	test_long_less_than("Latency" , (unsigned long)math, 1000);
+	test_long_less_than("Latency" , (unsigned long)math, ACCEPTABLE_LATENCY);
 
 	if (--lap_count_down) {
 		return do_test();
@@ -84,7 +86,7 @@ collect(void *context __attribute__((unused)))
 	// Doign the "old style" sleep left that stuff around and leaks
 	// took a LONG TIME to complete.   Long enough that the test harness
 	// decided to kill us.
-	dispatch_after_f(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), NULL, test_stop_after_delay);
+	dispatch_after_f(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), NULL, test_stop_after_delay);
 }
 
 static void
@@ -124,17 +126,23 @@ start_node(void *context)
 void
 do_test(void)
 {
+	dispatch_queue_t soup = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0);
+	kern_return_t kr;
+	char buf[1000];
 	size_t i;
 
 	count_down = COUNT;
 
-	start = _dispatch_absolute_time();
+	kr = mach_timebase_info(&tbi);
+	assert(kr == 0);
+
+	start = mach_absolute_time();
 
 	for (i = 0; i < COUNT; i++) {
-		char buf[1000];
 		snprintf(buf, sizeof(buf), "com.example.starfish-node#%ld", i);
 		queues[i] = dispatch_queue_create(buf, NULL);
 		dispatch_suspend(queues[i]);
+		dispatch_set_target_queue(queues[i], soup);
 	}
 
 	for (i = 0; i < COUNT; i++) {
@@ -149,7 +157,7 @@ do_test(void)
 int
 main(void)
 {
-    test_start("Dispatch Starfish");
+	dispatch_test_start("Dispatch Starfish");
 
 	do_test();
 

@@ -19,22 +19,45 @@
  */
 
 #include <dispatch/dispatch.h>
+#include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
+#include <assert.h>
+#include <libkern/OSAtomic.h>
 
 #include <bsdtests.h>
 #include "dispatch_test.h"
 
+int32_t count = 0;
+const int32_t final = 32;
+
 int
 main(void)
 {
-	dispatch_test_start("Dispatch C++");
-	dispatch_queue_t q = dispatch_get_main_queue();
-	test_ptr_notnull("dispatch_get_main_queue", q);
+	dispatch_test_start("Dispatch Overcommit");
 
-	dispatch_async(dispatch_get_main_queue(), ^{
-		test_stop();
-		exit(0);
-	});
+	int i;
+	for (i = 0; i < final; ++i) {
+		char* name;
+		asprintf(&name, "test.overcommit.%d", i);
+
+		dispatch_queue_t queue = dispatch_queue_create(name, NULL);
+		test_ptr_notnull("dispatch_queue_create", queue);
+		free(name);
+		dispatch_set_target_queue(queue, dispatch_get_global_queue(0, DISPATCH_QUEUE_OVERCOMMIT));
+
+		dispatch_async(queue, ^{
+			OSAtomicIncrement32(&count);
+			if (count == final) {
+				test_long("count", count, final);
+				test_stop();
+			} else {
+				while (1); // spin
+			}
+		});
+	}
+
 	dispatch_main();
+
 	return 0;
 }

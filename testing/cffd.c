@@ -1,24 +1,22 @@
 /*
- * Copyright (c) 2008-2009 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
-
-#include "config/config.h"
 
 #include <dispatch/dispatch.h>
 
@@ -35,15 +33,20 @@
 #include <sys/event.h>
 #include <sys/time.h>
 
-#include <CoreServices/CoreServices.h>
+#include <CoreFoundation/CoreFoundation.h>
 
+#include <bsdtests.h>
 #include "dispatch_test.h"
 
+static int long kevent_data = 0;
+
+#if 0
 int debug = 0;
 
 #define DEBUG(...) do { \
 		if (debug) fprintf(stderr, __VA_ARGS__); \
 	} while(0);
+#endif
 
 #define assert_errno(str, expr) do { \
 	if (!(expr)) { \
@@ -61,9 +64,9 @@ init_kqueue(void)
 
 	kq = kqueue();
 	assert_errno("kqueue", kq >= 0);
-	
-	EV_SET(&ke, 1, EVFILT_TIMER, EV_ADD, NOTE_SECONDS, 1, 0);
-	
+
+	EV_SET(&ke, 1, EVFILT_TIMER, EV_ADD, NOTE_USECONDS, USEC_PER_SEC/10, 0);
+
 	res = kevent(kq, &ke, 1, NULL, 0, &t0);
 	assert_errno("kevent", res == 0);
 
@@ -80,6 +83,7 @@ read_kevent(int kq)
 	res = kevent(kq, NULL, 0, &ke, 1, NULL);
 	assert_errno("kevent", res >= 0);
 
+	kevent_data += ke.data;
 	fprintf(stdout, "kevent.data = %ld\n", ke.data);
 
 	return (res < 0);
@@ -97,10 +101,11 @@ cffd_callback(CFFileDescriptorRef cffd,
 	if (read_kevent(kq) == 0) {
 		// ...
 	}
- 
+
 	CFFileDescriptorEnableCallBacks(cffd, kCFFileDescriptorReadCallBack);
 }
 
+#if 0
 void
 timer()
 {
@@ -125,6 +130,7 @@ hangup()
 	});
 	dispatch_resume(ds);
 }
+#endif
 
 int
 main(int argc __attribute__((unused)), char *argv[] __attribute__((unused)))
@@ -134,25 +140,31 @@ main(int argc __attribute__((unused)), char *argv[] __attribute__((unused)))
 	CFRunLoopSourceRef  rls;
 	CFFileDescriptorContext ctx;
 
-	test_start("CFFileDescriptor");
+	dispatch_test_start("CFFileDescriptor");
 
+#if 0
 	signal(SIGHUP, SIG_IGN);
+#endif
 
 	kq = init_kqueue();
 
 	memset(&ctx, 0, sizeof(CFFileDescriptorContext));
 	cffd = CFFileDescriptorCreate(NULL, kq, 1, cffd_callback, &ctx);
 	assert(cffd);
-    
+
 	rls = CFFileDescriptorCreateRunLoopSource(NULL, cffd, 0);
 	assert(rls);
 	CFRunLoopAddSource(CFRunLoopGetCurrent(), rls, kCFRunLoopDefaultMode);
 	CFFileDescriptorEnableCallBacks(cffd, kCFFileDescriptorReadCallBack);
 
-//	timer();
-//	hangup();
-	
-	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 10.0, false);
+#if 0
+	timer();
+	hangup();
+#endif
+
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.05, false);
+	// Should fire at least 10 times ...
+	test_long_greater_than_or_equal("kevent data", kevent_data, 10);
 
 	test_stop();
 

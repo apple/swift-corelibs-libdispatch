@@ -18,23 +18,20 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
-#include <dispatch/dispatch.h>
-#include <stdlib.h>
+#include <sys/cdefs.h>
+#include <stdbool.h>
 
-#include <bsdtests.h>
-#include "dispatch_test.h"
+#define test_group_wait(g) do { \
+	if (dispatch_group_wait(g, dispatch_time(DISPATCH_TIME_NOW, \
+			25ull * NSEC_PER_SEC))) { \
+		test_long("group wait timed out", 1, 0); \
+		test_stop(); \
+	} } while (0)
 
-int
-main(void)
-{
-	dispatch_test_start("Dispatch C++");
-	dispatch_queue_t q = dispatch_get_main_queue();
-	test_ptr_notnull("dispatch_get_main_queue", q);
+__BEGIN_DECLS
 
-	dispatch_async(dispatch_get_main_queue(), ^{
-		test_stop();
-		exit(0);
-	});
-	dispatch_main();
-	return 0;
-}
+void dispatch_test_start(const char* desc);
+
+bool dispatch_test_check_evfilt_read_for_fd(int fd);
+
+__END_DECLS

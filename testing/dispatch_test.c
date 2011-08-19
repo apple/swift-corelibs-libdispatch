@@ -18,23 +18,41 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
-#include <dispatch/dispatch.h>
-#include <stdlib.h>
-
-#include <bsdtests.h>
 #include "dispatch_test.h"
 
-int
-main(void)
-{
-	dispatch_test_start("Dispatch C++");
-	dispatch_queue_t q = dispatch_get_main_queue();
-	test_ptr_notnull("dispatch_get_main_queue", q);
+#ifdef __OBJC_GC__
+#include <objc/objc-auto.h>
+#endif
 
-	dispatch_async(dispatch_get_main_queue(), ^{
-		test_stop();
-		exit(0);
-	});
-	dispatch_main();
-	return 0;
+#include <unistd.h>
+#include <sys/event.h>
+#include <assert.h>
+
+void test_start(const char* desc);
+
+void
+dispatch_test_start(const char* desc)
+{
+#if defined(__OBJC_GC__) && MAC_OS_X_VERSION_MIN_REQUIRED < 1070
+	objc_startCollectorThread();
+#endif
+	test_start(desc);
+}
+
+bool
+dispatch_test_check_evfilt_read_for_fd(int fd)
+{
+	int kq = kqueue();
+	assert(kq != -1);
+	struct kevent ke = {
+		.ident = fd,
+		.filter = EVFILT_READ,
+		.flags = EV_ADD|EV_ENABLE,
+	};
+	struct timespec t = {
+		.tv_sec = 1,
+	};
+	int r = kevent(kq, &ke, 1, &ke, 1, &t);
+	close(kq);
+	return r > 0;
 }
