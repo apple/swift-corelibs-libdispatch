@@ -20,7 +20,7 @@
 
 #include <stdio.h>
 #include <dispatch/dispatch.h>
-#include <dispatch/queue_private.h>
+#include <dispatch/private.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <assert.h>

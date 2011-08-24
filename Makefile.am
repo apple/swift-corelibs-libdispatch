@@ -8,7 +8,8 @@ SUBDIRS=					\
 	dispatch				\
 	man						\
 	private					\
-	src
+	src						\
+	testing
 
 EXTRA_DIST=					\
 	LICENSE					\

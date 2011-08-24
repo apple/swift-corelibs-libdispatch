@@ -18,7 +18,9 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
+#ifdef __cplusplus
 extern "C" {
+#endif
 void
 func(void)
 {
@@ -26,4 +28,6 @@ func(void)
 #ifdef __BLOCKS__
 void (^block)(void) = ^{ };
 #endif
+#ifdef __cplusplus
 };
+#endif

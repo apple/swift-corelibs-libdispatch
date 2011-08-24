@@ -19,6 +19,7 @@
  */
 
 #include <dispatch/dispatch.h>
+#include <dispatch/private.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>

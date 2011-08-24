@@ -257,5 +257,11 @@ AC_COMPILE_IFELSE(
 #
 # Generate Makefiles.
 #
-AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile private/Makefile src/Makefile])
+AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile private/Makefile src/Makefile testing/Makefile])
+
+#
+# Generate testsuite links
+#
+AC_CONFIG_LINKS([testing/dispatch:${x:+}private testing/bench.cc:testing/bench.mm testing/leaks-wrapper:testing/leaks-wrapper.sh])
+
 AC_OUTPUT

@@ -366,7 +366,6 @@ test_leaks_pid(const char *name, pid_t pid)
 {
 	int res;
 	char pidstr[10];
-	char *leakswrapperpath;
 
 	if (getenv("NOLEAKS")) {
 		return;
@@ -401,8 +400,6 @@ test_leaks_pid(const char *name, pid_t pid)
 	} else {
 		perror(args[0]);
 	}
-
-	free(leakswrapperpath);
 }
 
 void

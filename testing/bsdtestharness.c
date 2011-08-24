@@ -18,6 +18,7 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
+#include <mach/clock_types.h>
 #include <dispatch/dispatch.h>
 #include <assert.h>
 #include <spawn.h>
@@ -25,7 +26,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
-#include <mach/clock_types.h>
 #include <mach-o/arch.h>
 
 #include <bsdtests.h>
@@ -84,7 +84,7 @@ main(int argc, char *argv[])
 		int res2 = waitpid(pid, &status, 0);
 		assert(res2 != -1);
 		test_long("Process exited", (WIFEXITED(status) && WEXITSTATUS(status) && WEXITSTATUS(status) != 0xff) || WIFSIGNALED(status), 0);
-		exit(0);
+		exit((WIFEXITED(status) && WEXITSTATUS(status)) || WIFSIGNALED(status));
 	});
 	dispatch_resume(tmp_ds);
 
@@ -92,7 +92,7 @@ main(int argc, char *argv[])
 	// Give embedded platforms a little more time.
 	uint64_t timeout = 300LL * NSEC_PER_SEC;
 #else
-	uint64_t timeout = 90LL * NSEC_PER_SEC;
+	uint64_t timeout = 150LL * NSEC_PER_SEC;
 #endif
 
 	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, timeout), main_q, ^{

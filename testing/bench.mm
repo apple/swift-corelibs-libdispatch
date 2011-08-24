@@ -199,6 +199,11 @@ main(void)
 	unsigned i;
 	int r;
 
+	printf("\n====================================================================\n");
+	printf("[TEST] dispatch benchmark\n");
+	printf("[PID] %d\n", getpid());
+	printf("====================================================================\n\n");
+
 	r = sysctlbyname("hw.cpufrequency", &freq, &freq_len, NULL, 0);
 	assert(r != -1);
 	assert(freq_len == sizeof(freq));
