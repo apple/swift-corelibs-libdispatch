@@ -443,6 +443,17 @@ _dispatch_root_queues_init(void *context DISPATCH_UNUSED)
 
 }
 
+#if !DISPATCH_USE_DIRECT_TSD
+pthread_key_t dispatch_queue_key;
+pthread_key_t dispatch_sema4_key;
+pthread_key_t dispatch_cache_key;
+pthread_key_t dispatch_io_key;
+pthread_key_t dispatch_apply_key;
+#if DISPATCH_PERF_MON
+pthread_key_t dispatch_bcounter_key;
+#endif
+#endif // !DISPATCH_USE_DIRECT_TSD
+
 #define countof(x) (sizeof(x) / sizeof(x[0]))
 
 DISPATCH_EXPORT DISPATCH_NOTHROW

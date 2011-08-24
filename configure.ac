@@ -8,7 +8,12 @@ AC_REVISION([$$])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_HEADER([config/config.h])
 AC_CONFIG_MACRO_DIR([m4])
+ac_clean_files=a.out.dSYM
 AM_MAINTAINER_MODE
+
+AC_PROG_CC([clang gcc cc])
+AC_PROG_CXX([clang++ g++ c++])
+AC_PROG_OBJC([clang gcc cc])
 
 #
 # On Mac OS X, some required header files come from other source packages;
@@ -16,37 +21,25 @@ AM_MAINTAINER_MODE
 #
 AC_ARG_WITH([apple-libc-source],
   [AS_HELP_STRING([--with-apple-libc-source],
-    [Specify path to Apple Libc source])],
-  [apple_libc_source_path=${withval}/pthreads
-    APPLE_LIBC_SOURCE_PATH=-I$apple_libc_source_path
-    CPPFLAGS="$CPPFLAGS -I$apple_libc_source_path"],
-  [APPLE_LIBC_SOURCE_PATH=]
-)
-AC_SUBST([APPLE_LIBC_SOURCE_PATH])
+    [Specify path to Apple Libc source])], [
+  apple_libc_source_pthreads_path=${withval}/pthreads
+  CPPFLAGS="$CPPFLAGS -I$apple_libc_source_pthreads_path"
+])
 
 AC_ARG_WITH([apple-libclosure-source],
   [AS_HELP_STRING([--with-apple-libclosure-source],
-    [Specify path to Apple libclosure source])],
-  [apple_libclosure_source_path=${withval}
-    APPLE_LIBCLOSURE_SOURCE_PATH=-I$apple_libclosure_source_path
-    CPPFLAGS="$CPPFLAGS -I$apple_libclosure_source_path"],
-  [APPLE_LIBCLOSURE_SOURCE_PATH=]
-)
-AC_SUBST([APPLE_LIBCLOSURE_SOURCE_PATH])
+    [Specify path to Apple libclosure source])], [
+  apple_libclosure_source_path=${withval}
+  CPPFLAGS="$CPPFLAGS -I$apple_libclosure_source_path"
+])
 
 AC_ARG_WITH([apple-xnu-source],
   [AS_HELP_STRING([--with-apple-xnu-source],
-    [Specify path to Apple XNU source])],
-  [apple_xnu_source_path=${withval}/libkern
-    APPLE_XNU_SOURCE_PATH=-I$apple_xnu_source_path
-    CPPFLAGS="$CPPFLAGS -I$apple_xnu_source_path"
-    apple_xnu_source_system_path=${withval}/osfmk
-    APPLE_XNU_SOURCE_SYSTEM_PATH=$apple_xnu_source_system_path],
-  [APPLE_XNU_SOURCE_PATH=]
-)
-AC_SUBST([APPLE_XNU_SOURCE_PATH])
-AC_SUBST([APPLE_XNU_SOURCE_SYSTEM_PATH])
-AM_CONDITIONAL(USE_XNU_SOURCE, [test -n "$apple_xnu_source_system_path"])
+    [Specify path to Apple XNU source])], [
+  apple_xnu_source_libkern_path=${withval}/libkern
+  apple_xnu_source_osfmk_path=${withval}/osfmk
+  CPPFLAGS="$CPPFLAGS -I$apple_xnu_source_libkern_path"
+])
 
 AC_CACHE_CHECK([for System.framework/PrivateHeaders], dispatch_cv_system_privateheaders,
   [AS_IF([test -d /System/Library/Frameworks/System.framework/PrivateHeaders],
@@ -57,15 +50,16 @@ AS_IF([test "x$dispatch_cv_system_privateheaders" != "xno"],
 )
 
 #
-# On Mac OS X, libpispatch_init is automatically invoked during libSystem
+# On Mac OS X, libdispatch_init is automatically invoked during libSystem
 # process initialization.  On other systems, it is tagged as a library
 # constructor to be run by automatically by the runtime linker.
 #
 AC_ARG_ENABLE([libdispatch-init-constructor],
   [AS_HELP_STRING([--disable-libdispatch-init-constructor],
-    [Disable libdispatch_init as a constructor])]
+    [Disable libdispatch_init as a constructor])],,
+  [AS_IF([test -f /usr/lib/system/libdispatch.dylib],
+    [enable_libdispatch_init_constructor=no])]
 )
-
 AS_IF([test "x$enable_libdispatch_init_constructor" != "xno"],
   [AC_DEFINE(USE_LIBDISPATCH_INIT_CONSTRUCTOR, 1,
     [Define to tag libdispatch_init as a constructor])]
@@ -78,15 +72,12 @@ AC_ARG_ENABLE([apple-tsd-optimizations],
   [AS_HELP_STRING([--enable-apple-tsd-optimizations],
     [Use non-portable pthread TSD optimizations for Mac OS X.])]
 )
-
 AS_IF([test "x$enable_apple_tsd_optimizations" = "xyes"],
   [AC_DEFINE(USE_APPLE_TSD_OPTIMIZATIONS, 1,
     [Define to use non-portable pthread TSD optimizations for Mac OS X)])]
 )
 
 AC_USE_SYSTEM_EXTENSIONS
-AC_PROG_CC
-AC_PROG_CXX
 AC_PROG_INSTALL
 AC_PROG_LIBTOOL
 AC_PATH_PROGS(MIG, mig)
@@ -127,26 +118,33 @@ AC_HEADER_STDC
 AC_CHECK_HEADERS([TargetConditionals.h pthread_np.h malloc/malloc.h libkern/OSCrossEndian.h libkern/OSAtomic.h])
 
 # hack for pthread_machdep.h's #include <System/machine/cpu_capabilities.h>
-AS_IF([test -n "$apple_xnu_source_system_path"], [
+AS_IF([test -n "$apple_xnu_source_osfmk_path"], [
   saveCPPFLAGS="$CPPFLAGS"
   CPPFLAGS="$CPPFLAGS -I."
-  ln -fsh "$apple_xnu_source_system_path" System
+  ln -fsh "$apple_xnu_source_osfmk_path" System
 ])
 AC_CHECK_HEADERS([pthread_machdep.h])
-AS_IF([test -n "$apple_xnu_source_system_path"], [
+AS_IF([test -n "$apple_xnu_source_osfmk_path"], [
   rm -f System
   CPPFLAGS="$saveCPPFLAGS"
+  AC_CONFIG_COMMANDS([src/System],
+    [ln -fsh "$apple_xnu_source_osfmk_path" src/System],
+    [apple_xnu_source_osfmk_path="$apple_xnu_source_osfmk_path"])
 ])
 
 #
-# Core Services is tested in one of the GCD regression tests, so test for its
-# presence using its header file.
+# Parts of the testsuite use CoreFoundation and Foundation
 #
-AC_CHECK_HEADER([CoreServices/CoreServices.h],
-  [have_coreservices=true],
-  [have_coreservices=false]
+AC_CHECK_HEADER([CoreFoundation/CoreFoundation.h],
+  [have_corefoundation=true], [have_corefoundation=false]
 )
-AM_CONDITIONAL(HAVE_CORESERVICES, $have_coreservices)
+AM_CONDITIONAL(HAVE_COREFOUNDATION, $have_corefoundation)
+AC_LANG_PUSH([Objective C])
+AC_CHECK_HEADER([Foundation/Foundation.h],
+  [have_foundation=true], [have_foundation=false]
+)
+AM_CONDITIONAL(HAVE_FOUNDATION, $have_foundation)
+AC_LANG_POP([Objective C])
 
 #
 # We use the availability of mach.h to decide whether to compile in all sorts
@@ -155,8 +153,7 @@ AM_CONDITIONAL(HAVE_CORESERVICES, $have_coreservices)
 AC_CHECK_HEADER([mach/mach.h], [
     AC_DEFINE(HAVE_MACH, 1, [Define if mach is present])
     AC_DEFINE(__DARWIN_NON_CANCELABLE, 1, [Define if using Darwin $NOCANCEL])
-    have_mach=true],
-  [have_mach=false]
+    have_mach=true], [have_mach=false]
 )
 AM_CONDITIONAL(USE_MIG, $have_mach)
 
@@ -182,15 +179,13 @@ AC_CHECK_DECLS([program_invocation_short_name], [], [], [[#include <errno.h>]])
 AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sysconf getprogname])
 
 AC_CHECK_DECLS([POSIX_SPAWN_START_SUSPENDED],
-  [have_posix_spawn_start_suspended=true],
-  [have_posix_spawn_start_suspended=false],
+  [have_posix_spawn_start_suspended=true], [have_posix_spawn_start_suspended=false],
   [[#include <sys/spawn.h>]]
 )
 AM_CONDITIONAL(HAVE_POSIX_SPAWN_START_SUSPENDED, $have_posix_spawn_start_suspended)
 
 AC_CHECK_FUNC([sem_init],
-  [have_sem_init=true],
-  [have_sem_init=false]
+  [have_sem_init=true], [have_sem_init=false]
 )
 
 #
@@ -236,7 +231,7 @@ AC_CACHE_CHECK([for -momit-leaf-frame-pointer], [dispatch_cv_cc_omit_leaf_fp], [
   CFLAGS="$saveCFLAGS"
 ])
 AS_IF([test "x$dispatch_cv_cc_omit_leaf_fp" != "xno"], [
-    OMIT_LEAF_FP_FLAGS="-momit-leaf-frame-pointer"
+  OMIT_LEAF_FP_FLAGS="-momit-leaf-frame-pointer"
 ])
 AC_SUBST([OMIT_LEAF_FP_FLAGS])
 
@@ -254,10 +249,10 @@ AM_CONDITIONAL(HAVE_DARWIN_LD, [test "x$dispatch_cv_ld_darwin" != "xno"])
 # Temporary: some versions of clang do not mark __builtin_trap() as
 # __attribute__((__noreturn__)).  Detect and add if required.
 #
-AC_COMPILE_IFELSE([
-  AC_LANG_PROGRAM([void __attribute__((__noreturn__)) temp(void) { __builtin_trap(); }], [])], [
-    AC_DEFINE(HAVE_NORETURN_BUILTIN_TRAP, 1, [Define if __builtin_trap marked noreturn])
-  ], [])
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM([void __attribute__((__noreturn__)) temp(void) { __builtin_trap(); }], [])],
+  [AC_DEFINE(HAVE_NORETURN_BUILTIN_TRAP, 1, [Define if __builtin_trap marked noreturn])]
+)
 
 #
 # Generate Makefiles.

@@ -35,8 +35,7 @@ libdispatch_la_SOURCES=		\
 	shims/time.h			\
 	shims/tsd.h
 
-INCLUDES=-I$(top_builddir) -I$(top_srcdir) -I$(top_srcdir)/private \
-	@APPLE_LIBC_SOURCE_PATH@ @APPLE_LIBCLOSURE_SOURCE_PATH@ @APPLE_XNU_SOURCE_PATH@
+INCLUDES=-I$(top_builddir) -I$(top_srcdir) -I$(top_srcdir)/private
 
 libdispatch_la_CFLAGS=-Wall $(VISIBILITY_FLAGS) $(OMIT_LEAF_FP_FLAGS)
 libdispatch_la_CFLAGS+=$(MARCH_FLAGS) $(CBLOCKS_FLAGS) $(KQUEUE_CFLAGS)
@@ -48,6 +47,7 @@ libdispatch_la_LDFLAGS+=-Wl,-compatibility_version,1 -Wl,-current_version,$(VERS
 endif
 
 CLEANFILES=
+DISTCLEANFILES=System
 
 if USE_MIG
 BUILT_SOURCES=				\
@@ -62,12 +62,4 @@ CLEANFILES+=$(BUILT_SOURCES)
 %User.c %.h %Server.c %Server.h: $(abs_srcdir)/%.defs
 	$(MIG) -user $*User.c -header $*.h \
 	    -server $*Server.c -sheader $*Server.h $<
-endif
-
-if USE_XNU_SOURCE
-# hack for pthread_machdep.h's #include <System/machine/cpu_capabilities.h>
-$(libdispatch_la_OBJECTS): $(abs_srcdir)/System
-$(abs_srcdir)/System:
-	$(LN_S) -fh "@APPLE_XNU_SOURCE_SYSTEM_PATH@" System
-CLEANFILES+=System
 endif
