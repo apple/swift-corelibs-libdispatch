@@ -45,7 +45,6 @@ static const unsigned long dispatch_cache_key		= __PTK_LIBDISPATCH_KEY2;
 static const unsigned long dispatch_io_key			= __PTK_LIBDISPATCH_KEY3;
 static const unsigned long dispatch_apply_key		= __PTK_LIBDISPATCH_KEY4;
 static const unsigned long dispatch_bcounter_key	= __PTK_LIBDISPATCH_KEY5;
-//__PTK_LIBDISPATCH_KEY5
 
 DISPATCH_TSD_INLINE
 static inline void

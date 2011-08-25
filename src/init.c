@@ -80,6 +80,17 @@ void *(*_dispatch_begin_NSAutoReleasePool)(void) = (void *)dummy_function;
 void (*_dispatch_end_NSAutoReleasePool)(void *) = (void *)dummy_function;
 #endif
 
+#if !DISPATCH_USE_DIRECT_TSD
+pthread_key_t dispatch_queue_key;
+pthread_key_t dispatch_sema4_key;
+pthread_key_t dispatch_cache_key;
+pthread_key_t dispatch_io_key;
+pthread_key_t dispatch_apply_key;
+#if DISPATCH_PERF_MON
+pthread_key_t dispatch_bcounter_key;
+#endif
+#endif // !DISPATCH_USE_DIRECT_TSD
+
 struct _dispatch_hw_config_s _dispatch_hw_config;
 bool _dispatch_safe_fork = true;
 
