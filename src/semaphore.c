@@ -38,24 +38,26 @@
 DISPATCH_WEAK // rdar://problem/8503746
 long _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema);
 
-static void _dispatch_semaphore_dispose(dispatch_semaphore_t dsema);
-static size_t _dispatch_semaphore_debug(dispatch_semaphore_t dsema, char *buf,
-		size_t bufsiz);
 static long _dispatch_group_wake(dispatch_semaphore_t dsema);
 
 #pragma mark -
 #pragma mark dispatch_semaphore_t
 
-struct dispatch_semaphore_vtable_s {
-	DISPATCH_VTABLE_HEADER(dispatch_semaphore_s);
-};
+static void
+_dispatch_semaphore_init(long value, dispatch_object_t dou)
+{
+	dispatch_semaphore_t dsema = dou._dsema;
 
-const struct dispatch_semaphore_vtable_s _dispatch_semaphore_vtable = {
-	.do_type = DISPATCH_SEMAPHORE_TYPE,
-	.do_kind = "semaphore",
-	.do_dispose = _dispatch_semaphore_dispose,
-	.do_debug = _dispatch_semaphore_debug,
-};
+	dsema->do_next = DISPATCH_OBJECT_LISTLESS;
+	dsema->do_targetq = dispatch_get_global_queue(
+			DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+	dsema->dsema_value = value;
+	dsema->dsema_orig = value;
+#if USE_POSIX_SEM
+	int ret = sem_init(&dsema->dsema_sem, 0, 0);
+	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
+#endif
+}
 
 dispatch_semaphore_t
 dispatch_semaphore_create(long value)
@@ -69,23 +71,9 @@ dispatch_semaphore_create(long value)
 		return NULL;
 	}
 
-	dsema = calloc(1, sizeof(struct dispatch_semaphore_s));
-
-	if (fastpath(dsema)) {
-		dsema->do_vtable = &_dispatch_semaphore_vtable;
-		dsema->do_next = DISPATCH_OBJECT_LISTLESS;
-		dsema->do_ref_cnt = 1;
-		dsema->do_xref_cnt = 1;
-		dsema->do_targetq = dispatch_get_global_queue(
-				DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
-		dsema->dsema_value = value;
-		dsema->dsema_orig = value;
-#if USE_POSIX_SEM
-		int ret = sem_init(&dsema->dsema_sem, 0, 0);
-		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#endif
-	}
-
+	dsema = _dispatch_alloc(DISPATCH_VTABLE(semaphore),
+			sizeof(struct dispatch_semaphore_s));
+	_dispatch_semaphore_init(value, dsema);
 	return dsema;
 }
 
@@ -99,6 +87,7 @@ _dispatch_semaphore_create_port(semaphore_t *s4)
 	if (*s4) {
 		return;
 	}
+	_dispatch_safe_fork = false;
 
 	// lazily allocate the semaphore port
 
@@ -117,14 +106,14 @@ _dispatch_semaphore_create_port(semaphore_t *s4)
 		kr = semaphore_destroy(mach_task_self(), tmp);
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 	}
-
-	_dispatch_safe_fork = false;
 }
 #endif
 
-static void
-_dispatch_semaphore_dispose(dispatch_semaphore_t dsema)
+void
+_dispatch_semaphore_dispose(dispatch_object_t dou)
 {
+	dispatch_semaphore_t dsema = dou._dsema;
+
 	if (dsema->dsema_value < dsema->dsema_orig) {
 		DISPATCH_CLIENT_CRASH(
 				"Semaphore/group object deallocated while in use");
@@ -144,13 +133,13 @@ _dispatch_semaphore_dispose(dispatch_semaphore_t dsema)
 	int ret = sem_destroy(&dsema->dsema_sem);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #endif
-
-	_dispatch_dispose(dsema);
 }
 
-static size_t
-_dispatch_semaphore_debug(dispatch_semaphore_t dsema, char *buf, size_t bufsiz)
+size_t
+_dispatch_semaphore_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 {
+	dispatch_semaphore_t dsema = dou._dsema;
+
 	size_t offset = 0;
 	offset += snprintf(&buf[offset], bufsiz - offset, "%s[%p] = { ",
 			dx_kind(dsema), dsema);
@@ -324,7 +313,10 @@ dispatch_semaphore_wait(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 dispatch_group_t
 dispatch_group_create(void)
 {
-	return (dispatch_group_t)dispatch_semaphore_create(LONG_MAX);
+	dispatch_group_t dg = _dispatch_alloc(DISPATCH_VTABLE(group),
+			sizeof(struct dispatch_semaphore_s));
+	_dispatch_semaphore_init(LONG_MAX, dg);
+	return dg;
 }
 
 void
@@ -566,6 +558,7 @@ DISPATCH_NOINLINE
 static _dispatch_thread_semaphore_t
 _dispatch_thread_semaphore_create(void)
 {
+	_dispatch_safe_fork = false;
 #if USE_MACH_SEM
 	semaphore_t s4;
 	kern_return_t kr;

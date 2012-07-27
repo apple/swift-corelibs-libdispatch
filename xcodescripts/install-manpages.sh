@@ -80,6 +80,7 @@ for m in dispatch_get_current_queue dispatch_main dispatch_get_main_queue \
 done
 
 for m in dispatch_source_set_event_handler dispatch_source_set_event_handler_f \
+		dispatch_source_set_registration_handler dispatch_source_set_registration_handler_f \
 		dispatch_source_set_cancel_handler dispatch_source_set_cancel_handler_f \
 		dispatch_source_cancel dispatch_source_testcancel \
 		dispatch_source_get_handle dispatch_source_get_mask \
@@ -98,7 +99,7 @@ done
 
 for m in dispatch_io_create_with_path dispatch_io_set_high_water \
 		dispatch_io_set_low_water dispatch_io_set_interval \
-		dispatch_io_close; do
+		dispatch_io_close dispatch_io_barrier; do
 	ln -f dispatch_io_create.3 ${m}.3
 done
 

@@ -70,18 +70,33 @@ dummy_function_r0(void)
 #pragma mark dispatch_globals
 
 #if DISPATCH_COCOA_COMPAT
-// dispatch_begin_thread_4GC having non-default value triggers GC-only slow
-// paths and is checked frequently, testing against NULL is faster than
-// comparing for equality with "dummy_function"
-void (*dispatch_begin_thread_4GC)(void) = NULL;
-void (*dispatch_end_thread_4GC)(void) = dummy_function;
-void (*dispatch_no_worker_threads_4GC)(void) = NULL;
-void *(*_dispatch_begin_NSAutoReleasePool)(void) = (void *)dummy_function;
-void (*_dispatch_end_NSAutoReleasePool)(void *) = (void *)dummy_function;
+void (*dispatch_begin_thread_4GC)(void);
+void (*dispatch_end_thread_4GC)(void);
+void (*dispatch_no_worker_threads_4GC)(void);
+void *(*_dispatch_begin_NSAutoReleasePool)(void);
+void (*_dispatch_end_NSAutoReleasePool)(void *);
 #endif
+
+#if !DISPATCH_USE_DIRECT_TSD
+pthread_key_t dispatch_queue_key;
+pthread_key_t dispatch_sema4_key;
+pthread_key_t dispatch_cache_key;
+pthread_key_t dispatch_io_key;
+pthread_key_t dispatch_apply_key;
+#if DISPATCH_PERF_MON
+pthread_key_t dispatch_bcounter_key;
+#endif
+#endif // !DISPATCH_USE_DIRECT_TSD
 
 struct _dispatch_hw_config_s _dispatch_hw_config;
 bool _dispatch_safe_fork = true;
+
+DISPATCH_NOINLINE
+bool
+_dispatch_is_multithreaded(void)
+{
+	return !_dispatch_safe_fork;
+}
 
 const struct dispatch_queue_offsets_s dispatch_queue_offsets = {
 	.dqo_version = 3,
@@ -101,8 +116,8 @@ const struct dispatch_queue_offsets_s dispatch_queue_offsets = {
 //         renaming this symbol
 DISPATCH_CACHELINE_ALIGN
 struct dispatch_queue_s _dispatch_main_q = {
+	.do_vtable = DISPATCH_VTABLE(queue),
 #if !DISPATCH_USE_RESOLVERS
-	.do_vtable = &_dispatch_queue_vtable,
 	.do_targetq = &_dispatch_root_queues[
 			DISPATCH_ROOT_QUEUE_IDX_DEFAULT_OVERCOMMIT_PRIORITY],
 #endif
@@ -115,38 +130,137 @@ struct dispatch_queue_s _dispatch_main_q = {
 	.dq_serialnum = 1,
 };
 
-const struct dispatch_queue_attr_vtable_s dispatch_queue_attr_vtable = {
-	.do_type = DISPATCH_QUEUE_ATTR_TYPE,
-	.do_kind = "queue-attr",
-};
-
 struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent = {
-	.do_vtable = &dispatch_queue_attr_vtable,
+	.do_vtable = DISPATCH_VTABLE(queue_attr),
 	.do_ref_cnt = DISPATCH_OBJECT_GLOBAL_REFCNT,
 	.do_xref_cnt = DISPATCH_OBJECT_GLOBAL_REFCNT,
 	.do_next = DISPATCH_OBJECT_LISTLESS,
-};
-
-struct dispatch_data_s _dispatch_data_empty = {
-#if !DISPATCH_USE_RESOLVERS
-	.do_vtable = &_dispatch_data_vtable,
-#endif
-	.do_ref_cnt = DISPATCH_OBJECT_GLOBAL_REFCNT,
-	.do_xref_cnt = DISPATCH_OBJECT_GLOBAL_REFCNT,
-	.do_next = DISPATCH_OBJECT_LISTLESS,
-};
-
-const dispatch_block_t _dispatch_data_destructor_free = ^{
-	DISPATCH_CRASH("free destructor called");
 };
 
 #pragma mark -
-#pragma mark dispatch_log
+#pragma mark dispatch_vtables
+
+DISPATCH_VTABLE_INSTANCE(semaphore,
+	.do_type = DISPATCH_SEMAPHORE_TYPE,
+	.do_kind = "semaphore",
+	.do_dispose = _dispatch_semaphore_dispose,
+	.do_debug = _dispatch_semaphore_debug,
+);
+
+DISPATCH_VTABLE_INSTANCE(group,
+	.do_type = DISPATCH_GROUP_TYPE,
+	.do_kind = "group",
+	.do_dispose = _dispatch_semaphore_dispose,
+	.do_debug = _dispatch_semaphore_debug,
+);
+
+DISPATCH_VTABLE_INSTANCE(queue,
+	.do_type = DISPATCH_QUEUE_TYPE,
+	.do_kind = "queue",
+	.do_dispose = _dispatch_queue_dispose,
+	.do_invoke = NULL,
+	.do_probe = (void *)dummy_function_r0,
+	.do_debug = dispatch_queue_debug,
+);
+
+DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_root, queue,
+	.do_type = DISPATCH_QUEUE_GLOBAL_TYPE,
+	.do_kind = "global-queue",
+	.do_debug = dispatch_queue_debug,
+	.do_probe = _dispatch_queue_probe_root,
+);
+
+DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_mgr, queue,
+	.do_type = DISPATCH_QUEUE_MGR_TYPE,
+	.do_kind = "mgr-queue",
+	.do_invoke = _dispatch_mgr_thread,
+	.do_debug = dispatch_queue_debug,
+	.do_probe = _dispatch_mgr_wakeup,
+);
+
+DISPATCH_VTABLE_INSTANCE(queue_specific_queue,
+	.do_type = DISPATCH_QUEUE_SPECIFIC_TYPE,
+	.do_kind = "queue-context",
+	.do_dispose = _dispatch_queue_specific_queue_dispose,
+	.do_invoke = NULL,
+	.do_probe = (void *)dummy_function_r0,
+	.do_debug = (void *)dispatch_queue_debug,
+);
+
+DISPATCH_VTABLE_INSTANCE(queue_attr,
+	.do_type = DISPATCH_QUEUE_ATTR_TYPE,
+	.do_kind = "queue-attr",
+);
+
+DISPATCH_VTABLE_INSTANCE(source,
+	.do_type = DISPATCH_SOURCE_KEVENT_TYPE,
+	.do_kind = "kevent-source",
+	.do_invoke = _dispatch_source_invoke,
+	.do_dispose = _dispatch_source_dispose,
+	.do_probe = _dispatch_source_probe,
+	.do_debug = _dispatch_source_debug,
+);
+
+DISPATCH_VTABLE_INSTANCE(data,
+	.do_type = DISPATCH_DATA_TYPE,
+	.do_kind = "data",
+	.do_dispose = _dispatch_data_dispose,
+	.do_invoke = NULL,
+	.do_probe = (void *)dummy_function_r0,
+	.do_debug = _dispatch_data_debug,
+);
+
+DISPATCH_VTABLE_INSTANCE(io,
+	.do_type = DISPATCH_IO_TYPE,
+	.do_kind = "channel",
+	.do_dispose = _dispatch_io_dispose,
+	.do_invoke = NULL,
+	.do_probe = (void *)dummy_function_r0,
+	.do_debug = (void *)dummy_function_r0,
+);
+
+DISPATCH_VTABLE_INSTANCE(operation,
+	.do_type = DISPATCH_OPERATION_TYPE,
+	.do_kind = "operation",
+	.do_dispose = _dispatch_operation_dispose,
+	.do_invoke = NULL,
+	.do_probe = (void *)dummy_function_r0,
+	.do_debug = (void *)dummy_function_r0,
+);
+
+DISPATCH_VTABLE_INSTANCE(disk,
+	.do_type = DISPATCH_DISK_TYPE,
+	.do_kind = "disk",
+	.do_dispose = _dispatch_disk_dispose,
+	.do_invoke = NULL,
+	.do_probe = (void *)dummy_function_r0,
+	.do_debug = (void *)dummy_function_r0,
+);
+
+void
+_dispatch_vtable_init(void)
+{
+#if USE_OBJC
+	// ObjC classes and dispatch vtables are co-located via linker order and
+	// alias files, verify correct layout during initialization rdar://10640168
+	#define DISPATCH_OBJC_CLASS(name) \
+			DISPATCH_CONCAT(OBJC_CLASS_$_,DISPATCH_CLASS(name))
+	extern void *DISPATCH_OBJC_CLASS(semaphore);
+	dispatch_assert((char*)DISPATCH_VTABLE(semaphore) -
+			(char*)&DISPATCH_OBJC_CLASS(semaphore) == 0);
+	dispatch_assert((char*)&DISPATCH_CONCAT(_,DISPATCH_CLASS(semaphore_vtable))
+			- (char*)&DISPATCH_OBJC_CLASS(semaphore) ==
+			sizeof(_os_object_class_s));
+#endif
+}
+
+#pragma mark -
+#pragma mark dispatch_bug
 
 static char _dispatch_build[16];
 
 static void
-_dispatch_bug_init(void *context DISPATCH_UNUSED)
+_dispatch_build_init(void *context DISPATCH_UNUSED)
 {
 #ifdef __APPLE__
 	int mib[] = { CTL_KERN, KERN_OSVERSION };
@@ -161,31 +275,36 @@ _dispatch_bug_init(void *context DISPATCH_UNUSED)
 #endif
 }
 
+#define _dispatch_bug_log(msg, ...) do { \
+	static void *last_seen; \
+	void *ra = __builtin_return_address(0); \
+	if (last_seen != ra) { \
+		last_seen = ra; \
+		_dispatch_log((msg), ##__VA_ARGS__); \
+	} \
+} while(0)
+
 void
 _dispatch_bug(size_t line, long val)
 {
 	static dispatch_once_t pred;
-	static void *last_seen;
-	void *ra = __builtin_return_address(0);
 
-	dispatch_once_f(&pred, NULL, _dispatch_bug_init);
-	if (last_seen != ra) {
-		last_seen = ra;
-		_dispatch_log("BUG in libdispatch: %s - %lu - 0x%lx",
-				_dispatch_build, (unsigned long)line, val);
-	}
+	dispatch_once_f(&pred, NULL, _dispatch_build_init);
+	_dispatch_bug_log("BUG in libdispatch: %s - %lu - 0x%lx",
+			_dispatch_build, (unsigned long)line, val);
+}
+
+void
+_dispatch_bug_client(const char* msg)
+{
+	_dispatch_bug_log("BUG in libdispatch client: %s", msg);
 }
 
 void
 _dispatch_bug_mach_client(const char* msg, mach_msg_return_t kr)
 {
-	static void *last_seen;
-	void *ra = __builtin_return_address(0);
-	if (last_seen != ra) {
-		last_seen = ra;
-		_dispatch_log("BUG in libdispatch client: %s %s - 0x%x", msg,
-				mach_error_string(kr), kr);
-	}
+	_dispatch_bug_log("BUG in libdispatch client: %s %s - 0x%x", msg,
+			mach_error_string(kr), kr);
 }
 
 void
@@ -195,18 +314,12 @@ _dispatch_abort(size_t line, long val)
 	abort();
 }
 
-void
-_dispatch_log(const char *msg, ...)
-{
-	va_list ap;
-
-	va_start(ap, msg);
-	_dispatch_logv(msg, ap);
-	va_end(ap);
-}
+#pragma mark -
+#pragma mark dispatch_log
 
 static FILE *dispatch_logfile;
 static bool dispatch_log_disabled;
+static dispatch_once_t _dispatch_logv_pred;
 
 static void
 _dispatch_logv_init(void *context DISPATCH_UNUSED)
@@ -249,38 +362,48 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 	}
 }
 
-void
+DISPATCH_NOINLINE
+static void
+_dispatch_logv_file(const char *msg, va_list ap)
+{
+	char *buf;
+	size_t len;
+
+	len = vasprintf(&buf, msg, ap);
+	buf[len++] = '\n';
+	fwrite(buf, 1, len, dispatch_logfile);
+	fflush(dispatch_logfile);
+	free(buf);
+}
+
+static inline void
 _dispatch_logv(const char *msg, va_list ap)
 {
-	static dispatch_once_t pred;
-	dispatch_once_f(&pred, NULL, _dispatch_logv_init);
-
+	dispatch_once_f(&_dispatch_logv_pred, NULL, _dispatch_logv_init);
 	if (slowpath(dispatch_log_disabled)) {
 		return;
 	}
 	if (slowpath(dispatch_logfile)) {
-		vfprintf(dispatch_logfile, msg, ap);
-		// TODO: May cause interleaving with another thread's log
-		fputc('\n', dispatch_logfile);
-		fflush(dispatch_logfile);
-		return;
+		return _dispatch_logv_file(msg, ap);
 	}
 	vsyslog(LOG_NOTICE, msg, ap);
+}
+
+DISPATCH_NOINLINE
+void
+_dispatch_log(const char *msg, ...)
+{
+	va_list ap;
+
+	va_start(ap, msg);
+	_dispatch_logv(msg, ap);
+	va_end(ap);
 }
 
 #pragma mark -
 #pragma mark dispatch_debug
 
-void
-dispatch_debug(dispatch_object_t dou, const char *msg, ...)
-{
-	va_list ap;
-
-	va_start(ap, msg);
-	dispatch_debugv(dou._do, msg, ap);
-	va_end(ap);
-}
-
+DISPATCH_NOINLINE
 void
 dispatch_debugv(dispatch_object_t dou, const char *msg, va_list ap)
 {
@@ -297,6 +420,17 @@ dispatch_debugv(dispatch_object_t dou, const char *msg, va_list ap)
 	_dispatch_logv(buf, ap);
 }
 
+DISPATCH_NOINLINE
+void
+dispatch_debug(dispatch_object_t dou, const char *msg, ...)
+{
+	va_list ap;
+
+	va_start(ap, msg);
+	dispatch_debugv(dou._do, msg, ap);
+	va_end(ap);
+}
+
 #pragma mark -
 #pragma mark dispatch_block_t
 
@@ -308,10 +442,13 @@ _dispatch_Block_copy(dispatch_block_t db)
 {
 	dispatch_block_t rval;
 
-	while (!(rval = Block_copy(db))) {
-		sleep(1);
+	if (fastpath(db)) { 
+		while (!fastpath(rval = Block_copy(db))) {
+			sleep(1);
+		}
+		return rval;
 	}
-	return rval;
+	DISPATCH_CLIENT_CRASH("NULL was passed where a block should have been");
 }
 
 void
@@ -327,26 +464,116 @@ _dispatch_call_block_and_release(void *block)
 #pragma mark -
 #pragma mark dispatch_client_callout
 
-#if DISPATCH_USE_CLIENT_CALLOUT
+// Abort on uncaught exceptions thrown from client callouts rdar://8577499
+#if DISPATCH_USE_CLIENT_CALLOUT && (__arm__ || !USE_OBJC)
+// On platforms with SjLj exceptions, avoid the SjLj overhead on every callout
+// by clearing the unwinder's TSD pointer to the handler stack around callouts
+
+#define _dispatch_get_tsd_base()
+#define _dispatch_get_unwind_tsd() (NULL)
+#define _dispatch_set_unwind_tsd(u) do {(void)(u);} while (0)
+#define _dispatch_free_unwind_tsd()
 
 #undef _dispatch_client_callout
-#undef _dispatch_client_callout2
-
 DISPATCH_NOINLINE
 void
 _dispatch_client_callout(void *ctxt, dispatch_function_t f)
 {
-	return f(ctxt);
+	_dispatch_get_tsd_base();
+	void *u = _dispatch_get_unwind_tsd();
+	_dispatch_set_unwind_tsd(NULL);
+	f(ctxt);
+	_dispatch_free_unwind_tsd();
+	_dispatch_set_unwind_tsd(u);
 }
 
+#undef _dispatch_client_callout2
 DISPATCH_NOINLINE
 void
 _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 {
-	return f(ctxt, i);
+	_dispatch_get_tsd_base();
+	void *u = _dispatch_get_unwind_tsd();
+	_dispatch_set_unwind_tsd(NULL);
+	f(ctxt, i);
+	_dispatch_free_unwind_tsd();
+	_dispatch_set_unwind_tsd(u);
 }
 
-#endif
+#endif // DISPATCH_USE_CLIENT_CALLOUT
+
+#pragma mark -
+#pragma mark _os_object_t no_objc
+
+#if !USE_OBJC
+
+static const _os_object_class_s _os_object_class;
+
+void
+_os_object_init(void)
+{
+	return;
+}
+
+_os_object_t
+_os_object_alloc(const void *cls, size_t size)
+{
+	_os_object_t obj;
+	dispatch_assert(size >= sizeof(struct _os_object_s));
+	if (!cls) cls = &_os_object_class;
+	while (!fastpath(obj = calloc(1u, size))) {
+		sleep(1); // Temporary resource shortage
+	}
+	obj->os_obj_isa = cls;
+	return obj;
+}
+
+void
+_os_object_dealloc(_os_object_t obj)
+{
+	*((void *volatile*)&obj->os_obj_isa) = (void *)0x200;
+	return free(obj);
+}
+
+void
+_os_object_xref_dispose(_os_object_t obj)
+{
+	if (fastpath(obj->os_obj_isa->_os_obj_xref_dispose)) {
+		return obj->os_obj_isa->_os_obj_xref_dispose(obj);
+	}
+	return _os_object_release_internal(obj);
+}
+
+void
+_os_object_dispose(_os_object_t obj)
+{
+	if (fastpath(obj->os_obj_isa->_os_obj_dispose)) {
+		return obj->os_obj_isa->_os_obj_dispose(obj);
+	}
+	return _os_object_dealloc(obj);
+}
+
+#pragma mark -
+#pragma mark dispatch_autorelease_pool no_objc
+
+#if DISPATCH_COCOA_COMPAT
+
+void *_dispatch_autorelease_pool_push(void) {
+	void *pool = NULL;
+	if (_dispatch_begin_NSAutoReleasePool) {
+		pool = _dispatch_begin_NSAutoReleasePool();
+	}
+	return pool;
+}
+
+void _dispatch_autorelease_pool_pop(void *pool) {
+	if (_dispatch_end_NSAutoReleasePool) {
+		_dispatch_end_NSAutoReleasePool(pool);
+	}
+}
+
+#endif // DISPATCH_COCOA_COMPAT
+#endif // !USE_OBJC
 
 #pragma mark -
 #pragma mark dispatch_source_types
@@ -552,6 +779,16 @@ const struct dispatch_source_type_s _dispatch_source_type_mach_recv = {
 	.init = dispatch_source_type_mach_recv_init,
 };
 
+const struct dispatch_source_type_s _dispatch_source_type_sock = {
+	.ke = {
+		.filter = EVFILT_SOCK,
+		.flags = EV_CLEAR,
+	},
+	.mask = NOTE_CONNRESET |  NOTE_READCLOSED | NOTE_WRITECLOSED |
+		NOTE_TIMEOUT | NOTE_NOSRCADDR |  NOTE_IFDENIED | NOTE_SUSPEND |
+		NOTE_RESUME | NOTE_KEEPALIVE,
+};
+
 #pragma mark -
 #pragma mark dispatch_mig
 
@@ -617,6 +854,5 @@ _dispatch_mach_notify_send_once(mach_port_t notify DISPATCH_UNUSED)
 #endif
 	return KERN_SUCCESS;
 }
-
 
 #endif // HAVE_MACH

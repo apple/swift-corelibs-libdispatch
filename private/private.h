@@ -44,18 +44,8 @@
 #endif
 #include <pthread.h>
 
-#define DISPATCH_NO_LEGACY 1
-#ifdef DISPATCH_LEGACY // <rdar://problem/7366725>
-#error "Dispatch legacy API unavailable."
-#endif
-
 #ifndef __DISPATCH_BUILDING_DISPATCH__
-#include_next <dispatch/dispatch.h>
-
-// Workaround <rdar://problem/6597365/>
-#ifndef __DISPATCH_PUBLIC__
-#include "/usr/include/dispatch/dispatch.h"
-#endif
+#include <dispatch/dispatch.h>
 
 #ifndef __DISPATCH_INDIRECT__
 #define __DISPATCH_INDIRECT__
@@ -64,13 +54,16 @@
 #include <dispatch/benchmark.h>
 #include <dispatch/queue_private.h>
 #include <dispatch/source_private.h>
+#include <dispatch/data_private.h>
 
 #undef __DISPATCH_INDIRECT__
 
 #endif /* !__DISPATCH_BUILDING_DISPATCH__ */
 
-/* LEGACY: Use DISPATCH_API_VERSION */
-#define LIBDISPATCH_VERSION DISPATCH_API_VERSION
+// <rdar://problem/9627726> Check that public and private dispatch headers match
+#if DISPATCH_API_VERSION != 20111201 // Keep in sync with <dispatch/dispatch.h>
+#error "Dispatch header mismatch between /usr/include and /usr/local/include"
+#endif
 
 __BEGIN_DECLS
 
@@ -111,6 +104,10 @@ void *(*_dispatch_begin_NSAutoReleasePool)(void);
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT
 void (*_dispatch_end_NSAutoReleasePool)(void *);
+
+__OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
+DISPATCH_EXPORT DISPATCH_NOTHROW
+bool _dispatch_is_multithreaded(void);
 
 #define _dispatch_time_after_nsec(t) \
 		dispatch_time(DISPATCH_TIME_NOW, (t))

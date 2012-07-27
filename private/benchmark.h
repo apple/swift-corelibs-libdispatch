@@ -28,7 +28,7 @@
 #define __DISPATCH_BENCHMARK__
 
 #ifndef __DISPATCH_INDIRECT__
-#error "Please #include <dispatch/dispatch.h> instead of this file directly."
+#error "Please #include <dispatch/private.h> instead of this file directly."
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 

@@ -200,6 +200,20 @@ or
 .Sy copy
 function can be released when the function returns. The newly created object
 holds implicit references to their constituent memory regions as necessary.
+.Pp
+The functions
+.Fn dispatch_data_create_map
+and
+.Fn dispatch_data_apply
+return an interior pointer to represented memory that is only valid as long as
+an associated object has not been released. When Objective-C Automated
+Reference Counting is enabled, care needs to be taken if that object is held in
+a variable with automatic storage. It may need to be annotated with the
+.Li objc_precise_lifetime
+attribute, or stored in a
+.Li __strong
+instance variable instead, to ensure that the object is not released
+prematurely before memory accesses via the interor pointer have been completed.
 .Sh SEE ALSO
 .Xr dispatch 3 ,
 .Xr dispatch_object 3 ,

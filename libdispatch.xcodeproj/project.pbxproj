@@ -56,6 +56,11 @@
 		96BC39BD0F3EBAB100C59689 /* queue_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 96BC39BC0F3EBAB100C59689 /* queue_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		96C9553B0F3EAEDD000D2CA4 /* once.h in Headers */ = {isa = PBXBuildFile; fileRef = 96C9553A0F3EAEDD000D2CA4 /* once.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		96DF70BE0F38FE3C0074BD99 /* once.c in Sources */ = {isa = PBXBuildFile; fileRef = 96DF70BD0F38FE3C0074BD99 /* once.c */; };
+		C913AC0F143BD34800B78976 /* data_private.h in Headers */ = {isa = PBXBuildFile; fileRef = C913AC0E143BD34800B78976 /* data_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
+		C93D6165143E190E00EB9023 /* transform.c in Sources */ = {isa = PBXBuildFile; fileRef = C9C5F80D143C1771006DC718 /* transform.c */; };
+		C93D6166143E190F00EB9023 /* transform.c in Sources */ = {isa = PBXBuildFile; fileRef = C9C5F80D143C1771006DC718 /* transform.c */; };
+		C93D6167143E190F00EB9023 /* transform.c in Sources */ = {isa = PBXBuildFile; fileRef = C9C5F80D143C1771006DC718 /* transform.c */; };
+		C9C5F80E143C1771006DC718 /* transform.c in Sources */ = {isa = PBXBuildFile; fileRef = C9C5F80D143C1771006DC718 /* transform.c */; };
 		E4128ED613BA9A1700ABB2CB /* hw_config.h in Headers */ = {isa = PBXBuildFile; fileRef = E4128ED513BA9A1700ABB2CB /* hw_config.h */; };
 		E4128ED713BA9A1700ABB2CB /* hw_config.h in Headers */ = {isa = PBXBuildFile; fileRef = E4128ED513BA9A1700ABB2CB /* hw_config.h */; };
 		E417A38412A472C4004D659D /* provider.d in Sources */ = {isa = PBXBuildFile; fileRef = E43570B8126E93380097AB9F /* provider.d */; };
@@ -64,11 +69,15 @@
 		E422A0D612A557B5005E5BDB /* trace.h in Headers */ = {isa = PBXBuildFile; fileRef = E422A0D412A557B5005E5BDB /* trace.h */; };
 		E43570B9126E93380097AB9F /* provider.d in Sources */ = {isa = PBXBuildFile; fileRef = E43570B8126E93380097AB9F /* provider.d */; };
 		E43570BA126E93380097AB9F /* provider.d in Sources */ = {isa = PBXBuildFile; fileRef = E43570B8126E93380097AB9F /* provider.d */; };
+		E4407FAE143CC984003A9E80 /* dispatch.h in Headers */ = {isa = PBXBuildFile; fileRef = E4407FAD143CC984003A9E80 /* dispatch.h */; settings = {ATTRIBUTES = (Private, ); }; };
+		E4407FAF143CC984003A9E80 /* dispatch.h in Headers */ = {isa = PBXBuildFile; fileRef = E4407FAD143CC984003A9E80 /* dispatch.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		E44EBE3E1251659900645D88 /* init.c in Sources */ = {isa = PBXBuildFile; fileRef = E44EBE3B1251659900645D88 /* init.c */; };
 		E44EBE5412517EBE00645D88 /* protocol.defs in Sources */ = {isa = PBXBuildFile; fileRef = FC7BED950E8361E600161930 /* protocol.defs */; settings = {ATTRIBUTES = (Client, Server, ); }; };
 		E44EBE5512517EBE00645D88 /* init.c in Sources */ = {isa = PBXBuildFile; fileRef = E44EBE3B1251659900645D88 /* init.c */; };
 		E44EBE5612517EBE00645D88 /* protocol.defs in Sources */ = {isa = PBXBuildFile; fileRef = FC7BED950E8361E600161930 /* protocol.defs */; settings = {ATTRIBUTES = (Client, Server, ); }; };
 		E44EBE5712517EBE00645D88 /* init.c in Sources */ = {isa = PBXBuildFile; fileRef = E44EBE3B1251659900645D88 /* init.c */; };
+		E454569314746F1B00106147 /* object_private.h in Headers */ = {isa = PBXBuildFile; fileRef = E454569214746F1B00106147 /* object_private.h */; settings = {ATTRIBUTES = (); }; };
+		E454569414746F1B00106147 /* object_private.h in Headers */ = {isa = PBXBuildFile; fileRef = E454569214746F1B00106147 /* object_private.h */; settings = {ATTRIBUTES = (); }; };
 		E49F2423125D3C960057C971 /* resolver.c in Sources */ = {isa = PBXBuildFile; fileRef = E44EBE371251656400645D88 /* resolver.c */; };
 		E49F2424125D3C970057C971 /* resolver.c in Sources */ = {isa = PBXBuildFile; fileRef = E44EBE371251656400645D88 /* resolver.c */; };
 		E49F2499125D48D80057C971 /* resolver.c in Sources */ = {isa = PBXBuildFile; fileRef = E44EBE371251656400645D88 /* resolver.c */; };
@@ -118,6 +127,8 @@
 		E4BA744013A8911B0095BDF1 /* malloc_zone.h in Headers */ = {isa = PBXBuildFile; fileRef = E4BA743A13A8911B0095BDF1 /* malloc_zone.h */; };
 		E4C1ED6F1263E714000D3C8B /* data_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = E4C1ED6E1263E714000D3C8B /* data_internal.h */; };
 		E4C1ED701263E714000D3C8B /* data_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = E4C1ED6E1263E714000D3C8B /* data_internal.h */; };
+		E4EB4A2714C35ECE00AA0FA9 /* object.h in Headers */ = {isa = PBXBuildFile; fileRef = E4EB4A2614C35ECE00AA0FA9 /* object.h */; };
+		E4EB4A2814C35ECE00AA0FA9 /* object.h in Headers */ = {isa = PBXBuildFile; fileRef = E4EB4A2614C35ECE00AA0FA9 /* object.h */; };
 		E4EC11AE12514302000DDBD1 /* queue.c in Sources */ = {isa = PBXBuildFile; fileRef = FC7BED8A0E8361E600161930 /* queue.c */; };
 		E4EC11AF12514302000DDBD1 /* semaphore.c in Sources */ = {isa = PBXBuildFile; fileRef = 721F5CCE0F15553500FF03A6 /* semaphore.c */; };
 		E4EC11B012514302000DDBD1 /* once.c in Sources */ = {isa = PBXBuildFile; fileRef = 96DF70BD0F38FE3C0074BD99 /* once.c */; };
@@ -138,6 +149,10 @@
 		E4EC122112514715000DDBD1 /* time.c in Sources */ = {isa = PBXBuildFile; fileRef = 96032E4A0F5CC8C700241C5F /* time.c */; };
 		E4EC122312514715000DDBD1 /* data.c in Sources */ = {isa = PBXBuildFile; fileRef = 5AAB45BF10D30B79004407EA /* data.c */; };
 		E4EC122412514715000DDBD1 /* io.c in Sources */ = {isa = PBXBuildFile; fileRef = 5A27262510F26F1900751FBC /* io.c */; };
+		E4FC3264145F46C9002FBDDB /* object.m in Sources */ = {isa = PBXBuildFile; fileRef = E4FC3263145F46C9002FBDDB /* object.m */; };
+		E4FC3265145F46C9002FBDDB /* object.m in Sources */ = {isa = PBXBuildFile; fileRef = E4FC3263145F46C9002FBDDB /* object.m */; };
+		E4FC3266145F46C9002FBDDB /* object.m in Sources */ = {isa = PBXBuildFile; fileRef = E4FC3263145F46C9002FBDDB /* object.m */; };
+		E4FC3267145F46C9002FBDDB /* object.m in Sources */ = {isa = PBXBuildFile; fileRef = E4FC3263145F46C9002FBDDB /* object.m */; };
 		FC0B34790FA2851C0080FFA0 /* source_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = FC0B34780FA2851C0080FFA0 /* source_internal.h */; };
 		FC1832A6109923C7003403D5 /* perfmon.h in Headers */ = {isa = PBXBuildFile; fileRef = FC1832A2109923C7003403D5 /* perfmon.h */; };
 		FC1832A7109923C7003403D5 /* time.h in Headers */ = {isa = PBXBuildFile; fileRef = FC1832A3109923C7003403D5 /* time.h */; };
@@ -224,21 +239,27 @@
 		96BC39BC0F3EBAB100C59689 /* queue_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = queue_private.h; sourceTree = "<group>"; };
 		96C9553A0F3EAEDD000D2CA4 /* once.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = once.h; sourceTree = "<group>"; };
 		96DF70BD0F38FE3C0074BD99 /* once.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; lineEnding = 0; path = once.c; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.c; };
+		C913AC0E143BD34800B78976 /* data_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = data_private.h; sourceTree = "<group>"; };
 		C927F35F10FD7F1000C5AB8B /* ddt.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = ddt.xcodeproj; path = tools/ddt/ddt.xcodeproj; sourceTree = "<group>"; };
+		C9C5F80D143C1771006DC718 /* transform.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = transform.c; sourceTree = "<group>"; };
 		D2AAC046055464E500DB518D /* libdispatch.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = libdispatch.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
 		E40041A9125D70590022B135 /* libdispatch-resolved.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = "libdispatch-resolved.xcconfig"; sourceTree = "<group>"; };
 		E40041AA125D705F0022B135 /* libdispatch-resolver.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = "libdispatch-resolver.xcconfig"; sourceTree = "<group>"; };
 		E4128ED513BA9A1700ABB2CB /* hw_config.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hw_config.h; sourceTree = "<group>"; };
 		E422A0D412A557B5005E5BDB /* trace.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = trace.h; sourceTree = "<group>"; };
+		E422DA3614D2A7E7003C6EE4 /* libdispatch.aliases */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = libdispatch.aliases; sourceTree = "<group>"; };
+		E422DA3714D2AE11003C6EE4 /* libdispatch.unexport */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = libdispatch.unexport; sourceTree = "<group>"; };
 		E43570B8126E93380097AB9F /* provider.d */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.dtrace; path = provider.d; sourceTree = "<group>"; };
 		E43D93F11097917E004F6A62 /* libdispatch.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = libdispatch.xcconfig; sourceTree = "<group>"; };
+		E4407FAD143CC984003A9E80 /* dispatch.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = dispatch.h; sourceTree = "<group>"; };
+		E448727914C6215D00BB45C2 /* libdispatch.order */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = libdispatch.order; sourceTree = "<group>"; };
 		E44EBE331251654000645D88 /* resolver.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = resolver.h; sourceTree = "<group>"; };
 		E44EBE371251656400645D88 /* resolver.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = resolver.c; sourceTree = "<group>"; };
 		E44EBE3B1251659900645D88 /* init.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = init.c; sourceTree = "<group>"; };
+		E454569214746F1B00106147 /* object_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = object_private.h; sourceTree = "<group>"; };
 		E47D6BB5125F0F800070D91C /* resolved.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = resolved.h; sourceTree = "<group>"; };
 		E482F1CD12DBAB590030614D /* postprocess-headers.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = "postprocess-headers.sh"; sourceTree = "<group>"; };
 		E49F24DF125D57FA0057C971 /* libdispatch.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = libdispatch.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
-		E49F251C125D629F0057C971 /* symlink-headers.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = "symlink-headers.sh"; sourceTree = "<group>"; };
 		E49F251D125D630A0057C971 /* install-manpages.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = "install-manpages.sh"; sourceTree = "<group>"; };
 		E49F251E125D631D0057C971 /* mig-headers.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = "mig-headers.sh"; sourceTree = "<group>"; };
 		E4BA743513A88FE10095BDF1 /* dispatch_data_create.3 */ = {isa = PBXFileReference; lastKnownFileType = text; path = dispatch_data_create.3; sourceTree = "<group>"; };
@@ -248,8 +269,11 @@
 		E4BA743913A8911B0095BDF1 /* getprogname.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = getprogname.h; sourceTree = "<group>"; };
 		E4BA743A13A8911B0095BDF1 /* malloc_zone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = malloc_zone.h; sourceTree = "<group>"; };
 		E4C1ED6E1263E714000D3C8B /* data_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = data_internal.h; sourceTree = "<group>"; };
+		E4EB4A2614C35ECE00AA0FA9 /* object.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = object.h; sourceTree = "<group>"; };
+		E4EB4A2A14C36F4E00AA0FA9 /* install-headers.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = "install-headers.sh"; sourceTree = "<group>"; };
 		E4EC11C312514302000DDBD1 /* libdispatch_up.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libdispatch_up.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4EC122D12514715000DDBD1 /* libdispatch_mp.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libdispatch_mp.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		E4FC3263145F46C9002FBDDB /* object.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = object.m; sourceTree = "<group>"; };
 		FC0B34780FA2851C0080FFA0 /* source_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = source_internal.h; sourceTree = "<group>"; };
 		FC1832A2109923C7003403D5 /* perfmon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = perfmon.h; sourceTree = "<group>"; };
 		FC1832A3109923C7003403D5 /* time.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = time.h; sourceTree = "<group>"; };
@@ -294,6 +318,7 @@
 			isa = PBXGroup;
 			children = (
 				E44DB71E11D2FF080074F2AD /* Build Support */,
+				E4EB4A2914C35F1800AA0FA9 /* OS Object */,
 				FC7BEDAA0E83625200161930 /* Public Headers */,
 				FC7BEDAF0E83626100161930 /* Private Headers */,
 				FC7BEDB60E8363DC00161930 /* Project Headers */,
@@ -316,11 +341,13 @@
 				E44EBE3B1251659900645D88 /* init.c */,
 				5A27262510F26F1900751FBC /* io.c */,
 				9661E56A0F3E7DDF00749F3E /* object.c */,
+				E4FC3263145F46C9002FBDDB /* object.m */,
 				96DF70BD0F38FE3C0074BD99 /* once.c */,
 				FC7BED8A0E8361E600161930 /* queue.c */,
 				721F5CCE0F15553500FF03A6 /* semaphore.c */,
 				96A8AA860F41E7A400CD570B /* source.c */,
 				96032E4A0F5CC8C700241C5F /* time.c */,
+				C9C5F80D143C1771006DC718 /* transform.c */,
 				FC7BED950E8361E600161930 /* protocol.defs */,
 				E43570B8126E93380097AB9F /* provider.d */,
 			);
@@ -378,6 +405,9 @@
 				E43D93F11097917E004F6A62 /* libdispatch.xcconfig */,
 				E40041AA125D705F0022B135 /* libdispatch-resolver.xcconfig */,
 				E40041A9125D70590022B135 /* libdispatch-resolved.xcconfig */,
+				E422DA3614D2A7E7003C6EE4 /* libdispatch.aliases */,
+				E448727914C6215D00BB45C2 /* libdispatch.order */,
+				E422DA3714D2AE11003C6EE4 /* libdispatch.unexport */,
 			);
 			path = xcodeconfig;
 			sourceTree = "<group>";
@@ -408,9 +438,9 @@
 			isa = PBXGroup;
 			children = (
 				E49F251D125D630A0057C971 /* install-manpages.sh */,
+				E4EB4A2A14C36F4E00AA0FA9 /* install-headers.sh */,
 				E49F251E125D631D0057C971 /* mig-headers.sh */,
 				E482F1CD12DBAB590030614D /* postprocess-headers.sh */,
-				E49F251C125D629F0057C971 /* symlink-headers.sh */,
 			);
 			path = xcodescripts;
 			sourceTree = "<group>";
@@ -421,6 +451,16 @@
 				FC9C70E7105EC9620074F9CA /* config.h */,
 			);
 			path = config;
+			sourceTree = "<group>";
+		};
+		E4EB4A2914C35F1800AA0FA9 /* OS Object */ = {
+			isa = PBXGroup;
+			children = (
+				E4EB4A2614C35ECE00AA0FA9 /* object.h */,
+				E454569214746F1B00106147 /* object_private.h */,
+			);
+			name = "OS Object";
+			path = os;
 			sourceTree = "<group>";
 		};
 		FC1832A0109923B3003403D5 /* shims */ = {
@@ -459,10 +499,12 @@
 		FC7BEDAF0E83626100161930 /* Private Headers */ = {
 			isa = PBXGroup;
 			children = (
+				E4407FAD143CC984003A9E80 /* dispatch.h */,
 				FC7BED930E8361E600161930 /* private.h */,
 				96BC39BC0F3EBAB100C59689 /* queue_private.h */,
 				FCEF047F0F5661960067401F /* source_private.h */,
 				961B99350F3E83980006BC96 /* benchmark.h */,
+				C913AC0E143BD34800B78976 /* data_private.h */,
 			);
 			name = "Private Headers";
 			path = private;
@@ -505,6 +547,7 @@
 				5AAB45C610D30D0C004407EA /* data.h in Headers */,
 				96032E4D0F5CC8D100241C5F /* time.h in Headers */,
 				FC7BEDA20E8361E600161930 /* private.h in Headers */,
+				C913AC0F143BD34800B78976 /* data_private.h in Headers */,
 				96BC39BD0F3EBAB100C59689 /* queue_private.h in Headers */,
 				FCEF04800F5661960067401F /* source_private.h in Headers */,
 				961B99360F3E83980006BC96 /* benchmark.h in Headers */,
@@ -525,6 +568,9 @@
 				E4BA743B13A8911B0095BDF1 /* getprogname.h in Headers */,
 				E4BA743F13A8911B0095BDF1 /* malloc_zone.h in Headers */,
 				E4128ED613BA9A1700ABB2CB /* hw_config.h in Headers */,
+				E4407FAE143CC984003A9E80 /* dispatch.h in Headers */,
+				E454569314746F1B00106147 /* object_private.h in Headers */,
+				E4EB4A2714C35ECE00AA0FA9 /* object.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -564,6 +610,9 @@
 				E4BA743C13A8911B0095BDF1 /* getprogname.h in Headers */,
 				E4BA744013A8911B0095BDF1 /* malloc_zone.h in Headers */,
 				E4128ED713BA9A1700ABB2CB /* hw_config.h in Headers */,
+				E4407FAF143CC984003A9E80 /* dispatch.h in Headers */,
+				E454569414746F1B00106147 /* object_private.h in Headers */,
+				E4EB4A2814C35ECE00AA0FA9 /* object.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -577,8 +626,8 @@
 				D2AAC043055464E500DB518D /* Headers */,
 				D2AAC044055464E500DB518D /* Sources */,
 				D289987405E68DCB004EDB86 /* Frameworks */,
+				E4EB4A2B14C3720B00AA0FA9 /* Install Headers */,
 				E482F1C512DBAA110030614D /* Postprocess Headers */,
-				2EC9C9800E846B5200E2499A /* Symlink Headers */,
 				4CED8B9D0EEDF8B600AF99AB /* Install Manpages */,
 			);
 			buildRules = (
@@ -599,8 +648,8 @@
 				E49F24AA125D57FA0057C971 /* Headers */,
 				E49F24C7125D57FA0057C971 /* Sources */,
 				E49F24D5125D57FA0057C971 /* Frameworks */,
+				E4EB4A3014C3A14000AA0FA9 /* Install Headers */,
 				E4128EB213B9612700ABB2CB /* Postprocess Headers */,
-				E49F24D6125D57FA0057C971 /* Symlink Headers */,
 				E49F24D7125D57FA0057C971 /* Install Manpages */,
 			);
 			buildRules = (
@@ -696,22 +745,6 @@
 /* End PBXReferenceProxy section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		2EC9C9800E846B5200E2499A /* Symlink Headers */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 12;
-			files = (
-			);
-			inputPaths = (
-				"$(SRCROOT)/xcodescripts/symlink-headers.sh",
-			);
-			name = "Symlink Headers";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = "/bin/bash -e";
-			shellScript = ". \"${SCRIPT_INPUT_FILE_0}\"";
-			showEnvVarsInLog = 0;
-		};
 		4CED8B9D0EEDF8B600AF99AB /* Install Manpages */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 8;
@@ -741,7 +774,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 1;
 			shellPath = "/bin/bash -e";
-			shellScript = ". \"${SCRIPT_INPUT_FILE_0}\"  ";
+			shellScript = ". \"${SCRIPT_INPUT_FILE_0}\"";
 			showEnvVarsInLog = 0;
 		};
 		E482F1C512DBAA110030614D /* Postprocess Headers */ = {
@@ -760,22 +793,6 @@
 			shellScript = ". \"${SCRIPT_INPUT_FILE_0}\"";
 			showEnvVarsInLog = 0;
 		};
-		E49F24D6125D57FA0057C971 /* Symlink Headers */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 12;
-			files = (
-			);
-			inputPaths = (
-				"$(SRCROOT)/xcodescripts/symlink-headers.sh",
-			);
-			name = "Symlink Headers";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = "/bin/bash -e";
-			shellScript = ". \"${SCRIPT_INPUT_FILE_0}\"";
-			showEnvVarsInLog = 0;
-		};
 		E49F24D7125D57FA0057C971 /* Install Manpages */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 8;
@@ -788,6 +805,46 @@
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 1;
+			shellPath = "/bin/bash -e";
+			shellScript = ". \"${SCRIPT_INPUT_FILE_0}\"";
+			showEnvVarsInLog = 0;
+		};
+		E4EB4A2B14C3720B00AA0FA9 /* Install Headers */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/xcodescripts/install-headers.sh",
+				"$(SRCROOT)/os/object.h",
+				"$(SRCROOT)/os/object_private.h",
+			);
+			name = "Install Headers";
+			outputPaths = (
+				"$(CONFIGURATION_BUILD_DIR)/$(OS_PUBLIC_HEADERS_FOLDER_PATH)/object.h",
+				"$(CONFIGURATION_BUILD_DIR)/$(OS_PRIVATE_HEADERS_FOLDER_PATH)/object_private.h",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = "/bin/bash -e";
+			shellScript = ". \"${SCRIPT_INPUT_FILE_0}\"";
+			showEnvVarsInLog = 0;
+		};
+		E4EB4A3014C3A14000AA0FA9 /* Install Headers */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/xcodescripts/install-headers.sh",
+				"$(SRCROOT)/os/object.h",
+				"$(SRCROOT)/os/object_private.h",
+			);
+			name = "Install Headers";
+			outputPaths = (
+				"$(CONFIGURATION_BUILD_DIR)/$(OS_PUBLIC_HEADERS_FOLDER_PATH)/object.h",
+				"$(CONFIGURATION_BUILD_DIR)/$(OS_PRIVATE_HEADERS_FOLDER_PATH)/object_private.h",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = "/bin/bash -e";
 			shellScript = ". \"${SCRIPT_INPUT_FILE_0}\"";
 			showEnvVarsInLog = 0;
@@ -883,6 +940,8 @@
 				96032E4B0F5CC8C700241C5F /* time.c in Sources */,
 				5AAB45C010D30B79004407EA /* data.c in Sources */,
 				5A27262610F26F1900751FBC /* io.c in Sources */,
+				C9C5F80E143C1771006DC718 /* transform.c in Sources */,
+				E4FC3264145F46C9002FBDDB /* object.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -904,6 +963,8 @@
 				E49F24D2125D57FA0057C971 /* time.c in Sources */,
 				E49F24D3125D57FA0057C971 /* data.c in Sources */,
 				E49F24D4125D57FA0057C971 /* io.c in Sources */,
+				C93D6165143E190E00EB9023 /* transform.c in Sources */,
+				E4FC3265145F46C9002FBDDB /* object.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -925,6 +986,8 @@
 				E4EC11B512514302000DDBD1 /* time.c in Sources */,
 				E4EC11B712514302000DDBD1 /* data.c in Sources */,
 				E4EC11B812514302000DDBD1 /* io.c in Sources */,
+				C93D6166143E190F00EB9023 /* transform.c in Sources */,
+				E4FC3266145F46C9002FBDDB /* object.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -946,6 +1009,8 @@
 				E4EC122112514715000DDBD1 /* time.c in Sources */,
 				E4EC122312514715000DDBD1 /* data.c in Sources */,
 				E4EC122412514715000DDBD1 /* io.c in Sources */,
+				C93D6167143E190F00EB9023 /* transform.c in Sources */,
+				E4FC3267145F46C9002FBDDB /* object.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

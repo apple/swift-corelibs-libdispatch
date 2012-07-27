@@ -96,6 +96,9 @@
 /* Define if pthread work queues are present */
 #define HAVE_PTHREAD_WORKQUEUES 1
 
+/* Define to 1 if you have the `pthread_workqueue_setdispatch_np' function. */
+#define HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP 1
+
 /* Define to 1 if you have the <stdint.h> header file. */
 #define HAVE_STDINT_H 1
 
@@ -159,6 +162,9 @@
 
 /* Define to use Mach semaphores */
 #define USE_MACH_SEM 1
+
+/* Define to use Objective-C runtime */
+#define USE_OBJC 1
 
 /* Define to use POSIX semaphores */
 /* #undef USE_POSIX_SEM */

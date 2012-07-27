@@ -25,9 +25,6 @@
 #endif
 #include <sys/mount.h>
 
-static void _dispatch_source_dispose(dispatch_source_t ds);
-static dispatch_queue_t _dispatch_source_invoke(dispatch_source_t ds);
-static bool _dispatch_source_probe(dispatch_source_t ds);
 static void _dispatch_source_merge_kevent(dispatch_source_t ds,
 		const struct kevent *ke);
 static void _dispatch_kevent_register(dispatch_source_t ds);
@@ -43,23 +40,12 @@ static kern_return_t _dispatch_kevent_machport_resume(dispatch_kevent_t dk,
 		uint32_t new_flags, uint32_t del_flags);
 static void _dispatch_drain_mach_messages(struct kevent *ke);
 #endif
-static size_t _dispatch_source_kevent_debug(dispatch_source_t ds,
-		char* buf, size_t bufsiz);
 #if DISPATCH_DEBUG
 static void _dispatch_kevent_debugger(void *context);
 #endif
 
 #pragma mark -
 #pragma mark dispatch_source_t
-
-const struct dispatch_source_vtable_s _dispatch_source_kevent_vtable = {
-	.do_type = DISPATCH_SOURCE_KEVENT_TYPE,
-	.do_kind = "kevent-source",
-	.do_invoke = _dispatch_source_invoke,
-	.do_dispose = _dispatch_source_dispose,
-	.do_probe = _dispatch_source_probe,
-	.do_debug = _dispatch_source_kevent_debug,
-};
 
 dispatch_source_t
 dispatch_source_create(dispatch_source_type_t type,
@@ -73,13 +59,13 @@ dispatch_source_create(dispatch_source_type_t type,
 
 	// input validation
 	if (type == NULL || (mask & ~type->mask)) {
-		goto out_bad;
+		return NULL;
 	}
 
 	switch (type->ke.filter) {
 	case EVFILT_SIGNAL:
 		if (handle >= NSIG) {
-			goto out_bad;
+			return NULL;
 		}
 		break;
 	case EVFILT_FS:
@@ -90,22 +76,14 @@ dispatch_source_create(dispatch_source_type_t type,
 	case DISPATCH_EVFILT_CUSTOM_OR:
 	case DISPATCH_EVFILT_TIMER:
 		if (handle) {
-			goto out_bad;
+			return NULL;
 		}
 		break;
 	default:
 		break;
 	}
 
-	ds = calloc(1ul, sizeof(struct dispatch_source_s));
-	if (slowpath(!ds)) {
-		goto out_bad;
-	}
 	dk = calloc(1ul, sizeof(struct dispatch_kevent_s));
-	if (slowpath(!dk)) {
-		goto out_bad;
-	}
-
 	dk->dk_kevent = *proto_kev;
 	dk->dk_kevent.ident = handle;
 	dk->dk_kevent.flags |= EV_ADD|EV_ENABLE;
@@ -113,12 +91,13 @@ dispatch_source_create(dispatch_source_type_t type,
 	dk->dk_kevent.udata = dk;
 	TAILQ_INIT(&dk->dk_sources);
 
+	ds = _dispatch_alloc(DISPATCH_VTABLE(source),
+			sizeof(struct dispatch_source_s));
 	// Initialize as a queue first, then override some settings below.
 	_dispatch_queue_init((dispatch_queue_t)ds);
 	strlcpy(ds->dq_label, "source", sizeof(ds->dq_label));
 
 	// Dispatch Object
-	ds->do_vtable = &_dispatch_source_kevent_vtable;
 	ds->do_ref_cnt++; // the reference the manger queue holds
 	ds->do_ref_cnt++; // since source is created suspended
 	ds->do_suspend_cnt = DISPATCH_OBJECT_SUSPEND_INTERVAL;
@@ -154,7 +133,7 @@ dispatch_source_create(dispatch_source_type_t type,
 	// First item on the queue sets the user-specified target queue
 	dispatch_set_target_queue(ds, q);
 #if DISPATCH_DEBUG
-	dispatch_debug(ds, "%s", __FUNCTION__);
+	dispatch_debug(ds, "%s", __func__);
 #endif
 	return ds;
 
@@ -164,7 +143,7 @@ out_bad:
 	return NULL;
 }
 
-static void
+void
 _dispatch_source_dispose(dispatch_source_t ds)
 {
 	free(ds->ds_refs);
@@ -172,21 +151,16 @@ _dispatch_source_dispose(dispatch_source_t ds)
 }
 
 void
-_dispatch_source_xref_release(dispatch_source_t ds)
+_dispatch_source_xref_dispose(dispatch_source_t ds)
 {
-	if (slowpath(DISPATCH_OBJECT_SUSPENDED(ds))) {
-		// Arguments for and against this assert are within 6705399
-		DISPATCH_CLIENT_CRASH("Release of a suspended object");
-	}
 	_dispatch_wakeup(ds);
-	_dispatch_release(ds);
 }
 
 void
 dispatch_source_cancel(dispatch_source_t ds)
 {
 #if DISPATCH_DEBUG
-	dispatch_debug(ds, "%s", __FUNCTION__);
+	dispatch_debug(ds, "%s", __func__);
 #endif
 	// Right after we set the cancel flag, someone else
 	// could potentially invoke the source, do the cancelation,
@@ -251,7 +225,7 @@ _dispatch_source_set_event_handler2(void *context)
 	struct Block_layout *bl = context;
 
 	dispatch_source_t ds = (dispatch_source_t)_dispatch_queue_get_current();
-	dispatch_assert(ds->do_vtable == &_dispatch_source_kevent_vtable);
+	dispatch_assert(dx_type(ds) == DISPATCH_SOURCE_KEVENT_TYPE);
 	dispatch_source_refs_t dr = ds->ds_refs;
 
 	if (ds->ds_handler_is_block && dr->ds_handler_ctxt) {
@@ -276,7 +250,7 @@ static void
 _dispatch_source_set_event_handler_f(void *context)
 {
 	dispatch_source_t ds = (dispatch_source_t)_dispatch_queue_get_current();
-	dispatch_assert(ds->do_vtable == &_dispatch_source_kevent_vtable);
+	dispatch_assert(dx_type(ds) == DISPATCH_SOURCE_KEVENT_TYPE);
 	dispatch_source_refs_t dr = ds->ds_refs;
 
 #ifdef __BLOCKS__
@@ -304,7 +278,7 @@ static void
 _dispatch_source_set_cancel_handler2(void *context)
 {
 	dispatch_source_t ds = (dispatch_source_t)_dispatch_queue_get_current();
-	dispatch_assert(ds->do_vtable == &_dispatch_source_kevent_vtable);
+	dispatch_assert(dx_type(ds) == DISPATCH_SOURCE_KEVENT_TYPE);
 	dispatch_source_refs_t dr = ds->ds_refs;
 
 	if (ds->ds_cancel_is_block && dr->ds_cancel_handler) {
@@ -328,7 +302,7 @@ static void
 _dispatch_source_set_cancel_handler_f(void *context)
 {
 	dispatch_source_t ds = (dispatch_source_t)_dispatch_queue_get_current();
-	dispatch_assert(ds->do_vtable == &_dispatch_source_kevent_vtable);
+	dispatch_assert(dx_type(ds) == DISPATCH_SOURCE_KEVENT_TYPE);
 	dispatch_source_refs_t dr = ds->ds_refs;
 
 #ifdef __BLOCKS__
@@ -353,7 +327,7 @@ static void
 _dispatch_source_set_registration_handler2(void *context)
 {
 	dispatch_source_t ds = (dispatch_source_t)_dispatch_queue_get_current();
-	dispatch_assert(ds->do_vtable == &_dispatch_source_kevent_vtable);
+	dispatch_assert(dx_type(ds) == DISPATCH_SOURCE_KEVENT_TYPE);
 	dispatch_source_refs_t dr = ds->ds_refs;
 
 	if (ds->ds_registration_is_block && dr->ds_registration_handler) {
@@ -377,7 +351,7 @@ static void
 _dispatch_source_set_registration_handler_f(void *context)
 {
 	dispatch_source_t ds = (dispatch_source_t)_dispatch_queue_get_current();
-	dispatch_assert(ds->do_vtable == &_dispatch_source_kevent_vtable);
+	dispatch_assert(dx_type(ds) == DISPATCH_SOURCE_KEVENT_TYPE);
 	dispatch_source_refs_t dr = ds->ds_refs;
 
 #ifdef __BLOCKS__
@@ -405,7 +379,7 @@ _dispatch_source_registration_callout(dispatch_source_t ds)
 {
 	dispatch_source_refs_t dr = ds->ds_refs;
 
-	if ((ds->ds_atomic_flags & DSF_CANCELED) || (ds->do_xref_cnt == 0)) {
+	if ((ds->ds_atomic_flags & DSF_CANCELED) || (ds->do_xref_cnt == -1)) {
 		// no registration callout if source is canceled rdar://problem/8955246
 #ifdef __BLOCKS__
 		if (ds->ds_registration_is_block) {
@@ -473,7 +447,7 @@ _dispatch_source_latch_and_call(dispatch_source_t ds)
 {
 	unsigned long prev;
 
-	if ((ds->ds_atomic_flags & DSF_CANCELED) || (ds->do_xref_cnt == 0)) {
+	if ((ds->ds_atomic_flags & DSF_CANCELED) || (ds->do_xref_cnt == -1)) {
 		return;
 	}
 	dispatch_source_refs_t dr = ds->ds_refs;
@@ -508,7 +482,7 @@ _dispatch_source_kevent_resume(dispatch_source_t ds, uint32_t new_flags)
 	}
 }
 
-static dispatch_queue_t
+dispatch_queue_t
 _dispatch_source_invoke(dispatch_source_t ds)
 {
 	// This function performs all source actions. Each action is responsible
@@ -530,7 +504,7 @@ _dispatch_source_invoke(dispatch_source_t ds)
 		if (dr->ds_registration_handler) {
 			return ds->do_targetq;
 		}
-		if (slowpath(ds->do_xref_cnt == 0)) {
+		if (slowpath(ds->do_xref_cnt == -1)) {
 			return &_dispatch_mgr_q; // rdar://problem/9558246
 		}
 	} else if (slowpath(DISPATCH_OBJECT_SUSPENDED(ds))) {
@@ -544,10 +518,10 @@ _dispatch_source_invoke(dispatch_source_t ds)
 		}
 		// clears ds_registration_handler
 		_dispatch_source_registration_callout(ds);
-		if (slowpath(ds->do_xref_cnt == 0)) {
+		if (slowpath(ds->do_xref_cnt == -1)) {
 			return &_dispatch_mgr_q; // rdar://problem/9558246
 		}
-	} else if ((ds->ds_atomic_flags & DSF_CANCELED) || (ds->do_xref_cnt == 0)) {
+	} else if ((ds->ds_atomic_flags & DSF_CANCELED) || (ds->do_xref_cnt == -1)){
 		// The source has been cancelled and needs to be uninstalled from the
 		// manager queue. After uninstallation, the cancellation handler needs
 		// to be delivered to the target queue.
@@ -556,8 +530,9 @@ _dispatch_source_invoke(dispatch_source_t ds)
 				return &_dispatch_mgr_q;
 			}
 			_dispatch_kevent_unregister(ds);
-			return ds->do_targetq;
-		} else if (dr->ds_cancel_handler) {
+		}
+		if (dr->ds_cancel_handler || ds->ds_handler_is_block ||
+				ds->ds_registration_is_block) {
 			if (dq != ds->do_targetq) {
 				return ds->do_targetq;
 			}
@@ -586,7 +561,7 @@ _dispatch_source_invoke(dispatch_source_t ds)
 	return NULL;
 }
 
-static bool
+bool
 _dispatch_source_probe(dispatch_source_t ds)
 {
 	// This function determines whether the source needs to be invoked.
@@ -599,11 +574,15 @@ _dispatch_source_probe(dispatch_source_t ds)
 	} else if (dr->ds_registration_handler) {
 		// The registration handler needs to be delivered to the target queue.
 		return true;
-	} else if ((ds->ds_atomic_flags & DSF_CANCELED) || (ds->do_xref_cnt == 0)) {
+	} else if ((ds->ds_atomic_flags & DSF_CANCELED) || (ds->do_xref_cnt == -1)){
 		// The source needs to be uninstalled from the manager queue, or the
 		// cancellation handler needs to be delivered to the target queue.
 		// Note: cancellation assumes installation.
-		if (ds->ds_dkev || dr->ds_cancel_handler) {
+		if (ds->ds_dkev || dr->ds_cancel_handler
+#ifdef __BLOCKS__
+				|| ds->ds_handler_is_block || ds->ds_registration_is_block
+#endif
+		) {
 			return true;
 		}
 	} else if (ds->ds_pending_data) {
@@ -625,7 +604,7 @@ _dispatch_source_merge_kevent(dispatch_source_t ds, const struct kevent *ke)
 {
 	struct kevent fake;
 
-	if ((ds->ds_atomic_flags & DSF_CANCELED) || (ds->do_xref_cnt == 0)) {
+	if ((ds->ds_atomic_flags & DSF_CANCELED) || (ds->do_xref_cnt == -1)) {
 		return;
 	}
 
@@ -1841,7 +1820,7 @@ _dispatch_timer_debug_attr(dispatch_source_t ds, char* buf, size_t bufsiz)
 			ds_timer(dr).flags);
 }
 
-static size_t
+size_t
 _dispatch_source_debug(dispatch_source_t ds, char* buf, size_t bufsiz)
 {
 	size_t offset = 0;
@@ -1852,13 +1831,6 @@ _dispatch_source_debug(dispatch_source_t ds, char* buf, size_t bufsiz)
 	if (ds->ds_is_timer) {
 		offset += _dispatch_timer_debug_attr(ds, &buf[offset], bufsiz - offset);
 	}
-	return offset;
-}
-
-static size_t
-_dispatch_source_kevent_debug(dispatch_source_t ds, char* buf, size_t bufsiz)
-{
-	size_t offset = _dispatch_source_debug(ds, buf, bufsiz);
 	offset += snprintf(&buf[offset], bufsiz - offset, "filter = %s }",
 			ds->ds_dkev ? _evfiltstr(ds->ds_dkev->dk_kevent.filter) : "????");
 	return offset;
@@ -1935,13 +1907,13 @@ _dispatch_kevent_debugger2(void *context)
 				ds = _dispatch_source_from_refs(dr);
 				fprintf(debug_stream, "\t\t\t<li>DS %p refcnt 0x%x suspend "
 						"0x%x data 0x%lx mask 0x%lx flags 0x%x</li>\n",
-						ds, ds->do_ref_cnt, ds->do_suspend_cnt,
+						ds, ds->do_ref_cnt + 1, ds->do_suspend_cnt,
 						ds->ds_pending_data, ds->ds_pending_data_mask,
 						ds->ds_atomic_flags);
 				if (ds->do_suspend_cnt == DISPATCH_OBJECT_SUSPEND_LOCK) {
 					dispatch_queue_t dq = ds->do_targetq;
 					fprintf(debug_stream, "\t\t<br>DQ: %p refcnt 0x%x suspend "
-							"0x%x label: %s\n", dq, dq->do_ref_cnt,
+							"0x%x label: %s\n", dq, dq->do_ref_cnt + 1,
 							dq->do_suspend_cnt, dq->dq_label);
 				}
 			}

@@ -330,6 +330,11 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t queue,
  * from deadlock if that queue is not the one returned by
  * dispatch_get_current_queue().
  *
+ * When dispatch_get_current_queue() is called on the main thread, it may
+ * or may not return the same value as dispatch_get_main_queue(). Comparing
+ * the two is not a valid way to test whether code is executing on the
+ * main thread.
+ *
  * @result
  * Returns the current queue.
  */
@@ -355,7 +360,8 @@ dispatch_get_current_queue(void);
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT struct dispatch_queue_s _dispatch_main_q;
-#define dispatch_get_main_queue() (&_dispatch_main_q)
+#define dispatch_get_main_queue() \
+		DISPATCH_GLOBAL_OBJECT(dispatch_queue_t, _dispatch_main_q)
 
 /*!
  * @typedef dispatch_queue_priority_t
@@ -430,7 +436,9 @@ dispatch_get_global_queue(dispatch_queue_priority_t priority,
  * @discussion A dispatch queue that may invoke blocks concurrently and supports
  * barrier blocks submitted with the dispatch barrier API.
  */
-#define DISPATCH_QUEUE_CONCURRENT (&_dispatch_queue_attr_concurrent)
+#define DISPATCH_QUEUE_CONCURRENT \
+		DISPATCH_GLOBAL_OBJECT(dispatch_queue_attr_t, \
+		_dispatch_queue_attr_concurrent)
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
 DISPATCH_EXPORT
 struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent;
@@ -470,7 +478,8 @@ struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent;
  * The newly created dispatch queue.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
+DISPATCH_NOTHROW
 dispatch_queue_t
 dispatch_queue_create(const char *label, dispatch_queue_attr_t attr);
 
@@ -525,7 +534,10 @@ dispatch_queue_get_label(dispatch_queue_t queue);
  * cancellation handler blocks will be submitted.
  *
  * A dispatch I/O channel's target queue specifies where where its I/O
- * operations are executed.
+ * operations are executed. If the channel's target queue's priority is set to
+ * DISPATCH_QUEUE_PRIORITY_BACKGROUND, then the I/O operations performed by
+ * dispatch_io_read() or dispatch_io_write() on that queue will be
+ * throttled when there is I/O contention.
  *
  * For all other dispatch object types, the only function of the target queue
  * is to determine where an object's finalizer function is invoked.

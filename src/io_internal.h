@@ -76,8 +76,8 @@ typedef unsigned int dispatch_op_flags_t;
 #define _dispatch_io_debug(msg, fd, args...)
 #endif
 
-DISPATCH_DECL(dispatch_operation);
-DISPATCH_DECL(dispatch_disk);
+DISPATCH_DECL_INTERNAL(dispatch_operation);
+DISPATCH_DECL_INTERNAL(dispatch_disk);
 
 struct dispatch_stream_s {
 	dispatch_queue_t dq;
@@ -104,12 +104,9 @@ struct dispatch_stat_s {
 	mode_t mode;
 };
 
-struct dispatch_disk_vtable_s {
-	DISPATCH_VTABLE_HEADER(dispatch_disk_s);
-};
-
+DISPATCH_CLASS_DECL(disk);
 struct dispatch_disk_s {
-	DISPATCH_STRUCT_HEADER(dispatch_disk_s, dispatch_disk_vtable_s);
+	DISPATCH_STRUCT_HEADER(disk);
 	dev_t dev;
 	TAILQ_HEAD(dispatch_disk_operations_s, dispatch_operation_s) operations;
 	dispatch_operation_t cur_rq;
@@ -149,12 +146,9 @@ typedef struct dispatch_io_param_s {
 	unsigned long interval_flags;
 } dispatch_io_param_s;
 
-struct dispatch_operation_vtable_s {
-	DISPATCH_VTABLE_HEADER(dispatch_operation_s);
-};
-
+DISPATCH_CLASS_DECL(operation);
 struct dispatch_operation_s {
-	DISPATCH_STRUCT_HEADER(dispatch_operation_s, dispatch_operation_vtable_s);
+	DISPATCH_STRUCT_HEADER(operation);
 	dispatch_queue_t op_q;
 	dispatch_op_direction_t direction; // READ OR WRITE
 	dispatch_io_param_s params;
@@ -177,12 +171,9 @@ struct dispatch_operation_s {
 	TAILQ_ENTRY(dispatch_operation_s) stream_list;
 };
 
-struct dispatch_io_vtable_s {
-	DISPATCH_VTABLE_HEADER(dispatch_io_s);
-};
-
+DISPATCH_CLASS_DECL(io);
 struct dispatch_io_s {
-	DISPATCH_STRUCT_HEADER(dispatch_io_s, dispatch_io_vtable_s);
+	DISPATCH_STRUCT_HEADER(io);
 	dispatch_queue_t queue, barrier_queue;
 	dispatch_group_t barrier_group;
 	dispatch_io_param_s params;
@@ -194,5 +185,8 @@ struct dispatch_io_s {
 };
 
 void _dispatch_io_set_target_queue(dispatch_io_t channel, dispatch_queue_t dq);
+void _dispatch_io_dispose(dispatch_io_t channel);
+void _dispatch_operation_dispose(dispatch_operation_t operation);
+void _dispatch_disk_dispose(dispatch_disk_t disk);
 
 #endif // __DISPATCH_IO_INTERNAL__

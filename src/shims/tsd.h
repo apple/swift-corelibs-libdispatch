@@ -45,7 +45,6 @@ static const unsigned long dispatch_cache_key		= __PTK_LIBDISPATCH_KEY2;
 static const unsigned long dispatch_io_key			= __PTK_LIBDISPATCH_KEY3;
 static const unsigned long dispatch_apply_key		= __PTK_LIBDISPATCH_KEY4;
 static const unsigned long dispatch_bcounter_key	= __PTK_LIBDISPATCH_KEY5;
-//__PTK_LIBDISPATCH_KEY5
 
 DISPATCH_TSD_INLINE
 static inline void
@@ -54,12 +53,12 @@ _dispatch_thread_key_create(const unsigned long *k, void (*d)(void *))
 	dispatch_assert_zero(pthread_key_init_np((int)*k, d));
 }
 #else
-pthread_key_t dispatch_queue_key;
-pthread_key_t dispatch_sema4_key;
-pthread_key_t dispatch_cache_key;
-pthread_key_t dispatch_io_key;
-pthread_key_t dispatch_apply_key;
-pthread_key_t dispatch_bcounter_key;
+extern pthread_key_t dispatch_queue_key;
+extern pthread_key_t dispatch_sema4_key;
+extern pthread_key_t dispatch_cache_key;
+extern pthread_key_t dispatch_io_key;
+extern pthread_key_t dispatch_apply_key;
+extern pthread_key_t dispatch_bcounter_key;
 
 DISPATCH_TSD_INLINE
 static inline void

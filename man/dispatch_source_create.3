@@ -25,6 +25,16 @@
 .Fa "void (*function)(void *)"
 .Fc
 .Ft void
+.Fo dispatch_source_set_registration_handler
+.Fa "dispatch_source_t source"
+.Fa "void (^block)(void)"
+.Fc
+.Ft void
+.Fo dispatch_source_set_registration_handler_f
+.Fa "dispatch_source_t source"
+.Fa "void (*function)(void *)"
+.Fc
+.Ft void
 .Fo dispatch_source_set_cancel_handler
 .Fa "dispatch_source_t source"
 .Fa "void (^block)(void)"
@@ -90,7 +100,8 @@ constant to use the default target queue (the default priority global
 concurrent queue).
 .Pp
 Newly created sources are created in a suspended state. After the source has
-been configured by setting an event handler, cancellation handler, context,
+been configured by setting an event handler, cancellation handler, registration
+handler, context,
 etc., the source must be activated by a call to
 .Fn dispatch_resume
 before any events will be delivered.
@@ -167,7 +178,11 @@ In order to receive events from the dispatch source, an event handler should be
 specified via
 .Fn dispatch_source_set_event_handler .
 The event handler block is submitted to the source's target queue when the state
-of the underlying system handle changes, or when an event occurs.
+of the underlying system handle changes, or when an event occurs. If a source
+is resumed with no event handler block set, events will be quietly ignored.
+If the event handler block is changed while the source is suspended, or from a
+block running on a serial queue that is the source's target queue, then the next
+event handler invocation will use the new block.
 .Pp
 Dispatch sources may be suspended or resumed independently of their target
 queues using
@@ -189,12 +204,39 @@ on the
 .Fa handler
 block.
 .Pp
+To unset the event handler, call
+.Fn dispatch_source_set_event_handler_f
+and pass NULL as
+.Fa function .
+This unsets the event handler regardless of whether the handler
+was a function pointer or a block. Registration and cancellation handlers
+(see below) may be unset in the same way, but as noted below, a cancellation
+handler may be required.
+.Sh REGISTRATION
+When 
+.Fn dispatch_resume
+is called on a suspended or newly created source, there may be a brief delay
+before the source is ready to receive events from the underlying system handle.
+During this delay, the event handler will not be invoked, and events will be
+missed.
+.Pp
+Once the dispatch source is registered with the underlying system and is ready
+to process all events its optional registration handler will be submitted to
+its target queue. This registration handler may be specified via
+.Fn dispatch_source_set_registration_handler .
+.Pp
+The event handler will not be called until the registration handler finishes.
+If the source is canceled (see below) before it is registered,
+its registration handler will not be called.
+.Pp
 .Sh CANCELLATION
 The
 .Fn dispatch_source_cancel
 function asynchronously cancels the dispatch source, preventing any further
 invocation of its event handler block. Cancellation does not interrupt a
-currently executing handler block (non-preemptive).
+currently executing handler block (non-preemptive). If a source is canceled
+before the first time it is resumed, its event handler will never be called.
+(In this case, note that the source must be resumed before it can be released.)
 .Pp
 The
 .Fn dispatch_source_testcancel

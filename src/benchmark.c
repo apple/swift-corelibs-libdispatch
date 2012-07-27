@@ -20,7 +20,6 @@
 
 #include "internal.h"
 
-
 struct __dispatch_benchmark_data_s {
 #if HAVE_MACH_ABSOLUTE_TIME
 	mach_timebase_info_data_t tbi;
