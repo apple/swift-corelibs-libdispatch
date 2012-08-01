@@ -3,14 +3,17 @@
 #
 
 AC_PREREQ(2.59)
-AC_INIT([libdispatch], [1.0], [libdispatch@macosforge.org], [libdispatch])
+AC_INIT([libdispatch], [1.1], [libdispatch@macosforge.org], [libdispatch])
 AC_REVISION([$$])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_HEADER([config/config.h])
 AC_CONFIG_MACRO_DIR([m4])
-AC_PROG_CC([clang gcc cc])
-AC_USE_SYSTEM_EXTENSIONS
+ac_clean_files=a.out.dSYM
 AM_MAINTAINER_MODE
+
+AC_PROG_CC([clang gcc cc])
+AC_PROG_CXX([clang++ g++ c++])
+AC_PROG_OBJC([clang gcc cc])
 
 #
 # On Mac OS X, some required header files come from other source packages;
@@ -18,23 +21,25 @@ AM_MAINTAINER_MODE
 #
 AC_ARG_WITH([apple-libc-source],
   [AS_HELP_STRING([--with-apple-libc-source],
-    [Specify path to Apple Libc source])],
-  [apple_libc_source_path=${withval}/pthreads
-    APPLE_LIBC_SOURCE_PATH=-I$apple_libc_source_path
-    CPPFLAGS="$CPPFLAGS -I$apple_libc_source_path"],
-  [APPLE_LIBC_SOURCE_PATH=]
-)
-AC_SUBST([APPLE_LIBC_SOURCE_PATH])
+    [Specify path to Apple Libc source])], [
+  apple_libc_source_pthreads_path=${withval}/pthreads
+  CPPFLAGS="$CPPFLAGS -I$apple_libc_source_pthreads_path"
+])
+
+AC_ARG_WITH([apple-libclosure-source],
+  [AS_HELP_STRING([--with-apple-libclosure-source],
+    [Specify path to Apple libclosure source])], [
+  apple_libclosure_source_path=${withval}
+  CPPFLAGS="$CPPFLAGS -I$apple_libclosure_source_path"
+])
 
 AC_ARG_WITH([apple-xnu-source],
   [AS_HELP_STRING([--with-apple-xnu-source],
-    [Specify path to Apple XNU source])],
-  [apple_xnu_source_path=${withval}/libkern
-    APPLE_XNU_SOURCE_PATH=-I$apple_xnu_source_path
-    CPPFLAGS="$CPPFLAGS -I$apple_xnu_source_path"],
-  [APPLE_XNU_SOURCE_PATH=]
-)
-AC_SUBST([APPLE_XNU_SOURCE_PATH])
+    [Specify path to Apple XNU source])], [
+  apple_xnu_source_libkern_path=${withval}/libkern
+  apple_xnu_source_osfmk_path=${withval}/osfmk
+  CPPFLAGS="$CPPFLAGS -I$apple_xnu_source_libkern_path"
+])
 
 AC_CACHE_CHECK([for System.framework/PrivateHeaders], dispatch_cv_system_privateheaders,
   [AS_IF([test -d /System/Library/Frameworks/System.framework/PrivateHeaders],
@@ -45,74 +50,34 @@ AS_IF([test "x$dispatch_cv_system_privateheaders" != "xno"],
 )
 
 #
-# Try to build the legacy API only if specifically requested.
-#
-AC_ARG_ENABLE([legacy-api],
-  [AS_HELP_STRING([--enable-legacy-api], [Enable legacy (deprecated) API.])]
-)
-
-AS_IF([test "x$enable_legacy_api" != "xyes"],
-  [use_legacy_api=false
-    AC_DEFINE(DISPATCH_NO_LEGACY, 1,[Define to compile out legacy API])],
-  [use_legacy_api=true]
-)
-AM_CONDITIONAL(USE_LEGACY_API, $use_legacy_api)
-
-#
-# On Mac OS X Snow Leopard, libpispatch_init is automatically invoked during
-# libsyscall process setup.  On other systems, it is tagged as a library
+# On Mac OS X, libdispatch_init is automatically invoked during libSystem
+# process initialization.  On other systems, it is tagged as a library
 # constructor to be run by automatically by the runtime linker.
 #
 AC_ARG_ENABLE([libdispatch-init-constructor],
   [AS_HELP_STRING([--disable-libdispatch-init-constructor],
-    [Disable libdispatch_init as a constructor])]
+    [Disable libdispatch_init as a constructor])],,
+  [AS_IF([test -f /usr/lib/system/libdispatch.dylib],
+    [enable_libdispatch_init_constructor=no])]
 )
-
 AS_IF([test "x$enable_libdispatch_init_constructor" != "xno"],
   [AC_DEFINE(USE_LIBDISPATCH_INIT_CONSTRUCTOR, 1,
     [Define to tag libdispatch_init as a constructor])]
 )
 
 #
-# Whether or not to include/reference a crashreporter symbol.
-#
-AC_ARG_ENABLE([apple-crashreporter-info],
-  [AS_HELP_STRING([--enable-apple-crashreporter-info],
-    [Use Mac OS X crashreporter info])]
-)
-
-AS_IF([test "x$enable_apple_crashreporter_info" = "xyes"],
-  [AC_DEFINE(USE_APPLE_CRASHREPORTER_INFO, 1,
-    [Define to use Mac OS X crashreporter info])]
-)
-
-#
-# libdispatch has micro-optimized and deeply personal knowledge of Mac OS
-# implementation details.  Only enable this if explicitly requested, as it
-# will lead to data corruption if applied on systems violating its
-# expectations.
+# On Mac OS X libdispatch can use the non-portable direct pthread TSD functions
 #
 AC_ARG_ENABLE([apple-tsd-optimizations],
   [AS_HELP_STRING([--enable-apple-tsd-optimizations],
     [Use non-portable pthread TSD optimizations for Mac OS X.])]
 )
-
 AS_IF([test "x$enable_apple_tsd_optimizations" = "xyes"],
   [AC_DEFINE(USE_APPLE_TSD_OPTIMIZATIONS, 1,
     [Define to use non-portable pthread TSD optimizations for Mac OS X)])]
 )
 
-AC_ARG_ENABLE([apple-semaphore-optimizations],
-  [AS_HELP_STRING([--enable-apple-semaphore-optimizations],
-    [Use non-portable semaphore optimizations for Mac OS X.])]
-)
-
-AS_IF([test "x$enable_apple_semaphore_optimizations" = "xyes"],
-  [AC_DEFINE(USE_APPLE_SEMAPHORE_OPTIMIZATIONS, 1,
-    [Define to use non-portablesemaphore optimizations for Mac OS X])]
-)
-
-AC_PROG_CXX
+AC_USE_SYSTEM_EXTENSIONS
 AC_PROG_INSTALL
 AC_PROG_LIBTOOL
 AC_PATH_PROGS(MIG, mig)
@@ -150,26 +115,45 @@ AC_CHECK_HEADER(sys/event.h, [],
 # Checks for header files.
 #
 AC_HEADER_STDC
-AC_CHECK_HEADERS([TargetConditionals.h pthread_machdep.h pthread_np.h malloc/malloc.h libkern/OSCrossEndian.h libkern/OSAtomic.h sys/sysctl.h])
+AC_CHECK_HEADERS([TargetConditionals.h pthread_np.h malloc/malloc.h libkern/OSCrossEndian.h libkern/OSAtomic.h])
+
+# hack for pthread_machdep.h's #include <System/machine/cpu_capabilities.h>
+AS_IF([test -n "$apple_xnu_source_osfmk_path"], [
+  saveCPPFLAGS="$CPPFLAGS"
+  CPPFLAGS="$CPPFLAGS -I."
+  ln -fsh "$apple_xnu_source_osfmk_path" System
+])
+AC_CHECK_HEADERS([pthread_machdep.h])
+AS_IF([test -n "$apple_xnu_source_osfmk_path"], [
+  rm -f System
+  CPPFLAGS="$saveCPPFLAGS"
+  AC_CONFIG_COMMANDS([src/System],
+    [ln -fsh "$apple_xnu_source_osfmk_path" src/System],
+    [apple_xnu_source_osfmk_path="$apple_xnu_source_osfmk_path"])
+])
 
 #
-# Core Services is tested in one of the GCD regression tests, so test for its
-# presence using its header file.
+# Parts of the testsuite use CoreFoundation and Foundation
 #
-AC_CHECK_HEADER([CoreServices/CoreServices.h],
-  [have_coreservices=true],
-  [have_coreservices=false]
+AC_CHECK_HEADER([CoreFoundation/CoreFoundation.h],
+  [have_corefoundation=true], [have_corefoundation=false]
 )
-AM_CONDITIONAL(HAVE_CORESERVICES, $have_coreservices)
+AM_CONDITIONAL(HAVE_COREFOUNDATION, $have_corefoundation)
+AC_LANG_PUSH([Objective C])
+AC_CHECK_HEADER([Foundation/Foundation.h],
+  [have_foundation=true], [have_foundation=false]
+)
+AM_CONDITIONAL(HAVE_FOUNDATION, $have_foundation)
+AC_LANG_POP([Objective C])
 
 #
 # We use the availability of mach.h to decide whether to compile in all sorts
 # of Machisms, including using Mach ports as event sources, etc.
 #
-AC_CHECK_HEADER([mach/mach.h],
-  [AC_DEFINE(HAVE_MACH, 1,Define if mach is present)
-    have_mach=true],
-  [have_mach=false]
+AC_CHECK_HEADER([mach/mach.h], [
+    AC_DEFINE(HAVE_MACH, 1, [Define if mach is present])
+    AC_DEFINE(__DARWIN_NON_CANCELABLE, 1, [Define if using Darwin $NOCANCEL])
+    have_mach=true], [have_mach=false]
 )
 AM_CONDITIONAL(USE_MIG, $have_mach)
 
@@ -178,40 +162,30 @@ AM_CONDITIONAL(USE_MIG, $have_mach)
 # in support for pthread work queues.
 #
 AC_CHECK_HEADER([pthread_workqueue.h],
-  [AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1,Define if pthread work queues are present)]
+  [AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])]
 )
-
-#
-# Check if libpthread_workqueue.so exists
-#
-AC_CHECK_LIB(pthread_workqueue, pthread_workqueue_init_np,
-        have_lpwq=true, have_lpwq=false)
-AM_CONDITIONAL(USE_LIBPTHREAD_WORKQUEUE, $have_lpwq)
 
 #
 # Find functions and declarations we care about.
 #
-AC_CHECK_DECLS([CLOCK_UPTIME, CLOCK_MONOTONIC, CLOCK_REALTIME], [], [],
+AC_CHECK_DECLS([CLOCK_UPTIME, CLOCK_MONOTONIC], [], [],
   [[#include <time.h>]])
-AC_CHECK_DECLS([EVFILT_LIO, EVFILT_SESSION, NOTE_NONE, NOTE_REAP, NOTE_REVOKE, NOTE_SIGNAL], [], [],
-  [[#include <sys/types.h>
-#include <sys/event.h>]])
+AC_CHECK_DECLS([NOTE_NONE, NOTE_REAP, NOTE_SIGNAL], [], [],
+  [[#include <sys/event.h>]])
 AC_CHECK_DECLS([FD_COPY], [], [], [[#include <sys/select.h>]])
 AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])
 AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK], [], [], [[#include <sys/mount.h>]])
 AC_CHECK_DECLS([program_invocation_short_name], [], [], [[#include <errno.h>]])
-AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sysconf getprogname getexecname vasprintf asprintf arc4random fgetln])
+AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sysconf getprogname])
 
 AC_CHECK_DECLS([POSIX_SPAWN_START_SUSPENDED],
-  [have_posix_spawn_start_suspended=true],
-  [have_posix_spawn_start_suspended=false],
+  [have_posix_spawn_start_suspended=true], [have_posix_spawn_start_suspended=false],
   [[#include <sys/spawn.h>]]
 )
 AM_CONDITIONAL(HAVE_POSIX_SPAWN_START_SUSPENDED, $have_posix_spawn_start_suspended)
 
 AC_CHECK_FUNC([sem_init],
-  [have_sem_init=true],
-  [have_sem_init=false]
+  [have_sem_init=true], [have_sem_init=false]
 )
 
 #
@@ -220,10 +194,10 @@ AC_CHECK_FUNC([sem_init],
 #
 AC_MSG_CHECKING([what semaphore type to use]);
 AS_IF([test "x$have_mach" = "xtrue"],
-  [AC_DEFINE(USE_MACH_SEM, 1,[Define to use Mach semaphores])
+  [AC_DEFINE(USE_MACH_SEM, 1, [Define to use Mach semaphores])
     AC_MSG_RESULT([Mach semaphores])],
   [test "x$have_sem_init" = "xtrue"],
-  [AC_DEFINE(USE_POSIX_SEM, 1,[Define to use POSIX semaphores])
+  [AC_DEFINE(USE_POSIX_SEM, 1, [Define to use POSIX semaphores])
     AC_MSG_RESULT([POSIX semaphores])],
   [AC_MSG_ERROR([no supported semaphore type])]
 )
@@ -233,20 +207,61 @@ AC_CHECK_HEADERS([sys/cdefs.h], [], [],
    #include <sys/cdefs.h>
    #endif])
 
-DISPATCH_C_PRIVATE_EXTERN
 DISPATCH_C_BLOCKS
+
+AC_CACHE_CHECK([for -fvisibility=hidden], [dispatch_cv_cc_visibility_hidden], [
+  saveCFLAGS="$CFLAGS"
+  CFLAGS="$CFLAGS -fvisibility=hidden"
+  AC_LINK_IFELSE([AC_LANG_PROGRAM([
+    extern __attribute__ ((visibility ("default"))) int foo; int foo;], [foo = 0;])],
+    [dispatch_cv_cc_visibility_hidden="yes"], [dispatch_cv_cc_visibility_hidden="no"])
+  CFLAGS="$saveCFLAGS"
+])
+AS_IF([test "x$dispatch_cv_cc_visibility_hidden" != "xno"], [
+    VISIBILITY_FLAGS="-fvisibility=hidden"
+])
+AC_SUBST([VISIBILITY_FLAGS])
+
+AC_CACHE_CHECK([for -momit-leaf-frame-pointer], [dispatch_cv_cc_omit_leaf_fp], [
+  saveCFLAGS="$CFLAGS"
+  CFLAGS="$CFLAGS -momit-leaf-frame-pointer"
+  AC_LINK_IFELSE([AC_LANG_PROGRAM([
+    extern int foo(void); int foo(void) {return 1;}], [foo();])],
+    [dispatch_cv_cc_omit_leaf_fp="yes"], [dispatch_cv_cc_omit_leaf_fp="no"])
+  CFLAGS="$saveCFLAGS"
+])
+AS_IF([test "x$dispatch_cv_cc_omit_leaf_fp" != "xno"], [
+  OMIT_LEAF_FP_FLAGS="-momit-leaf-frame-pointer"
+])
+AC_SUBST([OMIT_LEAF_FP_FLAGS])
+
+AC_CACHE_CHECK([for darwin linker], [dispatch_cv_ld_darwin], [
+  saveLDFLAGS="$LDFLAGS"
+  LDFLAGS="$LDFLAGS -dynamiclib -compatibility_version 1.2.3 -current_version 4.5.6"
+  AC_LINK_IFELSE([AC_LANG_PROGRAM([
+    extern int foo; int foo;], [foo = 0;])],
+    [dispatch_cv_ld_darwin="yes"], [dispatch_cv_ld_darwin="no"])
+  LDFLAGS="$saveLDFLAGS"
+])
+AM_CONDITIONAL(HAVE_DARWIN_LD, [test "x$dispatch_cv_ld_darwin" != "xno"])
 
 #
 # Temporary: some versions of clang do not mark __builtin_trap() as
 # __attribute__((__noreturn__)).  Detect and add if required.
 #
-AC_COMPILE_IFELSE([
-  AC_LANG_PROGRAM([void __attribute__((__noreturn__)) temp(void) { __builtin_trap(); }], [])], [
-    AC_DEFINE(HAVE_NORETURN_BUILTIN_TRAP, 1,[Define if __builtin_trap marked noreturn])
-  ], [])
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM([void __attribute__((__noreturn__)) temp(void) { __builtin_trap(); }], [])],
+  [AC_DEFINE(HAVE_NORETURN_BUILTIN_TRAP, 1, [Define if __builtin_trap marked noreturn])]
+)
 
 #
 # Generate Makefiles.
 #
-AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile src/Makefile testing/Makefile])
+AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile private/Makefile src/Makefile testing/Makefile])
+
+#
+# Generate testsuite links
+#
+AC_CONFIG_LINKS([testing/dispatch:${x:+}private testing/bench.cc:testing/bench.mm testing/leaks-wrapper:testing/leaks-wrapper.sh])
+
 AC_OUTPUT

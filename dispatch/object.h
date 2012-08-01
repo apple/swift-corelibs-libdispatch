@@ -1,20 +1,20 @@
 /*
- * Copyright (c) 2008-2009 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2010 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
@@ -26,13 +26,20 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
-__DISPATCH_BEGIN_DECLS
+__BEGIN_DECLS
 
 /*!
  * @function dispatch_debug
  *
  * @abstract
  * Programmatically log debug information about a dispatch object.
+ *
+ * @discussion
+ * Programmatically log debug information about a dispatch object. By default,
+ * the log output is sent to syslog at notice level. In the debug version of
+ * the library, the log output is sent to a file in /var/tmp.
+ * The log output destination can be configured via the LIBDISPATCH_LOG
+ * environment variable, valid values are: YES, NO, syslog, stderr, file.
  *
  * @param object
  * The object to introspect.
@@ -41,12 +48,14 @@ __DISPATCH_BEGIN_DECLS
  * The message to log above and beyond the introspection.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW DISPATCH_FORMAT(printf,2,3)
+DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW
+__attribute__((__format__(printf,2,3)))
 void
 dispatch_debug(dispatch_object_t object, const char *message, ...);
 
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW DISPATCH_FORMAT(printf,2,0)
+DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW
+__attribute__((__format__(printf,2,0)))
 void
 dispatch_debugv(dispatch_object_t object, const char *message, va_list ap);
 
@@ -103,7 +112,8 @@ dispatch_release(dispatch_object_t object);
  * The context of the object; may be NULL.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_PURE DISPATCH_WARN_RESULT
+DISPATCH_NOTHROW
 void *
 dispatch_get_context(dispatch_object_t object);
 
@@ -166,7 +176,7 @@ dispatch_set_finalizer_f(dispatch_object_t object,
  * Calls to dispatch_suspend() must be balanced with calls
  * to dispatch_resume().
  *
- * @param	object
+ * @param object
  * The object to be suspended.
  * The result of passing NULL in this parameter is undefined.
  */
@@ -181,7 +191,7 @@ dispatch_suspend(dispatch_object_t object);
  * @abstract
  * Resumes the invocation of blocks on a dispatch object.
  *
- * @param	object
+ * @param object
  * The object to be resumed.
  * The result of passing NULL in this parameter is undefined.
  */
@@ -190,6 +200,6 @@ DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_resume(dispatch_object_t object);
 
-__DISPATCH_END_DECLS
+__END_DECLS
 
 #endif

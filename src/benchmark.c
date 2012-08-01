@@ -2,19 +2,19 @@
  * Copyright (c) 2008-2009 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
@@ -34,7 +34,7 @@ struct __dispatch_benchmark_data_s {
 static void
 _dispatch_benchmark_init(void *context)
 {
-	struct __dispatch_benchmark_data_s *bdata = (struct __dispatch_benchmark_data_s *)context;
+	struct __dispatch_benchmark_data_s *bdata = context;
 	// try and simulate performance of real benchmark as much as possible
 	// keep 'f', 'c' and 'cnt' in registers
 	register void (*f)(void *) = bdata->func;
@@ -42,7 +42,7 @@ _dispatch_benchmark_init(void *context)
 	register size_t cnt = bdata->count;
 	size_t i = 0;
 	uint64_t start, delta;
-#ifdef __LP64__
+#if defined(__LP64__)
 	__uint128_t lcost;
 #else
 	long double lcost;
@@ -75,21 +75,22 @@ _dispatch_benchmark_init(void *context)
 uint64_t
 dispatch_benchmark(size_t count, void (^block)(void))
 {
-	struct Block_basic *bb = (struct Block_basic *)(void *)block;
-	return dispatch_benchmark_f(count, block, (dispatch_function_t)bb->Block_invoke);
+	struct Block_basic *bb = (void *)block;
+	return dispatch_benchmark_f(count, block, (void *)bb->Block_invoke);
 }
 #endif
 
 uint64_t
-dispatch_benchmark_f(size_t count, register void *ctxt, register void (*func)(void *))
+dispatch_benchmark_f(size_t count, register void *ctxt,
+		register void (*func)(void *))
 {
 	static struct __dispatch_benchmark_data_s bdata = {
-		.func = (dispatch_function_t)dummy_function,
+		.func = (void *)dummy_function,
 		.count = 10000000ul, // ten million
 	};
 	static dispatch_once_t pred;
 	uint64_t ns, start, delta;
-#ifdef __LP64__
+#if defined(__LP64__)
 	__uint128_t conversion, big_denom;
 #else
 	long double conversion, big_denom;

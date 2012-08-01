@@ -1,36 +1,37 @@
-#include <errno.h>
-#include "os_shims.h"
-#include <dispatch/dispatch.h>
+/*
+ * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
+ *
+ * @APPLE_APACHE_LICENSE_HEADER_START@
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * @APPLE_APACHE_LICENSE_HEADER_END@
+ */
 
-__DISPATCH_BEGIN_DECLS
+#include <sys/cdefs.h>
+#include <stdbool.h>
 
-void test_start(const char* desc);
-void test_stop(void);
-void test_stop_after_delay(void *delay);
+#define test_group_wait(g) do { \
+	if (dispatch_group_wait(g, dispatch_time(DISPATCH_TIME_NOW, \
+			25ull * NSEC_PER_SEC))) { \
+		test_long("group wait timed out", 1, 0); \
+		test_stop(); \
+	} } while (0)
 
-void _test_ptr_null(const char* file, long line, const char* desc, const void* ptr);
-#define test_ptr_null(a,b) _test_ptr_null(__FILE__, __LINE__, a, b)
+__BEGIN_DECLS
 
-void _test_ptr_notnull(const char* file, long line, const char* desc, const void* ptr);
-#define test_ptr_notnull(a,b) _test_ptr_notnull(__FILE__, __LINE__, a, b)
+void dispatch_test_start(const char* desc);
 
-void _test_ptr(const char* file, long line, const char* desc, const void* actual, const void* expected);
-#define test_ptr(a,b,c) _test_ptr(__FILE__, __LINE__, a, b, c)
+bool dispatch_test_check_evfilt_read_for_fd(int fd);
 
-void _test_long(const char* file, long line, const char* desc, long actual, long expected);
-#define test_long(a,b,c) _test_long(__FILE__, __LINE__, a, b, c)
-
-void _test_long_less_than(const char* file, long line, const char* desc, long actual, long max_expected);
-#define test_long_less_than(a,b,c) _test_long_less_than(__FILE__, __LINE__, a, b, c)
-
-void _test_double_less_than_or_equal(const char* file, long line, const char* desc, double val, double max_expected);
-#define test_double_less_than_or_equal(d, v, m) _test_double_less_than(__FILE__, __LINE__, d, v, m)
-
-void _test_double_less_than(const char* file, long line, const char* desc, double val, double max_expected);
-#define test_double_less_than(d, v, m) _test_double_less_than(__FILE__, __LINE__, d, v, m)
-
-void _test_errno(const char* file, long line, const char* desc, long actual, long expected);
-#define test_errno(a,b,c) _test_errno(__FILE__, __LINE__, a, b, c)
-
-__DISPATCH_END_DECLS
-
+__END_DECLS

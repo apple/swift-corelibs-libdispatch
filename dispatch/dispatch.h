@@ -1,20 +1,20 @@
 /*
- * Copyright (c) 2008-2009 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
@@ -25,30 +25,18 @@
 #include <Availability.h>
 #include <TargetConditionals.h>
 #endif
-#if HAVE_SYS_CDEFS_H
 #include <sys/cdefs.h>
-#endif
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
-#if HAVE_UNISTD_H
 #include <unistd.h>
-#endif
-
-#if defined(__cplusplus)
-#define __DISPATCH_BEGIN_DECLS	extern "C" {
-#define __DISPATCH_END_DECLS	}
-#else
-#define __DISPATCH_BEGIN_DECLS
-#define __DISPATCH_END_DECLS
-#endif
 
 #ifndef __OSX_AVAILABLE_STARTING
-#define	__OSX_AVAILABLE_STARTING(x, y)
+#define __OSX_AVAILABLE_STARTING(x, y)
 #endif
 
-#define DISPATCH_API_VERSION 20090501
+#define DISPATCH_API_VERSION 20110201
 
 #ifndef __DISPATCH_BUILDING_DISPATCH__
 
@@ -64,6 +52,8 @@
 #include <dispatch/group.h>
 #include <dispatch/semaphore.h>
 #include <dispatch/once.h>
+#include <dispatch/data.h>
+#include <dispatch/io.h>
 
 #undef __DISPATCH_INDIRECT__
 

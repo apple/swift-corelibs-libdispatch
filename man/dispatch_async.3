@@ -1,4 +1,4 @@
-.\" Copyright (c) 2008-2009 Apple Inc. All rights reserved.
+.\" Copyright (c) 2008-2010 Apple Inc. All rights reserved.
 .Dd May 1, 2009
 .Dt dispatch_async 3
 .Os Darwin
@@ -115,14 +115,14 @@ async_read(object_t obj,
 	// This is just an example of nested blocks.
 
 	dispatch_retain(destination_queue);
-	
+
 	dispatch_async(obj->queue, ^{
 		ssize_t r = read(obj->fd, where, bytes);
 		int err = errno;
 
 		dispatch_async(destination_queue, ^{
 			reply_block(r, err);
-		}); 
+		});
 		dispatch_release(destination_queue);
 	});
 }
@@ -171,7 +171,7 @@ against queue B which runs on thread Y which recursively calls
 against queue A, which deadlocks both examples. This is bug-for-bug compatible
 with nontrivial pthread usage. In fact, nontrivial reentrancy is impossible to
 support in recursive locks once the ultimate level of reentrancy is deployed
-(IPC or RPC). 
+(IPC or RPC).
 .Sh IMPLIED REFERENCES
 Synchronous functions within the dispatch framework hold an implied reference
 on the target queue. In other words, the synchronous function borrows the

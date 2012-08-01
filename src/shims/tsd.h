@@ -1,20 +1,20 @@
 /*
- * Copyright (c) 2008-2009 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
@@ -27,94 +27,77 @@
 #ifndef __DISPATCH_SHIMS_TSD__
 #define __DISPATCH_SHIMS_TSD__
 
-#if HAVE_PTHREAD_KEY_INIT_NP
-static const unsigned long dispatch_queue_key = __PTK_LIBDISPATCH_KEY0;
-static const unsigned long dispatch_sema4_key = __PTK_LIBDISPATCH_KEY1;
-static const unsigned long dispatch_cache_key = __PTK_LIBDISPATCH_KEY2;
-static const unsigned long dispatch_bcounter_key = __PTK_LIBDISPATCH_KEY3;
-//__PTK_LIBDISPATCH_KEY4
-//__PTK_LIBDISPATCH_KEY5
+#if HAVE_PTHREAD_MACHDEP_H
+#include <pthread_machdep.h>
+#endif
+
+#define DISPATCH_TSD_INLINE DISPATCH_ALWAYS_INLINE_NDEBUG
+
+#if USE_APPLE_TSD_OPTIMIZATIONS && HAVE_PTHREAD_KEY_INIT_NP && \
+	!defined(DISPATCH_USE_DIRECT_TSD)
+#define DISPATCH_USE_DIRECT_TSD 1
+#endif
+
+#if DISPATCH_USE_DIRECT_TSD
+static const unsigned long dispatch_queue_key		= __PTK_LIBDISPATCH_KEY0;
+static const unsigned long dispatch_sema4_key		= __PTK_LIBDISPATCH_KEY1;
+static const unsigned long dispatch_cache_key		= __PTK_LIBDISPATCH_KEY2;
+static const unsigned long dispatch_io_key			= __PTK_LIBDISPATCH_KEY3;
+static const unsigned long dispatch_apply_key		= __PTK_LIBDISPATCH_KEY4;
+static const unsigned long dispatch_bcounter_key	= __PTK_LIBDISPATCH_KEY5;
+
+DISPATCH_TSD_INLINE
+static inline void
+_dispatch_thread_key_create(const unsigned long *k, void (*d)(void *))
+{
+	dispatch_assert_zero(pthread_key_init_np((int)*k, d));
+}
 #else
 extern pthread_key_t dispatch_queue_key;
 extern pthread_key_t dispatch_sema4_key;
 extern pthread_key_t dispatch_cache_key;
+extern pthread_key_t dispatch_io_key;
+extern pthread_key_t dispatch_apply_key;
 extern pthread_key_t dispatch_bcounter_key;
-#endif
 
-#if USE_APPLE_TSD_OPTIMIZATIONS
-#define SIMULATE_5491082 1
-#ifndef _PTHREAD_TSD_OFFSET
-#define _PTHREAD_TSD_OFFSET 0
-#endif
-
+DISPATCH_TSD_INLINE
 static inline void
-_dispatch_thread_setspecific(unsigned long k, void *v)
+_dispatch_thread_key_create(pthread_key_t *k, void (*d)(void *))
 {
-#if defined(SIMULATE_5491082) && defined(__i386__)
-	asm("movl %1, %%gs:%0" : "=m" (*(void **)(k * sizeof(void *) + _PTHREAD_TSD_OFFSET)) : "ri" (v) : "memory");
-#elif defined(SIMULATE_5491082) && defined(__x86_64__)
-	asm("movq %1, %%gs:%0" : "=m" (*(void **)(k * sizeof(void *) + _PTHREAD_TSD_OFFSET)) : "rn" (v) : "memory");
-#else
-	int res;
-	if (_pthread_has_direct_tsd()) {
-		res = _pthread_setspecific_direct(k, v);
-	} else {
-		res = pthread_setspecific(k, v);
-	}
-	dispatch_assert_zero(res);
-#endif
+	dispatch_assert_zero(pthread_key_create(k, d));
 }
-
-static inline void *
-_dispatch_thread_getspecific(unsigned long k)
-{
-#if defined(SIMULATE_5491082) && (defined(__i386__) || defined(__x86_64__))
-	void *rval;
-	asm("mov %%gs:%1, %0" : "=r" (rval) : "m" (*(void **)(k * sizeof(void *) + _PTHREAD_TSD_OFFSET)));
-	return rval;
-#else
-	if (_pthread_has_direct_tsd()) {
-		return _pthread_getspecific_direct(k);
-	} else {
-		return pthread_getspecific(k);
-	}
 #endif
-}
 
-#else /* !USE_APPLE_TSD_OPTIMIZATIONS */
-
+#if DISPATCH_USE_TSD_BASE && !DISPATCH_DEBUG
+#else // DISPATCH_USE_TSD_BASE
+DISPATCH_TSD_INLINE
 static inline void
 _dispatch_thread_setspecific(pthread_key_t k, void *v)
 {
-	int res;
-
-	res = pthread_setspecific(k, v);
-	dispatch_assert_zero(res);
+#if DISPATCH_USE_DIRECT_TSD
+	if (_pthread_has_direct_tsd()) {
+		(void)_pthread_setspecific_direct(k, v);
+		return;
+	}
+#endif
+	dispatch_assert_zero(pthread_setspecific(k, v));
 }
 
+DISPATCH_TSD_INLINE
 static inline void *
 _dispatch_thread_getspecific(pthread_key_t k)
 {
-
+#if DISPATCH_USE_DIRECT_TSD
+	if (_pthread_has_direct_tsd()) {
+		return _pthread_getspecific_direct(k);
+	}
+#endif
 	return pthread_getspecific(k);
 }
-#endif /* USE_APPLE_TSD_OPTIMIZATIONS */
-
-#if HAVE_PTHREAD_KEY_INIT_NP
-static inline void
-_dispatch_thread_key_init_np(unsigned long k, void (*d)(void *))
-{
-	dispatch_assert_zero(pthread_key_init_np((int)k, d));
-}
-#else
-static inline void
-_dispatch_thread_key_create(pthread_key_t *key, void (*destructor)(void *))
-{
-
-	dispatch_assert_zero(pthread_key_create(key, destructor));
-}
-#endif
+#endif // DISPATCH_USE_TSD_BASE
 
 #define _dispatch_thread_self (uintptr_t)pthread_self
 
-#endif /* __DISPATCH_SHIMS_TSD__ */
+#undef DISPATCH_TSD_INLINE
+
+#endif
