@@ -49,7 +49,7 @@
  */
 
 #ifndef OS_OBJECT_HAVE_OBJC_SUPPORT
-#if defined(__OBJC2__) && !defined(__OBJC_GC__) && ( \
+#if defined(__OBJC__) && defined(__OBJC2__) && !defined(__OBJC_GC__) && ( \
 		__MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_8 || \
 		__IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_6_0)
 #define OS_OBJECT_HAVE_OBJC_SUPPORT 1

@@ -77,10 +77,8 @@ install-data-hook:
 		$(LN) -f dispatch_data_create.3 dispatch_data_create_subrange.3 &&	\
 		$(LN) -f dispatch_data_create.3 dispatch_data_create_map.3 &&	\
 		$(LN) -f dispatch_data_create.3 dispatch_data_apply.3 &&	\
-		$(LN) -f dispatch_data_create.3 dispatch_data_copy_subrange.3 &&	\
 		$(LN) -f dispatch_data_create.3 dispatch_data_copy_region.3 &&	\
 		$(LN) -f dispatch_data_create.3 dispatch_data_get_size.3 &&	\
-		$(LN) -f dispatch_data_create.3 dispatch_data_copy_subrange.3 &&	\
 		$(LN) -f dispatch_data_create.3 dispatch_data_empty.3 &&	\
 		$(LN) -f dispatch_io_create.3 dispatch_io_create_with_path.3 &&	\
 		$(LN) -f dispatch_io_create.3 dispatch_io_set_high_water.3 &&	\
@@ -139,10 +137,8 @@ uninstall-hook:
 			dispatch_data_create_subrange.3	\
 			dispatch_data_create_map.3	\
 			dispatch_data_apply.3	\
-			dispatch_data_copy_subrange.3	\
 			dispatch_data_copy_region.3	\
 			dispatch_data_get_size.3	\
-			dispatch_data_copy_subrange.3	\
 			dispatch_data_empty.3	\
 			dispatch_io_create_with_path.3	\
 			dispatch_io_set_high_water.3	\

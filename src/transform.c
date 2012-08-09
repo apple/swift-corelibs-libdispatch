@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2011-2012 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -352,6 +352,7 @@ _dispatch_transform_to_utf16(dispatch_data_t data, int32_t byteOrder)
 	});
 
 	if (!success) {
+		(void)_dispatch_transform_buffer_new(&buffer, 0, 0);
 		dispatch_release(buffer.data);
 		return NULL;
 	}
@@ -491,6 +492,7 @@ _dispatch_transform_from_utf16(dispatch_data_t data, int32_t byteOrder)
 	});
 
 	if (!success) {
+		(void)_dispatch_transform_buffer_new(&buffer, 0, 0);
 		dispatch_release(buffer.data);
 		return NULL;
 	}
@@ -910,6 +912,9 @@ dispatch_data_create_with_transform(dispatch_data_t data,
 {
 	if (input->type == _DISPATCH_DATA_FORMAT_UTF_ANY) {
 		input = _dispatch_transform_detect_utf(data);
+		if (input == NULL) {
+			return NULL;
+		}
 	}
 
 	if ((input->type & ~output->input_mask) != 0) {

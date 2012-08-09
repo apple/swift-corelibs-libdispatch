@@ -16,6 +16,7 @@ libdispatch_la_SOURCES=		\
 	semaphore.c				\
 	source.c				\
 	time.c					\
+	transform.c				\
 	protocol.defs			\
 	provider.d				\
 	data_internal.h			\
@@ -35,19 +36,30 @@ libdispatch_la_SOURCES=		\
 	shims/time.h			\
 	shims/tsd.h
 
-INCLUDES=-I$(top_builddir) -I$(top_srcdir) -I$(top_srcdir)/private
+AM_CPPFLAGS=-I$(top_builddir) -I$(top_srcdir) \
+	-I$(top_srcdir)/private -I$(top_srcdir)/os
 
-libdispatch_la_CFLAGS=-Wall $(VISIBILITY_FLAGS) $(OMIT_LEAF_FP_FLAGS)
-libdispatch_la_CFLAGS+=$(MARCH_FLAGS) $(CBLOCKS_FLAGS) $(KQUEUE_CFLAGS)
+AM_CFLAGS=-Wall $(VISIBILITY_FLAGS) $(OMIT_LEAF_FP_FLAGS) \
+	$(MARCH_FLAGS) $(CBLOCKS_FLAGS) $(KQUEUE_CFLAGS)
 
 libdispatch_la_LDFLAGS=-avoid-version
 
 if HAVE_DARWIN_LD
-libdispatch_la_LDFLAGS+=-Wl,-compatibility_version,1 -Wl,-current_version,$(VERSION)
+libdispatch_la_LDFLAGS+=-Wl,-compatibility_version,1 \
+	-Wl,-current_version,$(VERSION) -Wl,-dead_strip
+endif
+
+if USE_OBJC
+libdispatch_la_SOURCES+=object.m
+libdispatch_la_OBJCFLAGS=$(AM_CFLAGS) -fobjc-gc
+libdispatch_la_LDFLAGS+=-Wl,-upward-lobjc -Wl,-upward-lauto \
+	-Wl,-order_file,$(top_srcdir)/xcodeconfig/libdispatch.order \
+	-Wl,-alias_list,$(top_srcdir)/xcodeconfig/libdispatch.aliases \
+	-Wl,-unexported_symbols_list,$(top_srcdir)/xcodeconfig/libdispatch.unexport
 endif
 
 CLEANFILES=
-DISTCLEANFILES=System
+DISTCLEANFILES=System objc
 
 if USE_MIG
 BUILT_SOURCES=				\

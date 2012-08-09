@@ -45,6 +45,16 @@ The following configure options may be of general interest:
 The following options are likely to only be useful when building libdispatch on
 Mac OS X as a replacement for /usr/lib/system/libdispatch.dylib:
 
+--with-apple-objc4-source
+
+	Specify the path to Apple's objc4 package, so that appropriate headers can
+	be found and used.
+
+--with-apple-libauto-source
+
+	Specify the path to Apple's libauto package, so that appropriate headers
+	can be found and used.
+
 --disable-libdispatch-init-constructor
 
 	Do not tag libdispatch's init routine as __constructor, in which case it
@@ -61,16 +71,19 @@ Mac OS X as a replacement for /usr/lib/system/libdispatch.dylib:
   Typical configuration commands
 
 The following command lines create the configuration required to build
-libdispatch for /usr/lib/system on Mac OS X Lion:
+libdispatch for /usr/lib/system on OS X MountainLion:
 
 	sh autogen.sh
-	./configure CFLAGS='-arch x86_64 -arch i386 -g -Os' \
+	cflags='-arch x86_64 -arch i386 -g -Os'
+	./configure CFLAGS="$cflags" OBJCFLAGS="$cflags" CXXFLAGS="$cflags" \
 		--prefix=/usr --libdir=/usr/lib/system \
 		--disable-dependency-tracking --disable-static \
 		--enable-apple-tsd-optimizations \
-		--with-apple-libc-source=/path/to/10.7.0/Libc-763.11 \
-		--with-apple-libclosure-source=/path/to/10.7.0/libclosure-53 \
-		--with-apple-xnu-source=/path/to/10.7.0/xnu-1699.22.73
+		--with-apple-libc-source=/path/to/10.8.0/Libc-825.24 \
+		--with-apple-libclosure-source=/path/to/10.8.0/libclosure-59 \
+		--with-apple-xnu-source=/path/to/10.8.0/xnu-2050.7.9 \
+		--with-apple-objc4-source=/path/to/10.8.0/objc4-532 \
+		--with-apple-libauto-source=/path/to/10.8.0/libauto-185.1
 	make check
 
 Typical configuration line for FreeBSD 8.x and 9.x to build libdispatch with

@@ -143,13 +143,13 @@
 #define PACKAGE_NAME "libdispatch"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "libdispatch 1.1"
+#define PACKAGE_STRING "libdispatch 1.2"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "libdispatch"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "1.1"
+#define PACKAGE_VERSION "1.2"
 
 /* Define to 1 if you have the ANSI C header files. */
 #define STDC_HEADERS 1
@@ -170,7 +170,7 @@
 /* #undef USE_POSIX_SEM */
 
 /* Version number of package */
-#define VERSION "1.1"
+#define VERSION "1.2"
 
 /* Define to 1 if on AIX 3.
    System headers sometimes define this.

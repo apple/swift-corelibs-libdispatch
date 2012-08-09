@@ -3,7 +3,7 @@
 #
 
 AC_PREREQ(2.59)
-AC_INIT([libdispatch], [1.1], [libdispatch@macosforge.org], [libdispatch])
+AC_INIT([libdispatch], [1.2], [libdispatch@macosforge.org], [libdispatch])
 AC_REVISION([$$])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_HEADER([config/config.h])
@@ -37,8 +37,22 @@ AC_ARG_WITH([apple-xnu-source],
   [AS_HELP_STRING([--with-apple-xnu-source],
     [Specify path to Apple XNU source])], [
   apple_xnu_source_libkern_path=${withval}/libkern
+  apple_xnu_source_bsd_path=${withval}/bsd
   apple_xnu_source_osfmk_path=${withval}/osfmk
-  CPPFLAGS="$CPPFLAGS -I$apple_xnu_source_libkern_path"
+  CPPFLAGS="$CPPFLAGS -idirafter $apple_xnu_source_libkern_path -isystem $apple_xnu_source_bsd_path"
+])
+
+AC_ARG_WITH([apple-objc4-source],
+  [AS_HELP_STRING([--with-apple-objc4-source],
+    [Specify path to Apple objc4 source])], [
+  apple_objc4_source_runtime_path=${withval}/runtime
+])
+
+AC_ARG_WITH([apple-libauto-source],
+  [AS_HELP_STRING([--with-apple-libauto-source],
+    [Specify path to Apple libauto source])], [
+  apple_libauto_source_path=${withval}
+  CPPFLAGS="$CPPFLAGS -I$apple_libauto_source_path"
 ])
 
 AC_CACHE_CHECK([for System.framework/PrivateHeaders], dispatch_cv_system_privateheaders,
@@ -78,16 +92,15 @@ AS_IF([test "x$enable_apple_tsd_optimizations" = "xyes"],
 )
 
 AC_USE_SYSTEM_EXTENSIONS
-AC_PROG_INSTALL
-AC_PROG_LIBTOOL
-AC_PATH_PROGS(MIG, mig)
+AM_INIT_AUTOMAKE([foreign no-dependencies])
+LT_INIT([disable-static])
 
+AC_PROG_INSTALL
+AC_PATH_PROGS(MIG, mig)
 AC_PATH_PROG(LEAKS, leaks)
 AS_IF([test "x$LEAKS" != "x"],
   [AC_DEFINE(HAVE_LEAKS, 1, [Define if Apple leaks program is present])]
 )
-
-AM_INIT_AUTOMAKE([foreign])
 
 DISPATCH_C_ATOMIC_BUILTINS
 
@@ -131,20 +144,43 @@ AS_IF([test -n "$apple_xnu_source_osfmk_path"], [
     [ln -fsh "$apple_xnu_source_osfmk_path" src/System],
     [apple_xnu_source_osfmk_path="$apple_xnu_source_osfmk_path"])
 ])
+# hack for xnu/bsd/sys/event.h EVFILT_SOCK declaration
+AS_IF([test -n "$apple_xnu_source_bsd_path"], [
+  CPPFLAGS="$CPPFLAGS -DPRIVATE=1"
+])
 
 #
-# Parts of the testsuite use CoreFoundation and Foundation
+# Check for CoreFoundation, Foundation and objc
 #
 AC_CHECK_HEADER([CoreFoundation/CoreFoundation.h],
   [have_corefoundation=true], [have_corefoundation=false]
 )
 AM_CONDITIONAL(HAVE_COREFOUNDATION, $have_corefoundation)
+
 AC_LANG_PUSH([Objective C])
-AC_CHECK_HEADER([Foundation/Foundation.h], [
-    AC_DEFINE(USE_OBJC, 1, [Define to use Objective-C runtime])
-    have_foundation=true], [have_foundation=false]
+AC_CHECK_HEADER([Foundation/Foundation.h],
+  [have_foundation=true], [have_foundation=false]
 )
 AM_CONDITIONAL(HAVE_FOUNDATION, $have_foundation)
+# hack for objc4/runtime/objc-internal.h
+AS_IF([test -n "$apple_objc4_source_runtime_path"], [
+  saveCPPFLAGS="$CPPFLAGS"
+  CPPFLAGS="$CPPFLAGS -I."
+  ln -fsh "$apple_objc4_source_runtime_path" objc
+])
+AC_CHECK_HEADER([objc/objc-internal.h], [
+  AC_DEFINE(USE_OBJC, 1, [Define to use Objective-C runtime])
+  have_objc=true], [have_objc=false],
+  [#include <objc/runtime.h>]
+)
+AS_IF([test -n "$apple_objc4_source_runtime_path"], [
+  rm -f objc
+  CPPFLAGS="$saveCPPFLAGS"
+  AC_CONFIG_COMMANDS([src/objc],
+    [ln -fsh "$apple_objc4_source_runtime_path" src/objc],
+    [apple_objc4_source_runtime_path="$apple_objc4_source_runtime_path"])
+])
+AM_CONDITIONAL(USE_OBJC, $have_objc)
 AC_LANG_POP([Objective C])
 
 #
@@ -152,9 +188,9 @@ AC_LANG_POP([Objective C])
 # of Machisms, including using Mach ports as event sources, etc.
 #
 AC_CHECK_HEADER([mach/mach.h], [
-    AC_DEFINE(HAVE_MACH, 1, [Define if mach is present])
-    AC_DEFINE(__DARWIN_NON_CANCELABLE, 1, [Define if using Darwin $NOCANCEL])
-    have_mach=true], [have_mach=false]
+  AC_DEFINE(HAVE_MACH, 1, [Define if mach is present])
+  AC_DEFINE(__DARWIN_NON_CANCELABLE, 1, [Define if using Darwin $NOCANCEL])
+  have_mach=true], [have_mach=false]
 )
 AM_CONDITIONAL(USE_MIG, $have_mach)
 
@@ -239,7 +275,7 @@ AC_SUBST([OMIT_LEAF_FP_FLAGS])
 
 AC_CACHE_CHECK([for darwin linker], [dispatch_cv_ld_darwin], [
   saveLDFLAGS="$LDFLAGS"
-  LDFLAGS="$LDFLAGS -dynamiclib -compatibility_version 1.2.3 -current_version 4.5.6"
+  LDFLAGS="$LDFLAGS -dynamiclib -compatibility_version 1.2.3 -current_version 4.5.6 -dead_strip"
   AC_LINK_IFELSE([AC_LANG_PROGRAM([
     extern int foo; int foo;], [foo = 0;])],
     [dispatch_cv_ld_darwin="yes"], [dispatch_cv_ld_darwin="no"])
@@ -259,5 +295,5 @@ AC_COMPILE_IFELSE(
 #
 # Generate Makefiles.
 #
-AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile private/Makefile src/Makefile])
+AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile os/Makefile private/Makefile src/Makefile])
 AC_OUTPUT

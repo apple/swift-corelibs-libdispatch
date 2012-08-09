@@ -780,6 +780,7 @@ const struct dispatch_source_type_s _dispatch_source_type_mach_recv = {
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_sock = {
+#ifdef EVFILT_SOCK
 	.ke = {
 		.filter = EVFILT_SOCK,
 		.flags = EV_CLEAR,
@@ -787,6 +788,7 @@ const struct dispatch_source_type_s _dispatch_source_type_sock = {
 	.mask = NOTE_CONNRESET |  NOTE_READCLOSED | NOTE_WRITECLOSED |
 		NOTE_TIMEOUT | NOTE_NOSRCADDR |  NOTE_IFDENIED | NOTE_SUSPEND |
 		NOTE_RESUME | NOTE_KEEPALIVE,
+#endif
 };
 
 #pragma mark -
