@@ -46,7 +46,7 @@ test_timer(void)
 	const int stop_at = 3;
 
 	dispatch_queue_t main_q = dispatch_get_main_queue();
-	test_ptr("dispatch_get_main_queue", main_q, dispatch_get_current_queue());
+	//test_ptr("dispatch_get_main_queue", main_q, dispatch_get_current_queue());
 
 	uint64_t j;
 
@@ -73,16 +73,13 @@ test_timer(void)
 	__block int i = 0;
 
 	dispatch_source_t s = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, main_q);
-	dispatch_debug(s, "fresh timer:");
 	test_ptr_notnull("dispatch_source_create", s);
 
 	dispatch_source_set_timer(s, dispatch_time(DISPATCH_TIME_NOW, 0), NSEC_PER_SEC, 0);
 
 	dispatch_source_set_cancel_handler(s, ^{
 		test_ptr_notnull("cancel handler run", s);
-		dispatch_debug(s, "pre release timer:");
 		dispatch_release(s);
-		dispatch_debug(s, "post release timer:");
 	});
 
 	dispatch_source_set_event_handler(s, ^{

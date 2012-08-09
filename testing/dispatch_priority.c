@@ -34,32 +34,40 @@
 static volatile int done;
 
 #ifdef DISPATCH_QUEUE_PRIORITY_BACKGROUND // <rdar://problem/7439794>
-
-#define PRIORITIES 4
-char *labels[PRIORITIES] = { "BACKGROUND", "LOW", "DEFAULT", "HIGH" };
-int priorities[PRIORITIES] = { DISPATCH_QUEUE_PRIORITY_BACKGROUND, DISPATCH_QUEUE_PRIORITY_LOW, DISPATCH_QUEUE_PRIORITY_DEFAULT, DISPATCH_QUEUE_PRIORITY_HIGH };
-
+#define USE_BACKGROUND_PRIORITY 1
 #else
+#define DISPATCH_QUEUE_PRIORITY_BACKGROUND INT16_MIN
+#endif
 
-#define PRIORITIES 3
-char *labels[PRIORITIES] = { "LOW", "DEFAULT", "HIGH" };
-int priorities[PRIORITIES] = { DISPATCH_QUEUE_PRIORITY_LOW, DISPATCH_QUEUE_PRIORITY_DEFAULT, DISPATCH_QUEUE_PRIORITY_HIGH };
+#define QUEUE_PRIORITY_PTHREAD INT_MAX
 
+#if DISPATCH_API_VERSION < 20100518 // <rdar://problem/7790099>
+#define DISPATCH_QUEUE_CONCURRENT NULL
 #endif
 
 #if TARGET_OS_EMBEDDED
-#define LOOP_COUNT 2000000
+#define LOOP_COUNT 5000000
+const int importance = 24; // priority 55
 #else
 #define LOOP_COUNT 100000000
+const int importance = 4; // priority 35
 #endif
+
+char *labels[] = { "BACKGROUND", "LOW", "DEFAULT", "HIGH", };
+int levels[] = {
+	DISPATCH_QUEUE_PRIORITY_BACKGROUND, DISPATCH_QUEUE_PRIORITY_LOW,
+	DISPATCH_QUEUE_PRIORITY_DEFAULT, DISPATCH_QUEUE_PRIORITY_HIGH,
+};
+#define PRIORITIES (sizeof(levels)/sizeof(*levels))
 
 static union {
 	long count;
 	char padding[64];
 } counts[PRIORITIES];
 
-#define ITERATIONS (long)(PRIORITIES * n_blocks() * 0.50)
 static volatile long iterations;
+static long total;
+static size_t prio0, priorities = PRIORITIES;
 
 int
 n_blocks(void)
@@ -78,11 +86,12 @@ n_blocks(void)
 void
 histogram(void)
 {
-	long total = 0;
-	size_t x,y;
-	for (y = 0; y < PRIORITIES; ++y) {
+	long completed = 0;
+	size_t x, y, i;
+	printf("\n");
+	for (y = prio0; y < prio0 + priorities; ++y) {
 		printf("%s: %ld\n", labels[y], counts[y].count);
-		total += counts[y].count;
+		completed += counts[y].count;
 
 		double fraction = (double)counts[y].count / (double)n_blocks();
 		double value = fraction * (double)80;
@@ -92,9 +101,19 @@ histogram(void)
 		printf("\n");
 	}
 
-	test_long("blocks completed", total, ITERATIONS);
-	test_long_less_than("high priority precedence", counts[0].count,
-			counts[PRIORITIES-1].count);
+	test_long("blocks completed", completed, total);
+	for (i = prio0; i < prio0 + priorities; i++) {
+		if (levels[i] == DISPATCH_QUEUE_PRIORITY_HIGH) {
+			test_long_less_than_or_equal("high priority precedence",
+					counts[i-2].count, counts[i].count);
+		}
+#if USE_BACKGROUND_PRIORITY
+		if (levels[i] == DISPATCH_QUEUE_PRIORITY_BACKGROUND) {
+			test_long_less_than_or_equal("background priority precedence",
+					counts[i].count, counts[i+2].count);
+		}
+#endif
+	}
 }
 
 void
@@ -115,8 +134,10 @@ cpubusy(void* context)
 			__sync_add_and_fetch(&done, 1);
 			usleep(100000);
 			histogram();
-			test_stop();
-			exit(0);
+			dispatch_time_t delay = DISPATCH_TIME_NOW;
+			dispatch_after(delay, dispatch_get_main_queue(), ^{
+				test_stop();
+			});
 		}
 	}
 }
@@ -136,43 +157,46 @@ int
 main(int argc __attribute__((unused)), char* argv[] __attribute__((unused)))
 {
 	dispatch_queue_t q[PRIORITIES];
-	int i;
+	size_t i;
 
-	iterations = ITERATIONS;
+#if !USE_BACKGROUND_PRIORITY
+	prio0++;
+	priorities--;
+#endif
+
+	iterations = total = (priorities * n_blocks()) * 0.50;
 
 #if USE_SET_TARGET_QUEUE
 	dispatch_test_start("Dispatch Priority (Set Target Queue)");
-	for(i = 0; i < PRIORITIES; i++) {
-#if DISPATCH_API_VERSION < 20100518 // <rdar://problem/7790099>
-		q[i] = dispatch_queue_create(labels[i], NULL);
 #else
-		q[i] = dispatch_queue_create(labels[i], DISPATCH_QUEUE_CONCURRENT);
+	dispatch_test_start("Dispatch Priority");
 #endif
+
+	for (i = prio0; i < prio0 + priorities; i++) {
+		dispatch_queue_t rq = dispatch_get_global_queue(levels[i], 0);
+#if USE_SET_TARGET_QUEUE
+		q[i] = dispatch_queue_create(labels[i], DISPATCH_QUEUE_CONCURRENT);
 		test_ptr_notnull("q[i]", q[i]);
 		assert(q[i]);
 		dispatch_suspend(q[i]);
-		dispatch_set_target_queue(q[i], dispatch_get_global_queue(priorities[i], 0));
-#if DISPATCH_API_VERSION < 20100518 // <rdar://problem/7790099>
-		dispatch_queue_set_width(q[i], LONG_MAX);
-#endif
-	}
+		dispatch_set_target_queue(q[i], rq);
+		if (DISPATCH_QUEUE_CONCURRENT != NULL) {
+			dispatch_queue_set_width(q[i], LONG_MAX);
+		}
+		dispatch_release(rq);
 #else
-	dispatch_test_start("Dispatch Priority");
-	for(i = 0; i < PRIORITIES; i++) {
-		q[i] = dispatch_get_global_queue(priorities[i], 0);
-	}
+		q[i] = rq;
 #endif
+	}
 
-	for(i = 0; i < PRIORITIES; i++) {
+	for (i = prio0; i < prio0 + priorities; i++) {
 		submit_work(q[i], &counts[i].count);
 	}
 
-#if USE_SET_TARGET_QUEUE
-	for(i = 0; i < PRIORITIES; i++) {
+	for (i = prio0; i < prio0 + priorities; i++) {
 		dispatch_resume(q[i]);
 		dispatch_release(q[i]);
 	}
-#endif
 
 	dispatch_main();
 

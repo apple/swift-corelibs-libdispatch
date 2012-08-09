@@ -29,6 +29,7 @@
 #include <time.h>
 
 #include <dispatch/dispatch.h>
+#include <dispatch/private.h>
 
 #include <bsdtests.h>
 #include "dispatch_test.h"
@@ -36,7 +37,7 @@
 #if defined(DISPATCH_SOURCE_TYPE_VM) && defined(NOTE_VM_PRESSURE)
 
 #if TARGET_OS_EMBEDDED
-#define ALLOC_SIZE ((size_t)(1024*1024*5ul))	// 5MB
+#define ALLOC_SIZE ((size_t)(1024*1024*1ul))	// 1MB
 #define NOTIFICATIONS 1
 #else
 #define ALLOC_SIZE ((size_t)(1024*1024*20ul))	// 20MB
@@ -60,7 +61,7 @@ static int interval = 16;
 
 #define log_msg(msg, ...) \
 do { \
-	fprintf(stderr, "[%2ds] " msg, (int)(time(NULL) - initial), ## __VA_ARGS__);\
+	fprintf(stderr, "[%2ds] " msg, (int)(time(NULL) - initial), ##__VA_ARGS__);\
 } while (0)
 
 static bool
@@ -102,7 +103,7 @@ cleanup(void)
 int
 main(void)
 {
-	dispatch_test_start("Dispatch VM Pressure test"); // <rdar://problem/7000945>
+	dispatch_test_start("Dispatch VM Pressure test"); // rdar://problem/7000945
 	if (!dispatch_test_check_evfilt_vm()) {
 		test_skip("EVFILT_VM not supported");
 		test_stop();
@@ -142,7 +143,8 @@ main(void)
 	dispatch_resume(vm_source);
 	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC),
 			dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-		while (handler_call_count < NOTIFICATIONS && page_count < max_page_count) {
+		while (handler_call_count < NOTIFICATIONS &&
+				page_count < max_page_count) {
 			void *p = valloc(ALLOC_SIZE);
 			if (!p) {
 				break;
@@ -163,9 +165,12 @@ main(void)
 			dispatch_async(vm_queue, ^{cleanup();});
 			return;
 		}
-		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), vm_queue, ^{
-			test_long_less_than("VM Pressure fired", NOTIFICATIONS - 1, handler_call_count);
-			test_long_less_than("VM Pressure stopped firing", handler_call_count, 4);
+		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC),
+				vm_queue, ^{
+			test_long_greater_than_or_equal("VM Pressure fired",
+					handler_call_count, NOTIFICATIONS);
+			test_long_less_than("VM Pressure stopped firing",
+					handler_call_count, 4);
 			cleanup();
 		});
 	});
@@ -176,7 +181,8 @@ main(void)
 int
 main(void)
 {
-	dispatch_test_start("Dispatch VM Pressure test - No DISPATCH_SOURCE_TYPE_VM");
+	dispatch_test_start("Dispatch VM Pressure test"
+			" - No DISPATCH_SOURCE_TYPE_VM");
 	test_stop();
 	return 0;
 }

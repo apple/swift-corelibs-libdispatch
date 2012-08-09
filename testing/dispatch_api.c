@@ -33,8 +33,9 @@ work(void *context __attribute__((unused)))
 int
 main(void)
 {
+	dispatch_queue_t q;
 	dispatch_test_start("Dispatch (Public) API");
-	dispatch_queue_t q = dispatch_get_main_queue();
+	q = dispatch_get_main_queue();
 	test_ptr_notnull("dispatch_get_main_queue", q);
 
 	dispatch_async_f(dispatch_get_main_queue(), NULL, work);

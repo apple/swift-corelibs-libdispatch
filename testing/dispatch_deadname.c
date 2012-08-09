@@ -32,18 +32,17 @@
 #if TEST_MACHPORT_DEBUG
 #define test_mach_assume_zero(x) ({kern_return_t _kr = (x); \
 		if (_kr) fprintf(stderr, "mach error 0x%x \"%s\": %s\n", \
-		_kr, mach_error_string(_kr), #x); _kr; })
+		_kr, mach_error_string(_kr), #x); (void)kr; })
 void
-test_mach_debug_port(mach_port_t name, const char *str)
+test_mach_debug_port(mach_port_t name, const char *str, unsigned int line)
 {
 	mach_port_type_t type;
 	mach_msg_bits_t ns = 0, nr = 0, nso = 0, nd = 0;
 	unsigned int dnreqs = 0, dnrsiz;
 	kern_return_t kr = mach_port_type(mach_task_self(), name, &type);
-
 	if (kr) {
-		fprintf(stderr, "machport[0x%08x] = { error(0x%x) \"%s\" }: %s\n",
-				name, kr, mach_error_string(kr), str);
+		fprintf(stderr, "machport[0x%08x] = { error(0x%x) \"%s\" }: %s %u\n",
+				name, kr, mach_error_string(kr), str, line);
 		return;
 	}
 	if (type & MACH_PORT_TYPE_SEND) {
@@ -58,8 +57,7 @@ test_mach_debug_port(mach_port_t name, const char *str)
 		test_mach_assume_zero(mach_port_get_refs(mach_task_self(), name,
 				MACH_PORT_RIGHT_DEAD_NAME, &nd));
 	}
-	if (type & (MACH_PORT_TYPE_RECEIVE|MACH_PORT_TYPE_SEND|
-			MACH_PORT_TYPE_SEND_ONCE)) {
+	if (type & (MACH_PORT_TYPE_RECEIVE|MACH_PORT_TYPE_SEND)) {
 		test_mach_assume_zero(mach_port_dnrequest_info(mach_task_self(), name,
 				&dnrsiz, &dnreqs));
 		}
@@ -71,24 +69,28 @@ test_mach_debug_port(mach_port_t name, const char *str)
 		test_mach_assume_zero(mach_port_get_attributes(mach_task_self(), name,
 				MACH_PORT_RECEIVE_STATUS, (void*)&status, &cnt));
 		fprintf(stderr, "machport[0x%08x] = { R(%03u) S(%03u) SO(%03u) D(%03u) "
-				"dnreqs(%03u) nsreq(%s) pdreq(%s) srights(%s) sorights(%03u) "
-				"qlim(%03u) msgcount(%03u) mkscount(%03u) seqno(%03u) }: %s\n",
-				name, nr, ns, nso, nd, dnreqs, status.mps_nsrequest ? "Y":"N",
-				status.mps_pdrequest ? "Y":"N", status.mps_srights ? "Y":"N",
-				status.mps_sorights, status.mps_qlimit, status.mps_msgcount,
-				status.mps_mscount, status.mps_seqno, str);
+				"dnreqs(%03u) spreq(%s) nsreq(%s) pdreq(%s) srights(%s) "
+				"sorights(%03u) qlim(%03u) msgcount(%03u) mkscount(%03u) "
+				"seqno(%03u) }: %s %u\n", name, nr, ns, nso, nd, dnreqs,
+				type & MACH_PORT_TYPE_SPREQUEST ? "Y":"N",
+				status.mps_nsrequest ? "Y":"N", status.mps_pdrequest ? "Y":"N",
+				status.mps_srights ? "Y":"N", status.mps_sorights,
+				status.mps_qlimit, status.mps_msgcount, status.mps_mscount,
+				status.mps_seqno, str, line);
 	} else if (type & (MACH_PORT_TYPE_SEND|MACH_PORT_TYPE_SEND_ONCE|
 			MACH_PORT_TYPE_DEAD_NAME)) {
 		fprintf(stderr, "machport[0x%08x] = { R(%03u) S(%03u) SO(%03u) D(%03u) "
-				"dnreqs(%03u) }: %s\n", name, nr, ns, nso, nd, dnreqs, str);
+				"dnreqs(%03u) spreq(%s) }: %s %u\n", name, nr, ns, nso, nd,
+				dnreqs, type & MACH_PORT_TYPE_SPREQUEST ? "Y":"N", str, line);
 	} else {
-		fprintf(stderr, "machport[0x%08x] = { type(0x%08x) }: %s\n", name, type,
-				str);
+		fprintf(stderr, "machport[0x%08x] = { type(0x%08x) }: %s %u\n", name,
+				type, str, line);
 	}
+	fflush(stderr);
 }
-#define test_mach_debug_port(x) test_mach_debug_port(x, __func__)
+#define test_mach_debug_port(x) test_mach_debug_port(x, __func__, __LINE__)
 #else
-#define test_mach_debug_port(x)
+#define test_mach_debug_port(x) (void)(x)
 #endif
 
 static dispatch_group_t g;
@@ -112,6 +114,11 @@ test_dead_name(void)
 		dispatch_source_set_event_handler(ds0, ^{
 			test_long("DISPATCH_MACH_SEND_DEAD",
 					dispatch_source_get_handle(ds0), mp);
+			dispatch_source_cancel(ds0);
+		});
+		dispatch_source_set_cancel_handler(ds0, ^{
+			kern_return_t kr = mach_port_deallocate(mach_task_self(), mp);
+			test_mach_error("mach_port_deallocate", kr, KERN_SUCCESS);
 			dispatch_release(ds0);
 			dispatch_group_leave(g);
 		});
@@ -431,6 +438,7 @@ test_mig_server_large_msg(void) // rdar://problem/8422992
 	dispatch_source_cancel(ds);
 	dispatch_release(ds);
 	test_long("DISPATCH_SOURCE_TYPE_MACH_RECV", received, 0);
+	dispatch_group_wait(g, DISPATCH_TIME_FOREVER);
 }
 
 int

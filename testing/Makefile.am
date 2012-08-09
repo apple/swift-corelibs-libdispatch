@@ -62,17 +62,16 @@ TESTS=							\
 	dispatch_vnode				\
 	dispatch_select
 
-dispatch_c99_CFLAGS=-std=c99
+dispatch_c99_CFLAGS=$(AM_CFLAGS) -std=c99
 dispatch_plusplus_SOURCES=dispatch_plusplus.cpp
 dispatch_priority2_SOURCES=dispatch_priority.c
-dispatch_priority2_CFLAGS=-DUSE_SET_TARGET_QUEUE=1
+dispatch_priority2_CPPFLAGS=$(AM_CPPFLAGS) -DUSE_SET_TARGET_QUEUE=1
 
-INCLUDES=-I$(top_builddir) -I$(top_srcdir)
+AM_CPPFLAGS=-I$(top_builddir) -I$(top_srcdir)
 
-CPPFLAGS=
-CFLAGS=-Wall -g $(MARCH_FLAGS) $(CBLOCKS_FLAGS)
-OBJCFLAGS=-Wall -g $(MARCH_FLAGS) $(CBLOCKS_FLAGS)
-CXXFLAGS=-Wall -g $(MARCH_FLAGS) $(CXXBLOCKS_FLAGS)
+AM_CFLAGS=-Wall $(MARCH_FLAGS) $(CBLOCKS_FLAGS)
+AM_OBJCFLAGS=-Wall $(MARCH_FLAGS) $(CBLOCKS_FLAGS) -fobjc-gc
+AM_CXXFLAGS=-Wall $(MARCH_FLAGS) $(CXXBLOCKS_FLAGS)
 
 LDADD=libbsdtests.la ../src/libdispatch.la
 libbsdtests_la_LDFLAGS=-avoid-version
@@ -83,10 +82,12 @@ DISTCLEAN=bench.cc
 if HAVE_COREFOUNDATION
 TESTS+=							\
 	dispatch_cf_main			\
+	dispatch_transform			\
 	dispatch_sync_on_main		\
 	cffd
 
 dispatch_cf_main_LDFLAGS=-framework CoreFoundation
+dispatch_transform_LDFLAGS=-framework CoreFoundation -framework Security
 dispatch_sync_on_main_LDFLAGS=-framework CoreFoundation
 cffd_LDFLAGS=-framework CoreFoundation
 endif
@@ -99,14 +100,13 @@ TESTS+=							\
 	bench
 
 dispatch_sync_gc_SOURCES=dispatch_sync_gc.m
-dispatch_sync_gc_OBJCFLAGS=-fobjc-gc
 dispatch_sync_gc_LDFLAGS=-framework Foundation
 dispatch_apply_gc_SOURCES=dispatch_apply_gc.m
-dispatch_apply_gc_OBJCFLAGS=-fobjc-gc
 dispatch_apply_gc_LDFLAGS=-framework Foundation
 nsoperation_SOURCES=nsoperation.m
 nsoperation_LDFLAGS=-framework Foundation
-bench_SOURCES=bench.cc func.c
+nodist_bench_SOURCES=bench.cc
+bench_SOURCES=func.c
 bench_LDFLAGS=-framework Foundation
 # Workaround missing objcxx support in older autotools
 bench.o: bench.cc

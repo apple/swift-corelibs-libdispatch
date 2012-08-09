@@ -127,6 +127,18 @@ test_ptr_format(const void* actual, const void* expected, const char* format, ..
 	_test_ptr(NULL, 0, desc, actual, expected);
 }
 
+void _test_ptr_not(const char* file, long line, const char* desc, const void* actual, const void* expected)
+{
+	_test_print(file, line, desc,
+				(actual != expected), "%p", actual, "!%p", expected);
+}
+
+void test_ptr_not_format(const void *actual, const void* expected, const char *format, ...)
+{
+	GENERATE_DESC
+	_test_ptr_not(NULL, 0, desc, actual, expected);
+}
+
 void
 _test_uint32(const char* file, long line, const char* desc, uint32_t actual, uint32_t expected)
 {
@@ -211,6 +223,19 @@ test_long_less_than_format(long actual, long expected_max, const char* format, .
 }
 
 void
+_test_long_less_than_or_equal(const char* file, long line, const char* desc, long actual, long expected_max)
+{
+	_test_print(file, line, desc, (actual <= expected_max), "%ld", actual, "<=%ld", expected_max);
+}
+
+void
+test_long_less_than_or_equal_format(long actual, long expected_max, const char* format, ...)
+{
+	GENERATE_DESC
+	_test_long_less_than_or_equal(NULL, 0, desc, actual, expected_max);
+}
+
+void
 _test_long_greater_than_or_equal(const char* file, long line, const char* desc, long actual, long expected_min)
 {
 	_test_print(file, line, desc, (actual >= expected_min), "%ld", actual, ">=%ld", expected_min);
@@ -247,6 +272,20 @@ test_double_less_than_or_equal_format(double val, double max_expected, const cha
 {
 	GENERATE_DESC
 	_test_double_less_than_or_equal(NULL, 0, desc, val, max_expected);
+}
+
+void
+_test_double_equal(const char* file, long line, const char* desc, double val, double expected)
+{
+	_test_print(file, line, desc, (val == expected), "%f", val, "%f", expected);
+}
+
+
+void
+test_double_equal_format(double val, double expected, const char *format, ...)
+{
+	GENERATE_DESC
+	_test_double_equal(NULL, 0, desc, val, expected);
 }
 
 void
@@ -385,6 +424,10 @@ test_leaks_pid(const char *name, pid_t pid)
 	if (inserted_libs && strstr(inserted_libs, "/usr/lib/libgmalloc.dylib")) {
 		return;
 	}
+
+	unsetenv("DYLD_IMAGE_SUFFIX");
+	unsetenv("DYLD_INSERT_LIBRARIES");
+	unsetenv("DYLD_LIBRARY_PATH");
 
 	unsetenv("MallocStackLogging");
 	unsetenv("MallocStackLoggingNoCompact");

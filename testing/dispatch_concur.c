@@ -147,7 +147,7 @@ apply_work(void* ctxt, size_t i)
 	size_t c = __sync_add_and_fetch(&concur, 1), *m = ((size_t *)ctxt) + i;
 	if (c > *m) *m = c;
 
-	usleep(10000);
+	usleep(100000);
 	__sync_sub_and_fetch(&concur, 1);
 }
 

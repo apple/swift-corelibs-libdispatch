@@ -65,7 +65,7 @@ test_fin(void *cxt)
 #endif
 
 static void
-test_io_close(int with_timer)
+test_io_close(int with_timer, bool from_path)
 {
 	#define chunks 4
 	#define READSIZE (512*1024)
@@ -80,8 +80,8 @@ test_io_close(int with_timer)
 		test_errno("open", errno, 0);
 		test_stop();
 	}
-	if (fcntl(fd, F_NOCACHE, 1)) {
-		test_errno("fcntl F_NOCACHE", errno, 0);
+	if (fcntl(fd, F_GLOBAL_NOCACHE, 1) == -1) {
+		test_errno("fcntl F_GLOBAL_NOCACHE", errno, 0);
 		test_stop();
 	}
 	struct stat sb;
@@ -94,12 +94,21 @@ test_io_close(int with_timer)
 	dispatch_source_t t = NULL;
 	dispatch_group_t g = dispatch_group_create();
 	dispatch_group_enter(g);
-	dispatch_io_t io = dispatch_io_create(DISPATCH_IO_RANDOM, fd,
-			dispatch_get_global_queue(0, 0), ^(int error) {
+	void (^cleanup_handler)(int error) = ^(int error) {
 		test_errno("create error", error, 0);
 		dispatch_group_leave(g);
 		close(fd);
-	});
+	};
+	dispatch_io_t io;
+	if (!from_path) {
+		io = dispatch_io_create(DISPATCH_IO_RANDOM, fd,
+				dispatch_get_global_queue(0, 0), cleanup_handler);
+	} else {
+#if DISPATCHTEST_IO_PATH
+		io = dispatch_io_create_with_path(DISPATCH_IO_RANDOM, path, O_RDONLY, 0,
+				dispatch_get_global_queue(0, 0), cleanup_handler);
+#endif
+	}
 	dispatch_io_set_high_water(io, READSIZE);
 	if (with_timer == 1) {
 		dispatch_io_set_low_water(io, READSIZE);
@@ -147,7 +156,8 @@ test_io_close(int with_timer)
 			}
 		});
 	}
-	dispatch_io_close(io, /* NO STOP */ 0);
+	dispatch_io_close(io, 0);
+	dispatch_io_close(io, 0);
 	dispatch_io_read(io, 0, 1, dispatch_get_global_queue(0,0),
 			^(bool done, dispatch_data_t d, int error) {
 		test_long("closed done", done, true);
@@ -332,8 +342,8 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 		test_stop();
 	}
 	// disable caching also for extra fd opened by dispatch_io_create_with_path
-	if (fcntl(fd, F_GLOBAL_NOCACHE, 1)) {
-		test_errno("fcntl F_GLOBAL_NOCACHE failed", errno, 0);
+	if (fcntl(fd, F_GLOBAL_NOCACHE, 1) == -1) {
+		test_errno("fcntl F_GLOBAL_NOCACHE", errno, 0);
 		test_stop();
 	}
 	switch (option) {
@@ -476,7 +486,7 @@ enum {
 static void
 test_read_many_files(void)
 {
-	char *paths[] = {"/usr/include", NULL};
+	char *paths[] = {"/usr/lib", NULL};
 	dispatch_group_t g = dispatch_group_create();
 	dispatch_semaphore_t s = dispatch_semaphore_create(maxopenfiles);
 	uint64_t start;
@@ -664,9 +674,15 @@ main(void)
 	dispatch_test_start("Dispatch IO");
 	dispatch_async(dispatch_get_main_queue(), ^{
 #if DISPATCHTEST_IO
-		test_io_close(0 /* without timer */ );
-		test_io_close(1 /* with channel interval */);
-		test_io_close(2 /* with external timer */);
+		int i; bool from_path = false;
+		do {
+			for (i = 0; i < 3; i++) {
+				test_io_close(i, from_path);
+			}
+#if DISPATCHTEST_IO_PATH
+			from_path = !from_path;
+#endif
+		} while (from_path);
 		test_io_stop();
 		test_io_from_io();
 		test_io_read_write();

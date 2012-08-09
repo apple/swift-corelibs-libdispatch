@@ -416,6 +416,13 @@ main(void)
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
+		global = 0;
+		asm volatile("mfence" ::: "memory");
+	}
+	print_result(s, "Store + mfence:");
+
+	s = mach_absolute_time();
+	for (i = cnt; i; i--) {
 		unsigned long _clbr;
 #ifdef __LP64__
 		asm volatile("cpuid" : "=a" (_clbr)
@@ -464,6 +471,33 @@ main(void)
 		asm volatile("dmb ishst" : : : "memory");
 	}
 	print_result(s, "'dmb ishst' instruction:");
+#endif
+
+#ifdef _ARM_ARCH_7
+	s = mach_absolute_time();
+	for (i = cnt; i; i--) {
+		asm volatile("str	%[_r], [%[_p], %[_o]]" :
+				: [_p] "p" (&global), [_o] "M" (0), [_r] "r" (0) : "memory");
+		asm volatile("dmb ishst" : : : "memory");
+	}
+	print_result(s, "'str + dmb ishst' instructions:");
+#endif
+
+#ifdef _ARM_ARCH_7
+	s = mach_absolute_time();
+	for (i = cnt; i; i--) {
+		uintptr_t prev;
+		uint32_t t;
+		do {
+		asm volatile("ldrex	%[_r], [%[_p], %[_o]]"
+				: [_r] "=&r" (prev) \
+				: [_p] "p" (&global), [_o] "M" (0) : "memory");
+		asm volatile("strex	%[_t], %[_r], [%[_p], %[_o]]"
+				: [_t] "=&r" (t) \
+				: [_p] "p" (&global), [_o] "M" (0), [_r] "r" (0) : "memory");
+		} while (t);
+	}
+	print_result(s, "'ldrex + strex' instructions:");
 #endif
 
 	s = mach_absolute_time();
@@ -527,6 +561,37 @@ main(void)
 		__sync_fetch_and_add(&global, 1);
 	}
 	print_result(s, "Atomic increment:");
+
+	{
+		global = 0;
+		volatile int32_t *g = &global;
+
+		s = mach_absolute_time();
+		for (i = cnt; i; i--) {
+			uint32_t result;
+			__sync_and_and_fetch(g, 1);
+			result = *g;
+			if (result) {
+				abort();
+			}
+		}
+		print_result(s, "Atomic and-and-fetch, reloading result:");
+	}
+
+	{
+		global = 0;
+		volatile int32_t *g = &global;
+
+		s = mach_absolute_time();
+		for (i = cnt; i; i--) {
+			uint32_t result;
+			result = __sync_and_and_fetch(g, 1);
+			if (result) {
+				abort();
+			}
+		}
+		print_result(s, "Atomic and-and-fetch, using result:");
+	}
 
 	global = 0;
 

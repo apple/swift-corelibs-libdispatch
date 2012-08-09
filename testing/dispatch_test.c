@@ -19,14 +19,19 @@
  */
 
 #include "dispatch_test.h"
+#include "bsdtests.h"
 
 #ifdef __OBJC_GC__
 #include <objc/objc-auto.h>
 #endif
 
+#include <stdlib.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <sys/event.h>
 #include <assert.h>
+
+#include <dispatch/dispatch.h>
 
 void test_start(const char* desc);
 
@@ -55,4 +60,11 @@ dispatch_test_check_evfilt_read_for_fd(int fd)
 	int r = kevent(kq, &ke, 1, &ke, 1, &t);
 	close(kq);
 	return r > 0;
+}
+
+void
+_dispatch_test_current(const char* file, long line, const char* desc, dispatch_queue_t expected)
+{
+	dispatch_queue_t actual = dispatch_get_current_queue();
+	_test_ptr(file, line, desc, actual, expected);
 }

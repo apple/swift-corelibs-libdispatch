@@ -34,7 +34,7 @@ test_timer(void)
 	dispatch_test_start("Dispatch Source Timer, bit 31");
 
 	dispatch_queue_t main_q = dispatch_get_main_queue();
-	test_ptr("dispatch_get_main_queue", main_q, dispatch_get_current_queue());
+	//test_ptr("dispatch_get_main_queue", main_q, dispatch_get_current_queue());
 
 	struct timeval start_time;
 

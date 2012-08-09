@@ -69,6 +69,7 @@ main(void)
 	dispatch_queue_t q_null_context = dispatch_queue_create("com.apple.testing.finalizer.context_null", NULL);
 
 	dispatch_set_context(q_null_context, NULL);
+	dispatch_set_finalizer_f(q_null_context, never_call);
 	dispatch_release(q_null_context);
 
 	// Don't test k
