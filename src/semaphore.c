@@ -188,8 +188,7 @@ dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 		return 0;
 	}
 	if (slowpath(value == LONG_MIN)) {
-		DISPATCH_CLIENT_CRASH("Unbalanced call to dispatch_group_leave() or "
-				"dispatch_semaphore_signal()");
+		DISPATCH_CLIENT_CRASH("Unbalanced call to dispatch_semaphore_signal()");
 	}
 	return _dispatch_semaphore_signal_slow(dsema);
 }
@@ -377,9 +376,12 @@ void
 dispatch_group_leave(dispatch_group_t dg)
 {
 	dispatch_semaphore_t dsema = (dispatch_semaphore_t)dg;
-
-	dispatch_semaphore_signal(dsema);
-	if (dsema->dsema_value == dsema->dsema_orig) {
+	dispatch_atomic_release_barrier();
+	long value = dispatch_atomic_inc2o(dsema, dsema_value);
+	if (slowpath(value == LONG_MIN)) {
+		DISPATCH_CLIENT_CRASH("Unbalanced call to dispatch_group_leave()");
+	}
+	if (slowpath(value == dsema->dsema_orig)) {
 		(void)_dispatch_group_wake(dsema);
 	}
 }
@@ -534,7 +536,7 @@ dispatch_group_notify_f(dispatch_group_t dg, dispatch_queue_t dq, void *ctxt,
 		prev->dsn_next = dsn;
 	} else {
 		_dispatch_retain(dg);
-		dsema->dsema_notify_head = dsn;
+		(void)dispatch_atomic_xchg2o(dsema, dsema_notify_head, dsn);
 		if (dsema->dsema_value == dsema->dsema_orig) {
 			_dispatch_group_wake(dsema);
 		}
