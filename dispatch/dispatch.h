@@ -31,12 +31,13 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #ifndef __OSX_AVAILABLE_STARTING
 #define __OSX_AVAILABLE_STARTING(x, y)
 #endif
 
-#define DISPATCH_API_VERSION 20110201
+#define DISPATCH_API_VERSION 20111201
 
 #ifndef __DISPATCH_BUILDING_DISPATCH__
 
@@ -44,6 +45,7 @@
 #define __DISPATCH_INDIRECT__
 #endif
 
+#include <os/object.h>
 #include <dispatch/base.h>
 #include <dispatch/object.h>
 #include <dispatch/time.h>

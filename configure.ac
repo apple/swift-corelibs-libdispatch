@@ -140,8 +140,9 @@ AC_CHECK_HEADER([CoreFoundation/CoreFoundation.h],
 )
 AM_CONDITIONAL(HAVE_COREFOUNDATION, $have_corefoundation)
 AC_LANG_PUSH([Objective C])
-AC_CHECK_HEADER([Foundation/Foundation.h],
-  [have_foundation=true], [have_foundation=false]
+AC_CHECK_HEADER([Foundation/Foundation.h], [
+    AC_DEFINE(USE_OBJC, 1, [Define to use Objective-C runtime])
+    have_foundation=true], [have_foundation=false]
 )
 AM_CONDITIONAL(HAVE_FOUNDATION, $have_foundation)
 AC_LANG_POP([Objective C])
@@ -164,6 +165,7 @@ AM_CONDITIONAL(USE_MIG, $have_mach)
 AC_CHECK_HEADER([pthread_workqueue.h],
   [AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])]
 )
+AC_CHECK_FUNCS([pthread_workqueue_setdispatch_np])
 
 #
 # Find functions and declarations we care about.
@@ -257,11 +259,5 @@ AC_COMPILE_IFELSE(
 #
 # Generate Makefiles.
 #
-AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile private/Makefile src/Makefile testing/Makefile])
-
-#
-# Generate testsuite links
-#
-AC_CONFIG_LINKS([testing/dispatch:${x:+}private testing/bench.cc:testing/bench.mm testing/leaks-wrapper:testing/leaks-wrapper.sh])
-
+AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile private/Makefile src/Makefile])
 AC_OUTPUT

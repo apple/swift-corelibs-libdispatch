@@ -220,7 +220,8 @@ typedef unsigned long dispatch_io_type_t;
  *		occurred.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
-DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
+DISPATCH_NOTHROW
 dispatch_io_t
 dispatch_io_create(dispatch_io_type_t type,
 	dispatch_fd_t fd,
@@ -255,8 +256,8 @@ dispatch_io_create(dispatch_io_type_t type,
 *		occurred.
 */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
-DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_NONNULL2 DISPATCH_WARN_RESULT
-DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED
+DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_io_t
 dispatch_io_create_with_path(dispatch_io_type_t type,
 	const char *path, int oflag, mode_t mode,
@@ -295,8 +296,8 @@ dispatch_io_create_with_path(dispatch_io_type_t type,
  *		occurred.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
-DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_MALLOC DISPATCH_WARN_RESULT
-DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED
+DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_io_t
 dispatch_io_create_with_io(dispatch_io_type_t type,
 	dispatch_io_t io,

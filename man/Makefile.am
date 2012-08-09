@@ -61,6 +61,8 @@ install-data-hook:
 		$(LN) -f dispatch_semaphore_create.3 dispatch_semaphore_wait.3 &&	\
 		$(LN) -f dispatch_source_create.3 dispatch_source_set_event_handler.3 &&	\
 		$(LN) -f dispatch_source_create.3 dispatch_source_set_event_handler_f.3 &&	\
+		$(LN) -f dispatch_source_create.3 dispatch_source_set_registration_handler.3 &&	\
+		$(LN) -f dispatch_source_create.3 dispatch_source_set_registration_handler_f.3 &&	\
 		$(LN) -f dispatch_source_create.3 dispatch_source_set_cancel_handler.3 &&	\
 		$(LN) -f dispatch_source_create.3 dispatch_source_set_cancel_handler_f.3 &&	\
 		$(LN) -f dispatch_source_create.3 dispatch_source_cancel.3 &&	\
@@ -85,6 +87,7 @@ install-data-hook:
 		$(LN) -f dispatch_io_create.3 dispatch_io_set_low_water.3 &&	\
 		$(LN) -f dispatch_io_create.3 dispatch_io_set_interval.3 &&	\
 		$(LN) -f dispatch_io_create.3 dispatch_io_close.3 &&	\
+		$(LN) -f dispatch_io_create.3 dispatch_io_barrier.3 &&	\
 		$(LN) -f dispatch_io_read.3 dispatch_io_write.3 &&	\
 		$(LN) -f dispatch_read.3 dispatch_write.3
 
@@ -120,6 +123,8 @@ uninstall-hook:
 			dispatch_semaphore_wait.3	\
 			dispatch_source_set_event_handler.3	\
 			dispatch_source_set_event_handler_f.3	\
+			dispatch_source_set_registration_handler.3	\
+			dispatch_source_set_registration_handler_f.3	\
 			dispatch_source_set_cancel_handler.3	\
 			dispatch_source_set_cancel_handler_f.3	\
 			dispatch_source_cancel.3	\
@@ -144,5 +149,6 @@ uninstall-hook:
 			dispatch_io_set_low_water.3	\
 			dispatch_io_set_interval.3	\
 			dispatch_io_close.3	\
+			dispatch_io_barrier.3	\
 			dispatch_io_write.3	\
 			dispatch_write.3

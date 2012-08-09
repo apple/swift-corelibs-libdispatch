@@ -27,7 +27,7 @@
 #ifndef __DISPATCH_TRACE__
 #define __DISPATCH_TRACE__
 
-#if DISPATCH_USE_DTRACE
+#if DISPATCH_USE_DTRACE && !__OBJC2__
 
 #include "provider.h"
 
@@ -113,7 +113,7 @@ _dispatch_trace_client_callout_block(dispatch_block_t b)
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_trace_queue_push_list(dispatch_queue_t dq, dispatch_object_t _head,
-		dispatch_object_t _tail)
+		dispatch_object_t _tail, unsigned int n)
 {
 	if (slowpath(DISPATCH_QUEUE_PUSH_ENABLED())) {
 		struct dispatch_object_s *dou = _head._do;
@@ -121,17 +121,29 @@ _dispatch_trace_queue_push_list(dispatch_queue_t dq, dispatch_object_t _head,
 			_dispatch_trace_continuation(dq, dou, DISPATCH_QUEUE_PUSH);
 		} while (dou != _tail._do && (dou = dou->do_next));
 	}
-	_dispatch_queue_push_list(dq, _head, _tail);
+	_dispatch_queue_push_list(dq, _head, _tail, n);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_trace_queue_push(dispatch_queue_t dq, dispatch_object_t _tail)
+{
+	if (slowpath(DISPATCH_QUEUE_PUSH_ENABLED())) {
+		struct dispatch_object_s *dou = _tail._do;
+		_dispatch_trace_continuation(dq, dou, DISPATCH_QUEUE_PUSH);
+	}
+	_dispatch_queue_push(dq, _tail);
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_queue_push_notrace(dispatch_queue_t dq, dispatch_object_t dou)
 {
-	_dispatch_queue_push_list(dq, dou, dou);
+	_dispatch_queue_push(dq, dou);
 }
 
 #define _dispatch_queue_push_list _dispatch_trace_queue_push_list
+#define _dispatch_queue_push _dispatch_trace_queue_push
 
 DISPATCH_ALWAYS_INLINE
 static inline void
@@ -145,8 +157,8 @@ _dispatch_trace_continuation_pop(dispatch_queue_t dq,
 #else
 
 #define _dispatch_queue_push_notrace _dispatch_queue_push
-#define _dispatch_trace_continuation_pop(dq, dou)
+#define _dispatch_trace_continuation_pop(dq, dou) (void)(dq)
 
-#endif // DISPATCH_USE_DTRACE
+#endif // DISPATCH_USE_DTRACE && !__OBJC2__
 
 #endif // __DISPATCH_TRACE__

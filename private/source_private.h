@@ -28,7 +28,7 @@
 #define __DISPATCH_SOURCE_PRIVATE__
 
 #ifndef __DISPATCH_INDIRECT__
-#error "Please #include <dispatch/dispatch.h> instead of this file directly."
+#error "Please #include <dispatch/private.h> instead of this file directly."
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
@@ -50,6 +50,57 @@ DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vfs;
 #define DISPATCH_SOURCE_TYPE_VM (&_dispatch_source_type_vm)
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
 DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vm;
+
+/*!
+ * @const DISPATCH_SOURCE_TYPE_SOCK
+ * @discussion A dispatch source that monitors events on socket state changes.
+ */
+#define DISPATCH_SOURCE_TYPE_SOCK (&_dispatch_source_type_sock)
+__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
+DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_sock;
+
+/*!
+ * @enum dispatch_source_sock_flags_t
+ *
+ * @constant DISPATCH_SOCK_CONNRESET
+ * Received RST
+ *
+ * @constant DISPATCH_SOCK_READCLOSED
+ * Read side is shutdown
+ *
+ * @constant DISPATCH_SOCK_WRITECLOSED
+ * Write side is shutdown
+ *
+ * @constant DISPATCH_SOCK_TIMEOUT
+ * Timeout: rexmt, keep-alive or persist
+ *
+ * @constant DISPATCH_SOCK_NOSRCADDR
+ * Source address not available
+ *
+ * @constant DISPATCH_SOCK_IFDENIED
+ * Interface denied connection
+ *
+ * @constant DISPATCH_SOCK_SUSPEND
+ * Output queue suspended
+ *
+ * @constant DISPATCH_SOCK_RESUME
+ * Output queue resumed
+ *
+ * @constant DISPATCH_SOCK_KEEPALIVE
+ * TCP Keepalive received
+ *
+ */
+enum {
+	DISPATCH_SOCK_CONNRESET = 0x00000001,
+	DISPATCH_SOCK_READCLOSED = 0x00000002,
+	DISPATCH_SOCK_WRITECLOSED = 0x00000004,
+	DISPATCH_SOCK_TIMEOUT = 0x00000008,
+	DISPATCH_SOCK_NOSRCADDR = 0x00000010,
+	DISPATCH_SOCK_IFDENIED = 0x00000020,
+	DISPATCH_SOCK_SUSPEND = 0x00000040,
+	DISPATCH_SOCK_RESUME = 0x00000080,
+	DISPATCH_SOCK_KEEPALIVE = 0x00000100,
+};
 
 /*!
  * @enum dispatch_source_vfs_flags_t

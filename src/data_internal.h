@@ -32,20 +32,15 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
-struct dispatch_data_vtable_s {
-	DISPATCH_VTABLE_HEADER(dispatch_data_s);
-};
-
-extern const struct dispatch_data_vtable_s _dispatch_data_vtable;
-
 typedef struct range_record_s {
 	void* data_object;
 	size_t from;
 	size_t length;
 } range_record;
 
+DISPATCH_CLASS_DECL(data);
 struct dispatch_data_s {
-	DISPATCH_STRUCT_HEADER(dispatch_data_s, dispatch_data_vtable_s);
+	DISPATCH_STRUCT_HEADER(data);
 #if DISPATCH_DATA_MOVABLE
 	unsigned int locked;
 #endif
@@ -54,5 +49,18 @@ struct dispatch_data_s {
 	size_t size, num_records;
 	range_record records[];
 };
+
+typedef dispatch_data_t (*dispatch_transform_t)(dispatch_data_t data);
+
+struct dispatch_data_format_type_s {
+	uint64_t type;
+	uint64_t input_mask;
+	uint64_t output_mask;
+	dispatch_transform_t decode;
+	dispatch_transform_t encode;
+};
+
+void _dispatch_data_dispose(dispatch_data_t data);
+size_t _dispatch_data_debug(dispatch_data_t data, char* buf, size_t bufsiz);
 
 #endif // __DISPATCH_DATA_INTERNAL__

@@ -48,8 +48,8 @@
 #define dispatch_atomic_release_barrier()
 #define dispatch_atomic_store_barrier()
 
-#define _dispatch_hardware_pause()	asm("")
-#define _dispatch_debugger()		asm("trap")
+#define _dispatch_hardware_pause()	__asm__("")
+#define _dispatch_debugger()		__asm__("trap")
 
 #define dispatch_atomic_cmpxchg(p, e, n) \
 		__sync_bool_compare_and_swap((p), (e), (n))
@@ -124,9 +124,9 @@
 #endif
 #endif
 #undef _dispatch_hardware_pause
-#define _dispatch_hardware_pause() asm("pause")
+#define _dispatch_hardware_pause() __asm__("pause")
 #undef _dispatch_debugger
-#define _dispatch_debugger() asm("int3")
+#define _dispatch_debugger() __asm__("int3")
 
 #elif defined(__ppc__) || defined(__ppc64__)
 

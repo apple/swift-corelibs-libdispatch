@@ -25,45 +25,6 @@
 #error "Please #include <dispatch/dispatch.h> instead of this file directly."
 #endif
 
-#ifdef __cplusplus
-/*
- * Dispatch objects are NOT C++ objects. Nevertheless, we can at least keep C++
- * aware of type compatibility.
- */
-typedef struct dispatch_object_s {
-private:
-	dispatch_object_s();
-	~dispatch_object_s();
-	dispatch_object_s(const dispatch_object_s &);
-	void operator=(const dispatch_object_s &);
-} *dispatch_object_t;
-#else
-typedef union {
-	struct dispatch_object_s *_do;
-	struct dispatch_continuation_s *_dc;
-	struct dispatch_queue_s *_dq;
-	struct dispatch_queue_attr_s *_dqa;
-	struct dispatch_group_s *_dg;
-	struct dispatch_source_s *_ds;
-	struct dispatch_source_attr_s *_dsa;
-	struct dispatch_semaphore_s *_dsema;
-	struct dispatch_data_s *_ddata;
-	struct dispatch_io_s *_dchannel;
-	struct dispatch_operation_s *_doperation;
-	struct dispatch_disk_s *_ddisk;
-} dispatch_object_t __attribute__((transparent_union));
-#endif
-
-typedef void (*dispatch_function_t)(void *);
-
-#ifdef __cplusplus
-#define DISPATCH_DECL(name) \
-		typedef struct name##_s : public dispatch_object_s {} *name##_t
-#else
-/*! @parseOnly */
-#define DISPATCH_DECL(name) typedef struct name##_s *name##_t
-#endif
-
 #if __GNUC__
 #define DISPATCH_NORETURN __attribute__((__noreturn__))
 #define DISPATCH_NOTHROW __attribute__((__nothrow__))
@@ -138,5 +99,7 @@ typedef void (*dispatch_function_t)(void *);
 #else
 #define DISPATCH_EXPECT(x, v) (x)
 #endif
+
+typedef void (*dispatch_function_t)(void *);
 
 #endif

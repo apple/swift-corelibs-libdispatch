@@ -101,27 +101,6 @@ and
 must be balanced before
 .Fn dispatch_release
 is called on it.
-.Pp
-Dispatch semaphores are strict counting semaphores.
-In other words, dispatch semaphores do not saturate at any particular value.
-Saturation can be achieved through atomic compare-and-swap logic.
-What follows is a saturating binary semaphore:
-.Bd -literal
-void
-saturating_semaphore_signal(dispatch_semaphore_t dsema, int *sent)
-{
-	if (__sync_bool_compare_and_swap(sent, 0, 1)) {
-		dispatch_semaphore_signal(dsema);
-	}
-}
-
-void
-saturating_semaphore_wait(dispatch_semaphore_t dsema, int *sent)
-{
-	*sent = 0;
-	dispatch_semaphore_wait(dsema, DISPATCH_TIME_FOREVER);
-}
-.Ed
 .Sh SEE ALSO
 .Xr dispatch 3 ,
 .Xr dispatch_object 3

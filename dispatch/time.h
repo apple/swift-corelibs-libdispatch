@@ -28,11 +28,11 @@
 
 #include <stdint.h>
 
-__BEGIN_DECLS
+// <rdar://problem/6368156&7563559>
+#if TARGET_OS_MAC
+#include <mach/clock_types.h>
+#endif
 
-struct timespec;
-
-// 6368156
 #ifdef NSEC_PER_SEC
 #undef NSEC_PER_SEC
 #endif
@@ -50,6 +50,10 @@ struct timespec;
 #define USEC_PER_SEC 1000000ull
 #define NSEC_PER_USEC 1000ull
 
+__BEGIN_DECLS
+
+struct timespec;
+
 /*!
  * @typedef dispatch_time_t
  *
@@ -60,7 +64,7 @@ struct timespec;
  */
 typedef uint64_t dispatch_time_t;
 
-#define DISPATCH_TIME_NOW 0
+#define DISPATCH_TIME_NOW (0ull)
 #define DISPATCH_TIME_FOREVER (~0ull)
 
 /*!

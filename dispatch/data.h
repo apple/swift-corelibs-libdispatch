@@ -46,7 +46,8 @@ DISPATCH_DECL(dispatch_data);
  * @discussion The singleton dispatch data object representing a zero-length
  * memory region.
  */
-#define dispatch_data_empty (&_dispatch_data_empty)
+#define dispatch_data_empty \
+		DISPATCH_GLOBAL_OBJECT(dispatch_data_t, _dispatch_data_empty)
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
 DISPATCH_EXPORT struct dispatch_data_s _dispatch_data_empty;
 
@@ -92,7 +93,7 @@ DISPATCH_EXPORT const dispatch_block_t _dispatch_data_destructor_free;
  * @result		A newly created dispatch data object.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
-DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
 dispatch_data_create(const void *buffer,
 	size_t size,
@@ -118,8 +119,10 @@ dispatch_data_get_size(dispatch_data_t data);
  * contiguous memory region and returns a new data object representing it.
  * If non-NULL references to a pointer and a size variable are provided, they
  * are filled with the location and extent of that region. These allow direct
- * read access to the represented memory, but are only valid until the copy
- * object is released.
+ * read access to the represented memory, but are only valid until the returned
+ * object is released. Under ARC, if that object is held in a variable with
+ * automatic storage, care needs to be taken to ensure that it is not released
+ * by the compiler before memory access via the pointer has been completed.
  *
  * @param data		The dispatch data object to map.
  * @param buffer_ptr	A pointer to a pointer variable to be filled with the
@@ -130,7 +133,8 @@ dispatch_data_get_size(dispatch_data_t data);
  * @result		A newly created dispatch data object.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
-DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_RETURNS_RETAINED
+DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
 dispatch_data_create_map(dispatch_data_t data,
 	const void **buffer_ptr,
@@ -152,7 +156,8 @@ dispatch_data_create_map(dispatch_data_t data,
  *		data1 and data2 objects.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
-DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_RETURNS_RETAINED
+DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
 dispatch_data_create_concat(dispatch_data_t data1, dispatch_data_t data2);
 
@@ -172,7 +177,8 @@ dispatch_data_create_concat(dispatch_data_t data1, dispatch_data_t data2);
  *			subrange of the data object.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
-DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_RETURNS_RETAINED
+DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
 dispatch_data_create_subrange(dispatch_data_t data,
 	size_t offset,
@@ -234,8 +240,8 @@ dispatch_data_apply(dispatch_data_t data, dispatch_data_applier_t applier);
  * @result		A newly created dispatch data object.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
-DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_WARN_RESULT
-DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_RETURNS_RETAINED
+DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
 dispatch_data_copy_region(dispatch_data_t data,
 	size_t location,

@@ -34,39 +34,64 @@
 #define _dispatch_data_retain(x) dispatch_retain(x)
 #define _dispatch_data_release(x) dispatch_release(x)
 
-static void _dispatch_data_dispose(dispatch_data_t data);
-static size_t _dispatch_data_debug(dispatch_data_t data, char* buf,
-		size_t bufsiz);
-
 #if DISPATCH_DATA_MOVABLE
+#if DISPATCH_USE_RESOLVERS && !defined(DISPATCH_RESOLVED_VARIANT)
+#error Resolved variant required for movable
+#endif
 static const dispatch_block_t _dispatch_data_destructor_unlock = ^{
 	DISPATCH_CRASH("unlock destructor called");
 };
 #define DISPATCH_DATA_DESTRUCTOR_UNLOCK (_dispatch_data_destructor_unlock)
 #endif
 
-const struct dispatch_data_vtable_s _dispatch_data_vtable = {
-	.do_type = DISPATCH_DATA_TYPE,
-	.do_kind = "data",
-	.do_dispose = _dispatch_data_dispose,
-	.do_invoke = NULL,
-	.do_probe = (void *)dummy_function_r0,
-	.do_debug = _dispatch_data_debug,
+const dispatch_block_t _dispatch_data_destructor_free = ^{
+	DISPATCH_CRASH("free destructor called");
+};
+
+const dispatch_block_t _dispatch_data_destructor_none = ^{
+	DISPATCH_CRASH("none destructor called");
+};
+
+const dispatch_block_t _dispatch_data_destructor_vm_deallocate = ^{
+	DISPATCH_CRASH("vmdeallocate destructor called");
+};
+
+struct dispatch_data_s _dispatch_data_empty = {
+	.do_vtable = DISPATCH_VTABLE(data),
+	.do_ref_cnt = DISPATCH_OBJECT_GLOBAL_REFCNT,
+	.do_xref_cnt = DISPATCH_OBJECT_GLOBAL_REFCNT,
+	.do_next = DISPATCH_OBJECT_LISTLESS,
 };
 
 static dispatch_data_t
 _dispatch_data_init(size_t n)
 {
-	dispatch_data_t data = calloc(1ul, sizeof(struct dispatch_data_s) +
-			n * sizeof(range_record));
+	dispatch_data_t data = _dispatch_alloc(DISPATCH_VTABLE(data),
+			sizeof(struct dispatch_data_s) + n * sizeof(range_record));
 	data->num_records = n;
-	data->do_vtable = &_dispatch_data_vtable;
-	data->do_xref_cnt = 1;
-	data->do_ref_cnt = 1;
 	data->do_targetq = dispatch_get_global_queue(
 			DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
 	data->do_next = DISPATCH_OBJECT_LISTLESS;
 	return data;
+}
+
+static void
+_dispatch_data_destroy_buffer(const void* buffer, size_t size,
+		dispatch_queue_t queue, dispatch_block_t destructor)
+{
+	if (destructor == DISPATCH_DATA_DESTRUCTOR_FREE) {
+		free((void*)buffer);
+	} else if (destructor == DISPATCH_DATA_DESTRUCTOR_NONE) {
+		// do nothing
+	} else if (destructor == DISPATCH_DATA_DESTRUCTOR_VM_DEALLOCATE) {
+		vm_deallocate(mach_task_self(), (vm_address_t)buffer, size);
+	} else {
+		if (!queue) {
+			queue = dispatch_get_global_queue(
+					DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+		}
+		dispatch_async_f(queue, destructor, _dispatch_call_block_and_release);
+	}
 }
 
 dispatch_data_t
@@ -78,11 +103,9 @@ dispatch_data_create(const void* buffer, size_t size, dispatch_queue_t queue,
 		// Empty data requested so return the singleton empty object. Call
 		// destructor immediately in this case to ensure any unused associated
 		// storage is released.
-		if (destructor == DISPATCH_DATA_DESTRUCTOR_FREE) {
-			free((void*)buffer);
-		} else if (destructor != DISPATCH_DATA_DESTRUCTOR_DEFAULT) {
-			dispatch_async(queue ? queue : dispatch_get_global_queue(
-					DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), destructor);
+		if (destructor) {
+			_dispatch_data_destroy_buffer(buffer, size, queue,
+					_dispatch_Block_copy(destructor));
 		}
 		return dispatch_data_empty;
 	}
@@ -92,7 +115,6 @@ dispatch_data_create(const void* buffer, size_t size, dispatch_queue_t queue,
 	data->size = size;
 	data->records[0].from = 0;
 	data->records[0].length = size;
-	data->destructor = DISPATCH_DATA_DESTRUCTOR_FREE;
 	if (destructor == DISPATCH_DATA_DESTRUCTOR_DEFAULT) {
 		// The default destructor was provided, indicating the data should be
 		// copied.
@@ -102,10 +124,9 @@ dispatch_data_create(const void* buffer, size_t size, dispatch_queue_t queue,
 			return NULL;
 		}
 		buffer = memcpy(data_buf, buffer, size);
+		data->destructor = DISPATCH_DATA_DESTRUCTOR_FREE;
 	} else {
-		if (destructor != DISPATCH_DATA_DESTRUCTOR_FREE) {
-			data->destructor = Block_copy(destructor);
-		}
+		data->destructor = _dispatch_Block_copy(destructor);
 #if DISPATCH_DATA_MOVABLE
 		// A non-default destructor was provided, indicating the system does not
 		// own the buffer. Mark the object as locked since the application has
@@ -121,11 +142,11 @@ dispatch_data_create(const void* buffer, size_t size, dispatch_queue_t queue,
 	return data;
 }
 
-static void
+void
 _dispatch_data_dispose(dispatch_data_t dd)
 {
 	dispatch_block_t destructor = dd->destructor;
-	if (destructor == DISPATCH_DATA_DESTRUCTOR_DEFAULT) {
+	if (destructor == NULL) {
 		size_t i;
 		for (i = 0; i < dd->num_records; ++i) {
 			_dispatch_data_release(dd->records[i].data_object);
@@ -136,16 +157,13 @@ _dispatch_data_dispose(dispatch_data_t dd)
 		(void)dispatch_atomic_dec2o(data, locked);
 		_dispatch_data_release(data);
 #endif
-	} else if (destructor == DISPATCH_DATA_DESTRUCTOR_FREE) {
-		free(dd->records[0].data_object);
 	} else {
-		dispatch_async_f(dd->do_targetq, destructor,
-				_dispatch_call_block_and_release);
+		_dispatch_data_destroy_buffer(dd->records[0].data_object,
+				dd->records[0].length, dd->do_targetq, destructor);
 	}
-	_dispatch_dispose(dd);
 }
 
-static size_t
+size_t
 _dispatch_data_debug(dispatch_data_t dd, char* buf, size_t bufsiz)
 {
 	size_t offset = 0;

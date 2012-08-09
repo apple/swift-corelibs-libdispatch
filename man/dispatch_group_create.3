@@ -141,6 +141,36 @@ functions are wrappers around
 and
 .Fn dispatch_group_notify_f
 respectively.
+.Sh CAVEATS
+In order to ensure deterministic behavior, it is recommended to call
+.Fn dispatch_group_wait
+only once all blocks have been submitted to the group. If it is later
+determined that new blocks should be run, it is recommended not to reuse an
+already-running group, but to create a new group.
+.Pp
+.Fn dispatch_group_wait
+returns as soon as there are exactly zero
+.Em enqueued or running
+blocks associated with a group (more precisely, as soon as every
+.Fn dispatch_group_enter
+call has been balanced by a
+.Fn dispatch_group_leave
+call). If one thread waits for a group while another thread submits
+new blocks to the group, then the count of associated blocks might
+momentarily reach zero before all blocks have been submitted. If this happens,
+.Fn dispatch_group_wait
+will return too early: some blocks associated with the group have finished,
+but some have not yet been submitted or run.
+.Pp
+However, as a special case, a block associated with a group may submit new
+blocks associated with its own group. In this case, the behavior is
+deterministic: a waiting thread will
+.Em not
+wake up until the newly submitted blocks have also finished.
+.Pp
+All of the foregoing also applies to
+.Fn dispath_group_notify
+as well, with "block to be submitted" substituted for "waiting thread".
 .Sh SEE ALSO
 .Xr dispatch 3 ,
 .Xr dispatch_async 3 ,

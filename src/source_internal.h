@@ -71,12 +71,6 @@ enum {
 #define DISPATCH_TIMER_INDEX_MACH	1
 #define DISPATCH_TIMER_INDEX_DISARM	2
 
-struct dispatch_source_vtable_s {
-	DISPATCH_VTABLE_HEADER(dispatch_source_s);
-};
-
-extern const struct dispatch_source_vtable_s _dispatch_source_kevent_vtable;
-
 struct dispatch_kevent_s {
 	TAILQ_ENTRY(dispatch_kevent_s) dk_list;
 	TAILQ_HEAD(, dispatch_source_refs_s) dk_sources;
@@ -130,8 +124,9 @@ struct dispatch_timer_source_refs_s {
 #define DSF_CANCELED 1u // cancellation has been requested
 #define DSF_ARMED 2u // source is armed
 
+DISPATCH_CLASS_DECL(source);
 struct dispatch_source_s {
-	DISPATCH_STRUCT_HEADER(dispatch_source_s, dispatch_source_vtable_s);
+	DISPATCH_STRUCT_HEADER(source);
 	DISPATCH_QUEUE_HEADER;
 	// Instruments always copies DISPATCH_QUEUE_MIN_LABEL_SIZE, which is 64,
 	// so the remainder of the structure must be big enough
@@ -159,7 +154,11 @@ struct dispatch_source_s {
 	};
 };
 
-void _dispatch_source_xref_release(dispatch_source_t ds);
+void _dispatch_source_xref_dispose(dispatch_source_t ds);
 void _dispatch_mach_notify_source_init(void *context);
+dispatch_queue_t _dispatch_source_invoke(dispatch_source_t ds);
+void _dispatch_source_dispose(dispatch_source_t ds);
+bool _dispatch_source_probe(dispatch_source_t ds);
+size_t _dispatch_source_debug(dispatch_source_t ds, char* buf, size_t bufsiz);
 
 #endif /* __DISPATCH_SOURCE_INTERNAL__ */

@@ -32,14 +32,38 @@
 #define __DISPATCH_BUILDING_DISPATCH__
 #define __DISPATCH_INDIRECT__
 
+#ifdef __APPLE__
+#include <Availability.h>
+#include <TargetConditionals.h>
+#endif
+
+
+#if USE_OBJC && ((!TARGET_IPHONE_SIMULATOR && defined(__i386__)) || \
+		(!TARGET_OS_IPHONE && __MAC_OS_X_VERSION_MIN_REQUIRED < 1080))
+// Disable Objective-C support on platforms with legacy objc runtime
+#undef USE_OBJC
+#define USE_OBJC 0
+#endif
+
+#if USE_OBJC
+#define OS_OBJECT_HAVE_OBJC_SUPPORT 1
+#if __OBJC__
+#define OS_OBJECT_USE_OBJC 1
+#else
+#define OS_OBJECT_USE_OBJC 0
+#endif // __OBJC__
+#else
+#define OS_OBJECT_HAVE_OBJC_SUPPORT 0
+#endif // USE_OBJC
 
 #include <dispatch/dispatch.h>
 #include <dispatch/base.h>
 
 
+#include <os/object.h>
+#include <dispatch/object.h>
 #include <dispatch/time.h>
 #include <dispatch/queue.h>
-#include <dispatch/object.h>
 #include <dispatch/source.h>
 #include <dispatch/group.h>
 #include <dispatch/semaphore.h>
@@ -47,14 +71,20 @@
 #include <dispatch/data.h>
 #include <dispatch/io.h>
 
-/* private.h uses #include_next and must be included last to avoid picking
- * up installed headers. */
+/* private.h must be included last to avoid picking up installed headers. */
+#include "object_private.h"
 #include "queue_private.h"
 #include "source_private.h"
+#include "data_private.h"
 #include "benchmark.h"
 #include "private.h"
 
 /* More #includes at EOF (dependent on the contents of internal.h) ... */
+
+// Abort on uncaught exceptions thrown from client callouts rdar://8577499
+#if !defined(DISPATCH_USE_CLIENT_CALLOUT)
+#define DISPATCH_USE_CLIENT_CALLOUT 1
+#endif
 
 /* The "_debug" library build */
 #ifndef DISPATCH_DEBUG
@@ -63,10 +93,6 @@
 
 #ifndef DISPATCH_PROFILE
 #define DISPATCH_PROFILE 0
-#endif
-
-#if DISPATCH_DEBUG && !defined(DISPATCH_USE_CLIENT_CALLOUT)
-#define DISPATCH_USE_CLIENT_CALLOUT 1
 #endif
 
 #if (DISPATCH_DEBUG || DISPATCH_PROFILE) && !defined(DISPATCH_USE_DTRACE)
@@ -154,6 +180,8 @@
 #else
 #define DISPATCH_ALWAYS_INLINE_NDEBUG __attribute__((__always_inline__))
 #endif
+#define DISPATCH_CONCAT(x,y) DISPATCH_CONCAT1(x,y)
+#define DISPATCH_CONCAT1(x,y) x ## y
 
 // workaround 6368156
 #ifdef NSEC_PER_SEC
@@ -176,13 +204,13 @@
 DISPATCH_NOINLINE
 void _dispatch_bug(size_t line, long val);
 DISPATCH_NOINLINE
+void _dispatch_bug_client(const char* msg);
+DISPATCH_NOINLINE
 void _dispatch_bug_mach_client(const char *msg, mach_msg_return_t kr);
 DISPATCH_NOINLINE DISPATCH_NORETURN
 void _dispatch_abort(size_t line, long val);
-DISPATCH_NOINLINE __attribute__((__format__(printf,1,2)))
+DISPATCH_NOINLINE __attribute__((__format__(__printf__,1,2)))
 void _dispatch_log(const char *msg, ...);
-DISPATCH_NOINLINE __attribute__((__format__(printf,1,0)))
-void _dispatch_logv(const char *msg, va_list);
 
 /*
  * For reporting bugs within libdispatch when using the "_debug" version of the
@@ -325,6 +353,7 @@ void _dispatch_call_block_and_release(void *block);
 
 void dummy_function(void);
 long dummy_function_r0(void);
+void _dispatch_vtable_init(void);
 
 void _dispatch_source_drain_kevent(struct kevent *);
 
@@ -332,8 +361,6 @@ long _dispatch_update_kq(const struct kevent *);
 void _dispatch_run_timers(void);
 // Returns howsoon with updated time value, or NULL if no timers active.
 struct timespec *_dispatch_get_next_timer_fire(struct timespec *howsoon);
-
-bool _dispatch_source_testcancel(dispatch_source_t);
 
 uint64_t _dispatch_timeout(dispatch_time_t when);
 
@@ -347,21 +374,29 @@ extern struct _dispatch_hw_config_s {
 
 /* #includes dependent on internal.h */
 #include "shims.h"
-#include "object_internal.h"
-#include "queue_internal.h"
-#include "semaphore_internal.h"
-#include "source_internal.h"
-#include "data_internal.h"
-#include "io_internal.h"
-#include "trace.h"
 
 // SnowLeopard and iOS Simulator fallbacks
 
 #if HAVE_PTHREAD_WORKQUEUES
-#if !defined(WORKQ_BG_PRIOQUEUE) || \
-		(TARGET_IPHONE_SIMULATOR && __MAC_OS_X_VERSION_MIN_REQUIRED < 1070)
-#undef WORKQ_BG_PRIOQUEUE
-#define WORKQ_BG_PRIOQUEUE WORKQ_LOW_PRIOQUEUE
+#ifndef WORKQ_BG_PRIOQUEUE
+#define WORKQ_BG_PRIOQUEUE 3
+#endif
+#ifndef WORKQ_ADDTHREADS_OPTION_OVERCOMMIT
+#define WORKQ_ADDTHREADS_OPTION_OVERCOMMIT 0x00000001
+#endif
+#if TARGET_IPHONE_SIMULATOR && __MAC_OS_X_VERSION_MIN_REQUIRED < 1070
+#ifndef DISPATCH_NO_BG_PRIORITY
+#define DISPATCH_NO_BG_PRIORITY 1
+#endif
+#endif
+#if TARGET_IPHONE_SIMULATOR && __MAC_OS_X_VERSION_MIN_REQUIRED < 1080
+#ifndef DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK
+#define DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK 1
+#endif
+#endif
+#if !TARGET_OS_IPHONE && __MAC_OS_X_VERSION_MIN_REQUIRED < 1080
+#undef HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP
+#define HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP 0
 #endif
 #endif // HAVE_PTHREAD_WORKQUEUES
 
@@ -421,5 +456,19 @@ extern struct _dispatch_hw_config_s {
 		_dispatch_set_crash_log_message("BUG IN CLIENT OF LIBDISPATCH: " x); \
 		_dispatch_hardware_crash(); \
 	} while (0)
+
+#define _OS_OBJECT_CLIENT_CRASH(x) do { \
+		_dispatch_set_crash_log_message("API MISUSE: " x); \
+		_dispatch_hardware_crash(); \
+	} while (0)
+
+/* #includes dependent on internal.h */
+#include "object_internal.h"
+#include "semaphore_internal.h"
+#include "queue_internal.h"
+#include "source_internal.h"
+#include "data_internal.h"
+#include "io_internal.h"
+#include "trace.h"
 
 #endif /* __DISPATCH_INTERNAL__ */

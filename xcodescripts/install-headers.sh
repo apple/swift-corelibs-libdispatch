@@ -1,6 +1,6 @@
 #!/bin/bash -e
 #
-# Copyright (c) 2010-2011 Apple Inc. All rights reserved.
+# Copyright (c) 2012 Apple Inc. All rights reserved.
 #
 # @APPLE_APACHE_LICENSE_HEADER_START@
 #
@@ -19,11 +19,11 @@
 # @APPLE_APACHE_LICENSE_HEADER_END@
 #
 
-if [ "$DEPLOYMENT_LOCATION" != YES ]; then
-	DSTROOT="$CONFIGURATION_BUILD_DIR"
-	[ -L "$DSTROOT$PRIVATE_HEADERS_FOLDER_PATH"/private.h ] && exit
+if [ "${DEPLOYMENT_LOCATION}" != YES ]; then
+	DSTROOT="${CONFIGURATION_BUILD_DIR}"
 fi
 
-mv "$DSTROOT$PRIVATE_HEADERS_FOLDER_PATH"/private.h \
-		"$DSTROOT$PRIVATE_HEADERS_FOLDER_PATH"/dispatch.h
-ln -sf dispatch.h "$DSTROOT$PRIVATE_HEADERS_FOLDER_PATH"/private.h
+mkdir -p "${DSTROOT}${OS_PUBLIC_HEADERS_FOLDER_PATH}" || true
+mkdir -p "${DSTROOT}${OS_PRIVATE_HEADERS_FOLDER_PATH}" || true
+cp -X "${SCRIPT_INPUT_FILE_1}" "${DSTROOT}${OS_PUBLIC_HEADERS_FOLDER_PATH}"
+cp -X "${SCRIPT_INPUT_FILE_2}" "${DSTROOT}${OS_PRIVATE_HEADERS_FOLDER_PATH}"

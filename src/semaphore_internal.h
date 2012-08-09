@@ -27,15 +27,18 @@
 #ifndef __DISPATCH_SEMAPHORE_INTERNAL__
 #define __DISPATCH_SEMAPHORE_INTERNAL__
 
+struct dispatch_queue_s;
+
 struct dispatch_sema_notify_s {
 	struct dispatch_sema_notify_s *volatile dsn_next;
-	dispatch_queue_t dsn_queue;
+	struct dispatch_queue_s *dsn_queue;
 	void *dsn_ctxt;
 	void (*dsn_func)(void *);
 };
 
+DISPATCH_CLASS_DECL(semaphore);
 struct dispatch_semaphore_s {
-	DISPATCH_STRUCT_HEADER(dispatch_semaphore_s, dispatch_semaphore_vtable_s);
+	DISPATCH_STRUCT_HEADER(semaphore);
 	long dsema_value;
 	long dsema_orig;
 	size_t dsema_sent_ksignals;
@@ -54,7 +57,11 @@ struct dispatch_semaphore_s {
 	struct dispatch_sema_notify_s *dsema_notify_tail;
 };
 
-extern const struct dispatch_semaphore_vtable_s _dispatch_semaphore_vtable;
+DISPATCH_CLASS_DECL(group);
+
+void _dispatch_semaphore_dispose(dispatch_object_t dou);
+size_t _dispatch_semaphore_debug(dispatch_object_t dou, char *buf,
+		size_t bufsiz);
 
 typedef uintptr_t _dispatch_thread_semaphore_t;
 _dispatch_thread_semaphore_t _dispatch_get_thread_semaphore(void);

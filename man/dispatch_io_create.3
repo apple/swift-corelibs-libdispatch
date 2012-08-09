@@ -8,7 +8,8 @@
 .Nm dispatch_io_close ,
 .Nm dispatch_io_set_high_water ,
 .Nm dispatch_io_set_low_water ,
-.Nm dispatch_io_set_interval
+.Nm dispatch_io_set_interval ,
+.Nm dispatch_io_barrier
 .Nd open, close and configure dispatch I/O channels
 .Sh SYNOPSIS
 .Fd #include <dispatch/dispatch.h>
@@ -48,6 +49,11 @@
 .Fa "dispatch_io_t channel"
 .Fa "uint64_t interval"
 .Fa "dispatch_io_interval_flags_t flags"
+.Fc
+.Ft void
+.Fo dispatch_io_barrier
+.Fa "dispatch_io_t channel"
+.Fa "void (^barrier)(void)"
 .Fc
 .Sh DESCRIPTION
 The dispatch I/O framework is an API for asynchronous read and write I/O
@@ -224,6 +230,36 @@ will be submitted together once the last channel has been closed resp.\& all
 references to those channels have been released. If convenience functions have
 also been used on that file descriptor, submission of their handlers will be
 tied to the submission of the channel cleanup handlers as well.
+.Pp
+.Sh BARRIER OPERATIONS
+The
+.Fn dispatch_io_barrier
+function schedules a barrier operation on an I/O channel. The specified barrier
+block will be run once, after all current I/O operations (such as
+.Xr read 2 or
+.Xr write 2 )
+on the underlying
+file descriptor have finished. No new I/O operations will start until the
+barrier block finishes.
+.Pp
+The barrier block may operate on the underlying file descriptor with functions
+like
+.Xr fsync 2
+or
+.Xr lseek 2 .
+As discussed in the
+.Sx FILEDESCRIPTOR OWNERSHIP
+section, the barrier block must not
+.Xr close 2
+the file descriptor, and if it changes any flags on the file descriptor, it
+must restore them before finishing.
+.Pp
+There is no synchronization between a barrier block and any
+.Xr dispatch_io_read 3
+or
+.Xr dispatch_io_write 3
+handler blocks; they may be running at the same time. The barrier block itself
+is responsible for any required synchronization.
 .Sh MEMORY MODEL
 Dispatch I/O channel objects are retained and released via calls to
 .Fn dispatch_retain

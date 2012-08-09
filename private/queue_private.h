@@ -28,7 +28,7 @@
 #define __DISPATCH_QUEUE_PRIVATE__
 
 #ifndef __DISPATCH_INDIRECT__
-#error "Please #include <dispatch/dispatch.h> instead of this file directly."
+#error "Please #include <dispatch/private.h> instead of this file directly."
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
@@ -125,6 +125,21 @@ DISPATCH_EXPORT const struct dispatch_queue_offsets_s {
 	const uint16_t dqo_running_size;
 } dispatch_queue_offsets;
 
+/*!
+ * @function dispatch_flush_continuation_cache
+ *
+ * @abstract
+ * Flushes the current thread's cache of continuation objects, if any.
+ *
+ * @discussion
+ * Warning: this function is subject to change in a future release.
+ * Please contact the GCD team before using it in your code.
+ */
+
+__OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_NA)
+DISPATCH_EXPORT DISPATCH_NOTHROW
+void
+dispatch_flush_continuation_cache(void);
 
 __END_DECLS
 
