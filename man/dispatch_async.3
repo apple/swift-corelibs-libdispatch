@@ -1,4 +1,4 @@
-.\" Copyright (c) 2008-2010 Apple Inc. All rights reserved.
+.\" Copyright (c) 2008-2012 Apple Inc. All rights reserved.
 .Dd May 1, 2009
 .Dt dispatch_async 3
 .Os Darwin
@@ -85,7 +85,7 @@ dispatch_async(my_queue, ^{
 .Sh BACKGROUND CONCURRENCY
 .The
 .Fn dispatch_async
-function may be used to execute trivial backgound tasks on a global concurrent
+function may be used to execute trivial background tasks on a global concurrent
 queue. For example:
 .Bd -literal
 dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0), ^{

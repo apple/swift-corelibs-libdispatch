@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2011-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -34,17 +34,15 @@
 
 __BEGIN_DECLS
 
-#ifdef __BLOCKS__
-
 /*!
  * @const DISPATCH_DATA_DESTRUCTOR_NONE
- * @discussion The destructor for dispatch data objects that require no
- * management. This can be used to allow a data object to efficiently
- * encapsulate data that should not be copied or freed by the system.
+ * @discussion The destructor for dispatch data objects that require no buffer
+ * memory management. This can be used to allow a data object to efficiently
+ * encapsulate buffers that should not be copied or freed by the system.
  */
 #define DISPATCH_DATA_DESTRUCTOR_NONE (_dispatch_data_destructor_none)
 __OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
-DISPATCH_EXPORT const dispatch_block_t _dispatch_data_destructor_none;
+DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(none);
 
 /*!
  * @const DISPATCH_DATA_DESTRUCTOR_VM_DEALLOCATE
@@ -54,7 +52,124 @@ DISPATCH_EXPORT const dispatch_block_t _dispatch_data_destructor_none;
 #define DISPATCH_DATA_DESTRUCTOR_VM_DEALLOCATE \
 		(_dispatch_data_destructor_vm_deallocate)
 __OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
-DISPATCH_EXPORT const dispatch_block_t _dispatch_data_destructor_vm_deallocate;
+DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(vm_deallocate);
+
+/*!
+ * @function dispatch_data_create_f
+ * Creates a dispatch data object from the given contiguous buffer of memory. If
+ * a non-default destructor is provided, ownership of the buffer remains with
+ * the caller (i.e. the bytes will not be copied). The last release of the data
+ * object will result in the invocation of the specified destructor function on
+ * specified queue to free the buffer (passed as the context parameter).
+ *
+ * If the DISPATCH_DATA_DESTRUCTOR_FREE destructor is provided the buffer will
+ * be freed via free(3) and the queue argument ignored.
+ *
+ * If the DISPATCH_DATA_DESTRUCTOR_DEFAULT destructor is provided, data object
+ * creation will copy the buffer into internal memory managed by the system.
+ *
+ * @param buffer	A contiguous buffer of data.
+ * @param size		The size of the contiguous buffer of data.
+ * @param queue		The queue to which the destructor should be submitted.
+ * @param destructor	The destructor function responsible for freeing the
+ *			data buffer when it is no longer needed.
+ * @result		A newly created dispatch data object.
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+DISPATCH_EXPORT DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+dispatch_data_t
+dispatch_data_create_f(const void *buffer,
+	size_t size,
+	dispatch_queue_t queue,
+	dispatch_function_t destructor);
+
+/*!
+ * @function dispatch_data_create_alloc
+ * Creates a dispatch data object representing a newly allocated memory region
+ * of the given size. If a non-NULL reference to a pointer is provided, it is
+ * filled with the location of the memory region.
+ *
+ * It is the responsibility of the application to ensure that the data object
+ * becomes immutable (i.e. the returned memory region is not further modified)
+ * once the dispatch data object is passed to other API.
+ *
+ * @param size		The size of the required allocation.
+ * @param buffer_ptr	A pointer to a pointer variable to be filled with the
+ *			location of the newly allocated memory region, or NULL.
+ * @result		A newly created dispatch data object.
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
+DISPATCH_EXPORT DISPATCH_RETURNS_RETAINED
+DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+dispatch_data_t
+dispatch_data_create_alloc(size_t size, void** buffer_ptr);
+
+/*!
+ * @typedef dispatch_data_applier_function_t
+ * A function to be invoked for every contiguous memory region in a data object.
+ *
+ * @param context	Application-defined context parameter.
+ * @param region	A data object representing the current region.
+ * @param offset	The logical offset of the current region to the start
+ *					of the data object.
+ * @param buffer	The location of the memory for the current region.
+ * @param size		The size of the memory for the current region.
+ * @result		A Boolean indicating whether traversal should continue.
+ */
+typedef bool (*dispatch_data_applier_function_t)(void *context,
+	dispatch_data_t region, size_t offset, const void *buffer, size_t size);
+
+/*!
+ * @function dispatch_data_apply_f
+ * Traverse the memory regions represented by the specified dispatch data object
+ * in logical order and invoke the specified function once for every contiguous
+ * memory region encountered.
+ *
+ * Each invocation of the function is passed a data object representing the
+ * current region and its logical offset, along with the memory location and
+ * extent of the region. These allow direct read access to the memory region,
+ * but are only valid until the passed-in region object is released. Note that
+ * the region object is released by the system when the function returns, it is
+ * the responsibility of the application to retain it if the region object or
+ * the associated memory location are needed after the function returns.
+ *
+ * @param data		The data object to traverse.
+ * @param context	The application-defined context to pass to the function.
+ * @param applier	The function to be invoked for every contiguous memory
+ *			region in the data object.
+ * @result		A Boolean indicating whether traversal completed
+ *			successfully.
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+bool
+dispatch_data_apply_f(dispatch_data_t data, void *context,
+	dispatch_data_applier_function_t applier);
+
+#if TARGET_OS_MAC
+/*!
+ * @function dispatch_data_make_memory_entry
+ * Return a mach memory entry for the memory regions represented by the
+ * specified dispatch data object.
+ *
+ * For data objects created with the DISPATCH_DATA_DESTRUCTOR_VM_DEALLOCATE
+ * destructor, directly makes a memory entry from the represented region;
+ * otherwise, makes a memory entry from newly allocated pages containing a copy
+ * of the represented memory regions.
+ *
+ * @param data		The data object to make a memory entry for.
+ * @result		A mach port for the newly made memory entry, or
+ *			MACH_PORT_NULL if an error ocurred.
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+mach_port_t
+dispatch_data_make_memory_entry(dispatch_data_t dd);
+#endif
+
+/*!
+ * @functiongroup Dispatch data transform SPI
+ */
 
 /*!
  * @typedef dispatch_data_format_type_t
@@ -65,6 +180,16 @@ DISPATCH_EXPORT const dispatch_block_t _dispatch_data_destructor_vm_deallocate;
  */
 typedef const struct dispatch_data_format_type_s *dispatch_data_format_type_t;
 
+#if !TARGET_OS_WIN32
+#define DISPATCH_DATA_FORMAT_TYPE_DECL(name) \
+	DISPATCH_EXPORT const struct dispatch_data_format_type_s \
+	_dispatch_data_format_type_##name
+#else
+#define DISPATCH_DATA_FORMAT_TYPE_DECL(name) \
+	DISPATCH_EXPORT struct dispatch_data_format_type_s \
+	_dispatch_data_format_type_##name
+#endif
+
 /*!
  * @const DISPATCH_DATA_FORMAT_TYPE_NONE
  * @discussion A data format denoting that the given input or output format is,
@@ -72,8 +197,7 @@ typedef const struct dispatch_data_format_type_s *dispatch_data_format_type_t;
  */
 #define DISPATCH_DATA_FORMAT_TYPE_NONE (&_dispatch_data_format_type_none)
 __OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
-DISPATCH_EXPORT
-const struct dispatch_data_format_type_s _dispatch_data_format_type_none;
+DISPATCH_DATA_FORMAT_TYPE_DECL(none);
 
 /*!
  * @const DISPATCH_DATA_FORMAT_TYPE_BASE32
@@ -84,8 +208,19 @@ const struct dispatch_data_format_type_s _dispatch_data_format_type_none;
  */
 #define DISPATCH_DATA_FORMAT_TYPE_BASE32 (&_dispatch_data_format_type_base32)
 __OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
-DISPATCH_EXPORT
-const struct dispatch_data_format_type_s _dispatch_data_format_type_base32;
+DISPATCH_DATA_FORMAT_TYPE_DECL(base32);
+
+/*!
+ * @const DISPATCH_DATA_FORMAT_TYPE_BASE32HEX
+ * @discussion A data format denoting that the given input or output format is,
+ * or should be, encoded in Base32Hex (RFC 4648) format. On input, this format
+ * will skip whitespace characters. Cannot be used in conjunction with UTF
+ * format types.
+ */
+#define DISPATCH_DATA_FORMAT_TYPE_BASE32HEX \
+		(&_dispatch_data_format_type_base32hex)
+__OSX_AVAILABLE_STARTING(__MAC_10_9, __IPHONE_7_0)
+DISPATCH_DATA_FORMAT_TYPE_DECL(base32hex);
 
 /*!
  * @const DISPATCH_DATA_FORMAT_TYPE_BASE64
@@ -96,8 +231,7 @@ const struct dispatch_data_format_type_s _dispatch_data_format_type_base32;
  */
 #define DISPATCH_DATA_FORMAT_TYPE_BASE64 (&_dispatch_data_format_type_base64)
 __OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
-DISPATCH_EXPORT
-const struct dispatch_data_format_type_s _dispatch_data_format_type_base64;
+DISPATCH_DATA_FORMAT_TYPE_DECL(base64);
 
 /*!
  * @const DISPATCH_DATA_FORMAT_TYPE_UTF8
@@ -107,8 +241,7 @@ const struct dispatch_data_format_type_s _dispatch_data_format_type_base64;
  */
 #define DISPATCH_DATA_FORMAT_TYPE_UTF8 (&_dispatch_data_format_type_utf8)
 __OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
-DISPATCH_EXPORT
-const struct dispatch_data_format_type_s _dispatch_data_format_type_utf8;
+DISPATCH_DATA_FORMAT_TYPE_DECL(utf8);
 
 /*!
  * @const DISPATCH_DATA_FORMAT_TYPE_UTF16LE
@@ -118,8 +251,7 @@ const struct dispatch_data_format_type_s _dispatch_data_format_type_utf8;
  */
 #define DISPATCH_DATA_FORMAT_TYPE_UTF16LE (&_dispatch_data_format_type_utf16le)
 __OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
-DISPATCH_EXPORT
-const struct dispatch_data_format_type_s _dispatch_data_format_type_utf16le;
+DISPATCH_DATA_FORMAT_TYPE_DECL(utf16le);
 
 /*!
  * @const DISPATCH_DATA_FORMAT_TYPE_UTF16BE
@@ -129,8 +261,7 @@ const struct dispatch_data_format_type_s _dispatch_data_format_type_utf16le;
  */
 #define DISPATCH_DATA_FORMAT_TYPE_UTF16BE (&_dispatch_data_format_type_utf16be)
 __OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
-DISPATCH_EXPORT
-const struct dispatch_data_format_type_s _dispatch_data_format_type_utf16be;
+DISPATCH_DATA_FORMAT_TYPE_DECL(utf16be);
 
 /*!
  * @const DISPATCH_DATA_FORMAT_TYPE_UTFANY
@@ -142,8 +273,7 @@ const struct dispatch_data_format_type_s _dispatch_data_format_type_utf16be;
  */
 #define DISPATCH_DATA_FORMAT_TYPE_UTF_ANY (&_dispatch_data_format_type_utf_any)
 __OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
-DISPATCH_EXPORT
-const struct dispatch_data_format_type_s _dispatch_data_format_type_utf_any;
+DISPATCH_DATA_FORMAT_TYPE_DECL(utf_any);
 
 /*!
  * @function dispatch_data_create_transform
@@ -170,8 +300,6 @@ dispatch_data_t
 dispatch_data_create_with_transform(dispatch_data_t data,
 	dispatch_data_format_type_t input_type,
 	dispatch_data_format_type_t output_type);
-
-#endif /* __BLOCKS__ */
 
 __END_DECLS
 

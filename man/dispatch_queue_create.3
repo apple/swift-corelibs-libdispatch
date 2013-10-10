@@ -1,4 +1,4 @@
-.\" Copyright (c) 2008-2010 Apple Inc. All rights reserved.
+.\" Copyright (c) 2008-2012 Apple Inc. All rights reserved.
 .Dd May 1, 2008
 .Dt dispatch_queue_create 3
 .Os Darwin
@@ -20,10 +20,6 @@
 .Ft "const char *"
 .Fo dispatch_queue_get_label
 .Fa "dispatch_queue_t queue"
-.Fc
-.Ft dispatch_queue_t
-.Fo dispatch_get_current_queue
-.Fa void
 .Fc
 .Ft dispatch_queue_t
 .Fo dispatch_get_global_queue
@@ -50,35 +46,53 @@ the
 framework.
 .Pp
 All blocks submitted to dispatch queues are dequeued in FIFO order.
-By default, queues created with
+Queues created with the
+.Dv DISPATCH_QUEUE_SERIAL
+attribute wait for the previously dequeued block to complete before dequeuing
+the next block. A queue with this FIFO completion behavior is usually simply
+described as a "serial queue." All memory writes performed by a block dispatched
+to a serial queue are guaranteed to be visible to subsequent blocks dispatched
+to the same queue. Queues are not bound to any specific thread of execution and
+blocks submitted to independent queues may execute concurrently.
+.Pp
+Queues created with the
+.Dv DISPATCH_QUEUE_CONCURRENT
+attribute may execute dequeued blocks concurrently and support barrier blocks
+submitted with the dispatch barrier API.
+.Sh CREATION
+Queues are created with the
 .Fn dispatch_queue_create
-wait for the previously dequeued block to complete before dequeuing the next
-block. This FIFO completion behavior is sometimes simply described as a "serial
-queue." All memory writes performed by a block dispatched to a serial queue are
-guaranteed to be visible to subsequent blocks dispatched to the same queue.
-Queues are not bound to any specific thread of execution and blocks submitted
-to independent queues may execute concurrently. Queues, like all dispatch
-objects, are reference counted and newly created queues have a reference count
-of one.
+function. Queues, like all dispatch objects, are reference counted and newly
+created queues have a reference count of one.
 .Pp
 The optional
 .Fa label
 argument is used to describe the purpose of the queue and is useful during
-debugging and performance analysis. By convention, clients should pass a
-reverse DNS style label.
-If a label is provided, it is copied. If a label is not provided, then
-.Fn dispatch_queue_get_label
-returns an empty C string.
-For example:
+debugging and performance analysis. If a label is provided, it is copied.
+By convention, clients should pass a reverse DNS style label. For example:
 .Pp
-.Bd -literal
+.Bd -literal -offset indent
 my_queue = dispatch_queue_create("com.example.subsystem.taskXYZ", NULL);
 .Ed
 .Pp
 The
 .Fa attr
-argument is reserved for future use and must be NULL.
+argument specifies the type of queue to create and must be either
+.Dv DISPATCH_QUEUE_SERIAL
+or
+.Dv DISPATCH_QUEUE_CONCURRENT .
 .Pp
+The
+.Fn dispatch_queue_get_label
+function returns the label provided when the given
+.Fa queue
+was created (or an empty C string if no label was provided at creation).
+Passing the constant
+.Dv DISPATCH_CURRENT_QUEUE_LABEL
+to
+.Fn dispatch_queue_get_label
+returns the label of the current queue.
+.Sh SUSPENSION
 Queues may be temporarily suspended and resumed with the functions
 .Fn dispatch_suspend
 and
@@ -88,14 +102,19 @@ respectively. Suspension is checked prior to block execution and is
 preemptive.
 .Sh MAIN QUEUE
 The dispatch framework provides a default serial queue for the application to
-use. This queue is accessed via
-.Fn dispatch_get_main_queue .
+use. This queue is accessed via the
+.Fn dispatch_get_main_queue
+function.
+.Pp
 Programs must call
 .Fn dispatch_main
 at the end of
 .Fn main
-in order to process blocks submitted to the main queue. (See the compatibility
-section for exceptions.)
+in order to process blocks submitted to the main queue. (See the
+.Sx COMPATIBILITY
+section for exceptions.) The
+.Fn dispatch_main
+function never returns.
 .Sh GLOBAL CONCURRENT QUEUES
 Unlike the main queue or queues allocated with
 .Fn dispatch_queue_create ,
@@ -129,38 +148,6 @@ function to obtain the global queue of given priority. The
 .Fa flags
 argument is reserved for future use and must be zero. Passing any value other
 than zero may result in a NULL return value.
-.Pp
-.Sh RETURN VALUES
-The
-.Fn dispatch_queue_create
-function returns NULL on failure.
-.Pp
-The
-.Fn dispatch_queue_get_label
-function always returns a valid C string. An empty C string is returned if the
-.Fa label
-was NULL creation time.
-.Pp
-The
-.Fn dispatch_get_main_queue
-function returns the default main queue.
-.Pp
-The
-.Fn dispatch_get_current_queue
-function always returns a valid queue. When called from within a block
-submitted to a dispatch queue, that queue will be returned. If this function is
-called from the main thread before
-.Fn dispatch_main
-is called, then the result of
-.Fn dispatch_get_main_queue
-is returned. In all other cases, the default target queue will be returned. See
-the
-.Sx CAVEATS
-section below.
-.Pp
-The
-.Fn dispatch_main
-function never returns.
 .Sh TARGET QUEUE
 The
 .Fn dispatch_set_target_queue
@@ -210,16 +197,33 @@ is undefined.
 .Pp
 Directly or indirectly setting the target queue of a dispatch queue to itself is
 undefined.
-.Sh CAVEATS
-The
+.Sh DEPRECATED FUNCTIONS
+The following functions are deprecated and will be removed in a future release:
+.Bl -item
+.It
+.Ft dispatch_queue_t
+.Fn dispatch_get_current_queue void ;
+.El
+.Pp
 .Fn dispatch_get_current_queue
-function is only recommended for debugging and logging purposes. Code must not
+always returns a valid queue. When called from within a block
+submitted to a dispatch queue, that queue will be returned. If this function is
+called from the main thread before
+.Fn dispatch_main
+is called, then the result of
+.Fn dispatch_get_main_queue
+is returned. In all other cases, the default target queue will be returned.
+.Pp
+The use of
+.Fn dispatch_get_current_queue
+is strongly discouraged except for debugging and logging purposes. Code must not
 make any assumptions about the queue returned, unless it is one of the global
 queues or a queue the code has itself created. The returned queue may have
 arbitrary policies that may surprise code that tries to schedule work with the
 queue. The list of policies includes, but is not limited to, queue width (i.e.
 serial vs. concurrent), scheduling priority, security credential or filesystem
-configuration.
+configuration. This function is deprecated and will be removed in a future
+release.
 .Pp
 It is equally unsafe for code to assume that synchronous execution onto a queue
 is safe from deadlock if that queue is not the one returned by
@@ -233,6 +237,17 @@ when called on the main thread. Comparing the two is not a valid way to test
 whether code is executing on the main thread. Foundation/AppKit programs should
 use [NSThread isMainThread]. POSIX programs may use
 .Xr pthread_main_np 3 .
+.Pp
+.Fn dispatch_get_current_queue
+may return a queue owned by a different subsystem which has already had all
+external references to it released. While such a queue will continue to exist
+until all blocks submitted to it have completed, attempting to retain it is
+forbidden and will trigger an assertion. If Objective-C Automatic Reference
+Counting is enabled, any use of the object returned by
+.Fn dispatch_get_current_queue
+will cause retain calls to be automatically generated, so the use of
+.Fn dispatch_get_current_queue
+for any reason in code built with ARC is particularly strongly discouraged.
 .Sh COMPATIBILITY
 Cocoa applications need not call
 .Fn dispatch_main .

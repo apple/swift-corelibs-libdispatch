@@ -48,6 +48,9 @@
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #define HAVE_DLFCN_H 1
 
+/* Define to 1 if you have the <fcntl.h> header file. */
+#define HAVE_FCNTL_H 1
+
 /* Define to 1 if you have the `getprogname' function. */
 #define HAVE_GETPROGNAME 1
 
@@ -62,6 +65,9 @@
 
 /* Define to 1 if you have the <libkern/OSCrossEndian.h> header file. */
 #define HAVE_LIBKERN_OSCROSSENDIAN_H 1
+
+/* Define to 1 if you have the <libproc_internal.h> header file. */
+#define HAVE_LIBPROC_INTERNAL_H 1
 
 /* Define if mach is present */
 #define HAVE_MACH 1
@@ -80,6 +86,9 @@
 
 /* Define if __builtin_trap marked noreturn */
 #define HAVE_NORETURN_BUILTIN_TRAP 1
+
+/* Define if you have the Objective-C runtime */
+#define HAVE_OBJC 1
 
 /* Define to 1 if you have the `pthread_key_init_np' function. */
 #define HAVE_PTHREAD_KEY_INIT_NP 1
@@ -117,6 +126,9 @@
 /* Define to 1 if you have the <sys/cdefs.h> header file. */
 #define HAVE_SYS_CDEFS_H 1
 
+/* Define to 1 if you have the <sys/guarded.h> header file. */
+#define HAVE_SYS_GUARDED_H 1
+
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #define HAVE_SYS_STAT_H 1
 
@@ -143,13 +155,13 @@
 #define PACKAGE_NAME "libdispatch"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "libdispatch 1.1"
+#define PACKAGE_STRING "libdispatch 1.2"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "libdispatch"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "1.1"
+#define PACKAGE_VERSION "1.2"
 
 /* Define to 1 if you have the ANSI C header files. */
 #define STDC_HEADERS 1
@@ -163,14 +175,11 @@
 /* Define to use Mach semaphores */
 #define USE_MACH_SEM 1
 
-/* Define to use Objective-C runtime */
-#define USE_OBJC 1
-
 /* Define to use POSIX semaphores */
 /* #undef USE_POSIX_SEM */
 
 /* Version number of package */
-#define VERSION "1.1"
+#define VERSION "1.2"
 
 /* Define to 1 if on AIX 3.
    System headers sometimes define this.

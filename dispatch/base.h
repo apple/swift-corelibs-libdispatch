@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2012 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -82,7 +82,17 @@
 #define DISPATCH_ALWAYS_INLINE
 #endif
 
-#if __GNUC__
+
+#if TARGET_OS_WIN32 && defined(__DISPATCH_BUILDING_DISPATCH__) && \
+		defined(__cplusplus)
+#define DISPATCH_EXPORT extern "C" extern __declspec(dllexport)
+#elif TARGET_OS_WIN32 && defined(__DISPATCH_BUILDING_DISPATCH__)
+#define DISPATCH_EXPORT extern __declspec(dllexport)
+#elif TARGET_OS_WIN32 && defined(__cplusplus)
+#define DISPATCH_EXPORT extern "C" extern __declspec(dllimport)
+#elif TARGET_OS_WIN32
+#define DISPATCH_EXPORT extern __declspec(dllimport)
+#elif __GNUC__
 #define DISPATCH_EXPORT extern __attribute__((visibility("default")))
 #else
 #define DISPATCH_EXPORT extern
@@ -98,6 +108,19 @@
 #define DISPATCH_EXPECT(x, v) __builtin_expect((x), (v))
 #else
 #define DISPATCH_EXPECT(x, v) (x)
+#endif
+
+#if defined(__has_feature)
+#if __has_feature(objc_fixed_enum)
+#define DISPATCH_ENUM(name, type, ...) \
+		typedef enum : type { __VA_ARGS__ } name##_t
+#else
+#define DISPATCH_ENUM(name, type, ...) \
+		enum { __VA_ARGS__ }; typedef type name##_t
+#endif
+#else
+#define DISPATCH_ENUM(name, type, ...) \
+		enum { __VA_ARGS__ }; typedef type name##_t
 #endif
 
 typedef void (*dispatch_function_t)(void *);

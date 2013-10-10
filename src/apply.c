@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -20,76 +20,85 @@
 
 #include "internal.h"
 
+typedef void (*dispatch_apply_function_t)(void *, size_t);
+
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_apply_invoke(void *ctxt)
+_dispatch_apply_invoke2(void *ctxt)
 {
-	dispatch_apply_t da = ctxt;
+	dispatch_apply_t da = (dispatch_apply_t)ctxt;
 	size_t const iter = da->da_iterations;
-	typeof(da->da_func) const func = da->da_func;
-	void *const da_ctxt = da->da_ctxt;
 	size_t idx, done = 0;
 
-	_dispatch_workitem_dec(); // this unit executes many items
+	idx = dispatch_atomic_inc_orig2o(da, da_index, acquire);
+	if (!fastpath(idx < iter)) goto out;
 
-	// Make nested dispatch_apply fall into serial case rdar://problem/9294578
-	_dispatch_thread_setspecific(dispatch_apply_key, (void*)~0ul);
+	// da_dc is only safe to access once the 'index lock' has been acquired
+	dispatch_apply_function_t const func = (void *)da->da_dc->dc_func;
+	void *const da_ctxt = da->da_dc->dc_ctxt;
+
+	_dispatch_perfmon_workitem_dec(); // this unit executes many items
+
+	// Handle nested dispatch_apply rdar://problem/9294578
+	size_t nested = (size_t)_dispatch_thread_getspecific(dispatch_apply_key);
+	_dispatch_thread_setspecific(dispatch_apply_key, (void*)da->da_nested);
+
 	// Striding is the responsibility of the caller.
-	while (fastpath((idx = dispatch_atomic_inc2o(da, da_index) - 1) < iter)) {
+	do {
 		_dispatch_client_callout2(da_ctxt, idx, func);
-		_dispatch_workitem_inc();
+		_dispatch_perfmon_workitem_inc();
 		done++;
-	}
-	_dispatch_thread_setspecific(dispatch_apply_key, NULL);
+		idx = dispatch_atomic_inc_orig2o(da, da_index, relaxed);
+	} while (fastpath(idx < iter));
+	_dispatch_thread_setspecific(dispatch_apply_key, (void*)nested);
 
-	dispatch_atomic_release_barrier();
-
-	// The thread that finished the last workitem wakes up the (possibly waiting)
+	// The thread that finished the last workitem wakes up the possibly waiting
 	// thread that called dispatch_apply. They could be one and the same.
-	if (done && (dispatch_atomic_add2o(da, da_done, done) == iter)) {
+	if (!dispatch_atomic_sub2o(da, da_todo, done, release)) {
 		_dispatch_thread_semaphore_signal(da->da_sema);
 	}
-
-	if (dispatch_atomic_dec2o(da, da_thr_cnt) == 0) {
+out:
+	if (dispatch_atomic_dec2o(da, da_thr_cnt, release) == 0) {
 		_dispatch_continuation_free((dispatch_continuation_t)da);
 	}
 }
 
 DISPATCH_NOINLINE
-static void
-_dispatch_apply2(void *ctxt)
+void
+_dispatch_apply_invoke(void *ctxt)
 {
-	_dispatch_apply_invoke(ctxt);
+	_dispatch_apply_invoke2(ctxt);
 }
 
-static void
-_dispatch_apply3(void *ctxt)
+DISPATCH_NOINLINE
+void
+_dispatch_apply_redirect_invoke(void *ctxt)
 {
-	dispatch_apply_t da = ctxt;
-	dispatch_queue_t old_dq = _dispatch_thread_getspecific(dispatch_queue_key);
+	dispatch_apply_t da = (dispatch_apply_t)ctxt;
+	dispatch_queue_t old_dq;
+	old_dq = (dispatch_queue_t)_dispatch_thread_getspecific(dispatch_queue_key);
 
-	_dispatch_thread_setspecific(dispatch_queue_key, da->da_queue);
-	_dispatch_apply_invoke(ctxt);
+	_dispatch_thread_setspecific(dispatch_queue_key, da->da_dc->dc_data);
+	_dispatch_apply_invoke2(ctxt);
 	_dispatch_thread_setspecific(dispatch_queue_key, old_dq);
 }
 
 static void
 _dispatch_apply_serial(void *ctxt)
 {
-	dispatch_apply_t da = ctxt;
+	dispatch_apply_t da = (dispatch_apply_t)ctxt;
+	dispatch_continuation_t dc = da->da_dc;
+	size_t const iter = da->da_iterations;
 	size_t idx = 0;
 
-	_dispatch_workitem_dec(); // this unit executes many items
+	_dispatch_perfmon_workitem_dec(); // this unit executes many items
 	do {
-		_dispatch_client_callout2(da->da_ctxt, idx, da->da_func);
-		_dispatch_workitem_inc();
-	} while (++idx < da->da_iterations);
+		_dispatch_client_callout2(dc->dc_ctxt, idx, (void*)dc->dc_func);
+		_dispatch_perfmon_workitem_inc();
+	} while (++idx < iter);
 
 	_dispatch_continuation_free((dispatch_continuation_t)da);
 }
-
-// 64 threads should be good enough for the short to mid term
-#define DISPATCH_APPLY_MAX_CPUS 64
 
 DISPATCH_ALWAYS_INLINE
 static inline void
@@ -123,8 +132,8 @@ _dispatch_apply_f2(dispatch_queue_t dq, dispatch_apply_t da,
 
 	_dispatch_queue_push_list(dq, head, tail, continuation_cnt);
 	// Call the first element directly
-	_dispatch_apply2(da);
-	_dispatch_workitem_inc();
+	_dispatch_apply_invoke(da);
+	_dispatch_perfmon_workitem_inc();
 
 	_dispatch_thread_semaphore_wait(sema);
 	_dispatch_put_thread_semaphore(sema);
@@ -134,17 +143,17 @@ _dispatch_apply_f2(dispatch_queue_t dq, dispatch_apply_t da,
 static void
 _dispatch_apply_redirect(void *ctxt)
 {
-	dispatch_apply_t da = ctxt;
+	dispatch_apply_t da = (dispatch_apply_t)ctxt;
 	uint32_t da_width = 2 * (da->da_thr_cnt - 1);
-	dispatch_queue_t dq = da->da_queue, rq = dq, tq;
+	dispatch_queue_t dq = da->da_dc->dc_data, rq = dq, tq;
 
 	do {
-		uint32_t running = dispatch_atomic_add2o(rq, dq_running, da_width);
-		uint32_t width = rq->dq_width;
+		uint32_t running, width = rq->dq_width;
+		running = dispatch_atomic_add2o(rq, dq_running, da_width, relaxed);
 		if (slowpath(running > width)) {
 			uint32_t excess = width > 1 ? running - width : da_width;
 			for (tq = dq; 1; tq = tq->do_targetq) {
-				(void)dispatch_atomic_sub2o(tq, dq_running, excess);
+				(void)dispatch_atomic_sub2o(tq, dq_running, excess, relaxed);
 				if (tq == rq) {
 					break;
 				}
@@ -157,12 +166,14 @@ _dispatch_apply_redirect(void *ctxt)
 		}
 		rq = rq->do_targetq;
 	} while (slowpath(rq->do_targetq));
-	_dispatch_apply_f2(rq, da, _dispatch_apply3);
+	_dispatch_apply_f2(rq, da, _dispatch_apply_redirect_invoke);
 	do {
-		(void)dispatch_atomic_sub2o(dq, dq_running, da_width);
+		(void)dispatch_atomic_sub2o(dq, dq_running, da_width, relaxed);
 		dq = dq->do_targetq;
 	} while (slowpath(dq->do_targetq));
 }
+
+#define DISPATCH_APPLY_MAX UINT16_MAX // must be < sqrt(SIZE_MAX)
 
 DISPATCH_NOINLINE
 void
@@ -172,39 +183,51 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 	if (slowpath(iterations == 0)) {
 		return;
 	}
-
+	uint32_t thr_cnt = _dispatch_hw_config.cc_max_active;
+	size_t nested = (size_t)_dispatch_thread_getspecific(dispatch_apply_key);
+	if (!slowpath(nested)) {
+		nested = iterations;
+	} else {
+		thr_cnt = nested < thr_cnt ? thr_cnt / nested : 1;
+		nested = nested < DISPATCH_APPLY_MAX && iterations < DISPATCH_APPLY_MAX
+				? nested * iterations : DISPATCH_APPLY_MAX;
+	}
+	if (iterations < thr_cnt) {
+		thr_cnt = (uint32_t)iterations;
+	}
+	struct dispatch_continuation_s dc = {
+		.dc_func = (void*)func,
+		.dc_ctxt = ctxt,
+	};
 	dispatch_apply_t da = (typeof(da))_dispatch_continuation_alloc();
-
-	da->da_func = func;
-	da->da_ctxt = ctxt;
-	da->da_iterations = iterations;
 	da->da_index = 0;
-	da->da_thr_cnt = _dispatch_hw_config.cc_max_active;
-	da->da_done = 0;
-	da->da_queue = NULL;
+	da->da_todo = iterations;
+	da->da_iterations = iterations;
+	da->da_nested = nested;
+	da->da_thr_cnt = thr_cnt;
+	da->da_dc = &dc;
 
-	if (da->da_thr_cnt > DISPATCH_APPLY_MAX_CPUS) {
-		da->da_thr_cnt = DISPATCH_APPLY_MAX_CPUS;
+	dispatch_queue_t old_dq;
+	old_dq = (dispatch_queue_t)_dispatch_thread_getspecific(dispatch_queue_key);
+	if (slowpath(dq == DISPATCH_APPLY_CURRENT_ROOT_QUEUE)) {
+		dq = old_dq ? old_dq : _dispatch_get_root_queue(0, 0);
+		while (slowpath(dq->do_targetq)) {
+			dq = dq->do_targetq;
+		}
 	}
-	if (iterations < da->da_thr_cnt) {
-		da->da_thr_cnt = (uint32_t)iterations;
-	}
-	if (slowpath(dq->dq_width <= 2) || slowpath(da->da_thr_cnt <= 1) ||
-			slowpath(_dispatch_thread_getspecific(dispatch_apply_key))) {
+	if (slowpath(dq->dq_width <= 2) || slowpath(thr_cnt <= 1)) {
 		return dispatch_sync_f(dq, da, _dispatch_apply_serial);
 	}
-	dispatch_queue_t old_dq = _dispatch_thread_getspecific(dispatch_queue_key);
 	if (slowpath(dq->do_targetq)) {
 		if (slowpath(dq == old_dq)) {
 			return dispatch_sync_f(dq, da, _dispatch_apply_serial);
 		} else {
-			da->da_queue = dq;
+			dc.dc_data = dq;
 			return dispatch_sync_f(dq, da, _dispatch_apply_redirect);
 		}
 	}
-	dispatch_atomic_acquire_barrier();
 	_dispatch_thread_setspecific(dispatch_queue_key, dq);
-	_dispatch_apply_f2(dq, da, _dispatch_apply2);
+	_dispatch_apply_f2(dq, da, _dispatch_apply_invoke);
 	_dispatch_thread_setspecific(dispatch_queue_key, old_dq);
 }
 
@@ -215,8 +238,9 @@ static void
 _dispatch_apply_slow(size_t iterations, dispatch_queue_t dq,
 		void (^work)(size_t))
 {
-	struct Block_basic *bb = (void *)_dispatch_Block_copy((void *)work);
-	dispatch_apply_f(iterations, dq, bb, (void *)bb->Block_invoke);
+	dispatch_block_t bb = _dispatch_Block_copy((void *)work);
+	dispatch_apply_f(iterations, dq, bb,
+			(dispatch_apply_function_t)_dispatch_Block_invoke(bb));
 	Block_release(bb);
 }
 #endif
@@ -231,8 +255,8 @@ dispatch_apply(size_t iterations, dispatch_queue_t dq, void (^work)(size_t))
 		return _dispatch_apply_slow(iterations, dq, work);
 	}
 #endif
-	struct Block_basic *bb = (void *)work;
-	dispatch_apply_f(iterations, dq, bb, (void *)bb->Block_invoke);
+	dispatch_apply_f(iterations, dq, work,
+			(dispatch_apply_function_t)_dispatch_Block_invoke(work));
 }
 #endif
 
@@ -242,9 +266,8 @@ void
 dispatch_stride(size_t offset, size_t stride, size_t iterations,
 		dispatch_queue_t dq, void (^work)(size_t))
 {
-	struct Block_basic *bb = (void *)work;
-	dispatch_stride_f(offset, stride, iterations, dq, bb,
-			(void *)bb->Block_invoke);
+	dispatch_stride_f(offset, stride, iterations, dq, work,
+			(dispatch_apply_function_t)_dispatch_Block_invoke(work));
 }
 #endif
 

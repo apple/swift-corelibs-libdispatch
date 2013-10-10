@@ -81,6 +81,9 @@ typedef union {
 	struct dispatch_queue_attr_s *_dqa;
 	struct dispatch_group_s *_dg;
 	struct dispatch_source_s *_ds;
+	struct dispatch_mach_s *_dm;
+	struct dispatch_mach_msg_s *_dmsg;
+	struct dispatch_timer_aggregate_s *_dta;
 	struct dispatch_source_attr_s *_dsa;
 	struct dispatch_semaphore_s *_dsema;
 	struct dispatch_data_s *_ddata;
@@ -111,19 +114,22 @@ __BEGIN_DECLS
  * The log output destination can be configured via the LIBDISPATCH_LOG
  * environment variable, valid values are: YES, NO, syslog, stderr, file.
  *
+ * This function is deprecated and will be removed in a future release.
+ * Objective-C callers may use -debugDescription instead.
+ *
  * @param object
  * The object to introspect.
  *
  * @param message
  * The message to log above and beyond the introspection.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_BUT_DEPRECATED(__MAC_10_6,__MAC_10_9,__IPHONE_4_0,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW
 __attribute__((__format__(printf,2,3)))
 void
 dispatch_debug(dispatch_object_t object, const char *message, ...);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_BUT_DEPRECATED(__MAC_10_6,__MAC_10_9,__IPHONE_4_0,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW
 __attribute__((__format__(printf,2,0)))
 void

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2009 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -32,30 +32,30 @@
 #if defined (USE_APPLE_TSD_OPTIMIZATIONS) && defined(SIMULATE_5491082) && \
 		(defined(__i386__) || defined(__x86_64__))
 #ifdef __LP64__
-#define _dispatch_workitem_inc() asm("incq %%gs:%0" : "+m" \
+#define _dispatch_perfmon_workitem_inc() asm("incq %%gs:%0" : "+m" \
 		(*(void **)(dispatch_bcounter_key * sizeof(void *) + \
 		_PTHREAD_TSD_OFFSET)) :: "cc")
-#define _dispatch_workitem_dec() asm("decq %%gs:%0" : "+m" \
+#define _dispatch_perfmon_workitem_dec() asm("decq %%gs:%0" : "+m" \
 		(*(void **)(dispatch_bcounter_key * sizeof(void *) + \
 		_PTHREAD_TSD_OFFSET)) :: "cc")
 #else
-#define _dispatch_workitem_inc() asm("incl %%gs:%0" : "+m" \
+#define _dispatch_perfmon_workitem_inc() asm("incl %%gs:%0" : "+m" \
 		(*(void **)(dispatch_bcounter_key * sizeof(void *) + \
 		_PTHREAD_TSD_OFFSET)) :: "cc")
-#define _dispatch_workitem_dec() asm("decl %%gs:%0" : "+m" \
+#define _dispatch_perfmon_workitem_dec() asm("decl %%gs:%0" : "+m" \
 		(*(void **)(dispatch_bcounter_key * sizeof(void *) + \
 		_PTHREAD_TSD_OFFSET)) :: "cc")
 #endif
 #else /* !USE_APPLE_TSD_OPTIMIZATIONS */
 static inline void
-_dispatch_workitem_inc(void)
+_dispatch_perfmon_workitem_inc(void)
 {
 	unsigned long cnt;
 	cnt = (unsigned long)_dispatch_thread_getspecific(dispatch_bcounter_key);
 	_dispatch_thread_setspecific(dispatch_bcounter_key, (void *)++cnt);
 }
 static inline void
-_dispatch_workitem_dec(void)
+_dispatch_perfmon_workitem_dec(void)
 {
 	unsigned long cnt;
 	cnt = (unsigned long)_dispatch_thread_getspecific(dispatch_bcounter_key);
@@ -89,9 +89,17 @@ flsll(uint64_t val)
 }
 #endif
 
+#define _dispatch_perfmon_start() \
+		uint64_t start = _dispatch_absolute_time()
+#define _dispatch_perfmon_end() \
+		_dispatch_queue_merge_stats(start)
 #else
-#define _dispatch_workitem_inc()
-#define _dispatch_workitem_dec()
+
+#define _dispatch_perfmon_workitem_inc()
+#define _dispatch_perfmon_workitem_dec()
+#define _dispatch_perfmon_start()
+#define _dispatch_perfmon_end()
+
 #endif // DISPATCH_PERF_MON
 
 #endif

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -69,7 +69,7 @@ dispatch_semaphore_create(long value);
  *
  * @discussion
  * Decrement the counting semaphore. If the resulting value is less than zero,
- * this function waits in FIFO order for a signal to occur before returning.
+ * this function waits for a signal to occur before returning.
  *
  * @param dsema
  * The semaphore. The result of passing NULL in this parameter is undefined.

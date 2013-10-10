@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -37,7 +37,7 @@
 #define __OSX_AVAILABLE_STARTING(x, y)
 #endif
 
-#define DISPATCH_API_VERSION 20111201
+#define DISPATCH_API_VERSION 20130520
 
 #ifndef __DISPATCH_BUILDING_DISPATCH__
 

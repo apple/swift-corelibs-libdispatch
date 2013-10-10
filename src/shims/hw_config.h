@@ -37,8 +37,10 @@
 #define DISPATCH_SYSCTL_ACTIVE_CPUS		"kern.smp.cpus"
 #endif
 
+#if !TARGET_OS_WIN32
+
 static inline uint32_t
-_dispatch_get_logicalcpu_max()
+_dispatch_get_logicalcpu_max(void)
 {
 	uint32_t val = 1;
 #if defined(_COMM_PAGE_LOGICAL_CPUS)
@@ -60,7 +62,7 @@ _dispatch_get_logicalcpu_max()
 }
 
 static inline uint32_t
-_dispatch_get_physicalcpu_max()
+_dispatch_get_physicalcpu_max(void)
 {
 	uint32_t val = 1;
 #if defined(_COMM_PAGE_PHYSICAL_CPUS)
@@ -82,7 +84,7 @@ _dispatch_get_physicalcpu_max()
 }
 
 static inline uint32_t
-_dispatch_get_activecpu()
+_dispatch_get_activecpu(void)
 {
 	uint32_t val = 1;
 #if defined(_COMM_PAGE_ACTIVE_CPUS)
@@ -102,5 +104,33 @@ _dispatch_get_activecpu()
 #endif
 	return val;
 }
+
+#else // TARGET_OS_WIN32
+
+static inline long
+_dispatch_count_bits(unsigned long value)
+{
+	long bits = 0;
+	while (value) {
+		bits += (value & 1);
+		value = value >> 1;
+	}
+	return bits;
+}
+
+
+static inline uint32_t
+_dispatch_get_ncpus(void)
+{
+	uint32_t val;
+	DWORD_PTR procmask, sysmask;
+	if (GetProcessAffinityMask(GetCurrentProcess(), &procmask, &sysmask)) {
+		val = _dispatch_count_bits(procmask);
+	} else {
+		val = 1;
+	}
+	return val;
+}
+#endif // TARGET_OS_WIN32
 
 #endif /* __DISPATCH_SHIMS_HW_CONFIG__ */

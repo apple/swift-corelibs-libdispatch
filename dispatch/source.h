@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -30,7 +30,10 @@
 #include <mach/port.h>
 #include <mach/message.h>
 #endif
+
+#if !TARGET_OS_WIN32
 #include <sys/signal.h>
+#endif
 
 /*!
  * @header
@@ -64,6 +67,16 @@ DISPATCH_DECL(dispatch_source);
  */
 typedef const struct dispatch_source_type_s *dispatch_source_type_t;
 
+#if !TARGET_OS_WIN32
+/*! @parseOnly */
+#define DISPATCH_SOURCE_TYPE_DECL(name) \
+	DISPATCH_EXPORT const struct dispatch_source_type_s \
+	_dispatch_source_type_##name
+#else
+#define DISPATCH_SOURCE_TYPE_DECL(name) \
+	DISPATCH_EXPORT struct dispatch_source_type_s _dispatch_source_type_##name
+#endif
+
 /*!
  * @const DISPATCH_SOURCE_TYPE_DATA_ADD
  * @discussion A dispatch source that coalesces data obtained via calls to
@@ -73,21 +86,18 @@ typedef const struct dispatch_source_type_s *dispatch_source_type_t;
  */
 #define DISPATCH_SOURCE_TYPE_DATA_ADD (&_dispatch_source_type_data_add)
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-const struct dispatch_source_type_s _dispatch_source_type_data_add;
+DISPATCH_SOURCE_TYPE_DECL(data_add);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_DATA_OR
  * @discussion A dispatch source that coalesces data obtained via calls to
- * dispatch_source_merge_data(). A logical OR is used to coalesce the data.
+ * dispatch_source_merge_data(). A bitwise OR is used to coalesce the data.
  * The handle is unused (pass zero for now).
- * The mask is used to perform a logical AND with the value passed to
- * dispatch_source_merge_data().
+ * The mask is unused (pass zero for now).
  */
 #define DISPATCH_SOURCE_TYPE_DATA_OR (&_dispatch_source_type_data_or)
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-const struct dispatch_source_type_s _dispatch_source_type_data_or;
+DISPATCH_SOURCE_TYPE_DECL(data_or);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_MACH_SEND
@@ -98,8 +108,7 @@ const struct dispatch_source_type_s _dispatch_source_type_data_or;
  */
 #define DISPATCH_SOURCE_TYPE_MACH_SEND (&_dispatch_source_type_mach_send)
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-const struct dispatch_source_type_s _dispatch_source_type_mach_send;
+DISPATCH_SOURCE_TYPE_DECL(mach_send);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_MACH_RECV
@@ -109,8 +118,20 @@ const struct dispatch_source_type_s _dispatch_source_type_mach_send;
  */
 #define DISPATCH_SOURCE_TYPE_MACH_RECV (&_dispatch_source_type_mach_recv)
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-const struct dispatch_source_type_s _dispatch_source_type_mach_recv;
+DISPATCH_SOURCE_TYPE_DECL(mach_recv);
+
+/*!
+ * @const DISPATCH_SOURCE_TYPE_MEMORYPRESSURE
+ * @discussion A dispatch source that monitors the system for changes in
+ * memory pressure condition.
+ * The handle is unused (pass zero for now).
+ * The mask is a mask of desired events from
+ * dispatch_source_memorypressure_flags_t.
+ */
+#define DISPATCH_SOURCE_TYPE_MEMORYPRESSURE \
+		(&_dispatch_source_type_memorypressure)
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_NA)
+DISPATCH_SOURCE_TYPE_DECL(memorypressure);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_PROC
@@ -121,8 +142,7 @@ const struct dispatch_source_type_s _dispatch_source_type_mach_recv;
  */
 #define DISPATCH_SOURCE_TYPE_PROC (&_dispatch_source_type_proc)
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-const struct dispatch_source_type_s _dispatch_source_type_proc;
+DISPATCH_SOURCE_TYPE_DECL(proc);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_READ
@@ -133,8 +153,7 @@ const struct dispatch_source_type_s _dispatch_source_type_proc;
  */
 #define DISPATCH_SOURCE_TYPE_READ (&_dispatch_source_type_read)
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-const struct dispatch_source_type_s _dispatch_source_type_read;
+DISPATCH_SOURCE_TYPE_DECL(read);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_SIGNAL
@@ -144,20 +163,18 @@ const struct dispatch_source_type_s _dispatch_source_type_read;
  */
 #define DISPATCH_SOURCE_TYPE_SIGNAL (&_dispatch_source_type_signal)
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-const struct dispatch_source_type_s _dispatch_source_type_signal;
+DISPATCH_SOURCE_TYPE_DECL(signal);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_TIMER
  * @discussion A dispatch source that submits the event handler block based
  * on a timer.
  * The handle is unused (pass zero for now).
- * The mask is unused (pass zero for now).
+ * The mask specifies which flags from dispatch_source_timer_flags_t to apply.
  */
 #define DISPATCH_SOURCE_TYPE_TIMER (&_dispatch_source_type_timer)
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-const struct dispatch_source_type_s _dispatch_source_type_timer;
+DISPATCH_SOURCE_TYPE_DECL(timer);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_VNODE
@@ -168,8 +185,7 @@ const struct dispatch_source_type_s _dispatch_source_type_timer;
  */
 #define DISPATCH_SOURCE_TYPE_VNODE (&_dispatch_source_type_vnode)
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-const struct dispatch_source_type_s _dispatch_source_type_vnode;
+DISPATCH_SOURCE_TYPE_DECL(vnode);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_WRITE
@@ -180,8 +196,7 @@ const struct dispatch_source_type_s _dispatch_source_type_vnode;
  */
 #define DISPATCH_SOURCE_TYPE_WRITE (&_dispatch_source_type_write)
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-const struct dispatch_source_type_s _dispatch_source_type_write;
+DISPATCH_SOURCE_TYPE_DECL(write);
 
 /*!
  * @typedef dispatch_source_mach_send_flags_t
@@ -193,6 +208,36 @@ const struct dispatch_source_type_s _dispatch_source_type_write;
 #define DISPATCH_MACH_SEND_DEAD	0x1
 
 typedef unsigned long dispatch_source_mach_send_flags_t;
+
+/*!
+ * @typedef dispatch_source_memorypressure_flags_t
+ * Type of dispatch_source_memorypressure flags
+ *
+ * @constant DISPATCH_MEMORYPRESSURE_NORMAL
+ * The system memory pressure condition has returned to normal.
+ *
+ * @constant DISPATCH_MEMORYPRESSURE_WARN
+ * The system memory pressure condition has changed to warning.
+ *
+ * @constant DISPATCH_MEMORYPRESSURE_CRITICAL
+ * The system memory pressure condition has changed to critical.
+ *
+ * @discussion
+ * Elevated memory pressure is a system-wide condition that applications
+ * registered for this source should react to by changing their future memory
+ * use behavior, e.g. by reducing cache sizes of newly initiated operations
+ * until memory pressure returns back to normal.
+ * NOTE: applications should NOT traverse and discard existing caches for past
+ * operations when the system memory pressure enters an elevated state, as that
+ * is likely to trigger VM operations that will further aggravate system memory
+ * pressure.
+ */
+
+#define DISPATCH_MEMORYPRESSURE_NORMAL		0x01
+#define DISPATCH_MEMORYPRESSURE_WARN		0x02
+#define DISPATCH_MEMORYPRESSURE_CRITICAL	0x04
+
+typedef unsigned long dispatch_source_memorypressure_flags_t;
 
 /*!
  * @typedef dispatch_source_proc_flags_t
@@ -253,6 +298,26 @@ typedef unsigned long dispatch_source_proc_flags_t;
 #define DISPATCH_VNODE_REVOKE	0x40
 
 typedef unsigned long dispatch_source_vnode_flags_t;
+
+/*!
+ * @typedef dispatch_source_timer_flags_t
+ * Type of dispatch_source_timer flags
+ *
+ * @constant DISPATCH_TIMER_STRICT
+ * Specifies that the system should make a best effort to strictly observe the
+ * leeway value specified for the timer via dispatch_source_set_timer(), even
+ * if that value is smaller than the default leeway value that would be applied
+ * to the timer otherwise. A minimal amount of leeway will be applied to the
+ * timer even if this flag is specified.
+ *
+ * CAUTION: Use of this flag may override power-saving techniques employed by
+ * the system and cause higher power consumption, so it must be used with care
+ * and only when absolutely necessary.
+ */
+
+#define DISPATCH_TIMER_STRICT 0x1
+
+typedef unsigned long dispatch_source_timer_flags_t;
 
 __BEGIN_DECLS
 
@@ -461,6 +526,7 @@ dispatch_source_testcancel(dispatch_source_t source);
  *  DISPATCH_SOURCE_TYPE_DATA_OR:         n/a
  *  DISPATCH_SOURCE_TYPE_MACH_SEND:       mach port (mach_port_t)
  *  DISPATCH_SOURCE_TYPE_MACH_RECV:       mach port (mach_port_t)
+ *  DISPATCH_SOURCE_TYPE_MEMORYPRESSURE   n/a
  *  DISPATCH_SOURCE_TYPE_PROC:            process identifier (pid_t)
  *  DISPATCH_SOURCE_TYPE_READ:            file descriptor (int)
  *  DISPATCH_SOURCE_TYPE_SIGNAL:          signal number (int)
@@ -491,10 +557,11 @@ dispatch_source_get_handle(dispatch_source_t source);
  *  DISPATCH_SOURCE_TYPE_DATA_OR:         n/a
  *  DISPATCH_SOURCE_TYPE_MACH_SEND:       dispatch_source_mach_send_flags_t
  *  DISPATCH_SOURCE_TYPE_MACH_RECV:       n/a
+ *  DISPATCH_SOURCE_TYPE_MEMORYPRESSURE   dispatch_source_memorypressure_flags_t
  *  DISPATCH_SOURCE_TYPE_PROC:            dispatch_source_proc_flags_t
  *  DISPATCH_SOURCE_TYPE_READ:            n/a
  *  DISPATCH_SOURCE_TYPE_SIGNAL:          n/a
- *  DISPATCH_SOURCE_TYPE_TIMER:           n/a
+ *  DISPATCH_SOURCE_TYPE_TIMER:           dispatch_source_timer_flags_t
  *  DISPATCH_SOURCE_TYPE_VNODE:           dispatch_source_vnode_flags_t
  *  DISPATCH_SOURCE_TYPE_WRITE:           n/a
  */
@@ -526,6 +593,7 @@ dispatch_source_get_mask(dispatch_source_t source);
  *  DISPATCH_SOURCE_TYPE_DATA_OR:         application defined data
  *  DISPATCH_SOURCE_TYPE_MACH_SEND:       dispatch_source_mach_send_flags_t
  *  DISPATCH_SOURCE_TYPE_MACH_RECV:       n/a
+ *  DISPATCH_SOURCE_TYPE_MEMORYPRESSURE   dispatch_source_memorypressure_flags_t
  *  DISPATCH_SOURCE_TYPE_PROC:            dispatch_source_proc_flags_t
  *  DISPATCH_SOURCE_TYPE_READ:            estimated bytes available to read
  *  DISPATCH_SOURCE_TYPE_SIGNAL:          number of signals delivered since
@@ -569,30 +637,45 @@ dispatch_source_merge_data(dispatch_source_t source, unsigned long value);
  * Sets a start time, interval, and leeway value for a timer source.
  *
  * @discussion
- * Calling this function has no effect if the timer source has already been
- * canceled. Once this function returns, any pending timer data accumulated
- * for the previous timer values has been cleared
+ * Once this function returns, any pending source data accumulated for the
+ * previous timer values has been cleared; the next fire of the timer will
+ * occur at 'start', and every 'interval' nanoseconds thereafter until the
+ * timer source is canceled.
  *
- * The start time argument also determines which clock will be used for the
- * timer. If the start time is DISPATCH_TIME_NOW or created with
- * dispatch_time() then the timer is based on mach_absolute_time(). Otherwise,
- * if the start time of the timer is created with dispatch_walltime() then the
- * timer is based on gettimeofday(3).
+ * Any fire of the timer may be delayed by the system in order to improve power
+ * consumption and system performance. The upper limit to the allowable delay
+ * may be configured with the 'leeway' argument, the lower limit is under the
+ * control of the system.
+ *
+ * For the initial timer fire at 'start', the upper limit to the allowable
+ * delay is set to 'leeway' nanoseconds. For the subsequent timer fires at
+ * 'start' + N * 'interval', the upper limit is MIN('leeway','interval'/2).
+ *
+ * The lower limit to the allowable delay may vary with process state such as
+ * visibility of application UI. If the specified timer source was created with
+ * a mask of DISPATCH_TIMER_STRICT, the system will make a best effort to
+ * strictly observe the provided 'leeway' value even if it is smaller than the
+ * current lower limit. Note that a minimal amount of delay is to be expected
+ * even if this flag is specified.
+ *
+ * The 'start' argument also determines which clock will be used for the timer:
+ * If 'start' is DISPATCH_TIME_NOW or was created with dispatch_time(3), the
+ * timer is based on mach_absolute_time(). If 'start' was created with
+ * dispatch_walltime(3), the timer is based on gettimeofday(3).
+ *
+ * Calling this function has no effect if the timer source has already been
+ * canceled.
  *
  * @param start
  * The start time of the timer. See dispatch_time() and dispatch_walltime()
  * for more information.
  *
  * @param interval
- * The nanosecond interval for the timer.
+ * The nanosecond interval for the timer. Use DISPATCH_TIME_FOREVER for a
+ * one-shot timer.
  *
  * @param leeway
- * A hint given to the system by the application for the amount of leeway, in
- * nanoseconds, that the system may defer the timer in order to align with other
- * system activity for improved system performance or power consumption. (For
- * example, an application might perform a periodic task every 5 minutes, with
- * a leeway of up to 30 seconds.)  Note that some latency is to be expected for
- * all timers even when a leeway value of zero is specified.
+ * The nanosecond leeway for the timer.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW

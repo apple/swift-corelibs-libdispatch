@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -33,6 +33,42 @@
 #endif
 
 /*!
+ * @const DISPATCH_SOURCE_TYPE_TIMER_WITH_AGGREGATE
+ * @discussion A dispatch timer source that is part of a timer aggregate.
+ * The handle is the dispatch timer aggregate object.
+ * The mask specifies which flags from dispatch_source_timer_flags_t to apply.
+ */
+#define DISPATCH_SOURCE_TYPE_TIMER_WITH_AGGREGATE \
+		(&_dispatch_source_type_timer_with_aggregate)
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+DISPATCH_SOURCE_TYPE_DECL(timer_with_aggregate);
+
+/*!
+ * @const DISPATCH_SOURCE_TYPE_INTERVAL
+ * @discussion A dispatch source that submits the event handler block at a
+ * specified time interval, phase-aligned with all other interval sources on
+ * the system that have the same interval value.
+ *
+ * The initial submission of the event handler will occur at some point during
+ * the first time interval after the source is created (assuming the source is
+ * resumed at that time).
+ *
+ * By default, the unit for the interval value is milliseconds and the leeway
+ * (maximum amount of time any individual handler submission may be deferred to
+ * align with other system activity) for the source is fixed at interval/2.
+ *
+ * If the DISPATCH_INTERVAL_UI_ANIMATION flag is specified, the unit for the
+ * interval value is animation frames (1/60th of a second) and the leeway is
+ * fixed at one frame.
+ *
+ * The handle is the interval value in milliseconds or frames.
+ * The mask specifies which flags from dispatch_source_timer_flags_t to apply.
+ */
+#define DISPATCH_SOURCE_TYPE_INTERVAL (&_dispatch_source_type_interval)
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+DISPATCH_SOURCE_TYPE_DECL(interval);
+
+/*!
  * @const DISPATCH_SOURCE_TYPE_VFS
  * @discussion Apple-internal dispatch source that monitors for vfs events
  * defined by dispatch_vfs_flags_t.
@@ -50,6 +86,17 @@ DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vfs;
 #define DISPATCH_SOURCE_TYPE_VM (&_dispatch_source_type_vm)
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
 DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vm;
+
+/*!
+ * @const DISPATCH_SOURCE_TYPE_MEMORYSTATUS
+ * @discussion A dispatch source that monitors memory status
+ * The mask is a mask of desired events from
+ * dispatch_source_memorystatus_flags_t.
+ */
+#define DISPATCH_SOURCE_TYPE_MEMORYSTATUS (&_dispatch_source_type_memorystatus)
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
+DISPATCH_EXPORT const struct dispatch_source_type_s
+		_dispatch_source_type_memorystatus;
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_SOCK
@@ -89,6 +136,14 @@ DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_sock;
  * @constant DISPATCH_SOCK_KEEPALIVE
  * TCP Keepalive received
  *
+ * @constant DISPATCH_SOCK_CONNECTED
+ * Socket is connected
+ *
+ * @constant DISPATCH_SOCK_DISCONNECTED
+ * Socket is disconnected
+ *
+ * @constant DISPATCH_SOCK_CONNINFO_UPDATED
+ * Connection info was updated
  */
 enum {
 	DISPATCH_SOCK_CONNRESET = 0x00000001,
@@ -100,6 +155,11 @@ enum {
 	DISPATCH_SOCK_SUSPEND = 0x00000040,
 	DISPATCH_SOCK_RESUME = 0x00000080,
 	DISPATCH_SOCK_KEEPALIVE = 0x00000100,
+	DISPATCH_SOCK_ADAPTIVE_WTIMO = 0x00000200,
+	DISPATCH_SOCK_ADAPTIVE_RTIMO = 0x00000400,
+	DISPATCH_SOCK_CONNECTED = 0x00000800,
+	DISPATCH_SOCK_DISCONNECTED = 0x00001000,
+	DISPATCH_SOCK_CONNINFO_UPDATED = 0x00002000,
 };
 
 /*!
@@ -149,6 +209,24 @@ enum {
 };
 
 /*!
+ * @enum dispatch_source_timer_flags_t
+ *
+ * @constant DISPATCH_TIMER_BACKGROUND
+ * Specifies that the timer is used to trigger low priority maintenance-level
+ * activity and that the system may apply larger minimum leeway values to the
+ * timer in order to align it with other system activity.
+ *
+ * @constant DISPATCH_INTERVAL_UI_ANIMATION
+ * Specifies that the interval source is used for UI animation. The unit for
+ * the interval value of such sources is frames (1/60th of a second) and the
+ * leeway is fixed at one frame.
+ */
+enum {
+	DISPATCH_TIMER_BACKGROUND = 0x2,
+	DISPATCH_INTERVAL_UI_ANIMATION = 0x20,
+};
+
+/*!
  * @enum dispatch_source_mach_send_flags_t
  *
  * @constant DISPATCH_MACH_SEND_POSSIBLE
@@ -168,11 +246,12 @@ enum {
  * @enum dispatch_source_proc_flags_t
  *
  * @constant DISPATCH_PROC_REAP
- * The process has been reaped by the parent process via
- * wait*().
+ * The process has been reaped by the parent process via wait*().
+ * This flag is deprecated and will be removed in a future release.
  */
 enum {
-	DISPATCH_PROC_REAP = 0x10000000,
+	DISPATCH_PROC_REAP __OSX_AVAILABLE_BUT_DEPRECATED(
+			__MAC_10_6, __MAC_10_9, __IPHONE_4_0, __IPHONE_7_0) = 0x10000000,
 };
 
 /*!
@@ -186,11 +265,82 @@ enum {
 	DISPATCH_VM_PRESSURE = 0x80000000,
 };
 
+/*!
+ * @enum dispatch_source_memorystatus_flags_t
+ *
+ * @constant DISPATCH_MEMORYSTATUS_PRESSURE_NORMAL
+ * The system's memory pressure state has returned to normal.
+ * @constant DISPATCH_MEMORYSTATUS_PRESSURE_WARN
+ * The system's memory pressure state has changed to warning.
+ * @constant DISPATCH_MEMORYSTATUS_PRESSURE_CRITICAL
+ * The system's memory pressure state has changed to critical.
+ */
+
+enum {
+	DISPATCH_MEMORYSTATUS_PRESSURE_NORMAL = 0x01,
+	DISPATCH_MEMORYSTATUS_PRESSURE_WARN = 0x02,
+#if !TARGET_OS_EMBEDDED
+	DISPATCH_MEMORYSTATUS_PRESSURE_CRITICAL = 0x04,
+#endif
+};
+
 #if TARGET_IPHONE_SIMULATOR // rdar://problem/9219483
 #define DISPATCH_VM_PRESSURE DISPATCH_VNODE_ATTRIB
 #endif
 
 __BEGIN_DECLS
+
+/*!
+ * @typedef dispatch_timer_aggregate_t
+ *
+ * @abstract
+ * Dispatch timer aggregates are sets of related timers.
+ */
+DISPATCH_DECL(dispatch_timer_aggregate);
+
+/*!
+ * @function dispatch_timer_aggregate_create
+ *
+ * @abstract
+ * Creates a new dispatch timer aggregate.
+ *
+ * @discussion
+ * A dispatch timer aggregate is a set of related timers whose overall timing
+ * parameters can be queried.
+ *
+ * Timers are added to an aggregate when a timer source is created with type
+ * DISPATCH_SOURCE_TYPE_TIMER_WITH_AGGREGATE.
+ *
+ * @result
+ * The newly created dispatch timer aggregate.
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
+DISPATCH_NOTHROW
+dispatch_timer_aggregate_t
+dispatch_timer_aggregate_create(void);
+
+/*!
+ * @function dispatch_timer_aggregate_get_delay
+ *
+ * @abstract
+ * Retrieves the delay until a timer in the given aggregate will next fire.
+ *
+ * @param aggregate
+ * The dispatch timer aggregate to query.
+ *
+ * @param leeway_ptr
+ * Optional pointer to a variable filled with the leeway (in ns) that will be
+ * applied to the return value. May be NULL.
+ *
+ * @result
+ * Delay in ns from now.
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+DISPATCH_EXPORT DISPATCH_NOTHROW
+uint64_t
+dispatch_timer_aggregate_get_delay(dispatch_timer_aggregate_t aggregate,
+		uint64_t *leeway_ptr);
 
 #if TARGET_OS_MAC
 /*!
@@ -207,6 +357,18 @@ DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 mach_msg_return_t
 dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
 		dispatch_mig_callback_t callback);
+
+/*!
+ * @function dispatch_mach_msg_get_context
+ *
+ * @abstract
+ * Extract the context pointer from a mach message trailer.
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NONNULL_ALL
+DISPATCH_NOTHROW
+void *
+dispatch_mach_msg_get_context(mach_msg_header_t *msg);
 #endif
 
 __END_DECLS

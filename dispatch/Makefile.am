@@ -9,6 +9,7 @@ dispatch_HEADERS=	\
 	data.h			\
 	dispatch.h		\
 	group.h			\
+	introspection.h	\
 	io.h			\
 	object.h		\
 	once.h			\

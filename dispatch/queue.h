@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2012 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -272,7 +272,7 @@ dispatch_sync_f(dispatch_queue_t queue,
  */
 #ifdef __BLOCKS__
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_apply(size_t iterations, dispatch_queue_t queue,
 		void (^block)(size_t));
@@ -305,7 +305,7 @@ dispatch_apply(size_t iterations, dispatch_queue_t queue,
  * The result of passing NULL in this parameter is undefined.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NONNULL4 DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL4 DISPATCH_NOTHROW
 void
 dispatch_apply_f(size_t iterations, dispatch_queue_t queue,
 	void *context,
@@ -335,10 +335,12 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t queue,
  * the two is not a valid way to test whether code is executing on the
  * main thread.
  *
+ * This function is deprecated and will be removed in a future release.
+ *
  * @result
  * Returns the current queue.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_BUT_DEPRECATED(__MAC_10_6,__MAC_10_9,__IPHONE_4_0,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_queue_t
 dispatch_get_current_queue(void);
@@ -484,21 +486,30 @@ dispatch_queue_t
 dispatch_queue_create(const char *label, dispatch_queue_attr_t attr);
 
 /*!
+ * @const DISPATCH_CURRENT_QUEUE_LABEL
+ * @discussion Constant to pass to the dispatch_queue_get_label() function to
+ * retrieve the label of the current queue.
+ */
+#define DISPATCH_CURRENT_QUEUE_LABEL NULL
+
+/*!
  * @function dispatch_queue_get_label
  *
  * @abstract
- * Returns the label of the queue that was specified when the
- * queue was created.
+ * Returns the label of the given queue, as specified when the queue was
+ * created, or the empty string if a NULL label was specified.
+ *
+ * Passing DISPATCH_CURRENT_QUEUE_LABEL will return the label of the current
+ * queue.
  *
  * @param queue
- * The result of passing NULL in this parameter is undefined.
+ * The queue to query, or DISPATCH_CURRENT_QUEUE_LABEL.
  *
  * @result
- * The label of the queue. The result may be NULL.
+ * The label of the queue.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_PURE DISPATCH_WARN_RESULT
-DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 const char *
 dispatch_queue_get_label(dispatch_queue_t queue);
 
