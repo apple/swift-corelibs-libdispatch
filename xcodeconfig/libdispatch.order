@@ -50,8 +50,11 @@ _OBJC_CLASS_$_OS_dispatch_operation
 __OS_dispatch_operation_vtable
 _OBJC_CLASS_$_OS_dispatch_disk
 __OS_dispatch_disk_vtable
-# non-dispatch_object_t classes
+# os_object_t classes
 _OBJC_CLASS_$_OS_object
+_OBJC_CLASS_$_OS_voucher
+#_OBJC_CLASS_$_OS_voucher_recipe
+# non-os_object_t classes
 _OBJC_CLASS_$_OS_dispatch_data
 _OBJC_CLASS_$_OS_dispatch_data_empty
 # metaclasses
@@ -71,5 +74,7 @@ _OBJC_METACLASS_$_OS_dispatch_io
 _OBJC_METACLASS_$_OS_dispatch_operation
 _OBJC_METACLASS_$_OS_dispatch_disk
 _OBJC_METACLASS_$_OS_object
+_OBJC_METACLASS_$_OS_voucher
+_OBJC_METACLASS_$_OS_voucher_recipe
 _OBJC_METACLASS_$_OS_dispatch_data
 _OBJC_METACLASS_$_OS_dispatch_data_empty

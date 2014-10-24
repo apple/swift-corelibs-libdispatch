@@ -44,7 +44,9 @@ _dispatch_get_nanoseconds(void)
 
 #if !(defined(__i386__) || defined(__x86_64__) || !HAVE_MACH_ABSOLUTE_TIME) \
 		|| TARGET_OS_WIN32
-DISPATCH_CACHELINE_ALIGN _dispatch_host_time_data_s _dispatch_host_time_data;
+DISPATCH_CACHELINE_ALIGN _dispatch_host_time_data_s _dispatch_host_time_data = {
+	.ratio_1_to_1 = true,
+};
 
 void
 _dispatch_get_host_time_init(void *context DISPATCH_UNUSED)

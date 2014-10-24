@@ -19,25 +19,25 @@
 //
 
 #include "<DEVELOPER_DIR>/Makefiles/CoreOS/Xcode/BSD.xcconfig"
-SUPPORTED_PLATFORMS = macosx iphoneos iphonesimulator
+#include "<DEVELOPER_DIR>/AppleInternal/XcodeConfig/SimulatorSupport.xcconfig"
+
+// Set INSTALL_PATH[sdk=macosx*] when SimulatorSupport.xcconfig is unavailable
+INSTALL_PATH[sdk=macosx*] = $(INSTALL_PATH_ACTUAL)
+
+SUPPORTED_PLATFORMS = macosx iphoneos iphonesimulator iphoneosnano iphonesimulatornano
 ARCHS[sdk=iphonesimulator*] = $(NATIVE_ARCH_32_BIT) // Override BSD.xcconfig ARCHS <rdar://problem/9303721>
 PRODUCT_NAME = libdispatch
 EXECUTABLE_PREFIX =
-LD_DYLIB_INSTALL_NAME = /usr/lib/system/$(EXECUTABLE_NAME)
-INSTALL_PATH = /usr/lib/system
-INSTALL_PATH[sdk=iphonesimulator*] = $(SDKROOT)/usr/lib/system
-PUBLIC_HEADERS_FOLDER_PATH = /usr/include/dispatch
-PUBLIC_HEADERS_FOLDER_PATH[sdk=iphonesimulator*] = $(SDKROOT)/usr/include/dispatch
-PRIVATE_HEADERS_FOLDER_PATH = /usr/local/include/dispatch
-PRIVATE_HEADERS_FOLDER_PATH[sdk=iphonesimulator*] = $(SDKROOT)/usr/local/include/dispatch
-OS_PUBLIC_HEADERS_FOLDER_PATH = /usr/include/os
-OS_PUBLIC_HEADERS_FOLDER_PATH[sdk=iphonesimulator*] = $(SDKROOT)/usr/include/os
-OS_PRIVATE_HEADERS_FOLDER_PATH = /usr/local/include/os
-OS_PRIVATE_HEADERS_FOLDER_PATH[sdk=iphonesimulator*] = $(SDKROOT)/usr/local/include/os
-HEADER_SEARCH_PATHS = $(PROJECT_DIR)
+INSTALL_PATH_ACTUAL = /usr/lib/system
+PUBLIC_HEADERS_FOLDER_PATH = $(INSTALL_PATH_PREFIX)/usr/include/dispatch
+PRIVATE_HEADERS_FOLDER_PATH = $(INSTALL_PATH_PREFIX)/usr/local/include/dispatch
+OS_PUBLIC_HEADERS_FOLDER_PATH = $(INSTALL_PATH_PREFIX)/usr/include/os
+OS_PRIVATE_HEADERS_FOLDER_PATH = $(INSTALL_PATH_PREFIX)/usr/local/include/os
+HEADER_SEARCH_PATHS = $(PROJECT_DIR) $(PROJECT_DIR)/private $(PROJECT_DIR)/os
 LIBRARY_SEARCH_PATHS = $(SDKROOT)/usr/lib/system
 INSTALLHDRS_SCRIPT_PHASE = YES
 ALWAYS_SEARCH_USER_PATHS = NO
+USE_HEADERMAP = NO
 BUILD_VARIANTS = normal debug profile
 ONLY_ACTIVE_ARCH = NO
 CLANG_LINK_OBJC_RUNTIME = NO
@@ -71,11 +71,13 @@ OTHER_CFLAGS_profile = $(OTHER_CFLAGS_normal) -DDISPATCH_PROFILE=1
 OTHER_CFLAGS_debug = -fstack-protector -fno-inline -O0 -DDISPATCH_DEBUG=1
 GENERATE_PROFILING_CODE = NO
 DYLIB_CURRENT_VERSION = $(CURRENT_PROJECT_VERSION)
-UMBRELLA_LDFLAGS = -umbrella System -nodefaultlibs -ldyld -lcompiler_rt -lsystem_kernel -lsystem_platform -lsystem_pthread -lsystem_malloc -lsystem_c -lsystem_blocks -lunwind -Wl,-upward-lsystem_asl
+UMBRELLA_LDFLAGS = -umbrella System -nodefaultlibs -ldyld -lcompiler_rt -lsystem_kernel -lsystem_platform -lsystem_pthread -lsystem_malloc -lsystem_c -lsystem_blocks -lunwind
 UMBRELLA_LDFLAGS[sdk=iphonesimulator*] = -umbrella System -nodefaultlibs -ldyld_sim -lcompiler_rt_sim -lsystem_sim_c -lsystem_sim_blocks -lunwind_sim -Wl,-upward-lSystem
-OBJC_LDFLAGS = -Wl,-upward-lobjc -Wl,-order_file,$(SRCROOT)/xcodeconfig/libdispatch.order -Wl,-alias_list,$(SRCROOT)/xcodeconfig/libdispatch.aliases -Wl,-unexported_symbols_list,$(SRCROOT)/xcodeconfig/libdispatch.unexport
+OBJC_LDFLAGS = -Wl,-upward-lobjc -Wl,-order_file,$(SRCROOT)/xcodeconfig/libdispatch.order -Wl,-alias_list,$(SRCROOT)/xcodeconfig/libdispatch_objc.aliases -Wl,-unexported_symbols_list,$(SRCROOT)/xcodeconfig/libdispatch.unexport
 OBJC_LDFLAGS[sdk=macosx*] = $(OBJC_LDFLAGS) -Wl,-upward-lauto
 OBJC_LDFLAGS[arch=i386][sdk=macosx*] =
 OBJC_EXCLUDED_SOURCE_FILE_NAMES_i386_macosx = object.m data.m
+ALIASES_LDFLAGS = -Wl,-alias_list,$(SRCROOT)/xcodeconfig/libdispatch.aliases
 PLATFORM_LDFLAGS[sdk=macosx*] = -Wl,-alias_list,$(SRCROOT)/xcodeconfig/libdispatch_macosx.aliases
-OTHER_LDFLAGS = $(OTHER_LDFLAGS) $(UMBRELLA_LDFLAGS) $(CR_LDFLAGS) $(OBJC_LDFLAGS) $(PLATFORM_LDFLAGS)
+OTHER_LDFLAGS = $(OTHER_LDFLAGS) $(UMBRELLA_LDFLAGS) $(CR_LDFLAGS) $(OBJC_LDFLAGS) $(ALIASES_LDFLAGS) $(PLATFORM_LDFLAGS)
+OTHER_MIGFLAGS = -novouchers

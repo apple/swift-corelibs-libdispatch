@@ -38,9 +38,9 @@
  * loaded by running a process with the environment variable
  * DYLD_LIBRARY_PATH=/usr/lib/system/introspection
  *
- * NOTE: these functions are _not_ exported from the shared library, they are
- * only intended to be called from a debugger context while the rest of the
- * process is suspended.
+ * NOTE: most of these functions are _not_ exported from the shared library,
+ * the unexported functions are intended to only be called from a debugger
+ * context while the rest of the process is suspended.
  */
 
 #ifndef __BEGIN_DECLS
@@ -68,7 +68,13 @@ typedef struct dispatch_queue_s *dispatch_queue_t;
 typedef struct dispatch_source_s *dispatch_source_t;
 typedef struct dispatch_group_s *dispatch_group_t;
 typedef struct dispatch_object_s *dispatch_object_t;
+#ifndef __OSX_AVAILABLE_STARTING
+#define __OSX_AVAILABLE_STARTING(x,y)
 #endif
+#ifndef DISPATCH_EXPORT
+#define DISPATCH_EXPORT extern
+#endif
+#endif // __DISPATCH_INDIRECT__
 
 /*!
  * @typedef dispatch_introspection_versions_s
@@ -78,6 +84,43 @@ typedef struct dispatch_object_s *dispatch_object_t;
  *
  * @field introspection_version
  * Version of overall dispatch_introspection SPI.
+ *
+ * @field hooks_version
+ * Version of dispatch_introspection_hooks_s structure.
+ * Version 2 adds the queue_item_complete member.
+ *
+ * @field hooks_size
+ * Size of dispatch_introspection_hooks_s structure.
+ *
+ * @field queue_item_version
+ * Version of dispatch_introspection_queue_item_s structure.
+ *
+ * @field queue_item_size
+ * Size of dispatch_introspection_queue_item_s structure.
+ *
+ * @field queue_block_version
+ * Version of dispatch_introspection_queue_block_s structure.
+ *
+ * @field queue_block_size
+ * Size of dispatch_introspection_queue_block_s structure.
+ *
+ * @field queue_function_version
+ * Version of dispatch_introspection_queue_function_s structure.
+ *
+ * @field queue_function_size
+ * Size of dispatch_introspection_queue_function_s structure.
+ *
+ * @field queue_thread_version
+ * Version of dispatch_introspection_queue_thread_s structure.
+ *
+ * @field queue_thread_size
+ * Size of dispatch_introspection_queue_thread_s structure.
+ *
+ * @field object_version
+ * Version of dispatch_introspection_object_s structure.
+ *
+ * @field object_size
+ * Size of dispatch_introspection_object_s structure.
  *
  * @field queue_version
  * Version of dispatch_introspection_queue_s structure.
@@ -468,6 +511,27 @@ typedef void (*dispatch_introspection_hook_queue_item_dequeue_t)(
 		dispatch_queue_t queue, dispatch_introspection_queue_item_t item);
 
 /*!
+ * @typedef dispatch_introspection_hook_queue_item_complete_t
+ *
+ * @abstract
+ * A function pointer called when an item previously dequeued from a dispatch
+ * queue has completed processing.
+ *
+ * @discussion
+ * The object pointer value passed to this function pointer must be treated as a
+ * value only. It is intended solely for matching up with an earlier call to a
+ * dequeue hook function pointer by comparing to the first member of the
+ * dispatch_introspection_queue_item_t structure. It must NOT be dereferenced
+ * or e.g. passed to dispatch_introspection_queue_item_get_info(), the memory
+ * that was backing it may have been reused at the time this hook is called.
+ *
+ * @param object
+ * Opaque dentifier for completed item. Must NOT be dereferenced.
+ */
+typedef void (*dispatch_introspection_hook_queue_item_complete_t)(
+		dispatch_continuation_t object);
+
+/*!
  * @typedef dispatch_introspection_hooks_s
  *
  * @abstract
@@ -479,7 +543,8 @@ typedef struct dispatch_introspection_hooks_s {
 	dispatch_introspection_hook_queue_dispose_t queue_dispose;
 	dispatch_introspection_hook_queue_item_enqueue_t queue_item_enqueue;
 	dispatch_introspection_hook_queue_item_dequeue_t queue_item_dequeue;
-	void *_reserved[6];
+	dispatch_introspection_hook_queue_item_complete_t queue_item_complete;
+	void *_reserved[5];
 } dispatch_introspection_hooks_s;
 typedef dispatch_introspection_hooks_s *dispatch_introspection_hooks_t;
 
@@ -638,7 +703,8 @@ dispatch_introspection_queue_item_get_info(dispatch_queue_t queue,
  *
  * @discussion
  * Installing hook functions must take place from a debugger context (while the
- * rest of the process is suspended).
+ * rest of the process is suspended) or early enough in the process lifecycle
+ * that the process is still single-threaded.
  *
  * The caller is responsible for implementing chaining to the hooks that were
  * previously installed (if any).
@@ -650,7 +716,8 @@ dispatch_introspection_queue_item_get_info(dispatch_queue_t queue,
  * hooks on output.
  */
 
-extern void
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+DISPATCH_EXPORT void
 dispatch_introspection_hooks_install(dispatch_introspection_hooks_t hooks);
 
 /*!
@@ -721,6 +788,17 @@ dispatch_introspection_hook_callout_queue_item_enqueue(
 extern void
 dispatch_introspection_hook_callout_queue_item_dequeue(
 		dispatch_queue_t queue, dispatch_introspection_queue_item_t item);
+
+/*!
+ * @function dispatch_introspection_hook_callout_queue_item_complete
+ *
+ * @abstract
+ * Callout to queue item complete hook that a debugger can break on.
+ */
+
+extern void
+dispatch_introspection_hook_callout_queue_item_complete(
+		dispatch_continuation_t object);
 
 __END_DECLS
 

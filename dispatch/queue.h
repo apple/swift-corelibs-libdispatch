@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2012 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2014 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -65,51 +65,6 @@
  * queue have been released, the queue will be deallocated by the system.
  */
 DISPATCH_DECL(dispatch_queue);
-
-/*!
- * @typedef dispatch_queue_attr_t
- *
- * @abstract
- * Attribute for dispatch queues.
- */
-DISPATCH_DECL(dispatch_queue_attr);
-
-/*!
- * @typedef dispatch_block_t
- *
- * @abstract
- * The prototype of blocks submitted to dispatch queues, which take no
- * arguments and have no return value.
- *
- * @discussion
- * The declaration of a block allocates storage on the stack. Therefore, this
- * is an invalid construct:
- *
- * dispatch_block_t block;
- *
- * if (x) {
- *     block = ^{ printf("true\n"); };
- * } else {
- *     block = ^{ printf("false\n"); };
- * }
- * block(); // unsafe!!!
- *
- * What is happening behind the scenes:
- *
- * if (x) {
- *     struct Block __tmp_1 = ...; // setup details
- *     block = &__tmp_1;
- * } else {
- *     struct Block __tmp_2 = ...; // setup details
- *     block = &__tmp_2;
- * }
- *
- * As the example demonstrates, the address of a stack variable is escaping the
- * scope in which it is allocated. That is a classic C bug.
- */
-#ifdef __BLOCKS__
-typedef void (^dispatch_block_t)(void);
-#endif
 
 __BEGIN_DECLS
 
@@ -345,6 +300,9 @@ DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_queue_t
 dispatch_get_current_queue(void);
 
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+DISPATCH_EXPORT struct dispatch_queue_s _dispatch_main_q;
+
 /*!
  * @function dispatch_get_main_queue
  *
@@ -360,10 +318,12 @@ dispatch_get_current_queue(void);
  * Returns the main queue. This queue is created automatically on behalf of
  * the main thread before main() is called.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT struct dispatch_queue_s _dispatch_main_q;
-#define dispatch_get_main_queue() \
-		DISPATCH_GLOBAL_OBJECT(dispatch_queue_t, _dispatch_main_q)
+DISPATCH_INLINE DISPATCH_ALWAYS_INLINE DISPATCH_CONST DISPATCH_NOTHROW
+dispatch_queue_t
+dispatch_get_main_queue(void)
+{
+	return DISPATCH_GLOBAL_OBJECT(dispatch_queue_t, _dispatch_main_q);
+}
 
 /*!
  * @typedef dispatch_queue_priority_t
@@ -401,31 +361,67 @@ DISPATCH_EXPORT struct dispatch_queue_s _dispatch_main_q;
 typedef long dispatch_queue_priority_t;
 
 /*!
+ * @typedef dispatch_qos_class_t
+ * Alias for qos_class_t type.
+ */
+#if __has_include(<sys/qos.h>)
+#include <sys/qos.h>
+typedef qos_class_t dispatch_qos_class_t;
+#else
+typedef unsigned int dispatch_qos_class_t;
+#endif
+
+/*!
  * @function dispatch_get_global_queue
  *
  * @abstract
- * Returns a well-known global concurrent queue of a given priority level.
+ * Returns a well-known global concurrent queue of a given quality of service
+ * class.
  *
  * @discussion
  * The well-known global concurrent queues may not be modified. Calls to
  * dispatch_suspend(), dispatch_resume(), dispatch_set_context(), etc., will
  * have no effect when used with queues returned by this function.
  *
- * @param priority
- * A priority defined in dispatch_queue_priority_t
+ * @param identifier
+ * A quality of service class defined in qos_class_t or a priority defined in
+ * dispatch_queue_priority_t.
+ *
+ * It is recommended to use quality of service class values to identify the
+ * well-known global concurrent queues:
+ *  - QOS_CLASS_USER_INTERACTIVE
+ *  - QOS_CLASS_USER_INITIATED
+ *  - QOS_CLASS_DEFAULT
+ *  - QOS_CLASS_UTILITY
+ *  - QOS_CLASS_BACKGROUND
+ *
+ * The global concurrent queues may still be identified by their priority,
+ * which map to the following QOS classes:
+ *  - DISPATCH_QUEUE_PRIORITY_HIGH:         QOS_CLASS_USER_INITIATED
+ *  - DISPATCH_QUEUE_PRIORITY_DEFAULT:      QOS_CLASS_DEFAULT
+ *  - DISPATCH_QUEUE_PRIORITY_LOW:          QOS_CLASS_UTILITY
+ *  - DISPATCH_QUEUE_PRIORITY_BACKGROUND:   QOS_CLASS_BACKGROUND
  *
  * @param flags
  * Reserved for future use. Passing any value other than zero may result in
  * a NULL return value.
  *
  * @result
- * Returns the requested global queue.
+ * Returns the requested global queue or NULL if the requested global queue
+ * does not exist.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_CONST DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_queue_t
-dispatch_get_global_queue(dispatch_queue_priority_t priority,
-		unsigned long flags);
+dispatch_get_global_queue(long identifier, unsigned long flags);
+
+/*!
+ * @typedef dispatch_queue_attr_t
+ *
+ * @abstract
+ * Attribute for dispatch queues.
+ */
+DISPATCH_DECL(dispatch_queue_attr);
 
 /*!
  * @const DISPATCH_QUEUE_SERIAL
@@ -444,6 +440,63 @@ dispatch_get_global_queue(dispatch_queue_priority_t priority,
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
 DISPATCH_EXPORT
 struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent;
+
+/*!
+ * @function dispatch_queue_attr_make_with_qos_class
+ *
+ * @abstract
+ * Returns an attribute value which may be provided to dispatch_queue_create()
+ * in order to assign a QOS class and relative priority to the queue.
+ *
+ * @discussion
+ * When specified in this manner, the QOS class and relative priority take
+ * precedence over those inherited from the dispatch queue's target queue (if
+ * any) as long that does not result in a lower QOS class and relative priority.
+ *
+ * The global queue priorities map to the following QOS classes:
+ *  - DISPATCH_QUEUE_PRIORITY_HIGH:         QOS_CLASS_USER_INITIATED
+ *  - DISPATCH_QUEUE_PRIORITY_DEFAULT:      QOS_CLASS_DEFAULT
+ *  - DISPATCH_QUEUE_PRIORITY_LOW:          QOS_CLASS_UTILITY
+ *  - DISPATCH_QUEUE_PRIORITY_BACKGROUND:   QOS_CLASS_BACKGROUND
+ *
+ * Example:
+ * <code>
+ *	dispatch_queue_t queue;
+ *	dispatch_queue_attr_t attr;
+ *	attr = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL,
+ *			QOS_CLASS_UTILITY, 0);
+ *	queue = dispatch_queue_create("com.example.myqueue", attr);
+ * </code>
+ *
+ * @param attr
+ * A queue attribute value to be combined with the QOS class, or NULL.
+ *
+ * @param qos_class
+ * A QOS class value:
+ *  - QOS_CLASS_USER_INTERACTIVE
+ *  - QOS_CLASS_USER_INITIATED
+ *  - QOS_CLASS_DEFAULT
+ *  - QOS_CLASS_UTILITY
+ *  - QOS_CLASS_BACKGROUND
+ * Passing any other value results in NULL being returned.
+ *
+ * @param relative_priority
+ * A relative priority within the QOS class. This value is a negative
+ * offset from the maximum supported scheduler priority for the given class.
+ * Passing a value greater than zero or less than QOS_MIN_RELATIVE_PRIORITY
+ * results in NULL being returned.
+ *
+ * @return
+ * Returns an attribute value which may be provided to dispatch_queue_create(),
+ * or NULL if an invalid QOS class was requested.
+ * The new value combines the attributes specified by the 'attr' parameter and
+ * the new QOS class and relative priority.
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
+dispatch_queue_attr_t
+dispatch_queue_attr_make_with_qos_class(dispatch_queue_attr_t attr,
+		dispatch_qos_class_t qos_class, int relative_priority);
 
 /*!
  * @function dispatch_queue_create
@@ -466,15 +519,23 @@ struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent;
  * hold a reference to that queue. Therefore a queue will not be deallocated
  * until all pending blocks have finished.
  *
- * The target queue of a newly created dispatch queue is the default priority
- * global concurrent queue.
+ * Passing the result of the dispatch_queue_attr_make_with_qos_class() function
+ * to the attr parameter of this function allows a quality of service class and
+ * relative priority to be specified for the newly created queue.
+ * The quality of service class so specified takes precedence over the quality
+ * of service class of the newly created dispatch queue's target queue (if any)
+ * as long that does not result in a lower QOS class and relative priority.
+ *
+ * When no quality of service class is specified, the target queue of a newly
+ * created dispatch queue is the default priority global concurrent queue.
  *
  * @param label
  * A string label to attach to the queue.
  * This parameter is optional and may be NULL.
  *
  * @param attr
- * DISPATCH_QUEUE_SERIAL or DISPATCH_QUEUE_CONCURRENT.
+ * DISPATCH_QUEUE_SERIAL, DISPATCH_QUEUE_CONCURRENT, or the result of a call to
+ * the function dispatch_queue_attr_make_with_qos_class().
  *
  * @result
  * The newly created dispatch queue.
@@ -514,6 +575,46 @@ const char *
 dispatch_queue_get_label(dispatch_queue_t queue);
 
 /*!
+ * @function dispatch_queue_get_qos_class
+ *
+ * @abstract
+ * Returns the QOS class and relative priority of the given queue.
+ *
+ * @discussion
+ * If the given queue was created with an attribute value returned from
+ * dispatch_queue_attr_make_with_qos_class(), this function returns the QOS
+ * class and relative priority specified at that time; for any other attribute
+ * value it returns a QOS class of QOS_CLASS_UNSPECIFIED and a relative
+ * priority of 0.
+ *
+ * If the given queue is one of the global queues, this function returns its
+ * assigned QOS class value as documented under dispatch_get_global_queue() and
+ * a relative priority of 0; in the case of the main queue it returns the QOS
+ * value provided by qos_class_main() and a relative priority of 0.
+ *
+ * @param queue
+ * The queue to query.
+ *
+ * @param relative_priority_ptr
+ * A pointer to an int variable to be filled with the relative priority offset
+ * within the QOS class, or NULL.
+ *
+ * @return
+ * A QOS class value:
+ *	- QOS_CLASS_USER_INTERACTIVE
+ *	- QOS_CLASS_USER_INITIATED
+ *	- QOS_CLASS_DEFAULT
+ *	- QOS_CLASS_UTILITY
+ *	- QOS_CLASS_BACKGROUND
+ *	- QOS_CLASS_UNSPECIFIED
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+dispatch_qos_class_t
+dispatch_queue_get_qos_class(dispatch_queue_t queue,
+		int *relative_priority_ptr);
+
+/*!
  * @const DISPATCH_TARGET_QUEUE_DEFAULT
  * @discussion Constant to pass to the dispatch_set_target_queue() and
  * dispatch_source_create() functions to indicate that the default target queue
@@ -530,9 +631,12 @@ dispatch_queue_get_label(dispatch_queue_t queue);
  * @discussion
  * An object's target queue is responsible for processing the object.
  *
- * A dispatch queue's priority is inherited from its target queue. Use the
- * dispatch_get_global_queue() function to obtain suitable target queue
- * of the desired priority.
+ * When no quality of service class and relative priority is specified for a
+ * dispatch queue at the time of creation, a dispatch queue's quality of service
+ * class is inherited from its target queue. The dispatch_get_global_queue()
+ * function may be used to obtain a target queue of a specific quality of
+ * service class, however the use of dispatch_queue_attr_make_with_qos_class()
+ * is recommended instead.
  *
  * Blocks submitted to a serial queue whose target queue is another serial
  * queue will not be invoked concurrently with blocks submitted to the target

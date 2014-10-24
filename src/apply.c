@@ -24,7 +24,7 @@ typedef void (*dispatch_apply_function_t)(void *, size_t);
 
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_apply_invoke2(void *ctxt)
+_dispatch_apply_invoke2(void *ctxt, bool redirect)
 {
 	dispatch_apply_t da = (dispatch_apply_t)ctxt;
 	size_t const iter = da->da_iterations;
@@ -36,12 +36,21 @@ _dispatch_apply_invoke2(void *ctxt)
 	// da_dc is only safe to access once the 'index lock' has been acquired
 	dispatch_apply_function_t const func = (void *)da->da_dc->dc_func;
 	void *const da_ctxt = da->da_dc->dc_ctxt;
+	dispatch_queue_t dq = da->da_dc->dc_data;
 
 	_dispatch_perfmon_workitem_dec(); // this unit executes many items
 
 	// Handle nested dispatch_apply rdar://problem/9294578
 	size_t nested = (size_t)_dispatch_thread_getspecific(dispatch_apply_key);
 	_dispatch_thread_setspecific(dispatch_apply_key, (void*)da->da_nested);
+
+	dispatch_queue_t old_dq;
+	pthread_priority_t old_dp;
+	if (redirect) {
+		old_dq = _dispatch_thread_getspecific(dispatch_queue_key);
+		_dispatch_thread_setspecific(dispatch_queue_key, dq);
+		old_dp = _dispatch_set_defaultpriority(dq->dq_priority);
+	}
 
 	// Striding is the responsibility of the caller.
 	do {
@@ -50,6 +59,11 @@ _dispatch_apply_invoke2(void *ctxt)
 		done++;
 		idx = dispatch_atomic_inc_orig2o(da, da_index, relaxed);
 	} while (fastpath(idx < iter));
+
+	if (redirect) {
+		_dispatch_reset_defaultpriority(old_dp);
+		_dispatch_thread_setspecific(dispatch_queue_key, old_dq);
+	}
 	_dispatch_thread_setspecific(dispatch_apply_key, (void*)nested);
 
 	// The thread that finished the last workitem wakes up the possibly waiting
@@ -67,20 +81,14 @@ DISPATCH_NOINLINE
 void
 _dispatch_apply_invoke(void *ctxt)
 {
-	_dispatch_apply_invoke2(ctxt);
+	_dispatch_apply_invoke2(ctxt, false);
 }
 
 DISPATCH_NOINLINE
 void
 _dispatch_apply_redirect_invoke(void *ctxt)
 {
-	dispatch_apply_t da = (dispatch_apply_t)ctxt;
-	dispatch_queue_t old_dq;
-	old_dq = (dispatch_queue_t)_dispatch_thread_getspecific(dispatch_queue_key);
-
-	_dispatch_thread_setspecific(dispatch_queue_key, da->da_dc->dc_data);
-	_dispatch_apply_invoke2(ctxt);
-	_dispatch_thread_setspecific(dispatch_queue_key, old_dq);
+	_dispatch_apply_invoke2(ctxt, true);
 }
 
 static void
@@ -118,6 +126,8 @@ _dispatch_apply_f2(dispatch_queue_t dq, dispatch_apply_t da,
 		next->do_vtable = (void *)DISPATCH_OBJ_ASYNC_BIT;
 		next->dc_func = func;
 		next->dc_ctxt = da;
+		_dispatch_continuation_voucher_set(next, 0);
+		_dispatch_continuation_priority_set(next, 0, 0);
 
 		next->do_next = head;
 		head = next;
@@ -130,7 +140,8 @@ _dispatch_apply_f2(dispatch_queue_t dq, dispatch_apply_t da,
 	_dispatch_thread_semaphore_t sema = _dispatch_get_thread_semaphore();
 	da->da_sema = sema;
 
-	_dispatch_queue_push_list(dq, head, tail, continuation_cnt);
+	_dispatch_queue_push_list(dq, head, tail, head->dc_priority,
+			continuation_cnt);
 	// Call the first element directly
 	_dispatch_apply_invoke(da);
 	_dispatch_perfmon_workitem_inc();
@@ -183,7 +194,7 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 	if (slowpath(iterations == 0)) {
 		return;
 	}
-	uint32_t thr_cnt = _dispatch_hw_config.cc_max_active;
+	uint32_t thr_cnt = dispatch_hw_config(active_cpus);
 	size_t nested = (size_t)_dispatch_thread_getspecific(dispatch_apply_key);
 	if (!slowpath(nested)) {
 		nested = iterations;
@@ -210,7 +221,8 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 	dispatch_queue_t old_dq;
 	old_dq = (dispatch_queue_t)_dispatch_thread_getspecific(dispatch_queue_key);
 	if (slowpath(dq == DISPATCH_APPLY_CURRENT_ROOT_QUEUE)) {
-		dq = old_dq ? old_dq : _dispatch_get_root_queue(0, 0);
+		dq = old_dq ? old_dq : _dispatch_get_root_queue(
+				_DISPATCH_QOS_CLASS_DEFAULT, false);
 		while (slowpath(dq->do_targetq)) {
 			dq = dq->do_targetq;
 		}

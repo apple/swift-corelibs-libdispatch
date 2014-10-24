@@ -17,5 +17,3 @@
 #
 # @APPLE_APACHE_LICENSE_HEADER_END@
 #
-
-__dispatch_source_type_memorystatus __dispatch_source_type_memorypressure

@@ -28,9 +28,73 @@
 #define __DISPATCH_OS_SHIMS__
 
 #include <pthread.h>
+#if HAVE_PTHREAD_QOS_H && __has_include(<pthread/qos.h>)
+#include <pthread/qos.h>
+#if __has_include(<pthread/qos_private.h>)
+#include <pthread/qos_private.h>
+#define _DISPATCH_QOS_CLASS_USER_INTERACTIVE QOS_CLASS_USER_INTERACTIVE
+#define _DISPATCH_QOS_CLASS_USER_INITIATED QOS_CLASS_USER_INITIATED
+#ifndef QOS_CLASS_LEGACY
+#define _DISPATCH_QOS_CLASS_DEFAULT QOS_CLASS_LEGACY
+#else
+#define _DISPATCH_QOS_CLASS_DEFAULT QOS_CLASS_DEFAULT
+#endif
+#define _DISPATCH_QOS_CLASS_UTILITY QOS_CLASS_UTILITY
+#define _DISPATCH_QOS_CLASS_BACKGROUND QOS_CLASS_BACKGROUND
+#define _DISPATCH_QOS_CLASS_UNSPECIFIED QOS_CLASS_UNSPECIFIED
+#else // pthread/qos_private.h
+typedef unsigned long pthread_priority_t;
+#endif // pthread/qos_private.h
+#if __has_include(<sys/qos_private.h>)
+#include <sys/qos_private.h>
+#define _DISPATCH_QOS_CLASS_MAINTENANCE QOS_CLASS_MAINTENANCE
+#else // sys/qos_private.h
+#define _DISPATCH_QOS_CLASS_MAINTENANCE	0x05
+#endif // sys/qos_private.h
+#ifndef _PTHREAD_PRIORITY_ROOTQUEUE_FLAG
+#define _PTHREAD_PRIORITY_ROOTQUEUE_FLAG 0x20000000
+#endif
+#ifndef _PTHREAD_PRIORITY_ENFORCE_FLAG
+#define _PTHREAD_PRIORITY_ENFORCE_FLAG 0x10000000
+#endif
+#ifndef _PTHREAD_PRIORITY_OVERRIDE_FLAG
+#define _PTHREAD_PRIORITY_OVERRIDE_FLAG 0x08000000
+#endif
+#ifndef _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG
+#define _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG 0x04000000
+#endif
+#else // HAVE_PTHREAD_QOS_H
+typedef unsigned int qos_class_t;
+typedef unsigned long pthread_priority_t;
+#define QOS_MIN_RELATIVE_PRIORITY (-15)
+#define _PTHREAD_PRIORITY_QOS_CLASS_MASK 0x00ffff00
+#define _PTHREAD_PRIORITY_ROOTQUEUE_FLAG 0x20000000
+#define _PTHREAD_PRIORITY_ENFORCE_FLAG 0x10000000
+#define _PTHREAD_PRIORITY_OVERRIDE_FLAG 0x08000000
+#define _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG 0x04000000
+#endif // HAVE_PTHREAD_QOS_H
+#ifndef _DISPATCH_QOS_CLASS_USER_INTERACTIVE
+enum {
+	_DISPATCH_QOS_CLASS_USER_INTERACTIVE = 0x21,
+	_DISPATCH_QOS_CLASS_USER_INITIATED = 0x19,
+	_DISPATCH_QOS_CLASS_DEFAULT = 0x15,
+	_DISPATCH_QOS_CLASS_UTILITY = 0x11,
+	_DISPATCH_QOS_CLASS_BACKGROUND = 0x09,
+	_DISPATCH_QOS_CLASS_MAINTENANCE = 0x05,
+	_DISPATCH_QOS_CLASS_UNSPECIFIED = 0x00,
+};
+#endif // _DISPATCH_QOS_CLASS_USER_INTERACTIVE
 #if HAVE_PTHREAD_WORKQUEUES
+#if __has_include(<pthread/workqueue_private.h>)
+#include <pthread/workqueue_private.h>
+#else
 #include <pthread_workqueue.h>
 #endif
+#ifndef WORKQ_FEATURE_MAINTENANCE
+#define WORKQ_FEATURE_MAINTENANCE 0x10
+#endif
+#endif // HAVE_PTHREAD_WORKQUEUES
+
 #if HAVE_PTHREAD_NP_H
 #include <pthread_np.h>
 #endif
@@ -54,6 +118,33 @@ inline size_t strlcpy(char *dst, const char *src, size_t size) {
 }
 #endif // TARGET_OS_WIN32
 
+#if PTHREAD_WORKQUEUE_SPI_VERSION < 20140716
+static inline int
+_pthread_workqueue_override_start_direct(mach_port_t thread,
+		pthread_priority_t priority)
+{
+	(void)thread; (void)priority;
+	return 0;
+}
+#endif // PTHREAD_WORKQUEUE_SPI_VERSION < 20140716
+
+#if PTHREAD_WORKQUEUE_SPI_VERSION < 20140707
+static inline int
+_pthread_override_qos_class_start_direct(pthread_t thread,
+		pthread_priority_t priority)
+{
+	(void)thread; (void)priority;
+	return 0;
+}
+
+static inline int
+_pthread_override_qos_class_end_direct(mach_port_t thread)
+{
+	(void)thread;
+	return 0;
+}
+#endif // PTHREAD_WORKQUEUE_SPI_VERSION < 20140707
+
 #if !HAVE_NORETURN_BUILTIN_TRAP
 /*
  * XXXRW: Work-around for possible clang bug in which __builtin_trap() is not
@@ -71,6 +162,8 @@ void __builtin_trap(void);
 #include "shims/atomic.h"
 #include "shims/atomic_sfb.h"
 #include "shims/tsd.h"
+#include "shims/yield.h"
+
 #include "shims/hw_config.h"
 #include "shims/perfmon.h"
 

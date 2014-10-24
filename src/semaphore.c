@@ -23,14 +23,23 @@
 // semaphores are too fundamental to use the dispatch_assume*() macros
 #if USE_MACH_SEM
 #define DISPATCH_SEMAPHORE_VERIFY_KR(x) do { \
-		if (slowpath(x)) { \
-			DISPATCH_CRASH("flawed group/semaphore logic"); \
+		if (slowpath((x) == KERN_INVALID_NAME)) { \
+			DISPATCH_CLIENT_CRASH("Use-after-free of dispatch_semaphore_t"); \
+		} else if (slowpath(x)) { \
+			DISPATCH_CRASH("mach semaphore API failure"); \
+		} \
+	} while (0)
+#define DISPATCH_GROUP_VERIFY_KR(x) do { \
+		if (slowpath((x) == KERN_INVALID_NAME)) { \
+			DISPATCH_CLIENT_CRASH("Use-after-free of dispatch_group_t"); \
+		} else if (slowpath(x)) { \
+			DISPATCH_CRASH("mach semaphore API failure"); \
 		} \
 	} while (0)
 #elif USE_POSIX_SEM
 #define DISPATCH_SEMAPHORE_VERIFY_RET(x) do { \
 		if (slowpath((x) == -1)) { \
-			DISPATCH_CRASH("flawed group/semaphore logic"); \
+			DISPATCH_CRASH("POSIX semaphore API failure"); \
 		} \
 	} while (0)
 #endif
@@ -95,8 +104,8 @@ _dispatch_semaphore_init(long value, dispatch_object_t dou)
 	dispatch_semaphore_t dsema = dou._dsema;
 
 	dsema->do_next = (dispatch_semaphore_t)DISPATCH_OBJECT_LISTLESS;
-	dsema->do_targetq = dispatch_get_global_queue(
-			DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+	dsema->do_targetq = _dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT,
+			false);
 	dsema->dsema_value = value;
 	dsema->dsema_orig = value;
 #if USE_POSIX_SEM
@@ -152,6 +161,7 @@ _dispatch_semaphore_create_port(semaphore_t *s4)
 
 	if (!dispatch_atomic_cmpxchg(s4, 0, tmp, relaxed)) {
 		kr = semaphore_destroy(mach_task_self(), tmp);
+		DISPATCH_VERIFY_MIG(kr);
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 	}
 }
@@ -191,8 +201,10 @@ _dispatch_semaphore_dispose(dispatch_object_t dou)
 	kern_return_t kr;
 	if (dsema->dsema_port) {
 		kr = semaphore_destroy(mach_task_self(), dsema->dsema_port);
+		DISPATCH_VERIFY_MIG(kr);
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 	}
+	dsema->dsema_port = MACH_PORT_DEAD;
 #elif USE_POSIX_SEM
 	int ret = sem_destroy(&dsema->dsema_sem);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
@@ -442,7 +454,7 @@ _dispatch_group_wake(dispatch_semaphore_t dsema)
 		_dispatch_semaphore_create_port(&dsema->dsema_port);
 		do {
 			kern_return_t kr = semaphore_signal(dsema->dsema_port);
-			DISPATCH_SEMAPHORE_VERIFY_KR(kr);
+			DISPATCH_GROUP_VERIFY_KR(kr);
 		} while (--rval);
 #elif USE_POSIX_SEM
 		do {
@@ -463,9 +475,7 @@ _dispatch_group_wake(dispatch_semaphore_t dsema)
 		do {
 			next = fastpath(head->do_next);
 			if (!next && head != tail) {
-				while (!(next = fastpath(head->do_next))) {
-					dispatch_hardware_pause();
-				}
+				_dispatch_wait_until(next = fastpath(head->do_next));
 			}
 			dispatch_queue_t dsn_queue = (dispatch_queue_t)head->dc_data;
 			dc = _dispatch_continuation_free_cacheonly(head);
@@ -552,7 +562,7 @@ again:
 		} while (kr == KERN_ABORTED);
 
 		if (kr != KERN_OPERATION_TIMED_OUT) {
-			DISPATCH_SEMAPHORE_VERIFY_KR(kr);
+			DISPATCH_GROUP_VERIFY_KR(kr);
 			break;
 		}
 #elif USE_POSIX_SEM
@@ -599,7 +609,7 @@ again:
 		do {
 			kr = semaphore_wait(dsema->dsema_port);
 		} while (kr == KERN_ABORTED);
-		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
+		DISPATCH_GROUP_VERIFY_KR(kr);
 #elif USE_POSIX_SEM
 		do {
 			ret = sem_wait(&dsema->dsema_sem);
@@ -651,7 +661,7 @@ dispatch_group_notify_f(dispatch_group_t dg, dispatch_queue_t dq, void *ctxt,
 	} else {
 		_dispatch_retain(dg);
 		dispatch_atomic_store2o(dsema, dsema_notify_head, dsn, seq_cst);
-		dispatch_atomic_barrier(seq_cst); // <rdar://problem/11750916>
+		// seq_cst with atomic store to notify_head <rdar://problem/11750916>
 		if (dispatch_atomic_load2o(dsema, dsema_value, seq_cst) == LONG_MAX) {
 			_dispatch_group_wake(dsema);
 		}
@@ -710,6 +720,7 @@ _dispatch_thread_semaphore_dispose(_dispatch_thread_semaphore_t sema)
 #elif USE_MACH_SEM
 	semaphore_t s4 = (semaphore_t)sema;
 	kern_return_t kr = semaphore_destroy(mach_task_self(), s4);
+	DISPATCH_VERIFY_MIG(kr);
 	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 #elif USE_POSIX_SEM
 	sem_t s4 = (sem_t)sema;

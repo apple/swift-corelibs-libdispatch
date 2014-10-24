@@ -119,8 +119,7 @@ typedef mach_msg_context_trailer_t dispatch_mach_trailer_t;
  */
 
 #define DISPATCH_MACH_RECEIVE_MAX_INLINE_MESSAGE_SIZE \
-		((PAGE_SIZE > 0x1000 ? 1 : 3) * PAGE_SIZE - \
-		sizeof(dispatch_mach_trailer_t))
+		(0x4000 - sizeof(dispatch_mach_trailer_t))
 
 /*!
  * @typedef dispatch_mach_msg_t

@@ -48,6 +48,30 @@ enum {
 #define DISPATCH_QUEUE_FLAGS_MASK (DISPATCH_QUEUE_OVERCOMMIT)
 
 /*!
+ * @function dispatch_queue_attr_make_with_overcommit
+ *
+ * @discussion
+ * Returns a dispatch queue attribute value with the overcommit flag set to the
+ * specified value.
+ *
+ * @param attr
+ * A queue attribute value to be combined with the overcommit flag, or NULL.
+ *
+ * @param overcommit
+ * Boolean overcommit flag.
+ *
+ * @return
+ * Returns an attribute value which may be provided to dispatch_queue_create().
+ * This new value combines the attributes specified by the 'attr' parameter and
+ * the overcommit flag.
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
+dispatch_queue_attr_t
+dispatch_queue_attr_make_with_overcommit(dispatch_queue_attr_t attr,
+		bool overcommit);
+
+/*!
  * @typedef dispatch_queue_priority_t
  *
  * @constant DISPATCH_QUEUE_PRIORITY_NON_INTERACTIVE
@@ -88,10 +112,11 @@ enum {
 #define DISPATCH_QUEUE_WIDTH_MAX_PHYSICAL_CPUS	-2
 #define DISPATCH_QUEUE_WIDTH_MAX_LOGICAL_CPUS	-3
 
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_BUT_DEPRECATED_MSG(__MAC_10_6,__MAC_10_10,__IPHONE_4_0,__IPHONE_8_0, \
+		"Use dispatch_queue_create(name, DISPATCH_QUEUE_CONCURRENT) instead")
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
-dispatch_queue_set_width(dispatch_queue_t dq, long width); // DEPRECATED
+dispatch_queue_set_width(dispatch_queue_t dq, long width);
 
 /*!
  * @function dispatch_queue_create_with_target
@@ -119,7 +144,8 @@ dispatch_queue_set_width(dispatch_queue_t dq, long width); // DEPRECATED
  * This parameter is optional and may be NULL.
  *
  * @param attr
- * DISPATCH_QUEUE_SERIAL or DISPATCH_QUEUE_CONCURRENT.
+ * DISPATCH_QUEUE_SERIAL, DISPATCH_QUEUE_CONCURRENT, or the result of a call to
+ * the function dispatch_queue_attr_make_with_qos_class().
  *
  * @param target
  * The target queue for the newly created queue. The target queue is retained.
@@ -174,8 +200,8 @@ dispatch_queue_create_with_target(const char *label,
  * This parameter is optional and may be NULL.
  *
  * @param flags
- * Reserved for future use. Passing any value other than zero may result in
- * a NULL return value.
+ * Pass flags value returned by dispatch_pthread_root_queue_flags_pool_size()
+ * or 0 if unused.
  *
  * @param attr
  * Attributes passed to pthread_create(3) when creating worker pthreads. This
@@ -197,6 +223,33 @@ DISPATCH_NOTHROW
 dispatch_queue_t
 dispatch_pthread_root_queue_create(const char *label, unsigned long flags,
 	const pthread_attr_t *attr, dispatch_block_t configure);
+
+/*!
+ * @function dispatch_pthread_root_queue_flags_pool_size
+ *
+ * @abstract
+ * Returns flags argument to pass to dispatch_pthread_root_queue_create() to
+ * specify the maximum size of the pthread pool to use for a pthread root queue.
+ *
+ * @param pool_size
+ * Maximum size of the pthread pool to use for the root queue. The number of
+ * pthreads created for this root queue will never exceed this number but there
+ * is no guarantee that the specified number will be reached.
+ * Pass 0 to specify that a default pool size determined by the system should
+ * be used.
+ *
+ * @result
+ * The flags argument to pass to dispatch_pthread_root_queue_create().
+ */
+DISPATCH_INLINE DISPATCH_ALWAYS_INLINE
+unsigned long
+dispatch_pthread_root_queue_flags_pool_size(uint8_t pool_size)
+{
+	#define _DISPATCH_PTHREAD_ROOT_QUEUE_FLAG_POOL_SIZE (0x80000000ul)
+	return (_DISPATCH_PTHREAD_ROOT_QUEUE_FLAG_POOL_SIZE |
+			(unsigned long)pool_size);
+}
+
 #endif /* __BLOCKS__ */
 
 /*!
@@ -208,24 +261,6 @@ dispatch_pthread_root_queue_create(const char *label, unsigned long flags,
  * default priority global concurrent queue will be used.
  */
 #define DISPATCH_APPLY_CURRENT_ROOT_QUEUE NULL
-
-#if !TARGET_OS_WIN32
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT const struct dispatch_queue_offsets_s {
-	// always add new fields at the end
-	const uint16_t dqo_version;
-	const uint16_t dqo_label;
-	const uint16_t dqo_label_size;
-	const uint16_t dqo_flags;
-	const uint16_t dqo_flags_size;
-	const uint16_t dqo_serialnum;
-	const uint16_t dqo_serialnum_size;
-	const uint16_t dqo_width;
-	const uint16_t dqo_width_size;
-	const uint16_t dqo_running;
-	const uint16_t dqo_running_size;
-} dispatch_queue_offsets;
-#endif
 
 /*!
  * @function dispatch_assert_queue

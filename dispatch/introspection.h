@@ -109,6 +109,27 @@ dispatch_introspection_hook_queue_item_dequeue(dispatch_queue_t queue,
 		dispatch_object_t item);
 
 /*!
+ * @function dispatch_introspection_hook_queue_item_complete
+ *
+ * @abstract
+ * Interposable hook function called when an item previously dequeued from a
+ * dispatch queue has completed processing.
+ *
+ * @discussion
+ * The object pointer value passed to this function must be treated as a value
+ * only. It is intended solely for matching up with an earlier call to a
+ * dequeue hook function and must NOT be dereferenced.
+ *
+ * @param item
+ * Opaque dentifier for completed item. Must NOT be dereferenced.
+ */
+
+__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_7_1)
+DISPATCH_EXPORT
+void
+dispatch_introspection_hook_queue_item_complete(dispatch_object_t item);
+
+/*!
  * @function dispatch_introspection_hook_queue_callout_begin
  *
  * @abstract

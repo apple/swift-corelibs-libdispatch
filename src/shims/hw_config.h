@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2011-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -27,83 +27,102 @@
 #ifndef __DISPATCH_SHIMS_HW_CONFIG__
 #define __DISPATCH_SHIMS_HW_CONFIG__
 
-#if defined(__APPLE__)
-#define DISPATCH_SYSCTL_LOGICAL_CPUS	"hw.logicalcpu_max"
-#define DISPATCH_SYSCTL_PHYSICAL_CPUS	"hw.physicalcpu_max"
-#define DISPATCH_SYSCTL_ACTIVE_CPUS		"hw.activecpu"
-#elif defined(__FreeBSD__)
-#define DISPATCH_SYSCTL_LOGICAL_CPUS	"kern.smp.cpus"
-#define DISPATCH_SYSCTL_PHYSICAL_CPUS	"kern.smp.cpus"
-#define DISPATCH_SYSCTL_ACTIVE_CPUS		"kern.smp.cpus"
-#endif
-
 #if !TARGET_OS_WIN32
 
+typedef enum {
+	_dispatch_hw_config_logical_cpus,
+	_dispatch_hw_config_physical_cpus,
+	_dispatch_hw_config_active_cpus,
+} _dispatch_hw_config_t;
+
+#if !defined(DISPATCH_HAVE_HW_CONFIG_COMMPAGE) && \
+		defined(_COMM_PAGE_LOGICAL_CPUS) && \
+		defined(_COMM_PAGE_PHYSICAL_CPUS) && defined(_COMM_PAGE_ACTIVE_CPUS)
+#define DISPATCH_HAVE_HW_CONFIG_COMMPAGE 1
+#endif
+
+#if DISPATCH_HAVE_HW_CONFIG_COMMPAGE
+
+DISPATCH_ALWAYS_INLINE
 static inline uint32_t
-_dispatch_get_logicalcpu_max(void)
+_dispatch_hw_get_config(_dispatch_hw_config_t c)
+{
+	uintptr_t p;
+	switch (c) {
+	case _dispatch_hw_config_logical_cpus:
+		p =  _COMM_PAGE_LOGICAL_CPUS; break;
+	case _dispatch_hw_config_physical_cpus:
+		p = _COMM_PAGE_PHYSICAL_CPUS; break;
+	case _dispatch_hw_config_active_cpus:
+		p = _COMM_PAGE_ACTIVE_CPUS; break;
+	}
+	return *(uint8_t*)p;
+}
+
+#define dispatch_hw_config(c) \
+		_dispatch_hw_get_config(_dispatch_hw_config_##c)
+
+#define DISPATCH_HW_CONFIG()
+#define _dispatch_hw_config_init()
+
+#else // DISPATCH_HAVE_HW_CONFIG_COMMPAGE
+
+extern struct _dispatch_hw_configs_s {
+	uint32_t logical_cpus;
+	uint32_t physical_cpus;
+	uint32_t active_cpus;
+} _dispatch_hw_config;
+
+#define DISPATCH_HW_CONFIG() struct _dispatch_hw_configs_s _dispatch_hw_config
+#define dispatch_hw_config(c) (_dispatch_hw_config.c)
+
+DISPATCH_ALWAYS_INLINE
+static inline uint32_t
+_dispatch_hw_get_config(_dispatch_hw_config_t c)
 {
 	uint32_t val = 1;
-#if defined(_COMM_PAGE_LOGICAL_CPUS)
-	uint8_t* u8val = (uint8_t*)(uintptr_t)_COMM_PAGE_LOGICAL_CPUS;
-	val = (uint32_t)*u8val;
-#elif defined(DISPATCH_SYSCTL_LOGICAL_CPUS)
-	size_t valsz = sizeof(val);
-	int ret = sysctlbyname(DISPATCH_SYSCTL_LOGICAL_CPUS,
-			&val, &valsz, NULL, 0);
-	(void)dispatch_assume_zero(ret);
-	(void)dispatch_assume(valsz == sizeof(uint32_t));
-#elif HAVE_SYSCONF && defined(_SC_NPROCESSORS_ONLN)
-	int ret = (int)sysconf(_SC_NPROCESSORS_ONLN);
-	val = ret < 0 ? 1 : ret;
-#else
-#warning "no supported way to query logical CPU count"
+	const char *name = NULL;
+	int r;
+#if defined(__APPLE__)
+	switch (c) {
+	case _dispatch_hw_config_logical_cpus:
+		name = "hw.logicalcpu_max"; break;
+	case _dispatch_hw_config_physical_cpus:
+		name = "hw.physicalcpu_max"; break;
+	case _dispatch_hw_config_active_cpus:
+		name = "hw.activecpu"; break;
+	}
+#elif defined(__FreeBSD__)
+	 (void)c; name = "kern.smp.cpus";
 #endif
+	if (name) {
+		size_t valsz = sizeof(val);
+		r = sysctlbyname(name, &val, &valsz, NULL, 0);
+		(void)dispatch_assume_zero(r);
+		dispatch_assert(valsz == sizeof(uint32_t));
+	} else {
+#if HAVE_SYSCONF && defined(_SC_NPROCESSORS_ONLN)
+		r = (int)sysconf(_SC_NPROCESSORS_ONLN);
+		if (r > 0) val = (uint32_t)r;
+#endif
+	}
 	return val;
 }
 
-static inline uint32_t
-_dispatch_get_physicalcpu_max(void)
+#define dispatch_hw_config_init(c) \
+		_dispatch_hw_get_config(_dispatch_hw_config_##c)
+
+static inline void
+_dispatch_hw_config_init(void)
 {
-	uint32_t val = 1;
-#if defined(_COMM_PAGE_PHYSICAL_CPUS)
-	uint8_t* u8val = (uint8_t*)(uintptr_t)_COMM_PAGE_PHYSICAL_CPUS;
-	val = (uint32_t)*u8val;
-#elif defined(DISPATCH_SYSCTL_PHYSICAL_CPUS)
-	size_t valsz = sizeof(val);
-	int ret = sysctlbyname(DISPATCH_SYSCTL_LOGICAL_CPUS,
-			&val, &valsz, NULL, 0);
-	(void)dispatch_assume_zero(ret);
-	(void)dispatch_assume(valsz == sizeof(uint32_t));
-#elif HAVE_SYSCONF && defined(_SC_NPROCESSORS_ONLN)
-	int ret = (int)sysconf(_SC_NPROCESSORS_ONLN);
-	val = ret < 0 ? 1 : ret;
-#else
-#warning "no supported way to query physical CPU count"
-#endif
-	return val;
+	dispatch_hw_config(logical_cpus) = dispatch_hw_config_init(logical_cpus);
+	dispatch_hw_config(physical_cpus) = dispatch_hw_config_init(physical_cpus);
+	dispatch_hw_config(active_cpus) = dispatch_hw_config_init(active_cpus);
 }
 
-static inline uint32_t
-_dispatch_get_activecpu(void)
-{
-	uint32_t val = 1;
-#if defined(_COMM_PAGE_ACTIVE_CPUS)
-	uint8_t* u8val = (uint8_t*)(uintptr_t)_COMM_PAGE_ACTIVE_CPUS;
-	val = (uint32_t)*u8val;
-#elif defined(DISPATCH_SYSCTL_ACTIVE_CPUS)
-	size_t valsz = sizeof(val);
-	int ret = sysctlbyname(DISPATCH_SYSCTL_ACTIVE_CPUS,
-			&val, &valsz, NULL, 0);
-	(void)dispatch_assume_zero(ret);
-	(void)dispatch_assume(valsz == sizeof(uint32_t));
-#elif HAVE_SYSCONF && defined(_SC_NPROCESSORS_ONLN)
-	int ret = (int)sysconf(_SC_NPROCESSORS_ONLN);
-	val = ret < 0 ? 1 : ret;
-#else
-#warning "no supported way to query active CPU count"
-#endif
-	return val;
-}
+#undef dispatch_hw_config_init
+
+#endif // DISPATCH_HAVE_HW_CONFIG_COMMPAGE
 
 #else // TARGET_OS_WIN32
 
@@ -117,7 +136,6 @@ _dispatch_count_bits(unsigned long value)
 	}
 	return bits;
 }
-
 
 static inline uint32_t
 _dispatch_get_ncpus(void)

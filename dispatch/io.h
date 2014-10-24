@@ -96,8 +96,8 @@ typedef int dispatch_fd_t;
  *			submitted.
  * @param handler	The handler to enqueue when data is ready to be
  *			delivered.
- *		@param data	The data read from the file descriptor.
- *		@param error	An errno condition for the read operation or
+ *		param data	The data read from the file descriptor.
+ *		param error	An errno condition for the read operation or
  *				zero if the read was successful.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
@@ -133,9 +133,9 @@ dispatch_read(dispatch_fd_t fd,
  * @param queue		The dispatch queue to which the handler should be
  *			submitted.
  * @param handler	The handler to enqueue when the data has been written.
- *		@param data	The data that could not be written to the I/O
+ *		param data	The data that could not be written to the I/O
  *				channel, or NULL.
- *		@param error	An errno condition for the write operation or
+ *		param error	An errno condition for the write operation or
  *				zero if the write was successful.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
@@ -204,7 +204,7 @@ typedef unsigned long dispatch_io_type_t;
  * @param queue	The dispatch queue to which the handler should be submitted.
  * @param cleanup_handler	The handler to enqueue when the system
  *				relinquishes control over the file descriptor.
- *	@param error		An errno condition if control is relinquished
+ *	param error		An errno condition if control is relinquished
  *				because channel creation failed, zero otherwise.
  * @result	The newly created dispatch I/O channel or NULL if an error
  *		occurred (invalid type specified).
@@ -239,7 +239,7 @@ dispatch_io_create(dispatch_io_type_t type,
  *		submitted.
  * @param cleanup_handler	The handler to enqueue when the system
  *				has closed the file at path.
- *	@param error		An errno condition if control is relinquished
+ *	param error		An errno condition if control is relinquished
  *				because channel creation or opening of the
  *				specified file failed, zero otherwise.
  * @result	The newly created dispatch I/O channel or NULL if an error
@@ -280,7 +280,7 @@ dispatch_io_create_with_path(dispatch_io_type_t type,
  *				relinquishes control over the file descriptor
  *				(resp. closes the file at path) associated with
  *				the existing channel.
- *	@param error		An errno condition if control is relinquished
+ *	param error		An errno condition if control is relinquished
  *				because channel creation failed, zero otherwise.
  * @result	The newly created dispatch I/O channel or NULL if an error
  *		occurred (invalid type specified).
@@ -341,10 +341,10 @@ typedef void (^dispatch_io_handler_t)(bool done, dispatch_data_t data,
  *			submitted.
  * @param io_handler	The I/O handler to enqueue when data is ready to be
  *			delivered.
- *	@param done	A flag indicating whether the operation is complete.
- *	@param data	An object with the data most recently read from the
+ *	param done	A flag indicating whether the operation is complete.
+ *	param data	An object with the data most recently read from the
  *			I/O channel as part of this read operation, or NULL.
- *	@param error	An errno condition for the read operation or zero if
+ *	param error	An errno condition for the read operation or zero if
  *			the read was successful.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
@@ -393,11 +393,11 @@ dispatch_io_read(dispatch_io_t channel,
  * @param queue		The dispatch queue to which the I/O handler should be
  *			submitted.
  * @param io_handler	The I/O handler to enqueue when data has been delivered.
- *	@param done	A flag indicating whether the operation is complete.
- *	@param data	An object of the data remaining to be
+ *	param done	A flag indicating whether the operation is complete.
+ *	param data	An object of the data remaining to be
  *			written to the I/O channel as part of this write
  *			operation, or NULL.
- *	@param error	An errno condition for the write operation or zero
+ *	param error	An errno condition for the write operation or zero
  *			if the write was successful.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)

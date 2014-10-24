@@ -37,7 +37,7 @@
 #define __OSX_AVAILABLE_STARTING(x, y)
 #endif
 
-#define DISPATCH_API_VERSION 20130520
+#define DISPATCH_API_VERSION 20140804
 
 #ifndef __DISPATCH_BUILDING_DISPATCH__
 
@@ -47,9 +47,10 @@
 
 #include <os/object.h>
 #include <dispatch/base.h>
-#include <dispatch/object.h>
 #include <dispatch/time.h>
+#include <dispatch/object.h>
 #include <dispatch/queue.h>
+#include <dispatch/block.h>
 #include <dispatch/source.h>
 #include <dispatch/group.h>
 #include <dispatch/semaphore.h>

@@ -24,7 +24,7 @@
 #if DISPATCH_INTROSPECTION
 
 #include "internal.h"
-#include "introspection.h"
+#include "dispatch/introspection.h"
 #include "introspection_private.h"
 
 typedef struct dispatch_introspection_thread_s {
@@ -85,7 +85,7 @@ _dispatch_introspection_init(void)
 const struct dispatch_introspection_versions_s
 dispatch_introspection_versions = {
 	.introspection_version = 1,
-	.hooks_version = 1,
+	.hooks_version = 2,
 	.hooks_size = sizeof(dispatch_introspection_hooks_s),
 	.queue_item_version = 1,
 	.queue_item_size = sizeof(dispatch_introspection_queue_item_s),
@@ -149,7 +149,7 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 	bool apply = false;
 	long flags = (long)dc->do_vtable;
 	if (flags & DISPATCH_OBJ_SYNC_SLOW_BIT) {
-		waiter = dc->dc_data;
+		waiter = pthread_from_mach_thread_np((mach_port_t)dc->dc_data);
 		if (flags & DISPATCH_OBJ_BARRIER_BIT) {
 			dc = dc->dc_ctxt;
 			dq = dc->dc_data;
@@ -224,8 +224,8 @@ dispatch_introspection_queue_get_info(dispatch_queue_t dq)
 {
 	bool global = (dq->do_xref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) ||
 			(dq->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT);
-	uint32_t width = dq->dq_width;
-	if (width > 1 && width != UINT32_MAX) width /= 2;
+	uint16_t width = dq->dq_width;
+	if (width > 1 && width != DISPATCH_QUEUE_WIDTH_MAX) width /= 2;
 	dispatch_introspection_queue_s diq = {
 		.queue = dq,
 		.target_queue = dq->do_targetq,
@@ -248,17 +248,23 @@ dispatch_introspection_source_s
 _dispatch_introspection_source_get_info(dispatch_source_t ds)
 {
 	dispatch_source_refs_t dr = ds->ds_refs;
-	void *ctxt = dr->ds_handler_ctxt;
-	dispatch_function_t handler = dr->ds_handler_func;
-	bool handler_is_block = ds->ds_handler_is_block;
-	bool after = (handler == _dispatch_after_timer_callback);
-	if (after) {
-		dispatch_continuation_t dc = ctxt;
+	dispatch_continuation_t dc = dr->ds_handler[DS_EVENT_HANDLER];
+	void *ctxt = NULL;
+	dispatch_function_t handler = NULL;
+	bool hdlr_is_block = false;
+	if (dc) {
 		ctxt = dc->dc_ctxt;
 		handler = dc->dc_func;
-		if (handler == _dispatch_call_block_and_release) {
+		hdlr_is_block = ((long)dc->do_vtable & DISPATCH_OBJ_BLOCK_RELEASE_BIT);
+	}
+	bool after = (handler == _dispatch_after_timer_callback);
+	if (after && !(ds->ds_atomic_flags & DSF_CANCELED)) {
+		dc = ctxt;
+		ctxt = dc->dc_ctxt;
+		handler = dc->dc_func;
+		hdlr_is_block = (handler == _dispatch_call_block_and_release);
+		if (hdlr_is_block) {
 			handler = _dispatch_Block_invoke(ctxt);
-			handler_is_block = 1;
 		}
 	}
 	dispatch_introspection_source_s dis = {
@@ -270,7 +276,7 @@ _dispatch_introspection_source_get_info(dispatch_source_t ds)
 		.handler = handler,
 		.suspend_count = ds->do_suspend_cnt / 2,
 		.enqueued = (ds->do_suspend_cnt & 1),
-		.handler_is_block = handler_is_block,
+		.handler_is_block = hdlr_is_block,
 		.timer = ds->ds_is_timer,
 		.after = after,
 	};
@@ -390,6 +396,7 @@ dispatch_introspection_hooks_s _dispatch_introspection_hook_callouts_enabled = {
 	.queue_dispose = DISPATCH_INTROSPECTION_NO_HOOK,
 	.queue_item_enqueue = DISPATCH_INTROSPECTION_NO_HOOK,
 	.queue_item_dequeue = DISPATCH_INTROSPECTION_NO_HOOK,
+	.queue_item_complete = DISPATCH_INTROSPECTION_NO_HOOK,
 };
 
 #define DISPATCH_INTROSPECTION_HOOKS_COUNT (( \
@@ -419,6 +426,7 @@ DISPATCH_INTROSPECTION_INTERPOSABLE_HOOK(queue_create);
 DISPATCH_INTROSPECTION_INTERPOSABLE_HOOK(queue_destroy);
 DISPATCH_INTROSPECTION_INTERPOSABLE_HOOK(queue_item_enqueue);
 DISPATCH_INTROSPECTION_INTERPOSABLE_HOOK(queue_item_dequeue);
+DISPATCH_INTROSPECTION_INTERPOSABLE_HOOK(queue_item_complete);
 DISPATCH_INTROSPECTION_INTERPOSABLE_HOOK(queue_callout_begin);
 DISPATCH_INTROSPECTION_INTERPOSABLE_HOOK(queue_callout_end);
 
@@ -564,7 +572,7 @@ _dispatch_introspection_queue_item_dequeue_hook(dispatch_queue_t dq,
 {
 	dispatch_introspection_queue_item_s diqi;
 	diqi = dispatch_introspection_queue_item_get_info(dq, dou._dc);
-	dispatch_introspection_hook_callout_queue_item_enqueue(dq, &diqi);
+	dispatch_introspection_hook_callout_queue_item_dequeue(dq, &diqi);
 }
 
 void
@@ -575,6 +583,30 @@ _dispatch_introspection_queue_item_dequeue(dispatch_queue_t dq,
 			queue_item_dequeue, dq, dou);
 	if (DISPATCH_INTROSPECTION_HOOK_ENABLED(queue_item_dequeue)) {
 		_dispatch_introspection_queue_item_dequeue_hook(dq, dou);
+	}
+}
+
+DISPATCH_NOINLINE
+void
+dispatch_introspection_hook_callout_queue_item_complete(
+		dispatch_continuation_t object)
+{
+	DISPATCH_INTROSPECTION_HOOK_CALLOUT(queue_item_complete, object);
+}
+
+DISPATCH_NOINLINE
+static void
+_dispatch_introspection_queue_item_complete_hook(dispatch_object_t dou)
+{
+	dispatch_introspection_hook_callout_queue_item_complete(dou._dc);
+}
+
+void
+_dispatch_introspection_queue_item_complete(dispatch_object_t dou)
+{
+	DISPATCH_INTROSPECTION_INTERPOSABLE_HOOK_CALLOUT(queue_item_complete, dou);
+	if (DISPATCH_INTROSPECTION_HOOK_ENABLED(queue_item_complete)) {
+		_dispatch_introspection_queue_item_complete_hook(dou);
 	}
 }
 

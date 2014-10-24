@@ -24,12 +24,13 @@
 #undef dispatch_once_f
 
 
-struct _dispatch_once_waiter_s {
+typedef struct _dispatch_once_waiter_s {
 	volatile struct _dispatch_once_waiter_s *volatile dow_next;
 	_dispatch_thread_semaphore_t dow_sema;
-};
+	mach_port_t dow_thread;
+} *_dispatch_once_waiter_t;
 
-#define DISPATCH_ONCE_DONE ((struct _dispatch_once_waiter_s *)~0l)
+#define DISPATCH_ONCE_DONE ((_dispatch_once_waiter_t)~0l)
 
 #ifdef __BLOCKS__
 void
@@ -43,13 +44,13 @@ DISPATCH_NOINLINE
 void
 dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 {
-	struct _dispatch_once_waiter_s * volatile *vval =
-			(struct _dispatch_once_waiter_s**)val;
-	struct _dispatch_once_waiter_s dow = { NULL, 0 };
-	struct _dispatch_once_waiter_s *tail, *tmp;
+	_dispatch_once_waiter_t volatile *vval = (_dispatch_once_waiter_t*)val;
+	struct _dispatch_once_waiter_s dow = { NULL, 0, MACH_PORT_NULL };
+	_dispatch_once_waiter_t tail = &dow, next, tmp;
 	_dispatch_thread_semaphore_t sema;
 
-	if (dispatch_atomic_cmpxchg(vval, NULL, &dow, acquire)) {
+	if (dispatch_atomic_cmpxchg(vval, NULL, tail, acquire)) {
+		dow.dow_thread = _dispatch_thread_port();
 		_dispatch_client_callout(ctxt, func);
 
 		// The next barrier must be long and strong.
@@ -104,26 +105,31 @@ dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 
 		dispatch_atomic_maximally_synchronizing_barrier();
 		// above assumed to contain release barrier
-		tmp = dispatch_atomic_xchg(vval, DISPATCH_ONCE_DONE, relaxed);
-		tail = &dow;
-		while (tail != tmp) {
-			while (!tmp->dow_next) {
-				dispatch_hardware_pause();
-			}
-			sema = tmp->dow_sema;
-			tmp = (struct _dispatch_once_waiter_s*)tmp->dow_next;
+		next = dispatch_atomic_xchg(vval, DISPATCH_ONCE_DONE, relaxed);
+		while (next != tail) {
+			_dispatch_wait_until(tmp = (_dispatch_once_waiter_t)next->dow_next);
+			sema = next->dow_sema;
+			next = tmp;
 			_dispatch_thread_semaphore_signal(sema);
 		}
 	} else {
 		dow.dow_sema = _dispatch_get_thread_semaphore();
-		tmp = *vval;
+		next = *vval;
 		for (;;) {
-			if (tmp == DISPATCH_ONCE_DONE) {
+			if (next == DISPATCH_ONCE_DONE) {
 				break;
 			}
-			if (dispatch_atomic_cmpxchgvw(vval, tmp, &dow, &tmp, release)) {
-				dow.dow_next = tmp;
+			if (dispatch_atomic_cmpxchgvw(vval, next, tail, &next, release)) {
+				dow.dow_thread = next->dow_thread;
+				dow.dow_next = next;
+				if (dow.dow_thread) {
+					pthread_priority_t pp = _dispatch_get_priority();
+					_dispatch_thread_override_start(dow.dow_thread, pp);
+				}
 				_dispatch_thread_semaphore_wait(dow.dow_sema);
+				if (dow.dow_thread) {
+					_dispatch_thread_override_end(dow.dow_thread);
+				}
 				break;
 			}
 		}

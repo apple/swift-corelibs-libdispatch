@@ -47,6 +47,7 @@
 #define DISPATCH_WARN_RESULT __attribute__((__warn_unused_result__))
 #define DISPATCH_MALLOC __attribute__((__malloc__))
 #define DISPATCH_ALWAYS_INLINE __attribute__((__always_inline__))
+#define DISPATCH_UNAVAILABLE __attribute__((__unavailable__))
 #else
 /*! @parseOnly */
 #define DISPATCH_NORETURN
@@ -80,8 +81,9 @@
 #define DISPATCH_MALLOC
 /*! @parseOnly */
 #define DISPATCH_ALWAYS_INLINE
+/*! @parseOnly */
+#define DISPATCH_UNAVAILABLE
 #endif
-
 
 #if TARGET_OS_WIN32 && defined(__DISPATCH_BUILDING_DISPATCH__) && \
 		defined(__cplusplus)
@@ -110,17 +112,35 @@
 #define DISPATCH_EXPECT(x, v) (x)
 #endif
 
-#if defined(__has_feature)
-#if __has_feature(objc_fixed_enum)
+#ifndef DISPATCH_RETURNS_RETAINED_BLOCK
+#if defined(__has_attribute)
+#if __has_attribute(ns_returns_retained)
+#define DISPATCH_RETURNS_RETAINED_BLOCK __attribute__((__ns_returns_retained__))
+#else
+#define DISPATCH_RETURNS_RETAINED_BLOCK
+#endif
+#else
+#define DISPATCH_RETURNS_RETAINED_BLOCK
+#endif
+#endif
+
+#if defined(__has_feature) && defined(__has_extension)
+#if __has_feature(objc_fixed_enum) || __has_extension(cxx_strong_enums)
 #define DISPATCH_ENUM(name, type, ...) \
 		typedef enum : type { __VA_ARGS__ } name##_t
 #else
 #define DISPATCH_ENUM(name, type, ...) \
 		enum { __VA_ARGS__ }; typedef type name##_t
 #endif
+#if __has_feature(enumerator_attributes)
+#define DISPATCH_ENUM_AVAILABLE_STARTING __OSX_AVAILABLE_STARTING
+#else
+#define DISPATCH_ENUM_AVAILABLE_STARTING(...)
+#endif
 #else
 #define DISPATCH_ENUM(name, type, ...) \
 		enum { __VA_ARGS__ }; typedef type name##_t
+#define DISPATCH_ENUM_AVAILABLE_STARTING(...)
 #endif
 
 typedef void (*dispatch_function_t)(void *);

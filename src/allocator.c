@@ -127,7 +127,7 @@ continuation_is_in_first_page(dispatch_continuation_t c)
 	// (the base of c's magazine == the base of c's page)
 	// => c is in first page of magazine
 	return (((uintptr_t)c & MAGAZINE_MASK) ==
-			((uintptr_t)c & ~(uintptr_t)PAGE_MASK));
+			((uintptr_t)c & ~(uintptr_t)DISPATCH_ALLOCATOR_PAGE_MASK));
 #else
 	(void)c;
 	return false;
@@ -173,7 +173,8 @@ madvisable_page_base_for_continuation(dispatch_continuation_t c)
 	if (fastpath(continuation_is_in_first_page(c))) {
 		return NULL;
 	}
-	void *page_base = (void *)((uintptr_t)c & ~(uintptr_t)PAGE_MASK);
+	void *page_base = (void *)((uintptr_t)c &
+			~(uintptr_t)DISPATCH_ALLOCATOR_PAGE_MASK);
 #if DISPATCH_DEBUG
 	struct dispatch_magazine_s *m = magazine_for_continuation(c);
 	if (slowpath(page_base < (void *)&m->conts)) {
@@ -226,13 +227,8 @@ bitmap_set_first_unset_bit_upto_index(volatile bitmap_t *bitmap,
 	// continuation is "uninitialized", so the caller shouldn't
 	// load from it before storing, so we don't need to guard
 	// against reordering those loads.
-#if defined(__x86_64__) // TODO rdar://problem/11477843
-	dispatch_assert(sizeof(*bitmap) == sizeof(uint64_t));
-	return dispatch_atomic_set_first_bit((volatile uint64_t *)bitmap,max_index);
-#else
-	dispatch_assert(sizeof(*bitmap) == sizeof(uint32_t));
-	return dispatch_atomic_set_first_bit((volatile uint32_t *)bitmap,max_index);
-#endif
+	dispatch_assert(sizeof(*bitmap) == sizeof(unsigned long));
+	return dispatch_atomic_set_first_bit(bitmap,max_index);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -257,9 +253,8 @@ bitmap_clear_bit(volatile bitmap_t *bitmap, unsigned int index,
 	const bitmap_t mask = BITMAP_C(1) << index;
 	bitmap_t b;
 
-	b = *bitmap;
 	if (exclusively == CLEAR_EXCLUSIVELY) {
-		if (slowpath((b & mask) == 0)) {
+		if (slowpath((*bitmap & mask) == 0)) {
 			DISPATCH_CRASH("Corruption: failed to clear bit exclusively");
 		}
 	}
@@ -397,11 +392,13 @@ _dispatch_alloc_try_create_heap(dispatch_heap_t *heap_ptr)
 	}
 #if DISPATCH_DEBUG
 	// Double-check our math.
-	dispatch_assert(aligned_region % PAGE_SIZE == 0);
-	dispatch_assert(aligned_region_end % PAGE_SIZE == 0);
+	dispatch_assert(aligned_region % DISPATCH_ALLOCATOR_PAGE_SIZE == 0);
+	dispatch_assert(aligned_region % vm_kernel_page_size == 0);
+	dispatch_assert(aligned_region_end % DISPATCH_ALLOCATOR_PAGE_SIZE == 0);
+	dispatch_assert(aligned_region_end % vm_kernel_page_size == 0);
 	dispatch_assert(aligned_region_end > aligned_region);
-	dispatch_assert(top_slop_len % PAGE_SIZE == 0);
-	dispatch_assert(bottom_slop_len % PAGE_SIZE == 0);
+	dispatch_assert(top_slop_len % DISPATCH_ALLOCATOR_PAGE_SIZE == 0);
+	dispatch_assert(bottom_slop_len % DISPATCH_ALLOCATOR_PAGE_SIZE == 0);
 	dispatch_assert(aligned_region_end + top_slop_len == region_end);
 	dispatch_assert(region + bottom_slop_len == aligned_region);
 	dispatch_assert(region_sz == bottom_slop_len + top_slop_len +
@@ -566,9 +563,10 @@ _dispatch_alloc_maybe_madvise_page(dispatch_continuation_t c)
 	//		last_locked-1, BITMAPS_PER_PAGE, &page_bitmaps[0]);
 	// Scribble to expose use-after-free bugs
 	// madvise (syscall) flushes these stores
-	memset(page, DISPATCH_ALLOCATOR_SCRIBBLE, PAGE_SIZE);
+	memset(page, DISPATCH_ALLOCATOR_SCRIBBLE, DISPATCH_ALLOCATOR_PAGE_SIZE);
 #endif
-	(void)dispatch_assume_zero(madvise(page, PAGE_SIZE, MADV_FREE));
+	(void)dispatch_assume_zero(madvise(page, DISPATCH_ALLOCATOR_PAGE_SIZE,
+			MADV_FREE));
 
 unlock:
 	while (last_locked > 1) {
@@ -631,19 +629,23 @@ _dispatch_alloc_init(void)
 	// self-aligned.
 	dispatch_assert(offsetof(struct dispatch_magazine_s, conts) %
 			(CONTINUATIONS_PER_BITMAP * DISPATCH_CONTINUATION_SIZE) == 0);
-	dispatch_assert(offsetof(struct dispatch_magazine_s, conts) == PAGE_SIZE);
+	dispatch_assert(offsetof(struct dispatch_magazine_s, conts) ==
+			DISPATCH_ALLOCATOR_PAGE_SIZE);
 
 #if PACK_FIRST_PAGE_WITH_CONTINUATIONS
 	// The continuations in the first page should actually fit within the first
 	// page.
-	dispatch_assert(offsetof(struct dispatch_magazine_s, fp_conts) < PAGE_SIZE);
+	dispatch_assert(offsetof(struct dispatch_magazine_s, fp_conts) <
+			DISPATCH_ALLOCATOR_PAGE_SIZE);
 	dispatch_assert(offsetof(struct dispatch_magazine_s, fp_conts) %
 			DISPATCH_CONTINUATION_SIZE == 0);
 	dispatch_assert(offsetof(struct dispatch_magazine_s, fp_conts) +
-			sizeof(((struct dispatch_magazine_s *)0x0)->fp_conts) == PAGE_SIZE);
+			sizeof(((struct dispatch_magazine_s *)0x0)->fp_conts) ==
+					DISPATCH_ALLOCATOR_PAGE_SIZE);
 #endif // PACK_FIRST_PAGE_WITH_CONTINUATIONS
 }
-#else
+#elif (DISPATCH_ALLOCATOR && DISPATCH_CONTINUATION_MALLOC) \
+		|| (DISPATCH_CONTINUATION_MALLOC && DISPATCH_USE_MALLOCZONE)
 static inline void _dispatch_alloc_init(void) {}
 #endif
 

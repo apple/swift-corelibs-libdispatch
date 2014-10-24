@@ -115,7 +115,7 @@
 	struct dispatch_queue_s *do_targetq; \
 	void *do_ctxt; \
 	void *do_finalizer; \
-	unsigned int do_suspend_cnt;
+	unsigned int volatile do_suspend_cnt;
 
 #define DISPATCH_OBJECT_GLOBAL_REFCNT		_OS_OBJECT_GLOBAL_REFCNT
 // "word and bit" must be a power of two to be safely subtracted
@@ -175,8 +175,6 @@ struct dispatch_object_s {
 size_t _dispatch_object_debug_attr(dispatch_object_t dou, char* buf,
 		size_t bufsiz);
 void *_dispatch_alloc(const void *vtable, size_t size);
-void _dispatch_retain(dispatch_object_t dou);
-void _dispatch_release(dispatch_object_t dou);
 void _dispatch_xref_dispose(dispatch_object_t dou);
 void _dispatch_dispose(dispatch_object_t dou);
 #if DISPATCH_COCOA_COMPAT
