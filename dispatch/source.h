@@ -54,6 +54,8 @@
  */
 DISPATCH_DECL(dispatch_source);
 
+__BEGIN_DECLS
+
 /*!
  * @typedef dispatch_source_type_t
  *
@@ -319,7 +321,6 @@ typedef unsigned long dispatch_source_vnode_flags_t;
 
 typedef unsigned long dispatch_source_timer_flags_t;
 
-__BEGIN_DECLS
 
 /*!
  * @function dispatch_source_create

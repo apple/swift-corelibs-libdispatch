@@ -56,7 +56,7 @@ _dispatch_object_validate(dispatch_object_t object) {
 	void *isa = *(void* volatile*)(OS_OBJECT_BRIDGE void*)object;
 	(void)isa;
 }
-#elif defined(__cplusplus)
+#elif defined(__cplusplus) && !defined(__DISPATCH_BUILDING_DISPATCH__)
 /*
  * Dispatch objects are NOT C++ objects. Nevertheless, we can at least keep C++
  * aware of type compatibility.
@@ -99,6 +99,7 @@ typedef union {
 #define DISPATCH_RETURNS_RETAINED
 #endif
 
+#ifdef __BLOCKS__
 /*!
  * @typedef dispatch_block_t
  *
@@ -141,6 +142,7 @@ typedef union {
  * function or by sending it a -[copy] message.
  */
 typedef void (^dispatch_block_t)(void);
+#endif // __BLOCKS__
 
 __BEGIN_DECLS
 
@@ -295,6 +297,7 @@ DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_resume(dispatch_object_t object);
 
+#ifdef __BLOCKS__
 /*!
  * @function dispatch_wait
  *
@@ -427,6 +430,7 @@ dispatch_testcancel(void *object);
 			dispatch_source_t:dispatch_source_testcancel \
 		)((object))
 #endif
+#endif // __BLOCKS__
 
 /*!
  * @function dispatch_debug

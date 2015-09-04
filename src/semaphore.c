@@ -415,13 +415,26 @@ dispatch_semaphore_wait(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 #pragma mark -
 #pragma mark dispatch_group_t
 
-dispatch_group_t
-dispatch_group_create(void)
+DISPATCH_ALWAYS_INLINE
+static inline dispatch_group_t
+_dispatch_group_create_with_count(long count)
 {
 	dispatch_group_t dg = (dispatch_group_t)_dispatch_alloc(
 			DISPATCH_VTABLE(group), sizeof(struct dispatch_semaphore_s));
-	_dispatch_semaphore_init(LONG_MAX, dg);
+	_dispatch_semaphore_init(LONG_MAX - count, dg);
 	return dg;
+}
+
+dispatch_group_t
+dispatch_group_create(void)
+{
+	return _dispatch_group_create_with_count(0);
+}
+
+dispatch_group_t
+_dispatch_group_create_and_enter(void)
+{
+	return _dispatch_group_create_with_count(1);
 }
 
 void
@@ -507,7 +520,7 @@ DISPATCH_NOINLINE
 static long
 _dispatch_group_wait_slow(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 {
-	long orig;
+	long orig, value;
 
 #if USE_MACH_SEM
 	mach_timespec_t _timeout;
@@ -525,7 +538,8 @@ _dispatch_group_wait_slow(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 again:
 	// check before we cause another signal to be sent by incrementing
 	// dsema->dsema_group_waiters
-	if (dsema->dsema_value == LONG_MAX) {
+	value = dispatch_atomic_load2o(dsema, dsema_value, seq_cst); // 19296565
+	if (value == LONG_MAX) {
 		return _dispatch_group_wake(dsema);
 	}
 	// Mach semaphores appear to sometimes spuriously wake up. Therefore,
@@ -533,7 +547,8 @@ again:
 	// signaled (6880961).
 	(void)dispatch_atomic_inc2o(dsema, dsema_group_waiters, relaxed);
 	// check the values again in case we need to wake any threads
-	if (dsema->dsema_value == LONG_MAX) {
+	value = dispatch_atomic_load2o(dsema, dsema_value, seq_cst); // 19296565
+	if (value == LONG_MAX) {
 		return _dispatch_group_wake(dsema);
 	}
 

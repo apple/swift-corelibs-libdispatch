@@ -51,13 +51,23 @@ DISPATCH_NOINLINE
 _os_object_t
 _os_object_retain(_os_object_t obj)
 {
-	int xref_cnt = obj->os_obj_xref_cnt;
-	if (slowpath(xref_cnt == _OS_OBJECT_GLOBAL_REFCNT)) {
-		return obj; // global object
-	}
-	xref_cnt = dispatch_atomic_inc2o(obj, os_obj_xref_cnt, relaxed);
+	int xref_cnt = _os_object_xrefcnt_inc(obj);
 	if (slowpath(xref_cnt <= 0)) {
 		_OS_OBJECT_CLIENT_CRASH("Resurrection of an object");
+	}
+	return obj;
+}
+
+DISPATCH_NOINLINE
+_os_object_t
+_os_object_retain_with_resurrect(_os_object_t obj)
+{
+	int xref_cnt = _os_object_xrefcnt_inc(obj);
+	if (slowpath(xref_cnt < 0)) {
+		_OS_OBJECT_CLIENT_CRASH("Resurrection of an overreleased object");
+	}
+	if (slowpath(xref_cnt == 0)) {
+		_os_object_retain_internal(obj);
 	}
 	return obj;
 }
@@ -66,11 +76,7 @@ DISPATCH_NOINLINE
 void
 _os_object_release(_os_object_t obj)
 {
-	int xref_cnt = obj->os_obj_xref_cnt;
-	if (slowpath(xref_cnt == _OS_OBJECT_GLOBAL_REFCNT)) {
-		return; // global object
-	}
-	xref_cnt = dispatch_atomic_dec2o(obj, os_obj_xref_cnt, relaxed);
+	int xref_cnt = _os_object_xrefcnt_dec(obj);
 	if (fastpath(xref_cnt >= 0)) {
 		return;
 	}

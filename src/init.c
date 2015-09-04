@@ -82,6 +82,7 @@ pthread_key_t dispatch_bcounter_key;
 #if VOUCHER_USE_MACH_VOUCHER
 dispatch_once_t _voucher_task_mach_voucher_pred;
 mach_voucher_t _voucher_task_mach_voucher;
+_voucher_atm_t _voucher_task_atm;
 _voucher_activity_t _voucher_activity_default;
 #endif
 voucher_activity_mode_t _voucher_activity_mode;
@@ -180,6 +181,7 @@ struct dispatch_queue_s _dispatch_main_q = {
 	.dq_running = 1,
 	.dq_width = 1,
 	.dq_is_thread_bound = 1,
+	.dq_override_voucher = DISPATCH_NO_VOUCHER,
 	.dq_serialnum = 1,
 };
 
@@ -194,20 +196,24 @@ struct dispatch_queue_s _dispatch_main_q = {
 			.do_next = DISPATCH_OBJECT_LISTLESS, \
 			.dqa_qos_class = (qos), \
 			.dqa_relative_priority = (qos) ? (prio) : 0, \
-			.dqa_overcommit = (overcommit), \
+			.dqa_overcommit = _dispatch_queue_attr_overcommit_##overcommit, \
 			.dqa_concurrent = (concurrent), \
 		}
 
 #define DISPATCH_QUEUE_ATTR_KIND_INIT(qos, prio) \
 		{ \
 			[DQA_INDEX_NON_OVERCOMMIT][DQA_INDEX_CONCURRENT] = \
-					DISPATCH_QUEUE_ATTR_INITIALIZER(qos, prio, 0, 1), \
+					DISPATCH_QUEUE_ATTR_INITIALIZER(qos, prio, disabled, 1), \
 			[DQA_INDEX_NON_OVERCOMMIT][DQA_INDEX_SERIAL] = \
-					DISPATCH_QUEUE_ATTR_INITIALIZER(qos, prio, 0, 0), \
+					DISPATCH_QUEUE_ATTR_INITIALIZER(qos, prio, disabled, 0), \
 			[DQA_INDEX_OVERCOMMIT][DQA_INDEX_CONCURRENT] = \
-					DISPATCH_QUEUE_ATTR_INITIALIZER(qos, prio, 1, 1), \
+					DISPATCH_QUEUE_ATTR_INITIALIZER(qos, prio, enabled, 1), \
 			[DQA_INDEX_OVERCOMMIT][DQA_INDEX_SERIAL] = \
-					DISPATCH_QUEUE_ATTR_INITIALIZER(qos, prio, 1, 0), \
+					DISPATCH_QUEUE_ATTR_INITIALIZER(qos, prio, enabled, 0), \
+			[DQA_INDEX_UNSPECIFIED_OVERCOMMIT][DQA_INDEX_CONCURRENT] = \
+					DISPATCH_QUEUE_ATTR_INITIALIZER(qos, prio, unspecified, 1),\
+			[DQA_INDEX_UNSPECIFIED_OVERCOMMIT][DQA_INDEX_SERIAL] = \
+					DISPATCH_QUEUE_ATTR_INITIALIZER(qos, prio, unspecified, 0),\
 		}
 
 #define DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, prio) \
@@ -237,8 +243,12 @@ struct dispatch_queue_s _dispatch_main_q = {
 		[DQA_INDEX_QOS_CLASS_##qos] = \
 				DISPATCH_QUEUE_ATTR_PRIO_INIT(_DISPATCH_QOS_CLASS_##qos)
 
+// DISPATCH_QUEUE_CONCURRENT resp. _dispatch_queue_attr_concurrent is aliased
+// to array member [0][0][0][0] and their properties must match!
 const struct dispatch_queue_attr_s _dispatch_queue_attrs[]
-		[DISPATCH_QUEUE_ATTR_PRIO_COUNT][2][2] = {
+		[DISPATCH_QUEUE_ATTR_PRIO_COUNT]
+		[DISPATCH_QUEUE_ATTR_OVERCOMMIT_COUNT]
+		[DISPATCH_QUEUE_ATTR_CONCURRENCY_COUNT] = {
 	DISPATCH_QUEUE_ATTR_QOS_INITIALIZER(UNSPECIFIED),
 	DISPATCH_QUEUE_ATTR_QOS_INITIALIZER(MAINTENANCE),
 	DISPATCH_QUEUE_ATTR_QOS_INITIALIZER(BACKGROUND),
@@ -466,6 +476,9 @@ _dispatch_abort(size_t line, long val)
 
 static int dispatch_logfile = -1;
 static bool dispatch_log_disabled;
+#if DISPATCH_DEBUG
+static uint64_t dispatch_log_basetime;
+#endif
 static dispatch_once_t _dispatch_logv_pred;
 
 static void
@@ -502,6 +515,9 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 		if (dispatch_logfile != -1) {
 			struct timeval tv;
 			gettimeofday(&tv, NULL);
+#if DISPATCH_DEBUG
+			dispatch_log_basetime = mach_absolute_time();
+#endif
 			dprintf(dispatch_logfile, "=== log file opened for %s[%u] at "
 					"%ld.%06u ===\n", getprogname() ?: "", getpid(),
 					tv.tv_sec, tv.tv_usec);
@@ -527,13 +543,20 @@ static void
 _dispatch_logv_file(const char *msg, va_list ap)
 {
 	char buf[2048];
-	int r = vsnprintf(buf, sizeof(buf), msg, ap);
+	size_t bufsiz = sizeof(buf), offset = 0;
+	int r;
+
+#if DISPATCH_DEBUG
+	offset += dsnprintf(&buf[offset], bufsiz - offset, "%llu\t",
+			mach_absolute_time() - dispatch_log_basetime);
+#endif
+	r = vsnprintf(&buf[offset], bufsiz - offset, msg, ap);
 	if (r < 0) return;
-	size_t len = (size_t)r;
-	if (len > sizeof(buf) - 1) {
-		len = sizeof(buf) - 1;
+	offset += (size_t)r;
+	if (offset > bufsiz - 1) {
+		offset = bufsiz - 1;
 	}
-	_dispatch_log_file(buf, len);
+	_dispatch_log_file(buf, offset);
 }
 
 #if DISPATCH_USE_SIMPLE_ASL
@@ -618,22 +641,27 @@ static void
 _dispatch_debugv(dispatch_object_t dou, const char *msg, va_list ap)
 {
 	char buf[2048];
+	size_t bufsiz = sizeof(buf), offset = 0;
 	int r;
-	size_t offs;
+#if DISPATCH_DEBUG && !DISPATCH_USE_OS_DEBUG_LOG
+	offset += dsnprintf(&buf[offset], bufsiz - offset, "%llu\t\t%p\t",
+			mach_absolute_time() - dispatch_log_basetime,
+			(void *)_dispatch_thread_self());
+#endif
 	if (dou._do) {
-		offs = _dispatch_object_debug2(dou, buf, sizeof(buf));
-		dispatch_assert(offs + 2 < sizeof(buf));
-		buf[offs++] = ':';
-		buf[offs++] = ' ';
-		buf[offs]   = '\0';
+		offset += _dispatch_object_debug2(dou, &buf[offset], bufsiz - offset);
+		dispatch_assert(offset + 2 < bufsiz);
+		buf[offset++] = ':';
+		buf[offset++] = ' ';
+		buf[offset]   = '\0';
 	} else {
-		offs = strlcpy(buf, "NULL: ", sizeof(buf));
+		offset += strlcpy(&buf[offset], "NULL: ", bufsiz - offset);
 	}
-	r = vsnprintf(buf + offs, sizeof(buf) - offs, msg, ap);
+	r = vsnprintf(&buf[offset], bufsiz - offset, msg, ap);
 #if !DISPATCH_USE_OS_DEBUG_LOG
-	size_t len = offs + (r < 0 ? 0 : (size_t)r);
-	if (len > sizeof(buf) - 1) {
-		len = sizeof(buf) - 1;
+	size_t len = offset + (r < 0 ? 0 : (size_t)r);
+	if (len > bufsiz - 1) {
+		len = bufsiz - 1;
 	}
 	_dispatch_logv(buf, len, NULL);
 #else
@@ -720,40 +748,6 @@ _dispatch_call_block_and_release(void *block)
 	Block_release(b);
 }
 
-#pragma mark -
-#pragma mark _dispatch_block_create no_objc
-
-#if !USE_OBJC
-
-// The compiler hides the name of the function it generates, and changes it if
-// we try to reference it directly, but the linker still sees it.
-extern void DISPATCH_BLOCK_SPECIAL_INVOKE(void *)
-		asm("____dispatch_block_create_block_invoke");
-void (*_dispatch_block_special_invoke)(void*) = DISPATCH_BLOCK_SPECIAL_INVOKE;
-
-dispatch_block_t
-_dispatch_block_create(dispatch_block_flags_t flags, voucher_t voucher,
-		pthread_priority_t pri, dispatch_block_t block)
-{
-	dispatch_block_t copy_block = _dispatch_Block_copy(block); // 17094902
-	(void)voucher; // No voucher capture! (requires ObjC runtime)
-	struct dispatch_block_private_data_s dbpds =
-			DISPATCH_BLOCK_PRIVATE_DATA_INITIALIZER(flags, NULL, pri, copy_block);
-	dispatch_block_t new_block = _dispatch_Block_copy(^{
-		// Capture object references, which retains copy_block.
-		// All retained objects must be captured by the *block*. We
-		// cannot borrow any references, because the block might be
-		// called zero or several times, so Block_release() is the
-		// only place that can release retained objects.
-		(void)copy_block;
-		_dispatch_block_invoke(&dbpds);
-	});
-	Block_release(copy_block);
-	return new_block;
-}
-
-#endif // !USE_OBJC
-
 #endif // __BLOCKS__
 
 #pragma mark -
@@ -795,21 +789,6 @@ _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 	f(ctxt, i);
 	_dispatch_free_unwind_tsd();
 	_dispatch_set_unwind_tsd(u);
-}
-
-#undef _dispatch_client_callout3
-bool
-_dispatch_client_callout3(void *ctxt, dispatch_data_t region, size_t offset,
-		const void *buffer, size_t size, dispatch_data_applier_function_t f)
-{
-	_dispatch_get_tsd_base();
-	void *u = _dispatch_get_unwind_tsd();
-	if (fastpath(!u)) return f(ctxt, region, offset, buffer, size);
-	_dispatch_set_unwind_tsd(NULL);
-	bool res = f(ctxt, region, offset, buffer, size);
-	_dispatch_free_unwind_tsd();
-	_dispatch_set_unwind_tsd(u);
-	return res;
 }
 
 #undef _dispatch_client_callout4
@@ -871,6 +850,7 @@ _os_object_dealloc(_os_object_t obj)
 void
 _os_object_xref_dispose(_os_object_t obj)
 {
+	_os_object_xrefcnt_dispose_barrier(obj);
 	if (fastpath(obj->os_obj_isa->_os_obj_xref_dispose)) {
 		return obj->os_obj_isa->_os_obj_xref_dispose(obj);
 	}
@@ -880,6 +860,7 @@ _os_object_xref_dispose(_os_object_t obj)
 void
 _os_object_dispose(_os_object_t obj)
 {
+	_os_object_refcnt_dispose_barrier(obj);
 	if (fastpath(obj->os_obj_isa->_os_obj_dispose)) {
 		return obj->os_obj_isa->_os_obj_dispose(obj);
 	}
@@ -1003,11 +984,30 @@ const struct dispatch_source_type_s _dispatch_source_type_interval = {
 	.init = dispatch_source_type_interval_init,
 };
 
+#if !DISPATCH_USE_SELECT_FALLBACK || DISPATCH_DYNAMIC_SELECT_FALLBACK
+static void
+dispatch_source_type_readwrite_init(dispatch_source_t ds,
+	dispatch_source_type_t type DISPATCH_UNUSED,
+	uintptr_t handle DISPATCH_UNUSED,
+	unsigned long mask DISPATCH_UNUSED,
+	dispatch_queue_t q DISPATCH_UNUSED)
+{
+	ds->ds_dkev->dk_kevent.flags |= EV_UDATA_SPECIFIC;
+	ds->ds_is_direct_kevent = true;
+	// bypass kernel check for device kqueue support rdar://19004921
+	ds->ds_dkev->dk_kevent.fflags = NOTE_LOWAT;
+	ds->ds_dkev->dk_kevent.data = 1;
+}
+#else
+#define dispatch_source_type_readwrite_init NULL
+#endif
+
 const struct dispatch_source_type_s _dispatch_source_type_read = {
 	.ke = {
 		.filter = EVFILT_READ,
 		.flags = EV_DISPATCH,
 	},
+	.init = dispatch_source_type_readwrite_init,
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_write = {
@@ -1015,6 +1015,7 @@ const struct dispatch_source_type_s _dispatch_source_type_write = {
 		.filter = EVFILT_WRITE,
 		.flags = EV_DISPATCH,
 	},
+	.init = dispatch_source_type_readwrite_init,
 };
 
 #if DISPATCH_USE_MEMORYSTATUS
@@ -1063,7 +1064,7 @@ dispatch_source_type_memorystatus_init(dispatch_source_t ds,
 const struct dispatch_source_type_s _dispatch_source_type_memorystatus = {
 	.ke = {
 		.filter = EVFILT_MEMORYSTATUS,
-		.flags = EV_DISPATCH,
+		.flags = EV_DISPATCH|EV_UDATA_SPECIFIC,
 	},
 	.mask = NOTE_MEMORYSTATUS_PRESSURE_NORMAL|NOTE_MEMORYSTATUS_PRESSURE_WARN
 			|NOTE_MEMORYSTATUS_PRESSURE_CRITICAL|NOTE_MEMORYSTATUS_LOW_SWAP,
@@ -1088,7 +1089,7 @@ dispatch_source_type_vm_init(dispatch_source_t ds,
 const struct dispatch_source_type_s _dispatch_source_type_vm = {
 	.ke = {
 		.filter = EVFILT_MEMORYSTATUS,
-		.flags = EV_DISPATCH,
+		.flags = EV_DISPATCH|EV_UDATA_SPECIFIC,
 	},
 	.mask = NOTE_VM_PRESSURE,
 	.init = dispatch_source_type_vm_init,
@@ -1109,7 +1110,7 @@ dispatch_source_type_vm_init(dispatch_source_t ds,
 const struct dispatch_source_type_s _dispatch_source_type_vm = {
 	.ke = {
 		.filter = EVFILT_VM,
-		.flags = EV_DISPATCH,
+		.flags = EV_DISPATCH|EV_UDATA_SPECIFIC,
 	},
 	.mask = NOTE_VM_PRESSURE,
 	.init = dispatch_source_type_vm_init,
@@ -1117,10 +1118,20 @@ const struct dispatch_source_type_s _dispatch_source_type_vm = {
 
 #endif // DISPATCH_USE_VM_PRESSURE
 
+static void
+dispatch_source_type_proc_init(dispatch_source_t ds,
+	dispatch_source_type_t type DISPATCH_UNUSED,
+	uintptr_t handle DISPATCH_UNUSED,
+	unsigned long mask DISPATCH_UNUSED,
+	dispatch_queue_t q DISPATCH_UNUSED)
+{
+	ds->ds_dkev->dk_kevent.fflags |= NOTE_EXIT; // rdar://16655831
+}
+
 const struct dispatch_source_type_s _dispatch_source_type_proc = {
 	.ke = {
 		.filter = EVFILT_PROC,
-		.flags = EV_CLEAR,
+		.flags = EV_CLEAR|EV_UDATA_SPECIFIC,
 	},
 	.mask = NOTE_EXIT|NOTE_FORK|NOTE_EXEC
 #if HAVE_DECL_NOTE_SIGNAL
@@ -1130,18 +1141,20 @@ const struct dispatch_source_type_s _dispatch_source_type_proc = {
 			|NOTE_REAP
 #endif
 			,
+	.init = dispatch_source_type_proc_init,
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_signal = {
 	.ke = {
 		.filter = EVFILT_SIGNAL,
+		.flags = EV_UDATA_SPECIFIC,
 	},
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_vnode = {
 	.ke = {
 		.filter = EVFILT_VNODE,
-		.flags = EV_CLEAR,
+		.flags = EV_CLEAR|EV_UDATA_SPECIFIC,
 	},
 	.mask = NOTE_DELETE|NOTE_WRITE|NOTE_EXTEND|NOTE_ATTRIB|NOTE_LINK|
 			NOTE_RENAME|NOTE_REVOKE
@@ -1154,7 +1167,7 @@ const struct dispatch_source_type_s _dispatch_source_type_vnode = {
 const struct dispatch_source_type_s _dispatch_source_type_vfs = {
 	.ke = {
 		.filter = EVFILT_FS,
-		.flags = EV_CLEAR,
+		.flags = EV_CLEAR|EV_UDATA_SPECIFIC,
 	},
 	.mask = VQ_NOTRESP|VQ_NEEDAUTH|VQ_LOWDISK|VQ_MOUNT|VQ_UNMOUNT|VQ_DEAD|
 			VQ_ASSIST|VQ_NOTRESPLOCK
@@ -1171,7 +1184,7 @@ const struct dispatch_source_type_s _dispatch_source_type_sock = {
 #ifdef EVFILT_SOCK
 	.ke = {
 		.filter = EVFILT_SOCK,
-		.flags = EV_CLEAR,
+		.flags = EV_CLEAR|EV_UDATA_SPECIFIC,
 	},
 	.mask = NOTE_CONNRESET |  NOTE_READCLOSED | NOTE_WRITECLOSED |
 		NOTE_TIMEOUT | NOTE_NOSRCADDR |  NOTE_IFDENIED | NOTE_SUSPEND |
@@ -1186,18 +1199,35 @@ const struct dispatch_source_type_s _dispatch_source_type_sock = {
 #endif // EVFILT_SOCK
 };
 
+#if DISPATCH_USE_EV_UDATA_SPECIFIC
+static void
+dispatch_source_type_data_init(dispatch_source_t ds,
+	dispatch_source_type_t type DISPATCH_UNUSED,
+	uintptr_t handle DISPATCH_UNUSED,
+	unsigned long mask DISPATCH_UNUSED,
+	dispatch_queue_t q DISPATCH_UNUSED)
+{
+	ds->ds_needs_rearm = false; // not registered with kevent
+}
+#else
+#define dispatch_source_type_data_init NULL
+#endif
+
 const struct dispatch_source_type_s _dispatch_source_type_data_add = {
 	.ke = {
 		.filter = DISPATCH_EVFILT_CUSTOM_ADD,
+		.flags = EV_UDATA_SPECIFIC,
 	},
+	.init = dispatch_source_type_data_init,
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_data_or = {
 	.ke = {
 		.filter = DISPATCH_EVFILT_CUSTOM_OR,
-		.flags = EV_CLEAR,
+		.flags = EV_CLEAR|EV_UDATA_SPECIFIC,
 		.fflags = ~0u,
 	},
+	.init = dispatch_source_type_data_init,
 };
 
 #if HAVE_MACH

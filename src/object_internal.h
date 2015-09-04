@@ -40,6 +40,18 @@
 #define DISPATCH_DECL_SUBCLASS_INTERFACE(name, super)
 #endif // OS_OBJECT_USE_OBJC
 
+DISPATCH_ENUM(dispatch_invoke_flags, unsigned long,
+	DISPATCH_INVOKE_NONE		= 0x00,
+	/* This invoke is a stealer, meaning that it doesn't own the
+	 * enqueue lock, and is not allowed to requeue elsewhere
+	 */
+	DISPATCH_INVOKE_STEALING	= 0x01,
+	/* The `dc` argument is a dispatch continuation wrapper
+	 * created by _dispatch_queue_push_override
+	 */
+	DISPATCH_INVOKE_OVERRIDING	= 0x02,
+);
+
 #if USE_OBJC
 #define DISPATCH_CLASS(name) OS_OBJECT_CLASS(dispatch_##name)
 // ObjC classes and dispatch vtables are co-located via linker order and alias
@@ -84,7 +96,8 @@
 	unsigned long const do_type; \
 	const char *const do_kind; \
 	size_t (*const do_debug)(struct dispatch_##x##_s *, char *, size_t); \
-	void (*const do_invoke)(struct dispatch_##x##_s *); \
+	void (*const do_invoke)(struct dispatch_##x##_s *, dispatch_object_t dc, \
+		dispatch_invoke_flags_t); \
 	unsigned long (*const do_probe)(struct dispatch_##x##_s *); \
 	void (*const do_dispose)(struct dispatch_##x##_s *);
 #else
@@ -93,7 +106,8 @@
 	unsigned long do_type; \
 	const char *do_kind; \
 	size_t (*do_debug)(struct dispatch_##x##_s *, char *, size_t); \
-	void (*do_invoke)(struct dispatch_##x##_s *); \
+	void (*do_invoke)(struct dispatch_##x##_s *, dispatch_object_t dc, \
+		dispatch_invoke_flags_t); \
 	unsigned long (*do_probe)(struct dispatch_##x##_s *); \
 	void (*do_dispose)(struct dispatch_##x##_s *);
 #endif
@@ -103,7 +117,7 @@
 #define dx_kind(x) (x)->do_vtable->do_kind
 #define dx_debug(x, y, z) (x)->do_vtable->do_debug((x), (y), (z))
 #define dx_dispose(x) (x)->do_vtable->do_dispose(x)
-#define dx_invoke(x) (x)->do_vtable->do_invoke(x)
+#define dx_invoke(x, y, z) (x)->do_vtable->do_invoke(x, y, z)
 #define dx_probe(x) (x)->do_vtable->do_probe(x)
 
 #define DISPATCH_STRUCT_HEADER(x) \
@@ -242,6 +256,72 @@ size_t _dispatch_objc_debug(dispatch_object_t dou, char* buf, size_t bufsiz);
 
 #pragma mark -
 #pragma mark _os_object_s
+
+/*
+ * Low level _os_atomic_refcnt_* actions
+ *
+ * _os_atomic_refcnt_inc2o(o, f):
+ *   performs a refcount increment and returns the new refcount value
+ *
+ * _os_atomic_refcnt_dec2o(o, f):
+ *   performs a refcount decrement and returns the new refcount value
+ *
+ * _os_atomic_refcnt_dispose_barrier2o(o, f):
+ *   a barrier to perform prior to tearing down an object when the refcount
+ *   reached -1.
+ */
+#define _os_atomic_refcnt_perform2o(o, f, op, m)   ({ \
+		typeof(o) _o = (o); \
+		int _ref_cnt = _o->f; \
+		if (fastpath(_ref_cnt != _OS_OBJECT_GLOBAL_REFCNT)) { \
+			_ref_cnt = dispatch_atomic_##op##2o(_o, f, m); \
+		} \
+		_ref_cnt; \
+	})
+
+#define _os_atomic_refcnt_inc2o(o, m) \
+		_os_atomic_refcnt_perform2o(o, m, inc, relaxed)
+
+#define _os_atomic_refcnt_dec2o(o, m) \
+		_os_atomic_refcnt_perform2o(o, m, dec, release)
+
+#define _os_atomic_refcnt_dispose_barrier2o(o, m) \
+		(void)dispatch_atomic_load2o(o, m, acquire)
+
+
+/*
+ * Higher level _os_object_{x,}refcnt_* actions
+ *
+ * _os_atomic_{x,}refcnt_inc(o):
+ *   increment the external (resp. internal) refcount and
+ *   returns the new refcount value
+ *
+ * _os_atomic_{x,}refcnt_dec(o):
+ *   decrement the external (resp. internal) refcount and
+ *   returns the new refcount value
+ *
+ * _os_atomic_{x,}refcnt_dispose_barrier(o):
+ *   performs the pre-teardown barrier for the external
+ *   (resp. internal) refcount
+ *
+ */
+#define _os_object_xrefcnt_inc(o) \
+		_os_atomic_refcnt_inc2o(o, os_obj_xref_cnt)
+
+#define _os_object_xrefcnt_dec(o) \
+		_os_atomic_refcnt_dec2o(o, os_obj_xref_cnt)
+
+#define _os_object_xrefcnt_dispose_barrier(o) \
+		_os_atomic_refcnt_dispose_barrier2o(o, os_obj_xref_cnt)
+
+#define _os_object_refcnt_inc(o) \
+		_os_atomic_refcnt_inc2o(o, os_obj_ref_cnt)
+
+#define _os_object_refcnt_dec(o) \
+		_os_atomic_refcnt_dec2o(o, os_obj_ref_cnt)
+
+#define _os_object_refcnt_dispose_barrier(o) \
+		_os_atomic_refcnt_dispose_barrier2o(o, os_obj_ref_cnt)
 
 typedef struct _os_object_class_s {
 	_OS_OBJECT_CLASS_HEADER();

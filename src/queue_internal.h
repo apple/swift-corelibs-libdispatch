@@ -56,10 +56,11 @@
 	dispatch_queue_t dq_specific_q; \
 	uint16_t dq_width; \
 	uint16_t dq_is_thread_bound:1; \
+	uint32_t volatile dq_override; \
 	pthread_priority_t dq_priority; \
 	mach_port_t dq_thread; \
 	mach_port_t volatile dq_tqthread; \
-	uint32_t volatile dq_override; \
+	voucher_t dq_override_voucher; \
 	unsigned long dq_serialnum; \
 	const char *dq_label; \
 	DISPATCH_INTROSPECTION_QUEUE_LIST;
@@ -74,16 +75,18 @@
 		+ DISPATCH_CACHELINE_SIZE) % DISPATCH_CACHELINE_SIZE)
 #else
 #define DISPATCH_QUEUE_CACHELINE_PAD (( \
-		(13*sizeof(void*) - DISPATCH_INTROSPECTION_QUEUE_LIST_SIZE) \
+		(12*sizeof(void*) - DISPATCH_INTROSPECTION_QUEUE_LIST_SIZE) \
 		+ DISPATCH_CACHELINE_SIZE) % DISPATCH_CACHELINE_SIZE)
 #endif
 
 DISPATCH_CLASS_DECL(queue);
+#if !(defined(__cplusplus) && DISPATCH_INTROSPECTION)
 struct dispatch_queue_s {
 	DISPATCH_STRUCT_HEADER(queue);
 	DISPATCH_QUEUE_HEADER;
 	DISPATCH_QUEUE_CACHELINE_PADDING; // for static queues only
 };
+#endif // !(defined(__cplusplus) && DISPATCH_INTROSPECTION)
 
 DISPATCH_INTERNAL_SUBCLASS_DECL(queue_root, queue);
 DISPATCH_INTERNAL_SUBCLASS_DECL(queue_runloop, queue);
@@ -94,7 +97,8 @@ DISPATCH_CLASS_DECL(queue_specific_queue);
 
 void _dispatch_queue_destroy(dispatch_object_t dou);
 void _dispatch_queue_dispose(dispatch_queue_t dq);
-void _dispatch_queue_invoke(dispatch_queue_t dq);
+void _dispatch_queue_invoke(dispatch_queue_t dq, dispatch_object_t dou,
+		dispatch_invoke_flags_t flags);
 void _dispatch_queue_push_list_slow(dispatch_queue_t dq,
 		pthread_priority_t pp, struct dispatch_object_s *obj, unsigned int n,
 		bool retained);
@@ -103,9 +107,12 @@ void _dispatch_queue_push_slow(dispatch_queue_t dq,
 unsigned long _dispatch_queue_probe(dispatch_queue_t dq);
 dispatch_queue_t _dispatch_wakeup(dispatch_object_t dou);
 dispatch_queue_t _dispatch_queue_wakeup(dispatch_queue_t dq);
+void _dispatch_queue_wakeup_and_release(dispatch_queue_t dq);
 void _dispatch_queue_wakeup_with_qos(dispatch_queue_t dq,
 		pthread_priority_t pp);
 void _dispatch_queue_wakeup_with_qos_and_release(dispatch_queue_t dq,
+		pthread_priority_t pp);
+void _dispatch_queue_push_queue(dispatch_queue_t tq, dispatch_queue_t dq,
 		pthread_priority_t pp);
 _dispatch_thread_semaphore_t _dispatch_queue_drain(dispatch_object_t dou);
 void _dispatch_queue_specific_queue_dispose(dispatch_queue_specific_queue_t
@@ -175,25 +182,34 @@ extern pthread_priority_t _dispatch_user_initiated_priority;
 #pragma mark -
 #pragma mark dispatch_queue_attr_t
 
+typedef enum {
+	_dispatch_queue_attr_overcommit_unspecified = 0,
+	_dispatch_queue_attr_overcommit_enabled,
+	_dispatch_queue_attr_overcommit_disabled,
+} _dispatch_queue_attr_overcommit_t;
+
 DISPATCH_CLASS_DECL(queue_attr);
 struct dispatch_queue_attr_s {
 	DISPATCH_STRUCT_HEADER(queue_attr);
 	qos_class_t dqa_qos_class;
 	int dqa_relative_priority;
-	unsigned int dqa_overcommit:1, dqa_concurrent:1;
+	unsigned int dqa_overcommit:2, dqa_concurrent:1;
 };
 
 enum {
 	DQA_INDEX_NON_OVERCOMMIT = 0,
 	DQA_INDEX_OVERCOMMIT,
+	DQA_INDEX_UNSPECIFIED_OVERCOMMIT,
 };
+
+#define DISPATCH_QUEUE_ATTR_OVERCOMMIT_COUNT 3
 
 enum {
 	DQA_INDEX_CONCURRENT = 0,
 	DQA_INDEX_SERIAL,
 };
 
-#define DISPATCH_QUEUE_ATTR_PRIO_COUNT (1 - QOS_MIN_RELATIVE_PRIORITY)
+#define DISPATCH_QUEUE_ATTR_CONCURRENCY_COUNT 2
 
 typedef enum {
 	DQA_INDEX_QOS_CLASS_UNSPECIFIED = 0,
@@ -205,8 +221,12 @@ typedef enum {
 	DQA_INDEX_QOS_CLASS_USER_INTERACTIVE,
 } _dispatch_queue_attr_index_qos_class_t;
 
+#define DISPATCH_QUEUE_ATTR_PRIO_COUNT (1 - QOS_MIN_RELATIVE_PRIORITY)
+
 extern const struct dispatch_queue_attr_s _dispatch_queue_attrs[]
-		[DISPATCH_QUEUE_ATTR_PRIO_COUNT][2][2];
+		[DISPATCH_QUEUE_ATTR_PRIO_COUNT]
+		[DISPATCH_QUEUE_ATTR_OVERCOMMIT_COUNT]
+		[DISPATCH_QUEUE_ATTR_CONCURRENCY_COUNT];
 
 #pragma mark -
 #pragma mark dispatch_continuation_t
@@ -279,7 +299,7 @@ typedef struct dispatch_continuation_s *dispatch_continuation_t;
 #define DISPATCH_CONTINUATION_CACHE_LIMIT 112 // one 256k heap for 64 threads
 #define DISPATCH_CONTINUATION_CACHE_LIMIT_MEMORYSTATUS_PRESSURE_WARN 16
 #else
-#define DISPATCH_CONTINUATION_CACHE_LIMIT 65536
+#define DISPATCH_CONTINUATION_CACHE_LIMIT 1024
 #define DISPATCH_CONTINUATION_CACHE_LIMIT_MEMORYSTATUS_PRESSURE_WARN 128
 #endif
 #endif
@@ -317,18 +337,23 @@ typedef struct dispatch_apply_s *dispatch_apply_t;
 #define DISPATCH_BLOCK_HAS_VOUCHER (1u << 31)
 #define DISPATCH_BLOCK_HAS_PRIORITY (1u << 30)
 
-struct dispatch_block_private_data_s {
-	unsigned long dbpd_magic;
-	dispatch_block_flags_t dbpd_flags;
-	unsigned int volatile dbpd_atomic_flags;
-	int volatile dbpd_performed;
-	pthread_priority_t dbpd_priority;
-	voucher_t dbpd_voucher;
-	dispatch_block_t dbpd_block;
-	struct dispatch_semaphore_s dbpd_group;
-	dispatch_queue_t volatile dbpd_queue;
+#define DISPATCH_BLOCK_PRIVATE_DATA_HEADER() \
+	unsigned long dbpd_magic; \
+	dispatch_block_flags_t dbpd_flags; \
+	unsigned int volatile dbpd_atomic_flags; \
+	int volatile dbpd_performed; \
+	pthread_priority_t dbpd_priority; \
+	voucher_t dbpd_voucher; \
+	dispatch_block_t dbpd_block; \
+	dispatch_group_t dbpd_group; \
+	dispatch_queue_t volatile dbpd_queue; \
 	mach_port_t dbpd_thread;
+
+#if !defined(__cplusplus)
+struct dispatch_block_private_data_s {
+	DISPATCH_BLOCK_PRIVATE_DATA_HEADER();
 };
+#endif
 typedef struct dispatch_block_private_data_s *dispatch_block_private_data_t;
 
 // dbpd_atomic_flags bits
@@ -339,14 +364,13 @@ typedef struct dispatch_block_private_data_s *dispatch_block_private_data_t;
 
 #define DISPATCH_BLOCK_PRIVATE_DATA_MAGIC 0xD159B10C // 0xDISPatch_BLOCk
 
-#define DISPATCH_BLOCK_PRIVATE_DATA_INITIALIZER(flags, voucher, prio, block) \
+// struct for synchronous perform: no group_leave at end of invoke
+#define DISPATCH_BLOCK_PRIVATE_DATA_PERFORM_INITIALIZER(flags, block) \
 		{ \
 			.dbpd_magic = DISPATCH_BLOCK_PRIVATE_DATA_MAGIC, \
 			.dbpd_flags = (flags), \
-			.dbpd_priority = (prio), \
-			.dbpd_voucher = (voucher), \
+			.dbpd_atomic_flags = DBF_PERFORM, \
 			.dbpd_block = (block), \
-			.dbpd_group = DISPATCH_GROUP_INITIALIZER(1), \
 		}
 
 dispatch_block_t _dispatch_block_create(dispatch_block_flags_t flags,

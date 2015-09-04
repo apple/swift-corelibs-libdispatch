@@ -142,6 +142,10 @@ _os_objc_destructInstance(id obj)
 	return obj;
 }
 
+#if DISPATCH_COCOA_COMPAT
+static bool _os_object_debug_missing_pools;
+#endif
+
 void
 _os_object_init(void)
 {
@@ -155,6 +159,10 @@ _os_object_init(void)
 		(void (*)(const void *))&_os_objc_destructInstance
 	};
 	_Block_use_RR2(&callbacks);
+#if DISPATCH_COCOA_COMPAT
+	const char *v = getenv("OBJC_DEBUG_MISSING_POOLS");
+	_os_object_debug_missing_pools = v && !strcmp(v, "YES");
+#endif
 }
 
 _os_object_t
@@ -181,12 +189,16 @@ _os_object_dealloc(_os_object_t obj)
 void
 _os_object_xref_dispose(_os_object_t obj)
 {
+	struct _os_object_s *o = (struct _os_object_s *)obj;
+	_os_object_xrefcnt_dispose_barrier(o);
 	[obj _xref_dispose];
 }
 
 void
 _os_object_dispose(_os_object_t obj)
 {
+	struct _os_object_s *o = (struct _os_object_s *)obj;
+	_os_object_refcnt_dispose_barrier(o);
 	[obj _dispose];
 }
 
@@ -463,12 +475,17 @@ DISPATCH_OBJC_LOAD()
 
 void *
 _dispatch_autorelease_pool_push(void) {
-	return objc_autoreleasePoolPush();
+	if (!slowpath(_os_object_debug_missing_pools)) {
+		return objc_autoreleasePoolPush();
+	}
+	return NULL;
 }
 
 void
 _dispatch_autorelease_pool_pop(void *context) {
-	return objc_autoreleasePoolPop(context);
+	if (!slowpath(_os_object_debug_missing_pools)) {
+		return objc_autoreleasePoolPop(context);
+	}
 }
 
 #endif // DISPATCH_COCOA_COMPAT
@@ -507,19 +524,6 @@ _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 	}
 }
 
-#undef _dispatch_client_callout3
-bool
-_dispatch_client_callout3(void *ctxt, dispatch_data_t region, size_t offset,
-		const void *buffer, size_t size, dispatch_data_applier_function_t f)
-{
-	@try {
-		return f(ctxt, region, offset, buffer, size);
-	}
-	@catch (...) {
-		objc_terminate();
-	}
-}
-
 #undef _dispatch_client_callout4
 void
 _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
@@ -535,35 +539,5 @@ _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 }
 
 #endif // DISPATCH_USE_CLIENT_CALLOUT
-
-#pragma mark -
-#pragma mark _dispatch_block_create
-
-// The compiler hides the name of the function it generates, and changes it if
-// we try to reference it directly, but the linker still sees it.
-extern void DISPATCH_BLOCK_SPECIAL_INVOKE(void *)
-		asm("____dispatch_block_create_block_invoke");
-void (*_dispatch_block_special_invoke)(void*) = DISPATCH_BLOCK_SPECIAL_INVOKE;
-
-dispatch_block_t
-_dispatch_block_create(dispatch_block_flags_t flags, voucher_t voucher,
-		pthread_priority_t pri, dispatch_block_t block)
-{
-	dispatch_block_t copy_block = _dispatch_Block_copy(block); // 17094902
-	struct dispatch_block_private_data_s dbpds =
-			DISPATCH_BLOCK_PRIVATE_DATA_INITIALIZER(flags, voucher, pri, copy_block);
-	dispatch_block_t new_block = _dispatch_Block_copy(^{
-		// Capture object references, which retains copy_block and voucher.
-		// All retained objects must be captured by the *block*. We
-		// cannot borrow any references, because the block might be
-		// called zero or several times, so Block_release() is the
-		// only place that can release retained objects.
-		(void)copy_block;
-		(void)voucher;
-		_dispatch_block_invoke(&dbpds);
-	});
-	Block_release(copy_block);
-	return new_block;
-}
 
 #endif // USE_OBJC

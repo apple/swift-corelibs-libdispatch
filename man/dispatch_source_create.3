@@ -297,7 +297,9 @@ The data returned by
 .Fn dispatch_source_get_data
 indicates which of the events in the
 .Fa mask
-were observed.
+were observed.  Note that because this source type will request notifications on the provided port, it should not be mixed with the use of
+.Fn mach_port_request_notification
+on the same port.
 .Pp
 .Vt DISPATCH_SOURCE_TYPE_MACH_RECV
 .Pp

@@ -53,15 +53,7 @@ struct dispatch_semaphore_s {
 
 DISPATCH_CLASS_DECL(group);
 
-#define DISPATCH_GROUP_INITIALIZER(s) \
-		{ \
-			.do_vtable = (const void*)DISPATCH_VTABLE(group), \
-			.do_ref_cnt = DISPATCH_OBJECT_GLOBAL_REFCNT, \
-			.do_xref_cnt = DISPATCH_OBJECT_GLOBAL_REFCNT, \
-			.dsema_value = LONG_MAX - (s), \
-			.dsema_orig = LONG_MAX, \
-		}
-
+dispatch_group_t _dispatch_group_create_and_enter(void);
 void _dispatch_semaphore_dispose(dispatch_object_t dou);
 size_t _dispatch_semaphore_debug(dispatch_object_t dou, char *buf,
 		size_t bufsiz);

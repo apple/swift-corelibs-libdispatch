@@ -46,7 +46,7 @@ void _dispatch_introspection_queue_item_complete(dispatch_object_t dou);
 void _dispatch_introspection_callout_entry(void *ctxt, dispatch_function_t f);
 void _dispatch_introspection_callout_return(void *ctxt, dispatch_function_t f);
 
-#if !__OBJC2__
+#if !__OBJC2__ && !defined(__cplusplus)
 
 DISPATCH_ALWAYS_INLINE
 static inline void
@@ -70,9 +70,9 @@ _dispatch_introspection_queue_pop(dispatch_queue_t dq, dispatch_object_t dou) {
 	_dispatch_introspection_queue_item_dequeue(dq, dou);
 };
 
-#endif
+#endif // !__OBJC2__ && !defined(__cplusplus)
 
-#else
+#else // DISPATCH_INTROSPECTION
 
 #define DISPATCH_INTROSPECTION_QUEUE_LIST
 #define DISPATCH_INTROSPECTION_QUEUE_LIST_SIZE 0

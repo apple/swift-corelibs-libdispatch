@@ -19,7 +19,8 @@
 # @APPLE_APACHE_LICENSE_HEADER_END@
 #
 
-if [ "${PLATFORM_NAME}" = iphoneos ]; then exit 0; fi
+# This check equates to "is macosx or a simulator platform"
+if [ "${PLATFORM_NAME}" == "${DEVICE_PLATFORM_NAME}" ]; then exit 0; fi
 
 if [ "${DEPLOYMENT_LOCATION}" != YES ]; then
 	DSTROOT="${CONFIGURATION_BUILD_DIR}"

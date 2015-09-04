@@ -20,14 +20,77 @@
 
 #include "internal.h"
 
-// Dispatch data objects are dispatch objects with standard retain/release
-// memory management. A dispatch data object either points to a number of other
-// dispatch data objects or is a leaf data object. A leaf data object contains
-// a pointer to represented memory. A composite data object specifies the total
-// size of data it represents and list of constituent records.
-//
-// A leaf data object always points to a full represented buffer, a composite
-// dispatch data object is needed to represent a subrange of a memory region.
+/*
+ * Dispatch data objects are dispatch objects with standard retain/release
+ * memory management. A dispatch data object either points to a number of other
+ * dispatch data objects or is a leaf data object.
+ * A composite data object specifies the total size of data it represents
+ * and list of constituent records.
+ *
+ *******************************************************************************
+ *
+ * CURRENT IMPLEMENTATION DETAILS
+ *
+ *   There are actually 3 kinds of composite objects
+ *   - trivial subranges
+ *   - unflattened composite data objects
+ *   - flattened composite data objects
+ *
+ * LEAVES (num_records == 0, destructor != nil)
+ *
+ *   Those objects have a pointer to represented memory in `buf`.
+ *
+ * UNFLATTENED (num_records > 1, buf == nil, destructor == nil)
+ *
+ *   This is the generic case of a composite object.
+ *
+ * FLATTENED (num_records > 1, buf != nil, destructor == nil)
+ *
+ *   Those objects are non trivial composite objects whose `buf` pointer
+ *   is a contiguous representation (copied) of the memory it represents.
+ *
+ *   Such objects are created when used as an NSData and -bytes is called and
+ *   where the dispatch data object is an unflattened composite object.
+ *   The underlying implementation is _dispatch_data_get_flattened_bytes
+ *
+ * TRIVIAL SUBRANGES (num_records == 1, buf == nil, destructor == nil)
+ *
+ *   Those objects point to a single leaf, never to flattened objects.
+ *
+ *******************************************************************************
+ *
+ * Non trivial invariants:
+ *
+ *   It is forbidden to point into a composite data object and ignore entire
+ *   records from it.  (for example by having `from` longer than the first
+ *   record length).
+ *
+ *   dispatch_data_t's are either leaves, or composite objects pointing to
+ *   leaves. Depth is never greater than 1.
+ *
+ *******************************************************************************
+ *
+ * There are 4 dispatch_data_t constructors who may create non leaf objects,
+ * and ensure proper invariants.
+ *
+ * dispatch_data_copy_region()
+ *    This function first sees through trivial subranges, and may in turn
+ *    generate new trivial subranges.
+ *
+ * dispatch_data_create_map()
+ *    This function either returns existing data objects, or a leaf.
+ *
+ * dispatch_data_create_subrange()
+ *    This function treats flattened objects like unflattened ones,
+ *    and recurses into trivial subranges, it can create trivial subranges.
+ *
+ * dispatch_data_create_concat()
+ *    This function unwraps the top-level composite objects, trivial or not,
+ *    and else concatenates the two arguments range lists, hence always creating
+ *    unflattened objects, unless one of the arguments was empty.
+ *
+ *******************************************************************************
+ */
 
 #if USE_OBJC
 #define _dispatch_data_retain(x) _dispatch_objc_retain(x)
@@ -68,7 +131,7 @@ _dispatch_data_alloc(size_t n, size_t extra)
 {
 	dispatch_data_t data = _dispatch_alloc(DISPATCH_DATA_CLASS,
 			sizeof(struct dispatch_data_s) + extra +
-			(n ? n * sizeof(range_record) - sizeof(data->buf) : 0));
+			n * sizeof(range_record));
 	data->num_records = n;
 #if !USE_OBJC
 	data->do_targetq = dispatch_get_global_queue(
@@ -107,10 +170,6 @@ _dispatch_data_init(dispatch_data_t data, const void *buffer, size_t size,
 	data->buf = buffer;
 	data->size = size;
 	data->destructor = destructor;
-#if DISPATCH_DATA_USE_LEAF_MEMBER
-	data->leaf = true;
-	data->num_records = 1;
-#endif
 	if (queue) {
 		_dispatch_retain(queue);
 		data->do_targetq = queue;
@@ -210,15 +269,15 @@ out:
 void
 _dispatch_data_dispose(dispatch_data_t dd)
 {
-	dispatch_block_t destructor = dd->destructor;
-	if (destructor == NULL) {
+	if (_dispatch_data_leaf(dd)) {
+		_dispatch_data_destroy_buffer(dd->buf, dd->size, dd->do_targetq,
+				dd->destructor);
+	} else {
 		size_t i;
 		for (i = 0; i < _dispatch_data_num_records(dd); ++i) {
 			_dispatch_data_release(dd->records[i].data_object);
 		}
-	} else {
-		_dispatch_data_destroy_buffer(dd->buf, dd->size, dd->do_targetq,
-				destructor);
+		free((void *)dd->buf);
 	}
 }
 
@@ -234,6 +293,10 @@ _dispatch_data_debug(dispatch_data_t dd, char* buf, size_t bufsiz)
 		offset += dsnprintf(&buf[offset], bufsiz - offset,
 				"composite, size = %zd, num_records = %zd ", dd->size,
 				_dispatch_data_num_records(dd));
+		if (dd->buf) {
+			offset += dsnprintf(&buf[offset], bufsiz - offset,
+					", flatbuf = %p ", dd->buf);
+		}
 		size_t i;
 		for (i = 0; i < _dispatch_data_num_records(dd); ++i) {
 			range_record r = dd->records[i];
@@ -264,6 +327,7 @@ dispatch_data_create_concat(dispatch_data_t dd1, dispatch_data_t dd2)
 		_dispatch_data_retain(dd1);
 		return dd1;
 	}
+
 	data = _dispatch_data_alloc(_dispatch_data_num_records(dd1) +
 			_dispatch_data_num_records(dd2), 0);
 	data->size = dd1->size + dd2->size;
@@ -305,6 +369,13 @@ dispatch_data_create_subrange(dispatch_data_t dd, size_t offset,
 		_dispatch_data_retain(dd);
 		return dd;
 	}
+	/*
+	 * we must only optimize leaves and not flattened objects
+	 * because lots of users want to keep the end of a buffer and release
+	 * as much memory as they can from the beginning of it
+	 *
+	 * Using the flatbuf here would be very wrong with respect to that goal
+	 */
 	if (_dispatch_data_leaf(dd)) {
 		data = _dispatch_data_alloc(1, 0);
 		data->size = length;
@@ -314,36 +385,88 @@ dispatch_data_create_subrange(dispatch_data_t dd, size_t offset,
 		_dispatch_data_retain(dd);
 		return data;
 	}
-	// Subrange of a composite dispatch data object: find the record containing
-	// the specified offset
-	data = dispatch_data_empty;
-	size_t i = 0, bytes_left = length;
-	while (i < _dispatch_data_num_records(dd) &&
-			offset >= dd->records[i].length) {
+
+	// Subrange of a composite dispatch data object
+	const size_t dd_num_records = _dispatch_data_num_records(dd);
+	bool to_the_end = (offset + length == dd->size);
+	size_t i = 0;
+
+	// find the record containing the specified offset
+	while (i < dd_num_records && offset >= dd->records[i].length) {
 		offset -= dd->records[i++].length;
 	}
-	while (i < _dispatch_data_num_records(dd)) {
-		size_t record_len = dd->records[i].length - offset;
-		if (record_len > bytes_left) {
-			record_len = bytes_left;
-		}
-		dispatch_data_t subrange = dispatch_data_create_subrange(
-				dd->records[i].data_object, dd->records[i].from + offset,
-				record_len);
-		dispatch_data_t concat = dispatch_data_create_concat(data, subrange);
-		_dispatch_data_release(data);
-		_dispatch_data_release(subrange);
-		data = concat;
-		bytes_left -= record_len;
-		if (!bytes_left) {
-			return data;
-		}
-		offset = 0;
-		i++;
-	}
+
 	// Crashing here indicates memory corruption of passed in data object
-	DISPATCH_CRASH("dispatch_data_create_subrange out of bounds");
-	return NULL;
+	if (slowpath(i >= dd_num_records)) {
+		DISPATCH_CRASH("dispatch_data_create_subrange out of bounds");
+		return NULL;
+	}
+
+	// if everything is from a single dispatch data object, avoid boxing it
+	if (offset + length <= dd->records[i].length) {
+		return dispatch_data_create_subrange(dd->records[i].data_object,
+				dd->records[i].from + offset, length);
+	}
+
+	// find the record containing the end of the current range
+	// and optimize the case when you just remove bytes at the origin
+	size_t count, last_length;
+
+	if (to_the_end) {
+		count = dd_num_records - i;
+	} else {
+		last_length = length - (dd->records[i].length - offset);
+		count = 1;
+
+		while (i + count < dd_num_records) {
+			size_t record_length = dd->records[i + count++].length;
+
+			if (last_length <= record_length) {
+				break;
+			}
+			last_length -= record_length;
+
+			// Crashing here indicates memory corruption of passed in data object
+			if (slowpath(i + count >= dd_num_records)) {
+				DISPATCH_CRASH("dispatch_data_create_subrange out of bounds");
+				return NULL;
+			}
+		}
+	}
+
+	data = _dispatch_data_alloc(count, 0);
+	data->size = length;
+	memcpy(data->records, dd->records + i, count * sizeof(range_record));
+
+	if (offset) {
+		data->records[0].from += offset;
+		data->records[0].length -= offset;
+	}
+	if (!to_the_end) {
+		data->records[count - 1].length = last_length;
+	}
+
+	for (i = 0; i < count; i++) {
+		_dispatch_data_retain(data->records[i].data_object);
+	}
+	return data;
+}
+
+static void*
+_dispatch_data_flatten(dispatch_data_t dd)
+{
+	void *buffer = malloc(dd->size);
+
+	// Composite data object, copy the represented buffers
+	if (buffer) {
+		dispatch_data_apply(dd, ^(dispatch_data_t region DISPATCH_UNUSED,
+				size_t off, const void* buf, size_t len) {
+			memcpy(buffer + off, buf, len);
+			return (bool)true;
+		});
+	}
+
+	return buffer;
 }
 
 // When mapping a leaf object or a subrange of a leaf object, return a direct
@@ -354,37 +477,30 @@ dispatch_data_t
 dispatch_data_create_map(dispatch_data_t dd, const void **buffer_ptr,
 		size_t *size_ptr)
 {
-	dispatch_data_t data = dd;
+	dispatch_data_t data = NULL;
 	const void *buffer = NULL;
-	size_t size = dd->size, offset = 0;
+	size_t size = dd->size;
+
 	if (!size) {
 		data = dispatch_data_empty;
 		goto out;
 	}
-	if (!_dispatch_data_leaf(dd) && _dispatch_data_num_records(dd) == 1 &&
-			_dispatch_data_leaf(dd->records[0].data_object)) {
-		offset = dd->records[0].from;
-		dd = dd->records[0].data_object;
-	}
-	if (_dispatch_data_leaf(dd)) {
-		_dispatch_data_retain(data);
-		buffer = dd->buf + offset;
+
+	buffer = _dispatch_data_map_direct(dd, 0, NULL, NULL);
+	if (buffer) {
+		_dispatch_data_retain(dd);
+		data = dd;
 		goto out;
 	}
-	// Composite data object, copy the represented buffers
-	buffer = malloc(size);
-	if (!buffer) {
-		data = NULL;
+
+	buffer = _dispatch_data_flatten(dd);
+	if (fastpath(buffer)) {
+		data = dispatch_data_create(buffer, size, NULL,
+				DISPATCH_DATA_DESTRUCTOR_FREE);
+	} else {
 		size = 0;
-		goto out;
 	}
-	dispatch_data_apply(dd, ^(dispatch_data_t region DISPATCH_UNUSED,
-			size_t off, const void* buf, size_t len) {
-		memcpy((void*)buffer + off, buf, len);
-		return (bool)true;
-	});
-	data = dispatch_data_create(buffer, size, NULL,
-			DISPATCH_DATA_DESTRUCTOR_FREE);
+
 out:
 	if (buffer_ptr) {
 		*buffer_ptr = buffer;
@@ -395,24 +511,63 @@ out:
 	return data;
 }
 
+const void *
+_dispatch_data_get_flattened_bytes(dispatch_data_t dd)
+{
+	const void *buffer;
+	size_t offset = 0;
+
+	if (slowpath(!dd->size)) {
+		return NULL;
+	}
+
+	buffer = _dispatch_data_map_direct(dd, 0, &dd, &offset);
+	if (buffer) {
+		return buffer;
+	}
+
+	void *flatbuf = _dispatch_data_flatten(dd);
+	if (fastpath(flatbuf)) {
+		// we need a release so that readers see the content of the buffer
+		if (slowpath(!dispatch_atomic_cmpxchgv2o(dd, buf, NULL, flatbuf,
+				&buffer, release))) {
+			free(flatbuf);
+		} else {
+			buffer = flatbuf;
+		}
+	} else {
+		return NULL;
+	}
+
+	return buffer + offset;
+}
+
+#if DISPATCH_USE_CLIENT_CALLOUT
+DISPATCH_NOINLINE
+#else
+DISPATCH_ALWAYS_INLINE
+#endif
+static bool
+_dispatch_data_apply_client_callout(void *ctxt, dispatch_data_t region, size_t offset,
+		const void *buffer, size_t size, dispatch_data_applier_function_t f)
+{
+	return f(ctxt, region, offset, buffer, size);
+}
+
+
 static bool
 _dispatch_data_apply(dispatch_data_t dd, size_t offset, size_t from,
 		size_t size, void *ctxt, dispatch_data_applier_function_t applier)
 {
 	bool result = true;
-	dispatch_data_t data = dd;
 	const void *buffer;
-	dispatch_assert(dd->size);
-	if (!_dispatch_data_leaf(dd) && _dispatch_data_num_records(dd) == 1 &&
-			_dispatch_data_leaf(dd->records[0].data_object)) {
-		from = dd->records[0].from;
-		dd = dd->records[0].data_object;
+
+	buffer = _dispatch_data_map_direct(dd, 0, NULL, NULL);
+	if (buffer) {
+		return _dispatch_data_apply_client_callout(ctxt, dd,
+				offset, buffer + from, size, applier);
 	}
-	if (_dispatch_data_leaf(dd)) {
-		buffer = dd->buf + from;
-		return _dispatch_client_callout3(ctxt, data, offset, buffer, size,
-				applier);
-	}
+
 	size_t i;
 	for (i = 0; i < _dispatch_data_num_records(dd) && result; ++i) {
 		result = _dispatch_data_apply(dd->records[i].data_object,
@@ -443,58 +598,73 @@ dispatch_data_apply(dispatch_data_t dd, dispatch_data_applier_t applier)
 			(dispatch_data_applier_function_t)_dispatch_Block_invoke(applier));
 }
 
+static dispatch_data_t
+_dispatch_data_copy_region(dispatch_data_t dd, size_t from, size_t size,
+		size_t location, size_t *offset_ptr)
+{
+	dispatch_data_t reusable_dd = NULL;
+	size_t offset = 0;
+
+	if (from == 0 && size == dd->size) {
+		reusable_dd = dd;
+	}
+
+	if (_dispatch_data_map_direct(dd, from, &dd, &from)) {
+		if (reusable_dd) {
+			_dispatch_data_retain(reusable_dd);
+			return reusable_dd;
+		}
+
+		_dispatch_data_retain(dd);
+		if (from == 0 && size == dd->size) {
+			return dd;
+		}
+
+		dispatch_data_t data = _dispatch_data_alloc(1, 0);
+		data->size = size;
+		data->records[0].from = from;
+		data->records[0].length = size;
+		data->records[0].data_object = dd;
+		return data;
+	}
+
+	size_t i;
+	for (i = 0; i < _dispatch_data_num_records(dd); ++i) {
+		size_t length = dd->records[i].length;
+
+		if (from >= length) {
+			from -= length;
+			continue;
+		}
+
+		length -= from;
+		if (location >= offset + length) {
+			offset += length;
+			from = 0;
+			continue;
+		}
+
+		from += dd->records[i].from;
+		dd = dd->records[i].data_object;
+		*offset_ptr += offset;
+		location -= offset;
+		return _dispatch_data_copy_region(dd, from, length, location, offset_ptr);
+	}
+
+	DISPATCH_CRASH("dispatch_data_copy_region out of bounds");
+}
+
 // Returs either a leaf object or an object composed of a single leaf object
 dispatch_data_t
 dispatch_data_copy_region(dispatch_data_t dd, size_t location,
 		size_t *offset_ptr)
 {
 	if (location >= dd->size) {
-		*offset_ptr = 0;
+		*offset_ptr = dd->size;
 		return dispatch_data_empty;
 	}
-	dispatch_data_t data;
-	size_t size = dd->size, offset = 0, from = 0;
-	while (true) {
-		if (_dispatch_data_leaf(dd)) {
-			_dispatch_data_retain(dd);
-			*offset_ptr = offset;
-			if (size == dd->size) {
-				return dd;
-			} else {
-				// Create a new object for the requested subrange of the leaf
-				data = _dispatch_data_alloc(1, 0);
-				data->size = size;
-				data->records[0].from = from;
-				data->records[0].length = size;
-				data->records[0].data_object = dd;
-				return data;
-			}
-		} else {
-			// Find record at the specified location
-			size_t i, pos;
-			for (i = 0; i < _dispatch_data_num_records(dd); ++i) {
-				pos = offset + dd->records[i].length;
-				if (location < pos) {
-					size = dd->records[i].length;
-					from = dd->records[i].from;
-					data = dd->records[i].data_object;
-					if (_dispatch_data_num_records(dd) == 1 &&
-							_dispatch_data_leaf(data)) {
-						// Return objects composed of a single leaf node
-						*offset_ptr = offset;
-						_dispatch_data_retain(dd);
-						return dd;
-					} else {
-						// Drill down into other objects
-						dd = data;
-						break;
-					}
-				} else {
-					offset = pos;
-				}
-			}
-		}
-	}
+	*offset_ptr = 0;
+	return _dispatch_data_copy_region(dd, 0, dd->size, location, offset_ptr);
 }
 
 #if HAVE_MACH

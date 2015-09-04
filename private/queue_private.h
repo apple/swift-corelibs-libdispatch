@@ -79,6 +79,8 @@ dispatch_queue_attr_make_with_overcommit(dispatch_queue_attr_t attr,
  * This priority level is intended for user-initiated application activity that
  * is long-running and CPU or IO intensive and that the user is actively waiting
  * on, but that should not interfere with interactive use of the application.
+ *
+ * This global queue priority level is mapped to QOS_CLASS_UTILITY.
  */
 #define DISPATCH_QUEUE_PRIORITY_NON_INTERACTIVE INT8_MIN
 
@@ -237,6 +239,8 @@ dispatch_pthread_root_queue_create(const char *label, unsigned long flags,
  * is no guarantee that the specified number will be reached.
  * Pass 0 to specify that a default pool size determined by the system should
  * be used.
+ * NOTE: passing pool_size == 1 does NOT make the pthread root queue equivalent
+ *       to a serial queue.
  *
  * @result
  * The flags argument to pass to dispatch_pthread_root_queue_create().
@@ -327,6 +331,44 @@ dispatch_assert_queue_not(dispatch_queue_t queue);
 #define dispatch_assert_queue_debug(q) dispatch_assert_queue(q)
 #define dispatch_assert_queue_not_debug(q) dispatch_assert_queue_not(q)
 #endif
+
+/*!
+ * @function dispatch_async_enforce_qos_class_f
+ *
+ * @abstract
+ * Submits a function for asynchronous execution on a dispatch queue.
+ *
+ * @discussion
+ * See dispatch_async() for details. The QOS will be enforced as if
+ * this was called:
+ * <code>
+ *     dispatch_async(queue, dispatch_block_create(DISPATCH_BLOCK_ENFORCE_QOS_CLASS, ^{
+ *         work(context);
+ *     });
+ * </code>
+ *
+ * @param queue
+ * The target dispatch queue to which the function is submitted.
+ * The system will hold a reference on the target queue until the function
+ * has returned.
+ * The result of passing NULL in this parameter is undefined.
+ *
+ * @param context
+ * The application-defined context parameter to pass to the function.
+ *
+ * @param work
+ * The application-defined function to invoke on the target queue. The first
+ * parameter passed to this function is the context provided to
+ * dispatch_async_f().
+ * The result of passing NULL in this parameter is undefined.
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_11,__IPHONE_9_0)
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+void
+dispatch_async_enforce_qos_class_f(dispatch_queue_t queue,
+	void *context,
+	dispatch_function_t work);
+
 
 __END_DECLS
 

@@ -101,13 +101,13 @@ enum {
 struct dispatch_kevent_s {
 	TAILQ_ENTRY(dispatch_kevent_s) dk_list;
 	TAILQ_HEAD(, dispatch_source_refs_s) dk_sources;
-	struct kevent64_s dk_kevent;
+	_dispatch_kevent_qos_s dk_kevent;
 };
 
 typedef struct dispatch_kevent_s *dispatch_kevent_t;
 
 struct dispatch_source_type_s {
-	struct kevent64_s ke;
+	_dispatch_kevent_qos_s ke;
 	uint64_t mask;
 	void (*init)(dispatch_source_t ds, dispatch_source_type_t type,
 			uintptr_t handle, unsigned long mask, dispatch_queue_t q);
@@ -168,6 +168,8 @@ _dispatch_source_timer_idx(dispatch_source_refs_t dr)
 // ds_atomic_flags bits
 #define DSF_CANCELED 1u // cancellation has been requested
 #define DSF_ARMED 2u // source is armed
+#define DSF_DELETED 4u // source received EV_DELETE event
+#define DSF_ONESHOT 8u // source received EV_ONESHOT event
 
 #define DISPATCH_SOURCE_HEADER(refs) \
 	dispatch_kevent_t ds_dkev; \
@@ -177,7 +179,10 @@ _dispatch_source_timer_idx(dispatch_source_refs_t dr)
 		ds_is_level:1, \
 		ds_is_adder:1, \
 		ds_is_installed:1, \
+		ds_is_direct_kevent:1, \
 		ds_needs_rearm:1, \
+		ds_pending_delete:1, \
+		ds_needs_mgr:1, \
 		ds_is_timer:1, \
 		ds_vmpressure_override:1, \
 		ds_memorystatus_override:1, \
@@ -262,7 +267,8 @@ struct dispatch_mach_msg_s {
 
 void _dispatch_source_xref_dispose(dispatch_source_t ds);
 void _dispatch_source_dispose(dispatch_source_t ds);
-void _dispatch_source_invoke(dispatch_source_t ds);
+void _dispatch_source_invoke(dispatch_source_t ds, dispatch_object_t dou,
+		dispatch_invoke_flags_t flags);
 unsigned long _dispatch_source_probe(dispatch_source_t ds);
 size_t _dispatch_source_debug(dispatch_source_t ds, char* buf, size_t bufsiz);
 void _dispatch_source_set_interval(dispatch_source_t ds, uint64_t interval);
@@ -270,17 +276,20 @@ void _dispatch_source_set_event_handler_with_context_f(dispatch_source_t ds,
 		void *ctxt, dispatch_function_t handler);
 
 void _dispatch_mach_dispose(dispatch_mach_t dm);
-void _dispatch_mach_invoke(dispatch_mach_t dm);
+void _dispatch_mach_invoke(dispatch_mach_t dm, dispatch_object_t dou,
+		dispatch_invoke_flags_t flags);
 unsigned long _dispatch_mach_probe(dispatch_mach_t dm);
 size_t _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz);
 
 void _dispatch_mach_msg_dispose(dispatch_mach_msg_t dmsg);
-void _dispatch_mach_msg_invoke(dispatch_mach_msg_t dmsg);
+void _dispatch_mach_msg_invoke(dispatch_mach_msg_t dmsg, dispatch_object_t dou,
+		dispatch_invoke_flags_t flags);
 size_t _dispatch_mach_msg_debug(dispatch_mach_msg_t dmsg, char* buf, size_t bufsiz);
 
 void _dispatch_mach_barrier_invoke(void *ctxt);
 
 unsigned long _dispatch_mgr_wakeup(dispatch_queue_t dq);
-void _dispatch_mgr_thread(dispatch_queue_t dq);
+void _dispatch_mgr_thread(dispatch_queue_t dq, dispatch_object_t dou,
+		dispatch_invoke_flags_t flags);
 
 #endif /* __DISPATCH_SOURCE_INTERNAL__ */

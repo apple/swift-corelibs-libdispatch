@@ -32,6 +32,8 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+__BEGIN_DECLS
+
 /*!
  * @const DISPATCH_SOURCE_TYPE_TIMER_WITH_AGGREGATE
  * @discussion A dispatch timer source that is part of a timer aggregate.
@@ -107,6 +109,8 @@ DISPATCH_EXPORT const struct dispatch_source_type_s
 #define DISPATCH_SOURCE_TYPE_SOCK (&_dispatch_source_type_sock)
 __OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
 DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_sock;
+
+__END_DECLS
 
 /*!
  * @enum dispatch_source_sock_flags_t

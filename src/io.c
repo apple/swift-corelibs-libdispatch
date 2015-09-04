@@ -122,13 +122,6 @@ enum {
 #pragma mark -
 #pragma mark dispatch_io_hashtables
 
-#if TARGET_OS_EMBEDDED
-#define DIO_HASH_SIZE  64u // must be a power of two
-#else
-#define DIO_HASH_SIZE 256u // must be a power of two
-#endif
-#define DIO_HASH(x) ((uintptr_t)(x) & (DIO_HASH_SIZE - 1))
-
 // Global hashtable of dev_t -> disk_s mappings
 DISPATCH_CACHELINE_ALIGN
 static TAILQ_HEAD(, dispatch_disk_s) _dispatch_io_devs[DIO_HASH_SIZE];
@@ -173,10 +166,10 @@ enum {
 };
 
 static struct dispatch_io_defaults_s {
-	size_t chunk_pages, low_water_chunks, max_pending_io_reqs;
+	size_t chunk_size, low_water_chunks, max_pending_io_reqs;
 	bool initial_delivery;
 } dispatch_io_defaults = {
-	.chunk_pages = DIO_MAX_CHUNK_PAGES,
+	.chunk_size = DIO_MAX_CHUNK_SIZE,
 	.low_water_chunks = DIO_DEFAULT_LOW_WATER_CHUNKS,
 	.max_pending_io_reqs = DIO_MAX_PENDING_IO_REQS,
 };
@@ -190,7 +183,7 @@ _dispatch_iocntl(uint32_t param, uint64_t value)
 {
 	switch (param) {
 	case DISPATCH_IOCNTL_CHUNK_PAGES:
-		_dispatch_iocntl_set_default(chunk_pages, value);
+		_dispatch_iocntl_set_default(chunk_size, value * PAGE_SIZE);
 		break;
 	case DISPATCH_IOCNTL_LOW_WATER_CHUNKS:
 		_dispatch_iocntl_set_default(low_water_chunks, value);
@@ -217,7 +210,7 @@ _dispatch_io_create(dispatch_io_type_t type)
 	channel->params.type = type;
 	channel->params.high = SIZE_MAX;
 	channel->params.low = dispatch_io_defaults.low_water_chunks *
-			dispatch_io_defaults.chunk_pages * PAGE_SIZE;
+			dispatch_io_defaults.chunk_size;
 	channel->queue = dispatch_queue_create("com.apple.libdispatch-io.channelq",
 			NULL);
 	return channel;
@@ -371,7 +364,7 @@ dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 		void (^cleanup_handler)(int error))
 {
 	if ((type != DISPATCH_IO_STREAM && type != DISPATCH_IO_RANDOM) ||
-			!(path && *path == '/')) {
+			!(*path == '/')) {
 		return NULL;
 	}
 	size_t pathlen = strlen(path);
@@ -1992,7 +1985,7 @@ static void
 _dispatch_disk_perform(void *ctxt)
 {
 	dispatch_disk_t disk = ctxt;
-	size_t chunk_size = dispatch_io_defaults.chunk_pages * PAGE_SIZE;
+	size_t chunk_size = dispatch_io_defaults.chunk_size;
 	_dispatch_fd_debug("disk perform", -1);
 	dispatch_operation_t op;
 	size_t i = disk->advise_idx, j = disk->free_idx;
@@ -2109,10 +2102,10 @@ _dispatch_operation_perform(dispatch_operation_t op)
 	_dispatch_object_debug(op, "%s", __func__);
 	if (!op->buf) {
 		size_t max_buf_siz = op->params.high;
-		size_t chunk_siz = dispatch_io_defaults.chunk_pages * PAGE_SIZE;
+		size_t chunk_siz = dispatch_io_defaults.chunk_size;
 		if (op->direction == DOP_DIR_READ) {
 			// If necessary, create a buffer for the ongoing operation, large
-			// enough to fit chunk_pages but at most high-water
+			// enough to fit chunk_size but at most high-water
 			size_t data_siz = dispatch_data_get_size(op->data);
 			if (data_siz) {
 				dispatch_assert(data_siz < max_buf_siz);
