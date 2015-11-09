@@ -1,0 +1,194 @@
+The libdispatch project exists in a parallel open source repository at:
+  http://svn.macosforge.org/repository/libdispatch/trunk
+
+Externally committed revisions are periodically synchronized back to the
+internal repository (this repository).
+
+Key:
+  APPLIED: change set was applied to internal repository.
+  INTERNAL: change set originated internally (i.e. already applied).
+  SKIPPED: change set was skipped.
+
+[   1] SKIPPED
+[   2] SKIPPED
+[   3] INTERNAL rdar://problem/7148356
+[   4] APPLIED rdar://problem/7323245
+[   5] APPLIED rdar://problem/7323245
+[   6] APPLIED rdar://problem/7323245
+[   7] APPLIED rdar://problem/7323245
+[   8] APPLIED rdar://problem/7323245
+[   9] APPLIED rdar://problem/7323245
+[  10] APPLIED rdar://problem/7323245
+[  11] APPLIED rdar://problem/7323245
+[  12] APPLIED rdar://problem/7323245
+[  13] SKIPPED
+[  14] APPLIED rdar://problem/7323245
+[  15] APPLIED rdar://problem/7323245
+[  16] APPLIED rdar://problem/7323245
+[  17] APPLIED rdar://problem/7323245
+[  18] APPLIED rdar://problem/7323245
+[  19] APPLIED rdar://problem/7323245
+[  20] APPLIED rdar://problem/7323245
+[  21] APPLIED rdar://problem/7323245
+[  22] APPLIED rdar://problem/7323245
+[  23] APPLIED rdar://problem/7323245
+[  24] APPLIED rdar://problem/7323245
+[  25] APPLIED rdar://problem/7323245
+[  26] APPLIED rdar://problem/7323245
+[  27] APPLIED rdar://problem/7323245
+[  28] APPLIED rdar://problem/7323245
+[  29] APPLIED rdar://problem/7323245
+[  30] SKIPPED
+[  31] APPLIED rdar://problem/7323245
+[  32] APPLIED rdar://problem/7323245
+[  33] APPLIED rdar://problem/7323245
+[  34] APPLIED rdar://problem/7323245
+[  35] SKIPPED
+[  36] APPLIED rdar://problem/7323245
+[  37] APPLIED rdar://problem/7323245
+[  38] APPLIED rdar://problem/7323245
+[  39] APPLIED rdar://problem/7323245
+[  40] APPLIED rdar://problem/7323245
+[  41] APPLIED rdar://problem/7323245
+[  42] APPLIED rdar://problem/7323245
+[  43] APPLIED rdar://problem/7323245
+[  44] APPLIED rdar://problem/7323245
+[  45] APPLIED rdar://problem/7323245
+[  46] APPLIED rdar://problem/7323245
+[  47] APPLIED rdar://problem/7323245
+[  48] APPLIED rdar://problem/7323245
+[  49] APPLIED rdar://problem/7323245
+[  50] APPLIED rdar://problem/7323245
+[  51] APPLIED rdar://problem/7323245
+[  52] APPLIED rdar://problem/7323245
+[  53] APPLIED rdar://problem/7323245
+[  54] APPLIED rdar://problem/7323245
+[  55] APPLIED rdar://problem/7323245
+[  56] APPLIED rdar://problem/7323245
+[  57] APPLIED rdar://problem/7323245
+[  58] APPLIED rdar://problem/7323245
+[  59] APPLIED rdar://problem/7323245
+[  60] APPLIED rdar://problem/7323245
+[  61] APPLIED rdar://problem/7323245
+[  62] APPLIED rdar://problem/7323245
+[  63] APPLIED rdar://problem/7323245
+[  64] APPLIED rdar://problem/7323245
+[  65] APPLIED rdar://problem/7323245
+[  66] APPLIED rdar://problem/7323245
+[  67] APPLIED rdar://problem/7323245
+[  68] APPLIED rdar://problem/7323245
+[  69] APPLIED rdar://problem/7323245
+[  70] APPLIED rdar://problem/7323245
+[  71] INTERNAL
+[  72] INTERNAL
+[  73] APPLIED rdar://problem/7531526
+[  74] APPLIED rdar://problem/7531526
+[  75]
+[  76]
+[  77]
+[  78]
+[  79] APPLIED rdar://problem/7531526
+[  80] APPLIED rdar://problem/7531526
+[  81] APPLIED rdar://problem/7531526
+[  82] APPLIED rdar://problem/7531526
+[  83] APPLIED rdar://problem/7531526
+[  84] APPLIED rdar://problem/7531526
+[  85]
+[  86]
+[  87] APPLIED rdar://problem/7531526
+[  88] APPLIED rdar://problem/7531526
+[  89] APPLIED rdar://problem/7531526
+[  90]
+[  91]
+[  92]
+[  93]
+[  94]
+[  95]
+[  96] APPLIED rdar://problem/7531526
+[  97] APPLIED rdar://problem/7531526
+[  98]
+[  99]
+[ 100]
+[ 101]
+[ 102]
+[ 103] APPLIED rdar://problem/7531526
+[ 104] APPLIED rdar://problem/7531526
+[ 105]
+[ 106] APPLIED rdar://problem/7531526
+[ 107] SKIPPED
+[ 108] SKIPPED
+[ 109] SKIPPED
+[ 110] SKIPPED
+[ 111] SKIPPED
+[ 112] APPLIED rdar://problem/7531526
+[ 113] SKIPPED
+[ 114] APPLIED rdar://problem/7531526
+[ 115] APPLIED rdar://problem/7531526
+[ 116] APPLIED rdar://problem/7531526
+[ 117] SKIPPED
+[ 118] APPLIED rdar://problem/7531526
+[ 119] SKIPPED
+[ 120] APPLIED rdar://problem/7531526
+[ 121] SKIPPED
+[ 122] SKIPPED
+[ 123] SKIPPED
+[ 124] SKIPPED
+[ 125] APPLIED rdar://problem/7531526
+[ 126] SKIPPED
+[ 127] APPLIED rdar://problem/7531526
+[ 128]
+[ 129]
+[ 130]
+[ 131]
+[ 132]
+[ 133]
+[ 134]
+[ 135]
+[ 136]
+[ 137] APPLIED rdar://problem/7647055
+[ 138] SKIPPED
+[ 139] APPLIED rdar://problem/7531526
+[ 140] APPLIED rdar://problem/7531526
+[ 141] APPLIED rdar://problem/7531526
+[ 142] APPLIED rdar://problem/7531526
+[ 143]
+[ 144] APPLIED rdar://problem/7531526
+[ 145] APPLIED rdar://problem/7531526
+[ 146] APPLIED rdar://problem/7531526
+[ 147]
+[ 148]
+[ 149]
+[ 150]
+[ 151] APPLIED rdar://problem/7531526
+[ 152] APPLIED rdar://problem/7531526
+[ 153]
+[ 154] APPLIED rdar://problem/7531526
+[ 155]
+[ 156]
+[ 157] APPLIED rdar://problem/7531526
+[ 158]
+[ 159]
+[ 160]
+[ 161]
+[ 162] APPLIED rdar://problem/7531526
+[ 163] APPLIED rdar://problem/7531526
+[ 164]
+[ 165]
+[ 166] APPLIED rdar://problem/7531526
+[ 167] APPLIED rdar://problem/7531526
+[ 168]
+[ 169] APPLIED rdar://problem/7531526
+[ 170] APPLIED rdar://problem/7531526
+[ 171] APPLIED rdar://problem/7531526
+[ 172] APPLIED rdar://problem/7531526
+[ 173] APPLIED rdar://problem/7531526
+[ 174] APPLIED rdar://problem/7531526
+[ 175] APPLIED rdar://problem/7531526
+[ 176] APPLIED rdar://problem/7531526
+[ 177] APPLIED rdar://problem/7531526
+[ 178]
+[ 179] APPLIED rdar://problem/7531526
+[ 180] APPLIED rdar://problem/7531526
+[ 181]
+[ 182]
+[ 183] INTERNAL rdar://problem/7581831
