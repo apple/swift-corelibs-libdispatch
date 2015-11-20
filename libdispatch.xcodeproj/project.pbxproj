@@ -781,6 +781,52 @@
 		E4EC122D12514715000DDBD1 /* libdispatch_mp.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libdispatch_mp.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4ECBAA415253C25002C313C /* mach_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = mach_private.h; sourceTree = "<group>"; };
 		E4FC3263145F46C9002FBDDB /* object.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = object.m; sourceTree = "<group>"; };
+		EA53C60E1BFEA851000A02EA /* bsdtestharness.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bsdtestharness.c; path = tests/bsdtestharness.c; sourceTree = "<group>"; };
+		EA53C60F1BFEA851000A02EA /* bsdtests.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bsdtests.c; path = tests/bsdtests.c; sourceTree = "<group>"; };
+		EA53C6101BFEA851000A02EA /* bsdtests.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = bsdtests.h; path = tests/bsdtests.h; sourceTree = "<group>"; };
+		EA53C6111BFEA851000A02EA /* bsdtestsummarize.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bsdtestsummarize.c; path = tests/bsdtestsummarize.c; sourceTree = "<group>"; };
+		EA53C6121BFEA851000A02EA /* cffd.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = cffd.c; path = tests/cffd.c; sourceTree = "<group>"; };
+		EA53C6131BFEA851000A02EA /* dispatch_after.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_after.c; path = tests/dispatch_after.c; sourceTree = "<group>"; };
+		EA53C6141BFEA851000A02EA /* dispatch_api.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_api.c; path = tests/dispatch_api.c; sourceTree = "<group>"; };
+		EA53C6151BFEA851000A02EA /* dispatch_apply.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_apply.c; path = tests/dispatch_apply.c; sourceTree = "<group>"; };
+		EA53C6161BFEA851000A02EA /* dispatch_c99.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_c99.c; path = tests/dispatch_c99.c; sourceTree = "<group>"; };
+		EA53C6171BFEA851000A02EA /* dispatch_cascade.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_cascade.c; path = tests/dispatch_cascade.c; sourceTree = "<group>"; };
+		EA53C6181BFEA851000A02EA /* dispatch_cf_main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_cf_main.c; path = tests/dispatch_cf_main.c; sourceTree = "<group>"; };
+		EA53C6191BFEA851000A02EA /* dispatch_concur.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_concur.c; path = tests/dispatch_concur.c; sourceTree = "<group>"; };
+		EA53C61A1BFEA851000A02EA /* dispatch_context_for_key.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_context_for_key.c; path = tests/dispatch_context_for_key.c; sourceTree = "<group>"; };
+		EA53C61B1BFEA851000A02EA /* dispatch_data.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_data.c; path = tests/dispatch_data.c; sourceTree = "<group>"; };
+		EA53C61C1BFEA851000A02EA /* dispatch_deadname.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_deadname.c; path = tests/dispatch_deadname.c; sourceTree = "<group>"; };
+		EA53C61D1BFEA851000A02EA /* dispatch_debug.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_debug.c; path = tests/dispatch_debug.c; sourceTree = "<group>"; };
+		EA53C61E1BFEA851000A02EA /* dispatch_drift.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_drift.c; path = tests/dispatch_drift.c; sourceTree = "<group>"; };
+		EA53C61F1BFEA851000A02EA /* dispatch_group.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_group.c; path = tests/dispatch_group.c; sourceTree = "<group>"; };
+		EA53C6201BFEA851000A02EA /* dispatch_io_net.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_io_net.c; path = tests/dispatch_io_net.c; sourceTree = "<group>"; };
+		EA53C6211BFEA851000A02EA /* dispatch_io.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_io.c; path = tests/dispatch_io.c; sourceTree = "<group>"; };
+		EA53C6221BFEA851000A02EA /* dispatch_overcommit.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_overcommit.c; path = tests/dispatch_overcommit.c; sourceTree = "<group>"; };
+		EA53C6231BFEA851000A02EA /* dispatch_pingpong.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_pingpong.c; path = tests/dispatch_pingpong.c; sourceTree = "<group>"; };
+		EA53C6241BFEA851000A02EA /* dispatch_plusplus.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = dispatch_plusplus.cpp; path = tests/dispatch_plusplus.cpp; sourceTree = "<group>"; };
+		EA53C6251BFEA851000A02EA /* dispatch_priority.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_priority.c; path = tests/dispatch_priority.c; sourceTree = "<group>"; };
+		EA53C6261BFEA851000A02EA /* dispatch_proc.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_proc.c; path = tests/dispatch_proc.c; sourceTree = "<group>"; };
+		EA53C6271BFEA851000A02EA /* dispatch_queue_finalizer.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_queue_finalizer.c; path = tests/dispatch_queue_finalizer.c; sourceTree = "<group>"; };
+		EA53C6281BFEA851000A02EA /* dispatch_read.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_read.c; path = tests/dispatch_read.c; sourceTree = "<group>"; };
+		EA53C6291BFEA851000A02EA /* dispatch_read2.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_read2.c; path = tests/dispatch_read2.c; sourceTree = "<group>"; };
+		EA53C62A1BFEA851000A02EA /* dispatch_readsync.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_readsync.c; path = tests/dispatch_readsync.c; sourceTree = "<group>"; };
+		EA53C62B1BFEA851000A02EA /* dispatch_select.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_select.c; path = tests/dispatch_select.c; sourceTree = "<group>"; };
+		EA53C62C1BFEA851000A02EA /* dispatch_sema.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_sema.c; path = tests/dispatch_sema.c; sourceTree = "<group>"; };
+		EA53C62D1BFEA851000A02EA /* dispatch_starfish.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_starfish.c; path = tests/dispatch_starfish.c; sourceTree = "<group>"; };
+		EA53C62E1BFEA851000A02EA /* dispatch_suspend_timer.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_suspend_timer.c; path = tests/dispatch_suspend_timer.c; sourceTree = "<group>"; };
+		EA53C62F1BFEA851000A02EA /* dispatch_sync_on_main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_sync_on_main.c; path = tests/dispatch_sync_on_main.c; sourceTree = "<group>"; };
+		EA53C6301BFEA851000A02EA /* dispatch_test.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_test.c; path = tests/dispatch_test.c; sourceTree = "<group>"; };
+		EA53C6311BFEA851000A02EA /* dispatch_test.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = dispatch_test.h; path = tests/dispatch_test.h; sourceTree = "<group>"; };
+		EA53C6321BFEA851000A02EA /* dispatch_timer_bit31.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_timer_bit31.c; path = tests/dispatch_timer_bit31.c; sourceTree = "<group>"; };
+		EA53C6331BFEA851000A02EA /* dispatch_timer_bit63.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_timer_bit63.c; path = tests/dispatch_timer_bit63.c; sourceTree = "<group>"; };
+		EA53C6341BFEA851000A02EA /* dispatch_timer_set_time.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_timer_set_time.c; path = tests/dispatch_timer_set_time.c; sourceTree = "<group>"; };
+		EA53C6351BFEA851000A02EA /* dispatch_timer_short.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_timer_short.c; path = tests/dispatch_timer_short.c; sourceTree = "<group>"; };
+		EA53C6361BFEA851000A02EA /* dispatch_timer_timeout.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_timer_timeout.c; path = tests/dispatch_timer_timeout.c; sourceTree = "<group>"; };
+		EA53C6371BFEA851000A02EA /* dispatch_timer.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_timer.c; path = tests/dispatch_timer.c; sourceTree = "<group>"; };
+		EA53C6381BFEA851000A02EA /* dispatch_transform.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_transform.c; path = tests/dispatch_transform.c; sourceTree = "<group>"; };
+		EA53C6391BFEA851000A02EA /* dispatch_vm.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_vm.c; path = tests/dispatch_vm.c; sourceTree = "<group>"; };
+		EA53C63A1BFEA851000A02EA /* dispatch_vnode.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = dispatch_vnode.c; path = tests/dispatch_vnode.c; sourceTree = "<group>"; };
+		EA53C63B1BFEA851000A02EA /* func.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = func.c; path = tests/func.c; sourceTree = "<group>"; };
 		FC0B34780FA2851C0080FFA0 /* source_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = source_internal.h; sourceTree = "<group>"; };
 		FC1832A2109923C7003403D5 /* perfmon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = perfmon.h; sourceTree = "<group>"; };
 		FC1832A3109923C7003403D5 /* time.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = time.h; sourceTree = "<group>"; };
@@ -832,6 +878,7 @@
 				08FB7795FE84155DC02AAC07 /* Source */,
 				C6A0FF2B0290797F04C91782 /* Documentation */,
 				1AB674ADFE9D54B511CA2CBB /* Products */,
+				EA53C60D1BFE9605000A02EA /* Tests */,
 				C927F35F10FD7F1000C5AB8B /* ddt.xcodeproj */,
 				4552536E19B1384900B88766 /* libdispatchtest.xcodeproj */,
 			);
@@ -1040,6 +1087,59 @@
 			);
 			name = "OS Object";
 			path = os;
+			sourceTree = "<group>";
+		};
+		EA53C60D1BFE9605000A02EA /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				EA53C60E1BFEA851000A02EA /* bsdtestharness.c */,
+				EA53C60F1BFEA851000A02EA /* bsdtests.c */,
+				EA53C6101BFEA851000A02EA /* bsdtests.h */,
+				EA53C6111BFEA851000A02EA /* bsdtestsummarize.c */,
+				EA53C6121BFEA851000A02EA /* cffd.c */,
+				EA53C6131BFEA851000A02EA /* dispatch_after.c */,
+				EA53C6141BFEA851000A02EA /* dispatch_api.c */,
+				EA53C6151BFEA851000A02EA /* dispatch_apply.c */,
+				EA53C6161BFEA851000A02EA /* dispatch_c99.c */,
+				EA53C6171BFEA851000A02EA /* dispatch_cascade.c */,
+				EA53C6181BFEA851000A02EA /* dispatch_cf_main.c */,
+				EA53C6191BFEA851000A02EA /* dispatch_concur.c */,
+				EA53C61A1BFEA851000A02EA /* dispatch_context_for_key.c */,
+				EA53C61B1BFEA851000A02EA /* dispatch_data.c */,
+				EA53C61C1BFEA851000A02EA /* dispatch_deadname.c */,
+				EA53C61D1BFEA851000A02EA /* dispatch_debug.c */,
+				EA53C61E1BFEA851000A02EA /* dispatch_drift.c */,
+				EA53C61F1BFEA851000A02EA /* dispatch_group.c */,
+				EA53C6201BFEA851000A02EA /* dispatch_io_net.c */,
+				EA53C6211BFEA851000A02EA /* dispatch_io.c */,
+				EA53C6221BFEA851000A02EA /* dispatch_overcommit.c */,
+				EA53C6231BFEA851000A02EA /* dispatch_pingpong.c */,
+				EA53C6241BFEA851000A02EA /* dispatch_plusplus.cpp */,
+				EA53C6251BFEA851000A02EA /* dispatch_priority.c */,
+				EA53C6261BFEA851000A02EA /* dispatch_proc.c */,
+				EA53C6271BFEA851000A02EA /* dispatch_queue_finalizer.c */,
+				EA53C6281BFEA851000A02EA /* dispatch_read.c */,
+				EA53C6291BFEA851000A02EA /* dispatch_read2.c */,
+				EA53C62A1BFEA851000A02EA /* dispatch_readsync.c */,
+				EA53C62B1BFEA851000A02EA /* dispatch_select.c */,
+				EA53C62C1BFEA851000A02EA /* dispatch_sema.c */,
+				EA53C62D1BFEA851000A02EA /* dispatch_starfish.c */,
+				EA53C62E1BFEA851000A02EA /* dispatch_suspend_timer.c */,
+				EA53C62F1BFEA851000A02EA /* dispatch_sync_on_main.c */,
+				EA53C6301BFEA851000A02EA /* dispatch_test.c */,
+				EA53C6311BFEA851000A02EA /* dispatch_test.h */,
+				EA53C6321BFEA851000A02EA /* dispatch_timer_bit31.c */,
+				EA53C6331BFEA851000A02EA /* dispatch_timer_bit63.c */,
+				EA53C6341BFEA851000A02EA /* dispatch_timer_set_time.c */,
+				EA53C6351BFEA851000A02EA /* dispatch_timer_short.c */,
+				EA53C6361BFEA851000A02EA /* dispatch_timer_timeout.c */,
+				EA53C6371BFEA851000A02EA /* dispatch_timer.c */,
+				EA53C6381BFEA851000A02EA /* dispatch_transform.c */,
+				EA53C6391BFEA851000A02EA /* dispatch_vm.c */,
+				EA53C63A1BFEA851000A02EA /* dispatch_vnode.c */,
+				EA53C63B1BFEA851000A02EA /* func.c */,
+			);
+			name = Tests;
 			sourceTree = "<group>";
 		};
 		FC1832A0109923B3003403D5 /* shims */ = {
