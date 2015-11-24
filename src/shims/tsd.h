@@ -90,7 +90,7 @@ extern pthread_key_t dispatch_introspection_key;
 #elif DISPATCH_PERF_MON
 extern pthread_key_t dispatch_bcounter_key;
 #endif
-exern pthread_key_t dispatch_pthread_root_queue_observer_hooks_key;
+extern pthread_key_t dispatch_pthread_root_queue_observer_hooks_key;
 
 DISPATCH_TSD_INLINE
 static inline void
