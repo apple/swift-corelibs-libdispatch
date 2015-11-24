@@ -586,7 +586,7 @@ _dispatch_syslog(const char *msg)
 static inline void
 _dispatch_vsyslog(const char *msg, va_list ap)
 {
-	vsyslog(LOG_NOTICE, msg, *ap_ptr);
+	vsyslog(LOG_NOTICE, msg, ap);
 }
 #endif // DISPATCH_USE_SIMPLE_ASL
 
