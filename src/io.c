@@ -387,9 +387,14 @@ dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 		int err = 0;
 		struct stat st;
 		_dispatch_io_syscall_switch_noerr(err,
-			(path_data->oflag & O_NOFOLLOW) == O_NOFOLLOW ||
-					(path_data->oflag & O_SYMLINK) == O_SYMLINK ?
+			(path_data->oflag & O_NOFOLLOW) == O_NOFOLLOW
+#ifdef __LINUX_PORT_HDD__						  
+					?
 					lstat(path_data->path, &st) : stat(path_data->path, &st),
+#else
+					|| (path_data->oflag & O_SYMLINK) == O_SYMLINK ?
+					lstat(path_data->path, &st) : stat(path_data->path, &st),
+#endif						  
 			case 0:
 				err = _dispatch_io_validate_type(channel, st.st_mode);
 				break;
@@ -1777,17 +1782,37 @@ _dispatch_stream_cleanup_operations(dispatch_stream_t stream,
 	dispatch_operation_t op, tmp;
 	typeof(*stream->operations) *operations;
 	operations = &stream->operations[DISPATCH_IO_RANDOM];
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+        // NOT CORRECT (doesn't support removal during iteration)
+	TAILQ_FOREACH(op, operations, operation_list) {
+		if (!channel || op->channel == channel) {
+			_dispatch_stream_complete_operation(stream, op);
+		}
+	}
+#else
 	TAILQ_FOREACH_SAFE(op, operations, operation_list, tmp) {
 		if (!channel || op->channel == channel) {
 			_dispatch_stream_complete_operation(stream, op);
 		}
 	}
+#endif
 	operations = &stream->operations[DISPATCH_IO_STREAM];
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+        // NOT CORRECT (doesn't support removal during iteration)
+	TAILQ_FOREACH(op, operations, operation_list) {
+		if (!channel || op->channel == channel) {
+			_dispatch_stream_complete_operation(stream, op);
+		}
+	}
+#else
 	TAILQ_FOREACH_SAFE(op, operations, operation_list, tmp) {
 		if (!channel || op->channel == channel) {
 			_dispatch_stream_complete_operation(stream, op);
 		}
 	}
+#endif	
 	if (stream->source_running && !_dispatch_stream_operation_avail(stream)) {
 		dispatch_suspend(stream->source);
 		stream->source_running = false;
@@ -1799,11 +1824,21 @@ _dispatch_disk_cleanup_operations(dispatch_disk_t disk, dispatch_io_t channel)
 {
 	// On pick queue
 	dispatch_operation_t op, tmp;
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+        // NOT CORRECT (doesn't support removal during iteration)
+	TAILQ_FOREACH(op, &disk->operations, operation_list) {
+		if (!channel || op->channel == channel) {
+			_dispatch_disk_complete_operation(disk, op);
+		}
+	}
+#else	
 	TAILQ_FOREACH_SAFE(op, &disk->operations, operation_list, tmp) {
 		if (!channel || op->channel == channel) {
 			_dispatch_disk_complete_operation(disk, op);
 		}
 	}
+#endif	
 }
 
 #pragma mark -
@@ -2064,6 +2099,9 @@ _dispatch_disk_perform(void *ctxt)
 static void
 _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 {
+#ifdef __LINUX_PORT_HDD__
+  LINUX_PORT_ERROR();
+#else
 	int err;
 	struct radvisory advise;
 	// No point in issuing a read advise for the next chunk if we are already
@@ -2090,6 +2128,7 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 		// TODO: set disk status on error
 		default: (void)dispatch_assume_zero(err); break;
 	);
+#endif	
 }
 
 static int

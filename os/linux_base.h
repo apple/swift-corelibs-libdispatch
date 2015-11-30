@@ -18,22 +18,27 @@ typedef uint32_t mach_port_t;
 
 typedef uint32_t mach_error_t;
 
+typedef uint32_t mach_vm_size_t;
+
+typedef uint32_t mach_msg_return_t;
+
+typedef uintptr_t mach_vm_address_t;
+
 typedef uint32_t dispatch_mach_msg_t;
 
 typedef uint32_t dispatch_mach_t;
 
 typedef uint32_t dispatch_mach_reason_t;
 
-typedef uint32_t mach_vm_size_t;
-
-typedef uintptr_t mach_vm_address_t;
 
 typedef struct
 {
 } mach_msg_header_t;
 
 
-typedef void (*dispatch_mach_handler_function_t)(void*);
+typedef void (*dispatch_mach_handler_function_t)(void*, dispatch_mach_reason_t,
+						 dispatch_mach_msg_t, mach_error_t);
+
 typedef void (*dispatch_mach_msg_destructor_t)(void*);
 
 /*
@@ -42,7 +47,24 @@ typedef void (*dispatch_mach_msg_destructor_t)(void*);
 
 struct kevent64_s
 {
+    uint64_t        ident;
+    int16_t         filter;
+    uint16_t        flags;
+    uint32_t        fflags;
+    int64_t         data;
+    uint64_t        udata;
+    uint64_t        ext[2];
 };
+
+typedef uint32_t voucher_activity_mode_t;
+
+struct voucher_offsets_s {
+  uint32_t vo_version;
+};
+
+
+// bogus...
+#define PAGE_SIZE 4096
 
 /*
  * Stub out misc linking and compilation attributes
