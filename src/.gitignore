@@ -1,0 +1,4 @@
+provider.h
+.libs
+*.lo
+
