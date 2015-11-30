@@ -1,4 +1,5 @@
 provider.h
 .libs
 *.lo
+*.la
 
