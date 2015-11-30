@@ -1192,9 +1192,17 @@ _dispatch_kevent_merge(_dispatch_kevent_qos_s *ke)
 	dk = (void*)ke->udata;
 	dispatch_assert(dk);
 
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+        // NOT CORRECT (doesn't support removal during iteration)
+	TAILQ_FOREACH(dri, &dk->dk_sources, dr_list) {
+		_dispatch_source_merge_kevent(_dispatch_source_from_refs(dri), ke);
+	}
+#else	
 	TAILQ_FOREACH_SAFE(dri, &dk->dk_sources, dr_list, dr_next) {
 		_dispatch_source_merge_kevent(_dispatch_source_from_refs(dri), ke);
 	}
+#endif
 }
 
 #if DISPATCH_USE_GUARDED_FD_CHANGE_FDGUARD
@@ -3094,6 +3102,30 @@ _dispatch_mach_notify_merge(mach_port_t name, uint32_t flag, bool final)
 		unreg = _dispatch_kevent_resume(dk, flag, 0);
 	}
 	DISPATCH_MACH_KEVENT_ARMED(dk) = 0;
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+        // NOT CORRECT (doesn't support removal during iteration)
+	TAILQ_FOREACH(dri, &dk->dk_sources, dr_list) {
+		dispatch_source_t dsi = _dispatch_source_from_refs(dri);
+		if (dx_type(dsi) == DISPATCH_MACH_CHANNEL_TYPE) {
+			dispatch_mach_t dm = (dispatch_mach_t)dsi;
+			_dispatch_mach_merge_kevent(dm, &kev);
+			if (unreg && dm->dm_dkev) {
+				_dispatch_mach_kevent_unregister(dm);
+			}
+		} else {
+			_dispatch_source_merge_kevent(dsi, &kev);
+			if (unreg) {
+				_dispatch_source_kevent_unregister(dsi);
+			}
+		}
+		if (!dr_next || DISPATCH_MACH_KEVENT_ARMED(dk)) {
+			// current merge is last in list (dk might have been freed)
+			// or it re-armed the notification
+			return;
+		}
+	}
+#else
 	TAILQ_FOREACH_SAFE(dri, &dk->dk_sources, dr_list, dr_next) {
 		dispatch_source_t dsi = _dispatch_source_from_refs(dri);
 		if (dx_type(dsi) == DISPATCH_MACH_CHANNEL_TYPE) {
@@ -3114,6 +3146,7 @@ _dispatch_mach_notify_merge(mach_port_t name, uint32_t flag, bool final)
 			return;
 		}
 	}
+#endif
 }
 
 static kern_return_t
@@ -3966,9 +3999,17 @@ _dispatch_mach_disconnect(dispatch_mach_t dm)
 	}
 	if (!TAILQ_EMPTY(&dm->dm_refs->dm_replies)) {
 		dispatch_mach_reply_refs_t dmr, tmp;
+#ifdef __LINUX_PORT_HDD__
+		LINUX_PORT_ERROR();
+		// NOT CORRECT (doesn't support removal during iteration)
+		TAILQ_FOREACH(dmr, &dm->dm_refs->dm_replies, dmr_list){
+			_dispatch_mach_reply_kevent_unregister(dm, dmr, true);
+		}
+#else		
 		TAILQ_FOREACH_SAFE(dmr, &dm->dm_refs->dm_replies, dmr_list, tmp){
 			_dispatch_mach_reply_kevent_unregister(dm, dmr, true);
 		}
+#endif		
 	}
 }
 
@@ -4735,6 +4776,10 @@ _dispatch_source_debug(dispatch_source_t ds, char* buf, size_t bufsiz)
 static size_t
 _dispatch_mach_debug_attr(dispatch_mach_t dm, char* buf, size_t bufsiz)
 {
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+	return (size_t)0;
+#else
 	dispatch_queue_t target = dm->do_targetq;
 	return dsnprintf(buf, bufsiz, "target = %s[%p], receive = 0x%x, "
 			"send = 0x%x, send-possible = 0x%x%s, checkin = 0x%x%s, "
@@ -4748,10 +4793,15 @@ _dispatch_mach_debug_attr(dispatch_mach_t dm, char* buf, size_t bufsiz)
 			dm->dm_refs->dm_checkin ? " (pending)" : "",
 			dm->dm_refs->dm_sending, dm->dm_refs->dm_disconnect_cnt,
 			(bool)(dm->ds_atomic_flags & DSF_CANCELED));
+#endif	
 }
 size_t
 _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz)
 {
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+	return (size_t)0;
+#else
 	size_t offset = 0;
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "%s[%p] = { ",
 			dm->dq_label && !dm->dm_cancel_handler_called ? dm->dq_label :
@@ -4760,6 +4810,7 @@ _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz)
 	offset += _dispatch_mach_debug_attr(dm, &buf[offset], bufsiz - offset);
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "}");
 	return offset;
+#endif	
 }
 
 #if DISPATCH_DEBUG

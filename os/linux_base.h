@@ -15,6 +15,7 @@ typedef uint32_t mach_port_t;
 #define  MACH_PORT_NULL 0
 #define  MACH_PORT_DEAD -1
 
+#define EVFILT_MACHPORT -8
 
 typedef uint32_t mach_error_t;
 
@@ -65,6 +66,14 @@ struct voucher_offsets_s {
 
 // bogus...
 #define PAGE_SIZE 4096
+#define SIZE_T_MAX 0x7fffffff
+
+#define NOTE_VM_PRESSURE 0
+#define NOTE_ABSOLUTE 0
+#define NOTE_NSECONDS 0
+#define NOTE_LEEWAY 0
+#define NOTE_CRITICAL 0
+#define NOTE_BACKGROUND 0
 
 /*
  * Stub out misc linking and compilation attributes
