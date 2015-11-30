@@ -868,7 +868,7 @@ _dispatch_root_queue_init_pthread_pool(dispatch_root_queue_context_t qc,
 	(void)dispatch_assume(pqc->dpq_thread_mediator.dsema_port);
 #elif USE_POSIX_SEM
 	/* XXXRW: POSIX semaphores don't support LIFO? */
-	int ret = sem_init(&pqc->dpq_thread_mediator.dsema_sem), 0, 0);
+	int ret = sem_init(&(pqc->dpq_thread_mediator.dsema_sem), 0, 0);
 	(void)dispatch_assume_zero(ret);
 #endif
 }
@@ -1703,6 +1703,18 @@ _dispatch_queue_specific_queue_dispose(dispatch_queue_specific_queue_t dqsq)
 {
 	dispatch_queue_specific_t dqs, tmp;
 
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+        // NOT CORRECT (doesn't support removal during iteration)
+	TAILQ_FOREACH(dqs, &dqsq->dqsq_contexts, dqs_list) {
+		if (dqs->dqs_destructor) {
+			dispatch_async_f(_dispatch_get_root_queue(
+					_DISPATCH_QOS_CLASS_DEFAULT, false), dqs->dqs_ctxt,
+					dqs->dqs_destructor);
+		}
+		free(dqs);
+	}
+#else
 	TAILQ_FOREACH_SAFE(dqs, &dqsq->dqsq_contexts, dqs_list, tmp) {
 		if (dqs->dqs_destructor) {
 			dispatch_async_f(_dispatch_get_root_queue(
@@ -1711,6 +1723,7 @@ _dispatch_queue_specific_queue_dispose(dispatch_queue_specific_queue_t dqsq)
 		}
 		free(dqs);
 	}
+#endif
 	_dispatch_queue_destroy((dispatch_queue_t)dqsq);
 }
 
@@ -3019,6 +3032,8 @@ _dispatch_barrier_sync_slow(dispatch_queue_t dq, void (^work)(void))
 		// rdar://problem/7176237&7181849&7458685
 		work = _dispatch_Block_copy(work);
 		func = _dispatch_call_block_and_release;
+	}
+#else
 	}
 #endif
 	_dispatch_barrier_sync_f(dq, work, func, pp);
