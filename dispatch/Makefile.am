@@ -6,6 +6,7 @@ dispatchdir=$(includedir)/dispatch
 
 dispatch_HEADERS=	\
 	base.h			\
+	block.h			\
 	data.h			\
 	dispatch.h		\
 	group.h			\

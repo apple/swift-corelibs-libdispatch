@@ -2,13 +2,15 @@
 #
 #
 
+AUTOMAKE_OPTIONS = serial-tests subdir-objects
+
 noinst_LTLIBRARIES=libbsdtests.la
 
 libbsdtests_la_SOURCES=			\
 	bsdtests.c					\
 	bsdtests.h					\
 	dispatch_test.c				\
-	dispatch_test.h				\
+	dispatch_test.h
 
 check_PROGRAMS=					\
 	bsdtestharness				\
@@ -62,15 +64,17 @@ dispatch_priority2_CPPFLAGS=$(AM_CPPFLAGS) -DUSE_SET_TARGET_QUEUE=1
 
 AM_CPPFLAGS=-I$(top_builddir) -I$(top_srcdir)
 
-AM_CFLAGS=-Wall $(MARCH_FLAGS) $(CBLOCKS_FLAGS)
-AM_OBJCFLAGS=-Wall $(MARCH_FLAGS) $(CBLOCKS_FLAGS) -fobjc-gc
-AM_CXXFLAGS=-Wall $(MARCH_FLAGS) $(CXXBLOCKS_FLAGS)
+DISPATCH_TESTS_CFLAGS=-Wall -Wno-deprecated-declarations $(MARCH_FLAGS)
+AM_CFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CBLOCKS_FLAGS)
+AM_OBJCFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CBLOCKS_FLAGS)
+AM_CXXFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CXXBLOCKS_FLAGS)
+AM_OBJCXXFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CXXBLOCKS_FLAGS)
 
 LDADD=libbsdtests.la ../src/libdispatch.la
 libbsdtests_la_LDFLAGS=-avoid-version
 
 TESTS_ENVIRONMENT=./bsdtestharness
-DISTCLEAN=bench.cc
+DISTCLEAN=Foundation/bench.cc
 
 if HAVE_COREFOUNDATION
 TESTS+=							\
@@ -92,16 +96,12 @@ TESTS+=							\
 	nsoperation					\
 	bench
 
-dispatch_sync_gc_SOURCES=dispatch_sync_gc.m
+dispatch_sync_gc_SOURCES=Foundation/dispatch_sync_gc.m
 dispatch_sync_gc_LDFLAGS=-framework Foundation
-dispatch_apply_gc_SOURCES=dispatch_apply_gc.m
+dispatch_apply_gc_SOURCES=Foundation/dispatch_apply_gc.m
 dispatch_apply_gc_LDFLAGS=-framework Foundation
-nsoperation_SOURCES=nsoperation.m
+nsoperation_SOURCES=Foundation/nsoperation.m
 nsoperation_LDFLAGS=-framework Foundation
-nodist_bench_SOURCES=bench.cc
-bench_SOURCES=func.c
+bench_SOURCES=Foundation/bench.mm func.c
 bench_LDFLAGS=-framework Foundation
-# Workaround missing objcxx support in older autotools
-bench.o: bench.cc
-	$(CXXCOMPILE) -x objective-c++ -c -o $@ $<
 endif

@@ -102,17 +102,20 @@
 /* Define to 1 if you have the <pthread_np.h> header file. */
 /* #undef HAVE_PTHREAD_NP_H */
 
+/* Define to 1 if you have the <pthread/qos.h> header file. */
+#define HAVE_PTHREAD_QOS_H 1
+
 /* Define if pthread work queues are present */
 #define HAVE_PTHREAD_WORKQUEUES 1
 
+/* Define to 1 if you have the <pthread_workqueue.h> header file. */
+#define HAVE_PTHREAD_WORKQUEUE_H 1
+
+/* Define to 1 if you have the <pthread/workqueue_private.h> header file. */
+#define HAVE_PTHREAD_WORKQUEUE_PRIVATE_H 1
+
 /* Define to 1 if you have the `pthread_workqueue_setdispatch_np' function. */
 #define HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP 1
-
-/* Define to 1 if you have the `_pthread_workqueue_init' function. */
-#define HAVE__PTHREAD_WORKQUEUE_INIT 1
-
-/* Define to 1 if you have the <pthread/qos.h> header file. */
-#define HAVE_PTHREAD_QOS_H 1
 
 /* Define to 1 if you have the <stdint.h> header file. */
 #define HAVE_STDINT_H 1
@@ -147,8 +150,10 @@
 /* Define to 1 if you have the <unistd.h> header file. */
 #define HAVE_UNISTD_H 1
 
-/* Define to the sub-directory in which libtool stores uninstalled libraries.
-   */
+/* Define to 1 if you have the `_pthread_workqueue_init' function. */
+#define HAVE__PTHREAD_WORKQUEUE_INIT 1
+
+/* Define to the sub-directory where libtool stores uninstalled libraries. */
 #define LT_OBJDIR ".libs/"
 
 /* Name of package */
@@ -161,13 +166,16 @@
 #define PACKAGE_NAME "libdispatch"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "libdispatch 1.2"
+#define PACKAGE_STRING "libdispatch 1.3"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "libdispatch"
 
+/* Define to the home page for this package. */
+#define PACKAGE_URL "http://libdispatch.macosforge.org"
+
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "1.2"
+#define PACKAGE_VERSION "1.3"
 
 /* Define to 1 if you have the ANSI C header files. */
 #define STDC_HEADERS 1
@@ -184,20 +192,30 @@
 /* Define to use POSIX semaphores */
 /* #undef USE_POSIX_SEM */
 
-/* Version number of package */
-#define VERSION "1.2"
-
-/* Define to 1 if on AIX 3.
-   System headers sometimes define this.
-   We just want to avoid a redefinition error message.  */
+/* Enable extensions on AIX 3, Interix.  */
 #ifndef _ALL_SOURCE
-/* # undef _ALL_SOURCE */
+# define _ALL_SOURCE 1
 #endif
-
 /* Enable GNU extensions on systems that have them.  */
 #ifndef _GNU_SOURCE
 # define _GNU_SOURCE 1
 #endif
+/* Enable threading extensions on Solaris.  */
+#ifndef _POSIX_PTHREAD_SEMANTICS
+# define _POSIX_PTHREAD_SEMANTICS 1
+#endif
+/* Enable extensions on HP NonStop.  */
+#ifndef _TANDEM_SOURCE
+# define _TANDEM_SOURCE 1
+#endif
+/* Enable general extensions on Solaris.  */
+#ifndef __EXTENSIONS__
+# define __EXTENSIONS__ 1
+#endif
+
+
+/* Version number of package */
+#define VERSION "1.3"
 
 /* Define to 1 if on MINIX. */
 /* #undef _MINIX */
@@ -211,14 +229,3 @@
 
 /* Define if using Darwin $NOCANCEL */
 #define __DARWIN_NON_CANCELABLE 1
-
-/* Enable extensions on Solaris.  */
-#ifndef __EXTENSIONS__
-# define __EXTENSIONS__ 1
-#endif
-#ifndef _POSIX_PTHREAD_SEMANTICS
-# define _POSIX_PTHREAD_SEMANTICS 1
-#endif
-#ifndef _TANDEM_SOURCE
-# define _TANDEM_SOURCE 1
-#endif
