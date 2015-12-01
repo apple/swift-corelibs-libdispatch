@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -54,60 +54,71 @@
 #include <dispatch/benchmark.h>
 #include <dispatch/queue_private.h>
 #include <dispatch/source_private.h>
+#include <dispatch/mach_private.h>
 #include <dispatch/data_private.h>
+#include <dispatch/io_private.h>
 
 #undef __DISPATCH_INDIRECT__
 
 #endif /* !__DISPATCH_BUILDING_DISPATCH__ */
 
 // <rdar://problem/9627726> Check that public and private dispatch headers match
-#if DISPATCH_API_VERSION != 20111201 // Keep in sync with <dispatch/dispatch.h>
+#if DISPATCH_API_VERSION != 20130520 // Keep in sync with <dispatch/dispatch.h>
 #error "Dispatch header mismatch between /usr/include and /usr/local/include"
 #endif
 
 __BEGIN_DECLS
 
-DISPATCH_EXPORT DISPATCH_NOTHROW
-void
-libdispatch_init(void);
-
-#if TARGET_OS_MAC
-#define DISPATCH_COCOA_COMPAT 1
-#if DISPATCH_COCOA_COMPAT
-
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_CONST DISPATCH_WARN_RESULT DISPATCH_NOTHROW
-mach_port_t
-_dispatch_get_main_queue_port_4CF(void);
-
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NOTHROW
-void
-_dispatch_main_queue_callback_4CF(mach_msg_header_t *msg);
-
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-void (*dispatch_begin_thread_4GC)(void);
-
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-void (*dispatch_end_thread_4GC)(void);
-
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
-DISPATCH_EXPORT
-void (*dispatch_no_worker_threads_4GC)(void);
-
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-void *(*_dispatch_begin_NSAutoReleasePool)(void);
-
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-void (*_dispatch_end_NSAutoReleasePool)(void *);
-
+/*!
+ * @function _dispatch_is_multithreaded
+ *
+ * @abstract
+ * Returns true if the current process has become multithreaded by the use
+ * of libdispatch functionality.
+ *
+ * @discussion
+ * This SPI is intended for use by low-level system components that need to
+ * ensure that they do not make a single-threaded process multithreaded, to
+ * avoid negatively affecting child processes of a fork (without exec).
+ *
+ * Such components must not use any libdispatch functionality if this function
+ * returns false.
+ *
+ * @result
+ * Boolean indicating whether the process has used libdispatch and become
+ * multithreaded.
+ */
 __OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_NOTHROW
 bool _dispatch_is_multithreaded(void);
+
+/*!
+ * @function _dispatch_is_fork_of_multithreaded_parent
+ *
+ * @abstract
+ * Returns true if the current process is a child of a parent process that had
+ * become multithreaded by the use of libdispatch functionality at the time of
+ * fork (without exec).
+ *
+ * @discussion
+ * This SPI is intended for use by (rare) low-level system components that need
+ * to continue working on the child side of a fork (without exec) of a
+ * multithreaded process.
+ *
+ * Such components must not use any libdispatch functionality if this function
+ * returns true.
+ *
+ * @result
+ * Boolean indicating whether the parent process had used libdispatch and
+ * become multithreaded at the time of fork.
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+DISPATCH_EXPORT DISPATCH_NOTHROW
+bool _dispatch_is_fork_of_multithreaded_parent(void);
+
+/*
+ * dispatch_time convenience macros
+ */
 
 #define _dispatch_time_after_nsec(t) \
 		dispatch_time(DISPATCH_TIME_NOW, (t))
@@ -118,26 +129,82 @@ bool _dispatch_is_multithreaded(void);
 #define _dispatch_time_after_sec(t) \
 		dispatch_time(DISPATCH_TIME_NOW, (t) * NSEC_PER_SEC)
 
-#endif
-#endif /* TARGET_OS_MAC */
+/*
+ * SPI for CoreFoundation/Foundation/libauto ONLY
+ */
 
-/* pthreads magic */
+#define DISPATCH_COCOA_COMPAT (TARGET_OS_MAC || TARGET_OS_WIN32)
 
-DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_prepare(void);
-DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_parent(void);
-DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
+#if DISPATCH_COCOA_COMPAT
 
 #if TARGET_OS_MAC
-/*
- * Extract the context pointer from a mach message trailer.
- */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NONNULL_ALL
+DISPATCH_EXPORT DISPATCH_CONST DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+mach_port_t
+_dispatch_get_main_queue_port_4CF(void);
+
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+DISPATCH_EXPORT DISPATCH_NOTHROW
+void
+_dispatch_main_queue_callback_4CF(mach_msg_header_t *msg);
+#elif TARGET_OS_WIN32
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+DISPATCH_EXPORT DISPATCH_NOTHROW
+HANDLE
+_dispatch_get_main_queue_handle_4CF(void);
+
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+DISPATCH_EXPORT DISPATCH_NOTHROW
+void
+_dispatch_main_queue_callback_4CF(void);
+#endif // TARGET_OS_WIN32
+
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
-void *
-dispatch_mach_msg_get_context(mach_msg_header_t *msg);
-#endif /* TARGET_OS_MAC */
+dispatch_queue_t
+_dispatch_runloop_root_queue_create_4CF(const char *label, unsigned long flags);
+
+#if TARGET_OS_MAC
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+mach_port_t
+_dispatch_runloop_root_queue_get_port_4CF(dispatch_queue_t queue);
+#endif
+
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+DISPATCH_EXPORT DISPATCH_NOTHROW
+void
+_dispatch_runloop_root_queue_wakeup_4CF(dispatch_queue_t queue);
+
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+bool
+_dispatch_runloop_root_queue_perform_4CF(dispatch_queue_t queue);
+
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+void
+_dispatch_source_set_runloop_timer_4CF(dispatch_source_t source,
+		dispatch_time_t start, uint64_t interval, uint64_t leeway);
+
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+DISPATCH_EXPORT
+void (*dispatch_begin_thread_4GC)(void);
+
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+DISPATCH_EXPORT
+void (*dispatch_end_thread_4GC)(void);
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+DISPATCH_EXPORT
+void *(*_dispatch_begin_NSAutoReleasePool)(void);
+
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+DISPATCH_EXPORT
+void (*_dispatch_end_NSAutoReleasePool)(void *);
+
+#endif /* DISPATCH_COCOA_COMPAT */
 
 __END_DECLS
 
-#endif
+#endif // __DISPATCH_PRIVATE__

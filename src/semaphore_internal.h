@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -29,32 +29,26 @@
 
 struct dispatch_queue_s;
 
-struct dispatch_sema_notify_s {
-	struct dispatch_sema_notify_s *volatile dsn_next;
-	struct dispatch_queue_s *dsn_queue;
-	void *dsn_ctxt;
-	void (*dsn_func)(void *);
-};
-
 DISPATCH_CLASS_DECL(semaphore);
 struct dispatch_semaphore_s {
 	DISPATCH_STRUCT_HEADER(semaphore);
-	long dsema_value;
-	long dsema_orig;
-	size_t dsema_sent_ksignals;
-#if USE_MACH_SEM && USE_POSIX_SEM
-#error "Too many supported semaphore types"
-#elif USE_MACH_SEM
+#if USE_MACH_SEM
 	semaphore_t dsema_port;
-	semaphore_t dsema_waiter_port;
 #elif USE_POSIX_SEM
 	sem_t dsema_sem;
+#elif USE_WIN32_SEM
+	HANDLE dsema_handle;
 #else
 #error "No supported semaphore type"
 #endif
-	size_t dsema_group_waiters;
-	struct dispatch_sema_notify_s *dsema_notify_head;
-	struct dispatch_sema_notify_s *dsema_notify_tail;
+	long dsema_orig;
+	long volatile dsema_value;
+	union {
+		long volatile dsema_sent_ksignals;
+		long volatile dsema_group_waiters;
+	};
+	struct dispatch_continuation_s *volatile dsema_notify_head;
+	struct dispatch_continuation_s *volatile dsema_notify_tail;
 };
 
 DISPATCH_CLASS_DECL(group);
@@ -64,10 +58,35 @@ size_t _dispatch_semaphore_debug(dispatch_object_t dou, char *buf,
 		size_t bufsiz);
 
 typedef uintptr_t _dispatch_thread_semaphore_t;
-_dispatch_thread_semaphore_t _dispatch_get_thread_semaphore(void);
-void _dispatch_put_thread_semaphore(_dispatch_thread_semaphore_t);
+
+_dispatch_thread_semaphore_t _dispatch_thread_semaphore_create(void);
+void _dispatch_thread_semaphore_dispose(_dispatch_thread_semaphore_t);
 void _dispatch_thread_semaphore_wait(_dispatch_thread_semaphore_t);
 void _dispatch_thread_semaphore_signal(_dispatch_thread_semaphore_t);
-void _dispatch_thread_semaphore_dispose(_dispatch_thread_semaphore_t);
+
+DISPATCH_ALWAYS_INLINE
+static inline _dispatch_thread_semaphore_t
+_dispatch_get_thread_semaphore(void)
+{
+	_dispatch_thread_semaphore_t sema = (_dispatch_thread_semaphore_t)
+			_dispatch_thread_getspecific(dispatch_sema4_key);
+	if (slowpath(!sema)) {
+		return _dispatch_thread_semaphore_create();
+	}
+	_dispatch_thread_setspecific(dispatch_sema4_key, NULL);
+	return sema;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_put_thread_semaphore(_dispatch_thread_semaphore_t sema)
+{
+	_dispatch_thread_semaphore_t old_sema = (_dispatch_thread_semaphore_t)
+			_dispatch_thread_getspecific(dispatch_sema4_key);
+	_dispatch_thread_setspecific(dispatch_sema4_key, (void*)sema);
+	if (slowpath(old_sema)) {
+		return _dispatch_thread_semaphore_dispose(old_sema);
+	}
+}
 
 #endif

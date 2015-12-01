@@ -53,8 +53,12 @@
 #define OS_OBJECT_EXPORT extern
 #endif
 
-#if OS_OBJECT_USE_OBJC && defined(__has_feature) && __has_feature(objc_arc)
+#if OS_OBJECT_USE_OBJC && defined(__has_feature)
+#if __has_feature(objc_arc)
 #define _OS_OBJECT_OBJC_ARC 1
+#else
+#define _OS_OBJECT_OBJC_ARC 0
+#endif
 #else
 #define _OS_OBJECT_OBJC_ARC 0
 #endif
@@ -102,6 +106,11 @@ __OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
 OS_OBJECT_EXPORT OS_OBJECT_MALLOC OS_OBJECT_WARN_RESULT OS_OBJECT_NOTHROW
 _os_object_t
 _os_object_alloc(const void *cls, size_t size);
+
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+OS_OBJECT_EXPORT OS_OBJECT_MALLOC OS_OBJECT_WARN_RESULT OS_OBJECT_NOTHROW
+_os_object_t
+_os_object_alloc_realized(const void *cls, size_t size);
 
 __OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
 OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW

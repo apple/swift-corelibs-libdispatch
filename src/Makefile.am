@@ -31,7 +31,6 @@ libdispatch_la_SOURCES=		\
 	shims/atomic.h			\
 	shims/getprogname.h		\
 	shims/hw_config.h		\
-	shims/malloc_zone.h		\
 	shims/perfmon.h			\
 	shims/time.h			\
 	shims/tsd.h

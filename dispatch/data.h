@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2009-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -51,8 +51,6 @@ DISPATCH_DECL(dispatch_data);
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
 DISPATCH_EXPORT struct dispatch_data_s _dispatch_data_empty;
 
-#ifdef __BLOCKS__
-
 /*!
  * @const DISPATCH_DATA_DESTRUCTOR_DEFAULT
  * @discussion The default destructor for dispatch data objects.
@@ -60,6 +58,21 @@ DISPATCH_EXPORT struct dispatch_data_s _dispatch_data_empty;
  * be copied into internal storage managed by the system.
  */
 #define DISPATCH_DATA_DESTRUCTOR_DEFAULT NULL
+
+#ifdef __BLOCKS__
+#if !TARGET_OS_WIN32
+/*! @parseOnly */
+#define DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(name) \
+	DISPATCH_EXPORT const dispatch_block_t _dispatch_data_destructor_##name
+#else
+#define DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(name) \
+	DISPATCH_EXPORT dispatch_block_t _dispatch_data_destructor_##name
+#endif
+#else
+#define DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(name) \
+	DISPATCH_EXPORT const dispatch_function_t \
+	_dispatch_data_destructor_##name
+#endif /* __BLOCKS__ */
 
 /*!
  * @const DISPATCH_DATA_DESTRUCTOR_FREE
@@ -69,8 +82,18 @@ DISPATCH_EXPORT struct dispatch_data_s _dispatch_data_empty;
  */
 #define DISPATCH_DATA_DESTRUCTOR_FREE (_dispatch_data_destructor_free)
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
-DISPATCH_EXPORT const dispatch_block_t _dispatch_data_destructor_free;
+DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(free);
 
+/*!
+ * @const DISPATCH_DATA_DESTRUCTOR_MUNMAP
+ * @discussion The destructor for dispatch data objects that have been created
+ * from buffers that require deallocation with munmap(2).
+ */
+#define DISPATCH_DATA_DESTRUCTOR_MUNMAP (_dispatch_data_destructor_munmap)
+__OSX_AVAILABLE_STARTING(__MAC_10_9, __IPHONE_7_0)
+DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(munmap);
+
+#ifdef __BLOCKS__
 /*!
  * @function dispatch_data_create
  * Creates a dispatch data object from the given contiguous buffer of memory. If
@@ -99,6 +122,7 @@ dispatch_data_create(const void *buffer,
 	size_t size,
 	dispatch_queue_t queue,
 	dispatch_block_t destructor);
+#endif /* __BLOCKS__ */
 
 /*!
  * @function dispatch_data_get_size
@@ -184,6 +208,7 @@ dispatch_data_create_subrange(dispatch_data_t data,
 	size_t offset,
 	size_t length);
 
+#ifdef __BLOCKS__
 /*!
  * @typedef dispatch_data_applier_t
  * A block to be invoked for every contiguous memory region in a data object.
@@ -224,6 +249,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 bool
 dispatch_data_apply(dispatch_data_t data, dispatch_data_applier_t applier);
+#endif /* __BLOCKS__ */
 
 /*!
  * @function dispatch_data_copy_region
@@ -246,8 +272,6 @@ dispatch_data_t
 dispatch_data_copy_region(dispatch_data_t data,
 	size_t location,
 	size_t *offset_ptr);
-
-#endif /* __BLOCKS__ */
 
 __END_DECLS
 

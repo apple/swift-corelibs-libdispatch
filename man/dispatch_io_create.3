@@ -1,4 +1,4 @@
-.\" Copyright (c) 2010 Apple Inc. All rights reserved.
+.\" Copyright (c) 2010-2013 Apple Inc. All rights reserved.
 .Dd December 1, 2010
 .Dt dispatch_io_create 3
 .Os Darwin
@@ -102,32 +102,40 @@ functions create a dispatch I/O channel of provided
 .Fa type
 from a file descriptor
 .Fa fd
-or a pathname, respectively. They can be thought of as
-analogous to the
+or an absolute pathname, respectively. They can be thought of as analogous to
+the
 .Xr fdopen 3
 POSIX function and the
 .Xr fopen 3
-function in the standard C library. For a channel created from a
-pathname, the provided
+function in the standard C library. For a channel created from a pathname, the
+provided
 .Fa path ,
 .Fa oflag
 and
 .Fa mode
 parameters will be passed to
 .Xr open 2
-when the first I/O operation on the channel is ready to execute. The provided
+when the first I/O operation on the channel is ready to execute.
+.Pp
+The provided
 .Fa cleanup_handler
 block will be submitted to the specified
 .Fa queue
-when all I/O operations on the channel have completed and is is closed or
+when all I/O operations on the channel have completed and it is closed or
 reaches the end of its lifecycle. If an error occurs during channel creation,
 the
 .Fa cleanup_handler
 block will be submitted immediately and passed an
 .Fa error
-parameter with the POSIX error encountered. After creating a dispatch I/O
-channel from a file descriptor, the application must take care not to modify
-that file descriptor until the associated
+parameter with the POSIX error encountered. If an invalid
+.Fa type
+or a non-absolute
+.Fa path
+argument is specified, these functions will return NULL and the
+.Fa cleanup_handler
+will not be invoked. After successfully creating a dispatch I/O channel from a
+file descriptor, the application must take care not to modify that file
+descriptor until the associated
 .Fa cleanup_handler
 is invoked, see
 .Sx "FILEDESCRIPTOR OWNERSHIP"

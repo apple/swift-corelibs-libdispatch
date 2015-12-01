@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2011-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -29,7 +29,6 @@
 #error "Cannot build with ARC"
 #endif
 
-#include <objc/runtime.h>
 #include <objc/objc-internal.h>
 #include <objc/objc-exception.h>
 
@@ -40,12 +39,11 @@
 #include <objc/objc-auto.h>
 #include <auto_zone.h>
 
-static dispatch_once_t _os_object_gc_pred;
 static bool _os_object_have_gc;
 static malloc_zone_t *_os_object_gc_zone;
 
 static void
-_os_object_gc_init(void *ctxt DISPATCH_UNUSED)
+_os_object_gc_init(void)
 {
 	_os_object_have_gc = objc_collectingEnabled();
 	if (slowpath(_os_object_have_gc)) {
@@ -56,7 +54,6 @@ _os_object_gc_init(void *ctxt DISPATCH_UNUSED)
 static _os_object_t
 _os_object_make_uncollectable(_os_object_t obj)
 {
-	dispatch_once_f(&_os_object_gc_pred, NULL, _os_object_gc_init);
 	if (slowpath(_os_object_have_gc)) {
 		auto_zone_retain(_os_object_gc_zone, obj);
 	}
@@ -66,38 +63,64 @@ _os_object_make_uncollectable(_os_object_t obj)
 static _os_object_t
 _os_object_make_collectable(_os_object_t obj)
 {
-	dispatch_once_f(&_os_object_gc_pred, NULL, _os_object_gc_init);
 	if (slowpath(_os_object_have_gc)) {
 		auto_zone_release(_os_object_gc_zone, obj);
 	}
 	return obj;
 }
-#else
+
+#define _os_objc_gc_retain(obj) \
+	if (slowpath(_os_object_have_gc)) { \
+		return auto_zone_retain(_os_object_gc_zone, obj); \
+	}
+
+#define _os_objc_gc_release(obj) \
+	if (slowpath(_os_object_have_gc)) { \
+		return (void)auto_zone_release(_os_object_gc_zone, obj); \
+	}
+
+#else // __OBJC_GC__
+#define _os_object_gc_init()
 #define _os_object_make_uncollectable(obj) (obj)
 #define _os_object_make_collectable(obj) (obj)
+#define _os_objc_gc_retain(obj)
+#define _os_objc_gc_release(obj)
 #endif // __OBJC_GC__
 
 #pragma mark -
 #pragma mark _os_object_t
 
+static inline id
+_os_objc_alloc(Class cls, size_t size)
+{
+	id obj;
+	size -= sizeof(((struct _os_object_s *)NULL)->os_obj_isa);
+	while (!fastpath(obj = class_createInstance(cls, size))) {
+		_dispatch_temporary_resource_shortage();
+	}
+	return obj;
+}
+
 void
 _os_object_init(void)
 {
-	return _objc_init();
+	_objc_init();
+	_os_object_gc_init();
+}
+
+_os_object_t
+_os_object_alloc_realized(const void *cls, size_t size)
+{
+	dispatch_assert(size >= sizeof(struct _os_object_s));
+	return _os_object_make_uncollectable(_os_objc_alloc(cls, size));
 }
 
 _os_object_t
 _os_object_alloc(const void *_cls, size_t size)
 {
-	Class cls = _cls;
-	_os_object_t obj;
 	dispatch_assert(size >= sizeof(struct _os_object_s));
-	size -= sizeof(((struct _os_object_s *)NULL)->os_obj_isa);
-	if (!cls) cls = [OS_OBJECT_CLASS(object) class];
-	while (!fastpath(obj = class_createInstance(cls, size))) {
-		sleep(1); // Temporary resource shortage
-	}
-	return _os_object_make_uncollectable(obj);
+	Class cls = _cls ? [(id)_cls class] : [OS_OBJECT_CLASS(object) class];
+	return _os_object_make_uncollectable(_os_objc_alloc(cls, size));
 }
 
 void
@@ -154,9 +177,81 @@ _os_object_dispose(_os_object_t obj)
 @end
 
 #pragma mark -
-#pragma mark _dispatch_object
+#pragma mark _dispatch_objc
 
 #include <Foundation/NSString.h>
+
+id
+_dispatch_objc_alloc(Class cls, size_t size)
+{
+	return _os_objc_alloc(cls, size);
+}
+
+void
+_dispatch_objc_retain(dispatch_object_t dou)
+{
+	_os_objc_gc_retain(dou);
+	return (void)[dou retain];
+}
+
+void
+_dispatch_objc_release(dispatch_object_t dou)
+{
+	_os_objc_gc_release(dou);
+	return [dou release];
+}
+
+void
+_dispatch_objc_set_context(dispatch_object_t dou, void *context)
+{
+	return [dou _setContext:context];
+}
+
+void *
+_dispatch_objc_get_context(dispatch_object_t dou)
+{
+	return [dou _getContext];
+}
+
+void
+_dispatch_objc_set_finalizer_f(dispatch_object_t dou,
+		dispatch_function_t finalizer)
+{
+	return [dou _setFinalizer:finalizer];
+}
+
+void
+_dispatch_objc_set_target_queue(dispatch_object_t dou, dispatch_queue_t queue)
+{
+	return [dou _setTargetQueue:queue];
+}
+
+void
+_dispatch_objc_suspend(dispatch_object_t dou)
+{
+	return [dou _suspend];
+}
+
+void
+_dispatch_objc_resume(dispatch_object_t dou)
+{
+	return [dou _resume];
+}
+
+size_t
+_dispatch_objc_debug(dispatch_object_t dou, char* buf, size_t bufsiz)
+{
+	NSUInteger offset = 0;
+	NSString *desc = [dou debugDescription];
+	[desc getBytes:buf maxLength:bufsiz-1 usedLength:&offset
+			encoding:NSUTF8StringEncoding options:0
+			range:NSMakeRange(0, [desc length]) remainingRange:NULL];
+	if (offset) buf[offset] = 0;
+	return offset;
+}
+
+#pragma mark -
+#pragma mark _dispatch_object
 
 // Force non-lazy class realization rdar://10640168
 #define DISPATCH_OBJC_LOAD() + (void)load {}
@@ -182,8 +277,13 @@ _os_object_dispose(_os_object_t obj)
 - (NSString *)debugDescription {
 	Class nsstring = objc_lookUpClass("NSString");
 	if (!nsstring) return nil;
-	char buf[4096];
-	dx_debug((struct dispatch_object_s *)self, buf, sizeof(buf));
+	char buf[2048];
+	struct dispatch_object_s *obj = (struct dispatch_object_s *)self;
+	if (obj->do_vtable->do_debug) {
+		dx_debug(obj, buf, sizeof(buf));
+	} else {
+		strlcpy(buf, dx_kind(obj), sizeof(buf));
+	}
 	return [nsstring stringWithFormat:
 			[nsstring stringWithUTF8String:"<%s: %s>"],
 			class_getName([self class]), buf];
@@ -214,6 +314,16 @@ DISPATCH_OBJC_LOAD()
 
 @end
 
+@implementation DISPATCH_CLASS(queue_runloop)
+DISPATCH_OBJC_LOAD()
+
+- (void)_xref_dispose {
+	_dispatch_runloop_queue_xref_dispose(self);
+	[super _xref_dispose];
+}
+
+@end
+
 #define DISPATCH_CLASS_IMPL(name) \
 		@implementation DISPATCH_CLASS(name) \
 		DISPATCH_OBJC_LOAD() \
@@ -225,10 +335,11 @@ DISPATCH_CLASS_IMPL(queue_root)
 DISPATCH_CLASS_IMPL(queue_mgr)
 DISPATCH_CLASS_IMPL(queue_specific_queue)
 DISPATCH_CLASS_IMPL(queue_attr)
+DISPATCH_CLASS_IMPL(mach)
+DISPATCH_CLASS_IMPL(mach_msg)
 DISPATCH_CLASS_IMPL(io)
 DISPATCH_CLASS_IMPL(operation)
 DISPATCH_CLASS_IMPL(disk)
-DISPATCH_CLASS_IMPL(data)
 
 #pragma mark -
 #pragma mark dispatch_autorelease_pool
@@ -275,6 +386,33 @@ _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 {
 	@try {
 		return f(ctxt, i);
+	}
+	@catch (...) {
+		objc_terminate();
+	}
+}
+
+#undef _dispatch_client_callout3
+bool
+_dispatch_client_callout3(void *ctxt, dispatch_data_t region, size_t offset,
+		const void *buffer, size_t size, dispatch_data_applier_function_t f)
+{
+	@try {
+		return f(ctxt, region, offset, buffer, size);
+	}
+	@catch (...) {
+		objc_terminate();
+	}
+}
+
+#undef _dispatch_client_callout4
+void
+_dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
+		dispatch_mach_msg_t dmsg, mach_error_t error,
+		dispatch_mach_handler_function_t f)
+{
+	@try {
+		return f(ctxt, reason, dmsg, error);
 	}
 	@catch (...) {
 		objc_terminate();

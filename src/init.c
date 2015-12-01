@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -55,24 +55,12 @@ dispatch_atfork_parent(void)
 {
 }
 
-void
-dummy_function(void)
-{
-}
-
-long
-dummy_function_r0(void)
-{
-	return 0;
-}
-
 #pragma mark -
 #pragma mark dispatch_globals
 
 #if DISPATCH_COCOA_COMPAT
 void (*dispatch_begin_thread_4GC)(void);
 void (*dispatch_end_thread_4GC)(void);
-void (*dispatch_no_worker_threads_4GC)(void);
 void *(*_dispatch_begin_NSAutoReleasePool)(void);
 void (*_dispatch_end_NSAutoReleasePool)(void *);
 #endif
@@ -83,13 +71,15 @@ pthread_key_t dispatch_sema4_key;
 pthread_key_t dispatch_cache_key;
 pthread_key_t dispatch_io_key;
 pthread_key_t dispatch_apply_key;
-#if DISPATCH_PERF_MON
+#if DISPATCH_INTROSPECTION
+pthread_key_t dispatch_introspection_key;
+#elif DISPATCH_PERF_MON
 pthread_key_t dispatch_bcounter_key;
 #endif
 #endif // !DISPATCH_USE_DIRECT_TSD
 
 struct _dispatch_hw_config_s _dispatch_hw_config;
-bool _dispatch_safe_fork = true;
+bool _dispatch_safe_fork = true, _dispatch_child_of_unsafe_fork;
 
 DISPATCH_NOINLINE
 bool
@@ -98,8 +88,16 @@ _dispatch_is_multithreaded(void)
 	return !_dispatch_safe_fork;
 }
 
+
+DISPATCH_NOINLINE
+bool
+_dispatch_is_fork_of_multithreaded_parent(void)
+{
+	return _dispatch_child_of_unsafe_fork;
+}
+
 const struct dispatch_queue_offsets_s dispatch_queue_offsets = {
-	.dqo_version = 3,
+	.dqo_version = 4,
 	.dqo_label = offsetof(struct dispatch_queue_s, dq_label),
 	.dqo_label_size = sizeof(((dispatch_queue_t)NULL)->dq_label),
 	.dqo_flags = 0,
@@ -127,6 +125,7 @@ struct dispatch_queue_s _dispatch_main_q = {
 	.dq_label = "com.apple.main-thread",
 	.dq_running = 1,
 	.dq_width = 1,
+	.dq_is_thread_bound = 1,
 	.dq_serialnum = 1,
 };
 
@@ -158,32 +157,42 @@ DISPATCH_VTABLE_INSTANCE(queue,
 	.do_type = DISPATCH_QUEUE_TYPE,
 	.do_kind = "queue",
 	.do_dispose = _dispatch_queue_dispose,
-	.do_invoke = NULL,
-	.do_probe = (void *)dummy_function_r0,
+	.do_invoke = _dispatch_queue_invoke,
+	.do_probe = _dispatch_queue_probe,
 	.do_debug = dispatch_queue_debug,
 );
 
 DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_root, queue,
-	.do_type = DISPATCH_QUEUE_GLOBAL_TYPE,
+	.do_type = DISPATCH_QUEUE_ROOT_TYPE,
 	.do_kind = "global-queue",
+	.do_dispose = _dispatch_pthread_root_queue_dispose,
+	.do_probe = _dispatch_root_queue_probe,
 	.do_debug = dispatch_queue_debug,
-	.do_probe = _dispatch_queue_probe_root,
+);
+
+DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_runloop, queue,
+	.do_type = DISPATCH_QUEUE_ROOT_TYPE,
+	.do_kind = "runloop-queue",
+	.do_dispose = _dispatch_runloop_queue_dispose,
+	.do_invoke = _dispatch_queue_invoke,
+	.do_probe = _dispatch_runloop_queue_probe,
+	.do_debug = dispatch_queue_debug,
 );
 
 DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_mgr, queue,
 	.do_type = DISPATCH_QUEUE_MGR_TYPE,
 	.do_kind = "mgr-queue",
 	.do_invoke = _dispatch_mgr_thread,
+	.do_probe = _dispatch_mgr_queue_probe,
 	.do_debug = dispatch_queue_debug,
-	.do_probe = _dispatch_mgr_wakeup,
 );
 
 DISPATCH_VTABLE_INSTANCE(queue_specific_queue,
 	.do_type = DISPATCH_QUEUE_SPECIFIC_TYPE,
 	.do_kind = "queue-context",
 	.do_dispose = _dispatch_queue_specific_queue_dispose,
-	.do_invoke = NULL,
-	.do_probe = (void *)dummy_function_r0,
+	.do_invoke = (void*)_dispatch_queue_invoke,
+	.do_probe = (void *)_dispatch_queue_probe,
 	.do_debug = (void *)dispatch_queue_debug,
 );
 
@@ -195,46 +204,56 @@ DISPATCH_VTABLE_INSTANCE(queue_attr,
 DISPATCH_VTABLE_INSTANCE(source,
 	.do_type = DISPATCH_SOURCE_KEVENT_TYPE,
 	.do_kind = "kevent-source",
-	.do_invoke = _dispatch_source_invoke,
 	.do_dispose = _dispatch_source_dispose,
+	.do_invoke = _dispatch_source_invoke,
 	.do_probe = _dispatch_source_probe,
 	.do_debug = _dispatch_source_debug,
 );
 
+DISPATCH_VTABLE_INSTANCE(mach,
+	.do_type = DISPATCH_MACH_CHANNEL_TYPE,
+	.do_kind = "mach-channel",
+	.do_dispose = _dispatch_mach_dispose,
+	.do_invoke = _dispatch_mach_invoke,
+	.do_probe = _dispatch_mach_probe,
+	.do_debug = _dispatch_mach_debug,
+);
+
+DISPATCH_VTABLE_INSTANCE(mach_msg,
+	.do_type = DISPATCH_MACH_MSG_TYPE,
+	.do_kind = "mach-msg",
+	.do_dispose = _dispatch_mach_msg_dispose,
+	.do_invoke = _dispatch_mach_msg_invoke,
+	.do_debug = _dispatch_mach_msg_debug,
+);
+
+#if !USE_OBJC
 DISPATCH_VTABLE_INSTANCE(data,
 	.do_type = DISPATCH_DATA_TYPE,
 	.do_kind = "data",
 	.do_dispose = _dispatch_data_dispose,
-	.do_invoke = NULL,
-	.do_probe = (void *)dummy_function_r0,
 	.do_debug = _dispatch_data_debug,
 );
+#endif
 
 DISPATCH_VTABLE_INSTANCE(io,
 	.do_type = DISPATCH_IO_TYPE,
 	.do_kind = "channel",
 	.do_dispose = _dispatch_io_dispose,
-	.do_invoke = NULL,
-	.do_probe = (void *)dummy_function_r0,
-	.do_debug = (void *)dummy_function_r0,
+	.do_debug = _dispatch_io_debug,
 );
 
 DISPATCH_VTABLE_INSTANCE(operation,
 	.do_type = DISPATCH_OPERATION_TYPE,
 	.do_kind = "operation",
 	.do_dispose = _dispatch_operation_dispose,
-	.do_invoke = NULL,
-	.do_probe = (void *)dummy_function_r0,
-	.do_debug = (void *)dummy_function_r0,
+	.do_debug = _dispatch_operation_debug,
 );
 
 DISPATCH_VTABLE_INSTANCE(disk,
 	.do_type = DISPATCH_DISK_TYPE,
 	.do_kind = "disk",
 	.do_dispose = _dispatch_disk_dispose,
-	.do_invoke = NULL,
-	.do_probe = (void *)dummy_function_r0,
-	.do_debug = (void *)dummy_function_r0,
 );
 
 void
@@ -243,15 +262,13 @@ _dispatch_vtable_init(void)
 #if USE_OBJC
 	// ObjC classes and dispatch vtables are co-located via linker order and
 	// alias files, verify correct layout during initialization rdar://10640168
-	#define DISPATCH_OBJC_CLASS(name) \
-			DISPATCH_CONCAT(OBJC_CLASS_$_,DISPATCH_CLASS(name))
-	extern void *DISPATCH_OBJC_CLASS(semaphore);
+	DISPATCH_OBJC_CLASS_DECL(semaphore);
 	dispatch_assert((char*)DISPATCH_VTABLE(semaphore) -
-			(char*)&DISPATCH_OBJC_CLASS(semaphore) == 0);
+			(char*)DISPATCH_OBJC_CLASS(semaphore) == 0);
 	dispatch_assert((char*)&DISPATCH_CONCAT(_,DISPATCH_CLASS(semaphore_vtable))
-			- (char*)&DISPATCH_OBJC_CLASS(semaphore) ==
+			- (char*)DISPATCH_OBJC_CLASS(semaphore) ==
 			sizeof(_os_object_class_s));
-#endif
+#endif // USE_OBJC
 }
 
 #pragma mark -
@@ -275,21 +292,28 @@ _dispatch_build_init(void *context DISPATCH_UNUSED)
 #endif
 }
 
+static dispatch_once_t _dispatch_build_pred;
+
+char*
+_dispatch_get_build(void)
+{
+	dispatch_once_f(&_dispatch_build_pred, NULL, _dispatch_build_init);
+	return _dispatch_build;
+}
+
 #define _dispatch_bug_log(msg, ...) do { \
 	static void *last_seen; \
 	void *ra = __builtin_return_address(0); \
 	if (last_seen != ra) { \
 		last_seen = ra; \
-		_dispatch_log((msg), ##__VA_ARGS__); \
+		_dispatch_log(msg, ##__VA_ARGS__); \
 	} \
 } while(0)
 
 void
 _dispatch_bug(size_t line, long val)
 {
-	static dispatch_once_t pred;
-
-	dispatch_once_f(&pred, NULL, _dispatch_build_init);
+	dispatch_once_f(&_dispatch_build_pred, NULL, _dispatch_build_init);
 	_dispatch_bug_log("BUG in libdispatch: %s - %lu - 0x%lx",
 			_dispatch_build, (unsigned long)line, val);
 }
@@ -308,16 +332,26 @@ _dispatch_bug_mach_client(const char* msg, mach_msg_return_t kr)
 }
 
 void
+_dispatch_bug_kevent_client(const char* msg, const char* filter,
+		const char *operation, int err)
+{
+	_dispatch_bug_log("BUG in libdispatch client: %s[%s] %s: \"%s\" - 0x%x",
+			msg, filter, operation, strerror(err), err);
+}
+
+void
 _dispatch_abort(size_t line, long val)
 {
 	_dispatch_bug(line, val);
 	abort();
 }
 
+#if !DISPATCH_USE_OS_TRACE
+
 #pragma mark -
 #pragma mark dispatch_log
 
-static FILE *dispatch_logfile;
+static int dispatch_logfile = -1;
 static bool dispatch_log_disabled;
 static dispatch_once_t _dispatch_logv_pred;
 
@@ -341,24 +375,37 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 			log_to_file = true;
 		} else if (strcmp(e, "stderr") == 0) {
 			log_to_file = true;
-			dispatch_logfile = stderr;
+			dispatch_logfile = STDERR_FILENO;
 		}
 	}
 	if (!dispatch_log_disabled) {
-		if (log_to_file && !dispatch_logfile) {
+		if (log_to_file && dispatch_logfile == -1) {
 			char path[PATH_MAX];
 			snprintf(path, sizeof(path), "/var/tmp/libdispatch.%d.log",
 					getpid());
-			dispatch_logfile = fopen(path, "a");
+			dispatch_logfile = open(path, O_WRONLY | O_APPEND | O_CREAT |
+					O_NOFOLLOW | O_CLOEXEC, 0666);
 		}
-		if (dispatch_logfile) {
+		if (dispatch_logfile != -1) {
 			struct timeval tv;
 			gettimeofday(&tv, NULL);
-			fprintf(dispatch_logfile, "=== log file opened for %s[%u] at "
+			dprintf(dispatch_logfile, "=== log file opened for %s[%u] at "
 					"%ld.%06u ===\n", getprogname() ?: "", getpid(),
 					tv.tv_sec, tv.tv_usec);
-			fflush(dispatch_logfile);
 		}
+	}
+}
+
+static inline void
+_dispatch_log_file(char *buf, size_t len)
+{
+	ssize_t r;
+
+	buf[len++] = '\n';
+retry:
+	r = write(dispatch_logfile, buf, len);
+	if (slowpath(r == -1) && errno == EINTR) {
+		goto retry;
 	}
 }
 
@@ -366,27 +413,34 @@ DISPATCH_NOINLINE
 static void
 _dispatch_logv_file(const char *msg, va_list ap)
 {
-	char *buf;
-	size_t len;
-
-	len = vasprintf(&buf, msg, ap);
-	buf[len++] = '\n';
-	fwrite(buf, 1, len, dispatch_logfile);
-	fflush(dispatch_logfile);
-	free(buf);
+	char buf[2048];
+	int r = vsnprintf(buf, sizeof(buf), msg, ap);
+	if (r < 0) return;
+	size_t len = (size_t)r;
+	if (len > sizeof(buf) - 1) {
+		len = sizeof(buf) - 1;
+	}
+	_dispatch_log_file(buf, len);
 }
 
+DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_logv(const char *msg, va_list ap)
+_dispatch_logv(const char *msg, size_t len, va_list ap)
 {
 	dispatch_once_f(&_dispatch_logv_pred, NULL, _dispatch_logv_init);
 	if (slowpath(dispatch_log_disabled)) {
 		return;
 	}
-	if (slowpath(dispatch_logfile)) {
+	if (slowpath(dispatch_logfile != -1)) {
+		if (!ap) {
+			return _dispatch_log_file((char*)msg, len);
+		}
 		return _dispatch_logv_file(msg, ap);
 	}
-	vsyslog(LOG_NOTICE, msg, ap);
+	if (!ap) {
+		return syslog(LOG_NOTICE, "%s", msg);
+	}
+	return vsyslog(LOG_NOTICE, msg, ap);
 }
 
 DISPATCH_NOINLINE
@@ -396,28 +450,58 @@ _dispatch_log(const char *msg, ...)
 	va_list ap;
 
 	va_start(ap, msg);
-	_dispatch_logv(msg, ap);
+	_dispatch_logv(msg, 0, ap);
 	va_end(ap);
 }
 
+#endif // DISPATCH_USE_OS_TRACE
+
 #pragma mark -
 #pragma mark dispatch_debug
+
+static size_t
+_dispatch_object_debug2(dispatch_object_t dou, char* buf, size_t bufsiz)
+{
+	DISPATCH_OBJECT_TFB(_dispatch_objc_debug, dou, buf, bufsiz);
+	if (dou._do->do_vtable->do_debug) {
+		return dx_debug(dou._do, buf, bufsiz);
+	}
+	return strlcpy(buf, "NULL vtable slot: ", bufsiz);
+}
+
+DISPATCH_NOINLINE
+static void
+_dispatch_debugv(dispatch_object_t dou, const char *msg, va_list ap)
+{
+	char buf[2048];
+	int r;
+	size_t offs;
+	if (dou._do) {
+		offs = _dispatch_object_debug2(dou, buf, sizeof(buf));
+		dispatch_assert(offs + 2 < sizeof(buf));
+		buf[offs++] = ':';
+		buf[offs++] = ' ';
+		buf[offs]   = '\0';
+	} else {
+		offs = strlcpy(buf, "NULL: ", sizeof(buf));
+	}
+	r = vsnprintf(buf + offs, sizeof(buf) - offs, msg, ap);
+#if !DISPATCH_USE_OS_TRACE
+	size_t len = offs + (r < 0 ? 0 : (size_t)r);
+	if (len > sizeof(buf) - 1) {
+		len = sizeof(buf) - 1;
+	}
+	_dispatch_logv(buf, len, NULL);
+#else
+	_dispatch_log("%s", buf);
+#endif
+}
 
 DISPATCH_NOINLINE
 void
 dispatch_debugv(dispatch_object_t dou, const char *msg, va_list ap)
 {
-	char buf[4096];
-	size_t offs;
-
-	if (dou._do && dou._do->do_vtable->do_debug) {
-		offs = dx_debug(dou._do, buf, sizeof(buf));
-	} else {
-		offs = snprintf(buf, sizeof(buf), "NULL vtable slot");
-	}
-
-	snprintf(buf + offs, sizeof(buf) - offs, ": %s", msg);
-	_dispatch_logv(buf, ap);
+	_dispatch_debugv(dou, msg, ap);
 }
 
 DISPATCH_NOINLINE
@@ -427,8 +511,41 @@ dispatch_debug(dispatch_object_t dou, const char *msg, ...)
 	va_list ap;
 
 	va_start(ap, msg);
-	dispatch_debugv(dou._do, msg, ap);
+	_dispatch_debugv(dou, msg, ap);
 	va_end(ap);
+}
+
+#if DISPATCH_DEBUG
+DISPATCH_NOINLINE
+void
+_dispatch_object_debug(dispatch_object_t dou, const char *msg, ...)
+{
+	va_list ap;
+
+	va_start(ap, msg);
+	_dispatch_debugv(dou._do, msg, ap);
+	va_end(ap);
+}
+#endif
+
+#pragma mark -
+#pragma mark dispatch_calloc
+
+DISPATCH_NOINLINE
+void
+_dispatch_temporary_resource_shortage(void)
+{
+	sleep(1);
+}
+
+void *
+_dispatch_calloc(size_t num_items, size_t size)
+{
+	void *buf;
+	while (!fastpath(buf = calloc(num_items, size))) {
+		_dispatch_temporary_resource_shortage();
+	}
+	return buf;
 }
 
 #pragma mark -
@@ -442,9 +559,9 @@ _dispatch_Block_copy(dispatch_block_t db)
 {
 	dispatch_block_t rval;
 
-	if (fastpath(db)) { 
+	if (fastpath(db)) {
 		while (!fastpath(rval = Block_copy(db))) {
-			sleep(1);
+			_dispatch_temporary_resource_shortage();
 		}
 		return rval;
 	}
@@ -481,6 +598,7 @@ _dispatch_client_callout(void *ctxt, dispatch_function_t f)
 {
 	_dispatch_get_tsd_base();
 	void *u = _dispatch_get_unwind_tsd();
+	if (fastpath(!u)) return f(ctxt);
 	_dispatch_set_unwind_tsd(NULL);
 	f(ctxt);
 	_dispatch_free_unwind_tsd();
@@ -494,8 +612,39 @@ _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 {
 	_dispatch_get_tsd_base();
 	void *u = _dispatch_get_unwind_tsd();
+	if (fastpath(!u)) return f(ctxt, i);
 	_dispatch_set_unwind_tsd(NULL);
 	f(ctxt, i);
+	_dispatch_free_unwind_tsd();
+	_dispatch_set_unwind_tsd(u);
+}
+
+#undef _dispatch_client_callout3
+bool
+_dispatch_client_callout3(void *ctxt, dispatch_data_t region, size_t offset,
+		const void *buffer, size_t size, dispatch_data_applier_function_t f)
+{
+	_dispatch_get_tsd_base();
+	void *u = _dispatch_get_unwind_tsd();
+	if (fastpath(!u)) return f(ctxt, region, offset, buffer, size);
+	_dispatch_set_unwind_tsd(NULL);
+	bool res = f(ctxt, region, offset, buffer, size);
+	_dispatch_free_unwind_tsd();
+	_dispatch_set_unwind_tsd(u);
+	return res;
+}
+
+#undef _dispatch_client_callout4
+void
+_dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
+		dispatch_mach_msg_t dmsg, mach_error_t error,
+		dispatch_mach_handler_function_t f)
+{
+	_dispatch_get_tsd_base();
+	void *u = _dispatch_get_unwind_tsd();
+	if (fastpath(!u)) return f(ctxt, reason, dmsg, error);
+	_dispatch_set_unwind_tsd(NULL);
+	f(ctxt, reason, dmsg, error);
 	_dispatch_free_unwind_tsd();
 	_dispatch_set_unwind_tsd(u);
 }
@@ -515,17 +664,23 @@ _os_object_init(void)
 	return;
 }
 
-_os_object_t
-_os_object_alloc(const void *cls, size_t size)
+inline _os_object_t
+_os_object_alloc_realized(const void *cls, size_t size)
 {
 	_os_object_t obj;
 	dispatch_assert(size >= sizeof(struct _os_object_s));
-	if (!cls) cls = &_os_object_class;
 	while (!fastpath(obj = calloc(1u, size))) {
-		sleep(1); // Temporary resource shortage
+		_dispatch_temporary_resource_shortage();
 	}
 	obj->os_obj_isa = cls;
 	return obj;
+}
+
+_os_object_t
+_os_object_alloc(const void *cls, size_t size)
+{
+	if (!cls) cls = &_os_object_class;
+	return _os_object_alloc_realized(cls, size);
 }
 
 void
@@ -583,12 +738,19 @@ dispatch_source_type_timer_init(dispatch_source_t ds,
 	dispatch_source_type_t type DISPATCH_UNUSED,
 	uintptr_t handle DISPATCH_UNUSED,
 	unsigned long mask,
-	dispatch_queue_t q DISPATCH_UNUSED)
+	dispatch_queue_t q)
 {
-	ds->ds_refs = calloc(1ul, sizeof(struct dispatch_timer_source_refs_s));
-	if (slowpath(!ds->ds_refs)) return;
+	if (fastpath(!ds->ds_refs)) {
+		ds->ds_refs = _dispatch_calloc(1ul,
+				sizeof(struct dispatch_timer_source_refs_s));
+	}
 	ds->ds_needs_rearm = true;
 	ds->ds_is_timer = true;
+	if (q == dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0)
+			|| q == dispatch_get_global_queue(
+			DISPATCH_QUEUE_PRIORITY_BACKGROUND, DISPATCH_QUEUE_OVERCOMMIT)){
+		mask |= DISPATCH_TIMER_BACKGROUND; // <rdar://problem/12200216>
+	}
 	ds_timer(ds->ds_refs).flags = mask;
 }
 
@@ -596,8 +758,53 @@ const struct dispatch_source_type_s _dispatch_source_type_timer = {
 	.ke = {
 		.filter = DISPATCH_EVFILT_TIMER,
 	},
-	.mask = DISPATCH_TIMER_WALL_CLOCK,
+	.mask = DISPATCH_TIMER_STRICT|DISPATCH_TIMER_BACKGROUND|
+			DISPATCH_TIMER_WALL_CLOCK,
 	.init = dispatch_source_type_timer_init,
+};
+
+static void
+dispatch_source_type_timer_with_aggregate_init(dispatch_source_t ds,
+	dispatch_source_type_t type, uintptr_t handle, unsigned long mask,
+	dispatch_queue_t q)
+{
+	ds->ds_refs = _dispatch_calloc(1ul,
+			sizeof(struct dispatch_timer_source_aggregate_refs_s));
+	dispatch_source_type_timer_init(ds, type, handle, mask, q);
+	ds_timer(ds->ds_refs).flags |= DISPATCH_TIMER_WITH_AGGREGATE;
+	ds->dq_specific_q = (void*)handle;
+	_dispatch_retain(ds->dq_specific_q);
+}
+
+const struct dispatch_source_type_s _dispatch_source_type_timer_with_aggregate={
+	.ke = {
+		.filter = DISPATCH_EVFILT_TIMER,
+		.ident = ~0ull,
+	},
+	.mask = DISPATCH_TIMER_STRICT|DISPATCH_TIMER_BACKGROUND,
+	.init = dispatch_source_type_timer_with_aggregate_init,
+};
+
+static void
+dispatch_source_type_interval_init(dispatch_source_t ds,
+	dispatch_source_type_t type, uintptr_t handle, unsigned long mask,
+	dispatch_queue_t q)
+{
+	dispatch_source_type_timer_init(ds, type, handle, mask, q);
+	ds_timer(ds->ds_refs).flags |= DISPATCH_TIMER_INTERVAL;
+	unsigned long ident = _dispatch_source_timer_idx(ds->ds_refs);
+	ds->ds_dkev->dk_kevent.ident = ds->ds_ident_hack = ident;
+	_dispatch_source_set_interval(ds, handle);
+}
+
+const struct dispatch_source_type_s _dispatch_source_type_interval = {
+	.ke = {
+		.filter = DISPATCH_EVFILT_TIMER,
+		.ident = ~0ull,
+	},
+	.mask = DISPATCH_TIMER_STRICT|DISPATCH_TIMER_BACKGROUND|
+			DISPATCH_INTERVAL_UI_ANIMATION,
+	.init = dispatch_source_type_interval_init,
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_read = {
@@ -636,7 +843,7 @@ dispatch_source_type_vm_init(dispatch_source_t ds,
 {
 	static dispatch_once_t pred;
 	dispatch_once_f(&pred, NULL, _dispatch_ios_simulator_vm_source_init);
-	ds->ds_dkev->dk_kevent.ident = (mask & DISPATCH_VM_PRESSURE ?
+	ds->ds_dkev->dk_kevent.ident = (uint64_t)(mask & DISPATCH_VM_PRESSURE ?
 			_dispatch_ios_simulator_memory_warnings_fd : -1);
 }
 
@@ -668,6 +875,31 @@ const struct dispatch_source_type_s _dispatch_source_type_vm = {
 	.init = dispatch_source_type_vm_init,
 };
 #endif
+#endif
+
+#ifdef DISPATCH_USE_MEMORYSTATUS
+static void
+dispatch_source_type_memorystatus_init(dispatch_source_t ds,
+	dispatch_source_type_t type DISPATCH_UNUSED,
+	uintptr_t handle DISPATCH_UNUSED,
+	unsigned long mask DISPATCH_UNUSED,
+	dispatch_queue_t q DISPATCH_UNUSED)
+{
+	ds->ds_is_level = false;
+}
+
+const struct dispatch_source_type_s _dispatch_source_type_memorystatus = {
+	.ke = {
+		.filter = EVFILT_MEMORYSTATUS,
+		.flags = EV_DISPATCH,
+	},
+	.mask = NOTE_MEMORYSTATUS_PRESSURE_NORMAL|NOTE_MEMORYSTATUS_PRESSURE_WARN
+#ifdef NOTE_MEMORYSTATUS_PRESSURE_CRITICAL
+			|NOTE_MEMORYSTATUS_PRESSURE_CRITICAL
+#endif
+			,
+	.init = dispatch_source_type_memorystatus_init,
+};
 #endif
 
 const struct dispatch_source_type_s _dispatch_source_type_proc = {
@@ -720,6 +952,25 @@ const struct dispatch_source_type_s _dispatch_source_type_vfs = {
 			,
 };
 
+const struct dispatch_source_type_s _dispatch_source_type_sock = {
+#ifdef EVFILT_SOCK
+	.ke = {
+		.filter = EVFILT_SOCK,
+		.flags = EV_CLEAR,
+	},
+	.mask = NOTE_CONNRESET |  NOTE_READCLOSED | NOTE_WRITECLOSED |
+		NOTE_TIMEOUT | NOTE_NOSRCADDR |  NOTE_IFDENIED | NOTE_SUSPEND |
+		NOTE_RESUME | NOTE_KEEPALIVE
+#ifdef NOTE_ADAPTIVE_WTIMO
+		| NOTE_ADAPTIVE_WTIMO | NOTE_ADAPTIVE_RTIMO
+#endif
+#ifdef NOTE_CONNECTED
+		| NOTE_CONNECTED | NOTE_DISCONNECTED | NOTE_CONNINFO_UPDATED
+#endif
+		,
+#endif // EVFILT_SOCK
+};
+
 const struct dispatch_source_type_s _dispatch_source_type_data_add = {
 	.ke = {
 		.filter = DISPATCH_EVFILT_CUSTOM_ADD,
@@ -730,7 +981,7 @@ const struct dispatch_source_type_s _dispatch_source_type_data_or = {
 	.ke = {
 		.filter = DISPATCH_EVFILT_CUSTOM_OR,
 		.flags = EV_CLEAR,
-		.fflags = ~0,
+		.fflags = ~0u,
 	},
 };
 
@@ -742,8 +993,6 @@ dispatch_source_type_mach_send_init(dispatch_source_t ds,
 	uintptr_t handle DISPATCH_UNUSED, unsigned long mask,
 	dispatch_queue_t q DISPATCH_UNUSED)
 {
-	static dispatch_once_t pred;
-	dispatch_once_f(&pred, NULL, _dispatch_mach_notify_source_init);
 	if (!mask) {
 		// Preserve legacy behavior that (mask == 0) => DISPATCH_MACH_SEND_DEAD
 		ds->ds_dkev->dk_kevent.fflags = DISPATCH_MACH_SEND_DEAD;
@@ -753,7 +1002,7 @@ dispatch_source_type_mach_send_init(dispatch_source_t ds,
 
 const struct dispatch_source_type_s _dispatch_source_type_mach_send = {
 	.ke = {
-		.filter = EVFILT_MACHPORT,
+		.filter = DISPATCH_EVFILT_MACH_NOTIFICATION,
 		.flags = EV_CLEAR,
 	},
 	.mask = DISPATCH_MACH_SEND_DEAD|DISPATCH_MACH_SEND_POSSIBLE,
@@ -779,18 +1028,6 @@ const struct dispatch_source_type_s _dispatch_source_type_mach_recv = {
 	.init = dispatch_source_type_mach_recv_init,
 };
 
-const struct dispatch_source_type_s _dispatch_source_type_sock = {
-#ifdef EVFILT_SOCK
-	.ke = {
-		.filter = EVFILT_SOCK,
-		.flags = EV_CLEAR,
-	},
-	.mask = NOTE_CONNRESET |  NOTE_READCLOSED | NOTE_WRITECLOSED |
-		NOTE_TIMEOUT | NOTE_NOSRCADDR |  NOTE_IFDENIED | NOTE_SUSPEND |
-		NOTE_RESUME | NOTE_KEEPALIVE,
-#endif
-};
-
 #pragma mark -
 #pragma mark dispatch_mig
 
@@ -810,9 +1047,9 @@ dispatch_mach_msg_get_context(mach_msg_header_t *msg)
 }
 
 kern_return_t
-_dispatch_wakeup_main_thread(mach_port_t mp DISPATCH_UNUSED)
+_dispatch_wakeup_runloop_thread(mach_port_t mp DISPATCH_UNUSED)
 {
-	// dummy function just to pop out the main thread out of mach_msg()
+	// dummy function just to pop a runloop thread out of mach_msg()
 	return 0;
 }
 

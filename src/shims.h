@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -39,6 +39,21 @@
 #define FD_COPY(f, t) (void)(*(t) = *(f))
 #endif
 
+#if TARGET_OS_WIN32
+#define bzero(ptr,len) memset((ptr), 0, (len))
+#define snprintf _snprintf
+
+inline size_t strlcpy(char *dst, const char *src, size_t size) {
+	int res = strlen(dst) + strlen(src) + 1;
+	if (size > 0) {
+		size_t n = size - 1;
+		strncpy(dst, src, n);
+		dst[n] = 0;
+	}
+	return res;
+}
+#endif // TARGET_OS_WIN32
+
 #if !HAVE_NORETURN_BUILTIN_TRAP
 /*
  * XXXRW: Work-around for possible clang bug in which __builtin_trap() is not
@@ -49,13 +64,17 @@ DISPATCH_NORETURN
 void __builtin_trap(void);
 #endif
 
+#if DISPATCH_HW_CONFIG_UP
+#define DISPATCH_ATOMIC_UP 1
+#endif
+
 #include "shims/atomic.h"
+#include "shims/atomic_sfb.h"
 #include "shims/tsd.h"
 #include "shims/hw_config.h"
 #include "shims/perfmon.h"
 
 #include "shims/getprogname.h"
-#include "shims/malloc_zone.h"
 #include "shims/time.h"
 
 #ifdef __APPLE__
@@ -65,7 +84,7 @@ void __builtin_trap(void);
 #define _dispatch_clear_stack(s) do { \
 		void *a[(s)/sizeof(void*) ? (s)/sizeof(void*) : 1]; \
 		a[0] = pthread_get_stackaddr_np(pthread_self()); \
-		bzero((void*)&a[1], a[0] - (void*)&a[1]); \
+		bzero((void*)&a[1], (size_t)(a[0] - (void*)&a[1])); \
 	} while (0)
 #else
 #define _dispatch_clear_stack(s)

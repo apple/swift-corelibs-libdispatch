@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2009 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -67,24 +67,28 @@ _dispatch_benchmark_init(void *context)
 #endif
 	lcost /= cnt;
 
-	bdata->loop_cost = lcost;
+	bdata->loop_cost = lcost > UINT64_MAX ? UINT64_MAX : (uint64_t)lcost;
 }
 
 #ifdef __BLOCKS__
 uint64_t
 dispatch_benchmark(size_t count, void (^block)(void))
 {
-	struct Block_basic *bb = (void *)block;
-	return dispatch_benchmark_f(count, block, (void *)bb->Block_invoke);
+	return dispatch_benchmark_f(count, block, _dispatch_Block_invoke(block));
 }
 #endif
+
+static void
+_dispatch_benchmark_dummy_function(void *ctxt DISPATCH_UNUSED)
+{
+}
 
 uint64_t
 dispatch_benchmark_f(size_t count, register void *ctxt,
 		register void (*func)(void *))
 {
 	static struct __dispatch_benchmark_data_s bdata = {
-		.func = (void *)dummy_function,
+		.func = _dispatch_benchmark_dummy_function,
 		.count = 10000000ul, // ten million
 	};
 	static dispatch_once_t pred;
@@ -118,7 +122,7 @@ dispatch_benchmark_f(size_t count, register void *ctxt,
 #endif
 	big_denom *= count;
 	conversion /= big_denom;
-	ns = conversion;
+	ns = conversion > UINT64_MAX ? UINT64_MAX : (uint64_t)conversion;
 
 	return ns - bdata.loop_cost;
 }

@@ -128,7 +128,7 @@ AC_CHECK_HEADER(sys/event.h, [],
 # Checks for header files.
 #
 AC_HEADER_STDC
-AC_CHECK_HEADERS([TargetConditionals.h pthread_np.h malloc/malloc.h libkern/OSCrossEndian.h libkern/OSAtomic.h])
+AC_CHECK_HEADERS([TargetConditionals.h pthread_np.h malloc/malloc.h libkern/OSCrossEndian.h libkern/OSAtomic.h sys/guarded.h libproc_internal.h])
 
 # hack for pthread_machdep.h's #include <System/machine/cpu_capabilities.h>
 AS_IF([test -n "$apple_xnu_source_osfmk_path"], [
@@ -169,7 +169,7 @@ AS_IF([test -n "$apple_objc4_source_runtime_path"], [
   ln -fsh "$apple_objc4_source_runtime_path" objc
 ])
 AC_CHECK_HEADER([objc/objc-internal.h], [
-  AC_DEFINE(USE_OBJC, 1, [Define to use Objective-C runtime])
+  AC_DEFINE(HAVE_OBJC, 1, [Define if you have the Objective-C runtime])
   have_objc=true], [have_objc=false],
   [#include <objc/runtime.h>]
 )
@@ -295,11 +295,5 @@ AC_COMPILE_IFELSE(
 #
 # Generate Makefiles.
 #
-AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile os/Makefile private/Makefile src/Makefile testing/Makefile])
-
-#
-# Generate testsuite links
-#
-AC_CONFIG_LINKS([testing/dispatch:${x:+}private testing/bench.cc:testing/bench.mm testing/leaks-wrapper:testing/leaks-wrapper.sh])
-
+AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile os/Makefile private/Makefile src/Makefile])
 AC_OUTPUT

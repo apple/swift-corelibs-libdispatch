@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2009-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -34,10 +34,6 @@
 
 #define _DISPATCH_IO_LABEL_SIZE 16
 
-#ifndef DISPATCH_IO_DEBUG
-#define DISPATCH_IO_DEBUG 0
-#endif
-
 #if TARGET_OS_EMBEDDED // rdar://problem/9032036
 #define DIO_MAX_CHUNK_PAGES				128u //  512kB chunk size
 #else
@@ -65,16 +61,6 @@ typedef unsigned int dispatch_op_flags_t;
 // dispatch_io_t atomic_flags
 #define DIO_CLOSED		1u // channel has been closed
 #define DIO_STOPPED		2u // channel has been stopped (implies closed)
-
-#define _dispatch_io_data_retain(x) dispatch_retain(x)
-#define _dispatch_io_data_release(x) dispatch_release(x)
-
-#if DISPATCH_IO_DEBUG
-#define _dispatch_io_debug(msg, fd, args...) \
-	_dispatch_debug("fd %d: " msg, (fd), ##args)
-#else
-#define _dispatch_io_debug(msg, fd, args...)
-#endif
 
 DISPATCH_DECL_INTERNAL(dispatch_operation);
 DISPATCH_DECL_INTERNAL(dispatch_disk);
@@ -126,6 +112,12 @@ struct dispatch_fd_entry_s {
 	dispatch_fd_t fd;
 	dispatch_io_path_data_t path_data;
 	int orig_flags, orig_nosigpipe, err;
+#if DISPATCH_USE_GUARDED_FD_CHANGE_FDGUARD
+	int orig_fd_flags;
+#endif
+#if DISPATCH_USE_GUARDED_FD
+	unsigned int guard_flags;
+#endif
 	struct dispatch_stat_s stat;
 	dispatch_stream_t streams[2];
 	dispatch_disk_t disk;
@@ -160,7 +152,6 @@ struct dispatch_operation_s {
 	dispatch_fd_entry_t fd_entry;
 	dispatch_source_t timer;
 	bool active;
-	int count;
 	off_t advise_offset;
 	void* buf;
 	dispatch_op_flags_t flags;
@@ -185,7 +176,10 @@ struct dispatch_io_s {
 };
 
 void _dispatch_io_set_target_queue(dispatch_io_t channel, dispatch_queue_t dq);
+size_t _dispatch_io_debug(dispatch_io_t channel, char* buf, size_t bufsiz);
 void _dispatch_io_dispose(dispatch_io_t channel);
+size_t _dispatch_operation_debug(dispatch_operation_t op, char* buf,
+		size_t bufsiz);
 void _dispatch_operation_dispose(dispatch_operation_t operation);
 void _dispatch_disk_dispose(dispatch_disk_t disk);
 

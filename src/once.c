@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -35,9 +35,7 @@ struct _dispatch_once_waiter_s {
 void
 dispatch_once(dispatch_once_t *val, dispatch_block_t block)
 {
-	struct Block_basic *bb = (void *)block;
-
-	dispatch_once_f(val, block, (void *)bb->Block_invoke);
+	dispatch_once_f(val, block, _dispatch_Block_invoke(block));
 }
 #endif
 
@@ -51,8 +49,7 @@ dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 	struct _dispatch_once_waiter_s *tail, *tmp;
 	_dispatch_thread_semaphore_t sema;
 
-	if (dispatch_atomic_cmpxchg(vval, NULL, &dow)) {
-		dispatch_atomic_acquire_barrier();
+	if (dispatch_atomic_cmpxchg(vval, NULL, &dow, acquire)) {
 		_dispatch_client_callout(ctxt, func);
 
 		// The next barrier must be long and strong.
@@ -106,12 +103,12 @@ dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 		// need to be issued.
 
 		dispatch_atomic_maximally_synchronizing_barrier();
-		//dispatch_atomic_release_barrier(); // assumed contained in above
-		tmp = dispatch_atomic_xchg(vval, DISPATCH_ONCE_DONE);
+		// above assumed to contain release barrier
+		tmp = dispatch_atomic_xchg(vval, DISPATCH_ONCE_DONE, relaxed);
 		tail = &dow;
 		while (tail != tmp) {
 			while (!tmp->dow_next) {
-				_dispatch_hardware_pause();
+				dispatch_hardware_pause();
 			}
 			sema = tmp->dow_sema;
 			tmp = (struct _dispatch_once_waiter_s*)tmp->dow_next;
@@ -119,15 +116,15 @@ dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 		}
 	} else {
 		dow.dow_sema = _dispatch_get_thread_semaphore();
+		tmp = *vval;
 		for (;;) {
-			tmp = *vval;
 			if (tmp == DISPATCH_ONCE_DONE) {
 				break;
 			}
-			dispatch_atomic_store_barrier();
-			if (dispatch_atomic_cmpxchg(vval, tmp, &dow)) {
+			if (dispatch_atomic_cmpxchgvw(vval, tmp, &dow, &tmp, release)) {
 				dow.dow_next = tmp;
 				_dispatch_thread_semaphore_wait(dow.dow_sema);
+				break;
 			}
 		}
 		_dispatch_put_thread_semaphore(dow.dow_sema);

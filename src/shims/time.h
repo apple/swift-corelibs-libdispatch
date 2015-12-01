@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -31,18 +31,54 @@
 #error "Please #include <dispatch/dispatch.h> instead of this file directly."
 #endif
 
+DISPATCH_ALWAYS_INLINE_NDEBUG
+static inline void
+_dispatch_contention_usleep(unsigned int us)
+{
+#if HAVE_MACH
+#if defined(SWITCH_OPTION_DISPATCH_CONTENTION) && !(TARGET_IPHONE_SIMULATOR && \
+		IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 1090)
+	thread_switch(MACH_PORT_NULL, SWITCH_OPTION_DISPATCH_CONTENTION, us);
+#else
+	thread_switch(MACH_PORT_NULL, SWITCH_OPTION_WAIT, ((us-1)/1000)+1);
+#endif
+#else
+	usleep(us);
+#endif
+}
+
+#if TARGET_OS_WIN32
+static inline unsigned int
+sleep(unsigned int seconds)
+{
+	Sleep(seconds * 1000); // milliseconds
+	return 0;
+}
+#endif
+
 uint64_t _dispatch_get_nanoseconds(void);
 
 #if defined(__i386__) || defined(__x86_64__) || !HAVE_MACH_ABSOLUTE_TIME
 // x86 currently implements mach time in nanoseconds
 // this is NOT likely to change
-#define _dispatch_time_mach2nano(x) ({x;})
-#define _dispatch_time_nano2mach(x) ({x;})
+DISPATCH_ALWAYS_INLINE
+static inline uint64_t
+_dispatch_time_mach2nano(uint64_t machtime)
+{
+	return machtime;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline uint64_t
+_dispatch_time_nano2mach(uint64_t nsec)
+{
+	return nsec;
+}
 #else
 typedef struct _dispatch_host_time_data_s {
+	dispatch_once_t pred;
 	long double frac;
 	bool ratio_1_to_1;
-	dispatch_once_t pred;
 } _dispatch_host_time_data_s;
 extern _dispatch_host_time_data_s _dispatch_host_time_data;
 void _dispatch_get_host_time_init(void *context);
@@ -53,39 +89,48 @@ _dispatch_time_mach2nano(uint64_t machtime)
 	_dispatch_host_time_data_s *const data = &_dispatch_host_time_data;
 	dispatch_once_f(&data->pred, NULL, _dispatch_get_host_time_init);
 
-	return machtime * data->frac;
+	if (!machtime || slowpath(data->ratio_1_to_1)) {
+		return machtime;
+	}
+	if (machtime >= INT64_MAX) {
+		return INT64_MAX;
+	}
+	long double big_tmp = ((long double)machtime * data->frac) + .5;
+	if (slowpath(big_tmp >= INT64_MAX)) {
+		return INT64_MAX;
+	}
+	return (uint64_t)big_tmp;
 }
 
-static inline int64_t
-_dispatch_time_nano2mach(int64_t nsec)
+static inline uint64_t
+_dispatch_time_nano2mach(uint64_t nsec)
 {
 	_dispatch_host_time_data_s *const data = &_dispatch_host_time_data;
 	dispatch_once_f(&data->pred, NULL, _dispatch_get_host_time_init);
 
-	if (slowpath(_dispatch_host_time_data.ratio_1_to_1)) {
+	if (!nsec || slowpath(data->ratio_1_to_1)) {
 		return nsec;
 	}
-
-	long double big_tmp = nsec;
-
-	// Divide by tbi.numer/tbi.denom to convert nsec to Mach absolute time
-	big_tmp /= data->frac;
-
-	// Clamp to a 64bit signed int
-	if (slowpath(big_tmp > INT64_MAX)) {
+	if (nsec >= INT64_MAX) {
 		return INT64_MAX;
 	}
-	if (slowpath(big_tmp < INT64_MIN)) {
-		return INT64_MIN;
+	long double big_tmp = ((long double)nsec / data->frac) + .5;
+	if (slowpath(big_tmp >= INT64_MAX)) {
+		return INT64_MAX;
 	}
-	return big_tmp;
+	return (uint64_t)big_tmp;
 }
 #endif
 
 static inline uint64_t
 _dispatch_absolute_time(void)
 {
-#if !HAVE_MACH_ABSOLUTE_TIME
+#if HAVE_MACH_ABSOLUTE_TIME
+	return mach_absolute_time();
+#elif TARGET_OS_WIN32
+	LARGE_INTEGER now;
+	return QueryPerformanceCounter(&now) ? now.QuadPart : 0;
+#else
 	struct timespec ts;
 	int ret;
 
@@ -100,9 +145,8 @@ _dispatch_absolute_time(void)
 
 	/* XXXRW: Some kind of overflow detection needed? */
 	return (ts.tv_sec * NSEC_PER_SEC + ts.tv_nsec);
-#else
-	return mach_absolute_time();
-#endif
+#endif // HAVE_MACH_ABSOLUTE_TIME
 }
 
-#endif
+
+#endif // __DISPATCH_SHIMS_TIME__

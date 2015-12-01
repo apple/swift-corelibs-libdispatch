@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2012 Apple Inc. All rights reserved.
+ * Copyright (c) 2011-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -37,14 +37,15 @@ enum {
 	_DISPATCH_DATA_FORMAT_UTF16BE = 0x8,
 	_DISPATCH_DATA_FORMAT_UTF_ANY = 0x10,
 	_DISPATCH_DATA_FORMAT_BASE32 = 0x20,
-	_DISPATCH_DATA_FORMAT_BASE64 = 0x40,
+	_DISPATCH_DATA_FORMAT_BASE32HEX = 0x40,
+	_DISPATCH_DATA_FORMAT_BASE64 = 0x80,
 };
 
 #pragma mark -
 #pragma mark baseXX tables
 
-static const char base32_encode_table[] =
-		"ABCDEFGHIJKLMNOPQRSTUVWXYZ23456789";
+static const unsigned char base32_encode_table[] =
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
 static const char base32_decode_table[] = {
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -57,7 +58,21 @@ static const char base32_decode_table[] = {
 static const ssize_t base32_decode_table_size = sizeof(base32_decode_table)
 		/ sizeof(*base32_decode_table);
 
-static const char base64_encode_table[] =
+static const unsigned char base32hex_encode_table[] =
+		"0123456789ABCDEFGHIJKLMNOPQRSTUV";
+
+static const char base32hex_decode_table[] = {
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  0,  1,  2,
+	 3,  4,  5,  6,  7,  8,  9, -1, -1, -1, -2, -1, -1, -1, 10, 11, 12,
+	13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+	30, 31
+};
+static const ssize_t base32hex_decode_table_size =
+		sizeof(base32hex_encode_table) / sizeof(*base32hex_encode_table);
+
+static const unsigned char base64_encode_table[] =
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 static const char base64_decode_table[] = {
@@ -104,12 +119,12 @@ static bool
 _dispatch_transform_buffer_new(dispatch_transform_buffer_s *buffer,
 		size_t required, size_t size)
 {
-	size_t remaining = buffer->size - (buffer->ptr.u8 - buffer->start);
+	size_t remaining = buffer->size - (size_t)(buffer->ptr.u8 - buffer->start);
 	if (required == 0 || remaining < required) {
 		if (buffer->start) {
 			if (buffer->ptr.u8 > buffer->start) {
 				dispatch_data_t _new = dispatch_data_create(buffer->start,
-						buffer->ptr.u8 - buffer->start, NULL,
+						(size_t)(buffer->ptr.u8 - buffer->start), NULL,
 						DISPATCH_DATA_DESTRUCTOR_FREE);
 				dispatch_data_t _concat = dispatch_data_create_concat(
 						buffer->data, _new);
@@ -412,7 +427,8 @@ _dispatch_transform_from_utf16(dispatch_data_t data, int32_t byteOrder)
 				if (range == NULL) {
 					return (bool)false;
 				}
-				ch = _dispatch_transform_swap_to_host(*(uint64_t*)p, byteOrder);
+				ch = _dispatch_transform_swap_to_host((uint16_t)*(uint64_t*)p,
+						byteOrder);
 				dispatch_release(range);
 				skip += 1;
 			} else {
@@ -429,7 +445,7 @@ _dispatch_transform_from_utf16(dispatch_data_t data, int32_t byteOrder)
 
 			if ((ch >= 0xd800) && (ch <= 0xdbff)) {
 				// Surrogate pair
-				wch = ((ch - 0xd800) << 10);
+				wch = ((ch - 0xd800u) << 10);
 				if (++i >= max) {
 					// Surrogate byte isn't in this block
 					const void *p;
@@ -528,7 +544,8 @@ _dispatch_transform_to_utf16be(dispatch_data_t data)
 #pragma mark base32
 
 static dispatch_data_t
-_dispatch_transform_from_base32(dispatch_data_t data)
+_dispatch_transform_from_base32_with_table(dispatch_data_t data,
+		const char* table, ssize_t table_size)
 {
 	__block uint64_t x = 0, count = 0, pad = 0;
 
@@ -539,7 +556,7 @@ _dispatch_transform_from_base32(dispatch_data_t data)
 			DISPATCH_UNUSED size_t offset, const void *buffer, size_t size) {
 		size_t i, dest_size = (size * 5) / 8;
 
-		uint8_t *dest = (uint8_t*)malloc(dest_size * sizeof(char));
+		uint8_t *dest = (uint8_t*)malloc(dest_size * sizeof(uint8_t));
 		uint8_t *ptr = dest;
 		if (dest == NULL) {
 			return (bool)false;
@@ -553,21 +570,20 @@ _dispatch_transform_from_base32(dispatch_data_t data)
 			}
 
 			ssize_t index = bytes[i];
-			if (index >= base32_decode_table_size ||
-					base32_decode_table[index] == -1) {
+			if (index >= table_size || table[index] == -1) {
 				free(dest);
 				return (bool)false;
 			}
 			count++;
 
-			char value = base32_decode_table[index];
+			char value = table[index];
 			if (value == -2) {
 				value = 0;
 				pad++;
 			}
 
 			x <<= 5;
-			x += value;
+			x += (uint64_t)value;
 
 			if ((count & 0x7) == 0) {
 				*ptr++ = (x >> 32) & 0xff;
@@ -578,7 +594,7 @@ _dispatch_transform_from_base32(dispatch_data_t data)
 			}
 		}
 
-		size_t final = (ptr - dest);
+		size_t final = (size_t)(ptr - dest);
 		switch (pad) {
 		case 1:
 			final -= 1;
@@ -614,15 +630,21 @@ _dispatch_transform_from_base32(dispatch_data_t data)
 }
 
 static dispatch_data_t
-_dispatch_transform_to_base32(dispatch_data_t data)
+_dispatch_transform_to_base32_with_table(dispatch_data_t data, const unsigned char* table)
 {
 	size_t total = dispatch_data_get_size(data);
 	__block size_t count = 0;
 
-	size_t dest_size = ((total + 4) * 8) / 5;
-	dest_size -= dest_size % 8;
+	if (total > SIZE_T_MAX-4 || ((total+4)/5 > SIZE_T_MAX/8)) {
+		/* We can't hold larger than size_t in a dispatch_data_t
+		 * and we want to avoid an integer overflow in the next
+		 * calculation.
+		 */
+		return NULL;
+	}
 
-	uint8_t *dest = (uint8_t*)malloc(dest_size * sizeof(uint8_t));
+	size_t dest_size = (total + 4) / 5 * 8;
+	uint8_t *dest = (uint8_t*)malloc(dest_size);
 	if (dest == NULL) {
 		return NULL;
 	}
@@ -662,26 +684,26 @@ _dispatch_transform_to_base32(dispatch_data_t data)
 			switch (count % 5) {
 			case 0:
 				// a
-				*ptr++ = base32_encode_table[(curr >> 3) & 0x1f];
+				*ptr++ = table[(curr >> 3) & 0x1fu];
 				break;
 			case 1:
 				// b + c
-				*ptr++ = base32_encode_table[((last << 2)|(curr >> 6)) & 0x1f];
-				*ptr++ = base32_encode_table[(curr >> 1) & 0x1f];
+				*ptr++ = table[((last << 2)|(curr >> 6)) & 0x1f];
+				*ptr++ = table[(curr >> 1) & 0x1f];
 				break;
 			case 2:
 				// d
-				*ptr++ = base32_encode_table[((last << 4)|(curr >> 4)) & 0x1f];
+				*ptr++ = table[((last << 4)|(curr >> 4)) & 0x1f];
 				break;
 			case 3:
 				// e + f
-				*ptr++ = base32_encode_table[((last << 1)|(curr >> 7)) & 0x1f];
-				*ptr++ = base32_encode_table[(curr >> 2) & 0x1f];
+				*ptr++ = table[((last << 1)|(curr >> 7)) & 0x1f];
+				*ptr++ = table[(curr >> 2) & 0x1f];
 				break;
 			case 4:
 				// g + h
-				*ptr++ = base32_encode_table[((last << 3)|(curr >> 5)) & 0x1f];
-				*ptr++ = base32_encode_table[curr & 0x1f];
+				*ptr++ = table[((last << 3)|(curr >> 5)) & 0x1f];
+				*ptr++ = table[curr & 0x1f];
 				break;
 			}
 		}
@@ -693,19 +715,19 @@ _dispatch_transform_to_base32(dispatch_data_t data)
 				break;
 			case 1:
 				// b[4:2]
-				*ptr++ = base32_encode_table[(bytes[size-1] << 2) & 0x1c];
+				*ptr++ = table[(bytes[size-1] << 2) & 0x1c];
 				break;
 			case 2:
 				// d[4]
-				*ptr++ = base32_encode_table[(bytes[size-1] << 4) & 0x10];
+				*ptr++ = table[(bytes[size-1] << 4) & 0x10];
 				break;
 			case 3:
 				// e[4:1]
-				*ptr++ = base32_encode_table[(bytes[size-1] << 1) & 0x1e];
+				*ptr++ = table[(bytes[size-1] << 1) & 0x1e];
 				break;
 			case 4:
-				// g[4:3]
-				*ptr++ = base32_encode_table[bytes[size-1] & 0x18];
+				// g[2:3]
+				*ptr++ = table[(bytes[size-1] << 3) & 0x18];
 				break;
 			}
 			switch (count % 5) {
@@ -734,6 +756,33 @@ _dispatch_transform_to_base32(dispatch_data_t data)
 	}
 	return dispatch_data_create(dest, dest_size, NULL,
 			DISPATCH_DATA_DESTRUCTOR_FREE);
+}
+
+static dispatch_data_t
+_dispatch_transform_from_base32(dispatch_data_t data)
+{
+	return _dispatch_transform_from_base32_with_table(data, base32_decode_table,
+			base32_decode_table_size);
+}
+
+static dispatch_data_t
+_dispatch_transform_to_base32(dispatch_data_t data)
+{
+	return _dispatch_transform_to_base32_with_table(data, base32_encode_table);
+}
+
+static dispatch_data_t
+_dispatch_transform_from_base32hex(dispatch_data_t data)
+{
+	return _dispatch_transform_from_base32_with_table(data,
+			base32hex_decode_table, base32hex_decode_table_size);
+}
+
+static dispatch_data_t
+_dispatch_transform_to_base32hex(dispatch_data_t data)
+{
+	return _dispatch_transform_to_base32_with_table(data,
+			base32hex_encode_table);
 }
 
 #pragma mark -
@@ -780,7 +829,7 @@ _dispatch_transform_from_base64(dispatch_data_t data)
 			}
 
 			x <<= 6;
-			x += value;
+			x += (uint64_t)value;
 
 			if ((count & 0x3) == 0) {
 				*ptr++ = (x >> 16) & 0xff;
@@ -789,7 +838,7 @@ _dispatch_transform_from_base64(dispatch_data_t data)
 			}
 		}
 
-		size_t final = (ptr - dest);
+		size_t final = (size_t)(ptr - dest);
 		if (pad > 0) {
 			// 2 bytes of pad means only had one char in final group
 			final -= pad;
@@ -822,10 +871,16 @@ _dispatch_transform_to_base64(dispatch_data_t data)
 	size_t total = dispatch_data_get_size(data);
 	__block size_t count = 0;
 
-	size_t dest_size = ((total + 2) * 4) / 3;
-	dest_size -= dest_size % 4;
+	if (total > SIZE_T_MAX-2 || ((total+2)/3> SIZE_T_MAX/4)) {
+		/* We can't hold larger than size_t in a dispatch_data_t
+		 * and we want to avoid an integer overflow in the next
+		 * calculation.
+		 */
+		return NULL;
+	}
 
-	uint8_t *dest = (uint8_t*)malloc(dest_size * sizeof(uint8_t));
+	size_t dest_size = (total + 2) / 3 * 4;
+	uint8_t *dest = (uint8_t*)malloc(dest_size);
 	if (dest == NULL) {
 		return NULL;
 	}
@@ -955,8 +1010,8 @@ dispatch_data_create_with_transform(dispatch_data_t data,
 
 const struct dispatch_data_format_type_s _dispatch_data_format_type_none = {
 	.type = _DISPATCH_DATA_FORMAT_NONE,
-	.input_mask = ~0,
-	.output_mask = ~0,
+	.input_mask = ~0u,
+	.output_mask = ~0u,
 	.decode = NULL,
 	.encode = NULL,
 };
@@ -964,19 +1019,30 @@ const struct dispatch_data_format_type_s _dispatch_data_format_type_none = {
 const struct dispatch_data_format_type_s _dispatch_data_format_type_base32 = {
 	.type = _DISPATCH_DATA_FORMAT_BASE32,
 	.input_mask = (_DISPATCH_DATA_FORMAT_NONE | _DISPATCH_DATA_FORMAT_BASE32 |
-			_DISPATCH_DATA_FORMAT_BASE64),
+			_DISPATCH_DATA_FORMAT_BASE32HEX | _DISPATCH_DATA_FORMAT_BASE64),
 	.output_mask = (_DISPATCH_DATA_FORMAT_NONE | _DISPATCH_DATA_FORMAT_BASE32 |
-			_DISPATCH_DATA_FORMAT_BASE64),
+			_DISPATCH_DATA_FORMAT_BASE32HEX | _DISPATCH_DATA_FORMAT_BASE64),
 	.decode = _dispatch_transform_from_base32,
 	.encode = _dispatch_transform_to_base32,
+};
+
+const struct dispatch_data_format_type_s _dispatch_data_format_type_base32hex =
+{
+	.type = _DISPATCH_DATA_FORMAT_BASE32HEX,
+	.input_mask = (_DISPATCH_DATA_FORMAT_NONE | _DISPATCH_DATA_FORMAT_BASE32 |
+			_DISPATCH_DATA_FORMAT_BASE32HEX | _DISPATCH_DATA_FORMAT_BASE64),
+	.output_mask = (_DISPATCH_DATA_FORMAT_NONE | _DISPATCH_DATA_FORMAT_BASE32 |
+			_DISPATCH_DATA_FORMAT_BASE32HEX | _DISPATCH_DATA_FORMAT_BASE64),
+	.decode = _dispatch_transform_from_base32hex,
+	.encode = _dispatch_transform_to_base32hex,
 };
 
 const struct dispatch_data_format_type_s _dispatch_data_format_type_base64 = {
 	.type = _DISPATCH_DATA_FORMAT_BASE64,
 	.input_mask = (_DISPATCH_DATA_FORMAT_NONE | _DISPATCH_DATA_FORMAT_BASE32 |
-			_DISPATCH_DATA_FORMAT_BASE64),
+			_DISPATCH_DATA_FORMAT_BASE32HEX | _DISPATCH_DATA_FORMAT_BASE64),
 	.output_mask = (_DISPATCH_DATA_FORMAT_NONE | _DISPATCH_DATA_FORMAT_BASE32 |
-			_DISPATCH_DATA_FORMAT_BASE64),
+			_DISPATCH_DATA_FORMAT_BASE32HEX | _DISPATCH_DATA_FORMAT_BASE64),
 	.decode = _dispatch_transform_from_base64,
 	.encode = _dispatch_transform_to_base64,
 };

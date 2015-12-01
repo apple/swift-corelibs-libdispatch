@@ -1,4 +1,4 @@
-.\" Copyright (c) 2008-2009 Apple Inc. All rights reserved.
+.\" Copyright (c) 2008-2013 Apple Inc. All rights reserved.
 .Dd May 1, 2009
 .Dt dispatch_time 3
 .Os Darwin
@@ -80,6 +80,24 @@ parameter is ignored.
 .Pp
 Underflow causes the smallest representable value to be
 returned for a given clock.
+.Sh CAVEATS
+Under the C language, untyped numbers default to the
+.Vt int
+type. This can lead to truncation bugs when arithmetic operations with other
+numbers are expected to generate a
+.Vt int64_t
+sized result, such as the
+.Fa offset
+argument to
+.Fn dispatch_time
+and
+.Fn dispatch_walltime .
+When in doubt, use
+.Vt ull
+as a suffix. For example:
+.Bd -literal -offset indent
+3ull * NSEC_PER_SEC
+.Ed
 .Sh EXAMPLES
 Create a milestone two seconds in the future:
 .Bd -literal -offset indent
@@ -102,8 +120,9 @@ milestone = dispatch_walltime(&ts, 0);
 These functions return an abstract value for use with
 .Fn dispatch_after ,
 .Fn dispatch_group_wait ,
+.Fn dispatch_semaphore_wait ,
 or
-.Fn dispatch_semaphore_wait .
+.Fn dispatch_source_set_timer .
 .Sh SEE ALSO
 .Xr dispatch 3 ,
 .Xr dispatch_after 3 ,

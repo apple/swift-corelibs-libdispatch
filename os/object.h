@@ -45,7 +45,7 @@
  *
  * This mode requires a platform with the modern Objective-C runtime, the
  * Objective-C GC compiler option to be disabled, and at least a Mac OS X 10.8
- * deployment target.
+ * or iOS 6.0 deployment target.
  */
 
 #ifndef OS_OBJECT_HAVE_OBJC_SUPPORT
@@ -71,7 +71,7 @@
 #endif
 
 #if OS_OBJECT_USE_OBJC
-#import <Foundation/NSObject.h>
+#import <objc/NSObject.h>
 #define OS_OBJECT_CLASS(name) OS_##name
 #define OS_OBJECT_DECL(name, ...) \
 		@protocol OS_OBJECT_CLASS(name) __VA_ARGS__ \
@@ -79,20 +79,33 @@
 		typedef NSObject<OS_OBJECT_CLASS(name)> *name##_t
 #define OS_OBJECT_DECL_SUBCLASS(name, super) \
 		OS_OBJECT_DECL(name, <OS_OBJECT_CLASS(super)>)
-#if defined(__has_attribute) && __has_attribute(ns_returns_retained)
+#if defined(__has_attribute)
+#if __has_attribute(ns_returns_retained)
 #define OS_OBJECT_RETURNS_RETAINED __attribute__((__ns_returns_retained__))
 #else
 #define OS_OBJECT_RETURNS_RETAINED
 #endif
-#if defined(__has_feature) && __has_feature(objc_arc)
+#else
+#define OS_OBJECT_RETURNS_RETAINED
+#endif
+#if defined(__has_feature)
+#if __has_feature(objc_arc)
 #define OS_OBJECT_BRIDGE __bridge
 #else
 #define OS_OBJECT_BRIDGE
 #endif
+#else
+#define OS_OBJECT_BRIDGE
+#endif
 #ifndef OS_OBJECT_USE_OBJC_RETAIN_RELEASE
-#if defined(__has_feature) && __has_feature(objc_arc) || \
-		defined(__clang_analyzer__)
+#if defined(__clang_analyzer__)
 #define OS_OBJECT_USE_OBJC_RETAIN_RELEASE 1
+#elif defined(__has_feature)
+#if __has_feature(objc_arc)
+#define OS_OBJECT_USE_OBJC_RETAIN_RELEASE 1
+#else
+#define OS_OBJECT_USE_OBJC_RETAIN_RELEASE 0
+#endif
 #else
 #define OS_OBJECT_USE_OBJC_RETAIN_RELEASE 0
 #endif

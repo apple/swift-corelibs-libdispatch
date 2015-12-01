@@ -1,4 +1,4 @@
-.\" Copyright (c) 2008-2010 Apple Inc. All rights reserved.
+.\" Copyright (c) 2008-2013 Apple Inc. All rights reserved.
 .Dd May 1, 2009
 .Dt dispatch_source_create 3
 .Os Darwin
@@ -117,6 +117,8 @@ DISPATCH_SOURCE_TYPE_MACH_SEND
 .It
 DISPATCH_SOURCE_TYPE_MACH_RECV
 .It
+DISPATCH_SOURCE_TYPE_MEMORYPRESSURE
+.It
 DISPATCH_SOURCE_TYPE_PROC
 .It
 DISPATCH_SOURCE_TYPE_READ
@@ -170,7 +172,7 @@ function is intended for use with the
 and
 .Vt DISPATCH_SOURCE_TYPE_DATA_OR
 source types. The result of using this function with any other source type is
-undefined. Calling this function will atomically add or logical OR the data
+undefined. Calling this function will atomically add or bitwise OR the data
 into the source's data, and trigger the delivery of the source's event handler.
 .Pp
 .Sh SOURCE EVENT HANDLERS
@@ -308,6 +310,40 @@ is unused and should be zero.
 The event handler block will be submitted to the target queue when a message
 on the mach port is waiting to be received.
 .Pp
+.Vt DISPATCH_SOURCE_TYPE_MEMORYPRESSURE
+.Pp
+Sources of this type monitor the system memory pressure condition for state changes.
+The
+.Fa handle
+is unused and should be zero. The
+.Fa mask
+may be one or more of the following:
+.Bl -tag -width "XXDISPATCH_MEMORYPRESSURE_CRITICAL" -compact -offset indent
+.It \(bu DISPATCH_MEMORYPRESSURE_NORMAL
+The system memory pressure condition has returned to normal.
+.It \(bu DISPATCH_MEMORYPRESSURE_WARN
+The system memory pressure condition has changed to warning.
+.It \(bu DISPATCH_MEMORYPRESSURE_CRITICAL
+The system memory pressure condition has changed to critical.
+.El
+.Pp
+The data returned by
+.Fn dispatch_source_get_data
+indicates which of the events in the
+.Fa mask
+were observed.
+.Pp
+Elevated memory pressure is a system-wide condition that applications
+registered for this source should react to by changing their future memory use
+behavior, e.g. by reducing cache sizes of newly initiated operations until
+memory pressure returns back to normal.
+.Pp
+However, applications should
+.Em NOT
+traverse and discard existing caches for past operations when the system memory
+pressure enters an elevated state, as that is likely to trigger VM operations
+that will further aggravate system memory pressure.
+.Pp
 .Vt DISPATCH_SOURCE_TYPE_PROC
 .Pp
 Sources of this type monitor processes for state changes.
@@ -327,9 +363,6 @@ The process has become another executable image via a call to
 .Xr execve 2
 or
 .Xr posix_spawn 2 .
-.It \(bu DISPATCH_PROC_REAP
-The process status has been collected by its parent process via
-.Xr wait 2 .
 .It \(bu DISPATCH_PROC_SIGNAL
 A signal was delivered to the process.
 .El
@@ -397,44 +430,71 @@ signal(SIGTERM, SIG_IGN);
 .Vt DISPATCH_SOURCE_TYPE_TIMER
 .Pp
 Sources of this type periodically submit the event handler block to the target
-queue on an interval specified by
-.Fn dispatch_source_set_timer .
-The
+queue. The
 .Fa handle
-and
-.Fa mask
-arguments are unused and should be zero.
-.Pp
-A best effort attempt is made to submit the event handler block to the target
-queue at the specified time; however, actual invocation may occur at a later
-time.
+argument is unused and should be zero.
 .Pp
 The data returned by
 .Fn dispatch_source_get_data
 is the number of times the timer has fired since the last invocation of the
 event handler block.
 .Pp
-The function
+The timer parameters are configured with the
 .Fn dispatch_source_set_timer
-takes as an argument the
+function. Once this function returns, any pending source data accumulated for
+the previous timer parameters has been cleared; the next fire of the timer will
+occur at
+.Fa start ,
+and every
+.Fa interval
+nanoseconds thereafter until the timer source is canceled.
+.Pp
+Any fire of the timer may be delayed by the system in order to improve power
+consumption and system performance. The upper limit to the allowable delay may
+be configured with the
+.Fa leeway
+argument, the lower limit is under the control of the system.
+.Pp
+For the initial timer fire at
+.Fa start ,
+the upper limit to the allowable delay is set to
+.Fa leeway
+nanoseconds. For the subsequent timer fires at
 .Fa start
-time of the timer (initial fire time) represented as a
-.Vt dispatch_time_t .
-The timer dispatch source will use the same clock as the function used to
-create this value. (See
-.Xr dispatch_time 3
-for more information.) The
+.Li "+ N *"
 .Fa interval ,
-in nanoseconds, specifies the period at which the timer should repeat. All
-timers will repeat indefinitely until
-.Fn dispatch_source_cancel
-is called. The
+the upper limit is
+.Li MIN(
 .Fa leeway ,
-in nanoseconds, is a hint to the system that it may defer the timer in order to
-align with other system activity for improved system performance or reduced
-power consumption. (For example, an application might perform a periodic task
-every 5 minutes with a leeway of up to 30 seconds.) Note that some latency is
-to be expected for all timers even when a value of zero is used.
+.Fa interval
+.Li "/ 2 )" .
+.Pp
+The lower limit to the allowable delay may vary with process state such as
+visibility of application UI. If the specified timer source was created with a
+.Fa mask
+of
+.Vt DISPATCH_TIMER_STRICT ,
+the system will make a best effort to strictly observe the provided
+.Fa leeway
+value even if it is smaller than the current lower limit. Note that a minimal
+amount of delay is to be expected even if this flag is specified.
+.Pp
+The
+.Fa start
+argument also determines which clock will be used for the timer: If
+.Fa start
+is
+.Vt DISPATCH_TIME_NOW
+or was created with
+.Xr dispatch_time 3 ,
+the timer is based on
+.Fn mach_absolute_time .
+If
+.Fa start
+was created with
+.Xr dispatch_walltime 3 ,
+the timer is based on
+.Xr gettimeofday 3 .
 .Pp
 .Em Note :
 Under the C language, untyped numbers default to the

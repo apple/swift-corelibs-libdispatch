@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2011 Apple Inc. All rights reserved.
+ * Copyright (c) 2008-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -138,7 +138,7 @@ dispatch_group_async_f(dispatch_group_t group,
  * This function will return immediately if there are no blocks associated
  * with the dispatch group (i.e. the group is empty).
  *
- * The result of calling this function from mulitple threads simultaneously
+ * The result of calling this function from multiple threads simultaneously
  * with the same dispatch group is undefined.
  *
  * After the successful return of this function, the dispatch group is empty.

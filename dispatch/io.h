@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2010 Apple Inc. All rights reserved.
+ * Copyright (c) 2009-2013 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -50,8 +50,6 @@ __BEGIN_DECLS
  */
 typedef int dispatch_fd_t;
 
-#ifdef __BLOCKS__
-
 /*!
  * @functiongroup Dispatch I/O Convenience API
  * Convenience wrappers around the dispatch I/O channel API, with simpler
@@ -61,6 +59,7 @@ typedef int dispatch_fd_t;
  * may incur more overhead than by using the dispatch I/O channel API directly.
  */
 
+#ifdef __BLOCKS__
 /*!
  * @function dispatch_read
  * Schedule a read operation for asynchronous execution on the specified file
@@ -147,6 +146,7 @@ dispatch_write(dispatch_fd_t fd,
 	dispatch_data_t data,
 	dispatch_queue_t queue,
 	void (^handler)(dispatch_data_t data, int error));
+#endif /* __BLOCKS__ */
 
 /*!
  * @functiongroup Dispatch I/O Channel API
@@ -159,17 +159,6 @@ dispatch_write(dispatch_fd_t fd,
  * retained and released, suspended and resumed, etc.
  */
 DISPATCH_DECL(dispatch_io);
-
-/*!
- * @typedef dispatch_io_handler_t
- * The prototype of I/O handler blocks for dispatch I/O operations.
- *
- * @param done		A flag indicating whether the operation is complete.
- * @param data		The data object to be handled.
- * @param error		An errno condition for the operation.
- */
-typedef void (^dispatch_io_handler_t)(bool done, dispatch_data_t data,
-		int error);
 
 /*!
  * @typedef dispatch_io_type_t
@@ -194,6 +183,7 @@ typedef void (^dispatch_io_handler_t)(bool done, dispatch_data_t data,
 
 typedef unsigned long dispatch_io_type_t;
 
+#ifdef __BLOCKS__
 /*!
  * @function dispatch_io_create
  * Create a dispatch I/O channel associated with a file descriptor. The system
@@ -217,7 +207,7 @@ typedef unsigned long dispatch_io_type_t;
  *	@param error		An errno condition if control is relinquished
  *				because channel creation failed, zero otherwise.
  * @result	The newly created dispatch I/O channel or NULL if an error
- *		occurred.
+ *		occurred (invalid type specified).
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
@@ -229,32 +219,32 @@ dispatch_io_create(dispatch_io_type_t type,
 	void (^cleanup_handler)(int error));
 
 /*!
-* @function dispatch_io_create_with_path
-* Create a dispatch I/O channel associated with a path name. The specified
-* path, oflag and mode parameters will be passed to open(2) when the first I/O
-* operation on the channel is ready to execute and the resulting file
-* descriptor will remain open and under the control of the system until the
-* channel is closed, an error occurs on the file descriptor or all references
-* to the channel are released. At that time the file descriptor will be closed
-* and the specified cleanup handler will be enqueued.
-*
-* @param type	The desired type of I/O channel (DISPATCH_IO_STREAM
-*		or DISPATCH_IO_RANDOM).
-* @param path	The path to associate with the I/O channel.
-* @param oflag	The flags to pass to open(2) when opening the file at
-*		path.
-* @param mode	The mode to pass to open(2) when creating the file at
-*		path (i.e. with flag O_CREAT), zero otherwise.
-* @param queue	The dispatch queue to which the handler should be
-*		submitted.
-* @param cleanup_handler	The handler to enqueue when the system
-*				has closed the file at path.
-*	@param error		An errno condition if control is relinquished
-*				because channel creation or opening of the
-*				specified file failed, zero otherwise.
-* @result	The newly created dispatch I/O channel or NULL if an error
-*		occurred.
-*/
+ * @function dispatch_io_create_with_path
+ * Create a dispatch I/O channel associated with a path name. The specified
+ * path, oflag and mode parameters will be passed to open(2) when the first I/O
+ * operation on the channel is ready to execute and the resulting file
+ * descriptor will remain open and under the control of the system until the
+ * channel is closed, an error occurs on the file descriptor or all references
+ * to the channel are released. At that time the file descriptor will be closed
+ * and the specified cleanup handler will be enqueued.
+ *
+ * @param type	The desired type of I/O channel (DISPATCH_IO_STREAM
+ *		or DISPATCH_IO_RANDOM).
+ * @param path	The absolute path to associate with the I/O channel.
+ * @param oflag	The flags to pass to open(2) when opening the file at
+ *		path.
+ * @param mode	The mode to pass to open(2) when creating the file at
+ *		path (i.e. with flag O_CREAT), zero otherwise.
+ * @param queue	The dispatch queue to which the handler should be
+ *		submitted.
+ * @param cleanup_handler	The handler to enqueue when the system
+ *				has closed the file at path.
+ *	@param error		An errno condition if control is relinquished
+ *				because channel creation or opening of the
+ *				specified file failed, zero otherwise.
+ * @result	The newly created dispatch I/O channel or NULL if an error
+ *		occurred (invalid type or non-absolute path specified).
+ */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
@@ -293,7 +283,7 @@ dispatch_io_create_with_path(dispatch_io_type_t type,
  *	@param error		An errno condition if control is relinquished
  *				because channel creation failed, zero otherwise.
  * @result	The newly created dispatch I/O channel or NULL if an error
- *		occurred.
+ *		occurred (invalid type specified).
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED
@@ -303,6 +293,17 @@ dispatch_io_create_with_io(dispatch_io_type_t type,
 	dispatch_io_t io,
 	dispatch_queue_t queue,
 	void (^cleanup_handler)(int error));
+
+/*!
+ * @typedef dispatch_io_handler_t
+ * The prototype of I/O handler blocks for dispatch I/O operations.
+ *
+ * @param done		A flag indicating whether the operation is complete.
+ * @param data		The data object to be handled.
+ * @param error		An errno condition for the operation.
+ */
+typedef void (^dispatch_io_handler_t)(bool done, dispatch_data_t data,
+		int error);
 
 /*!
  * @function dispatch_io_read
@@ -408,6 +409,7 @@ dispatch_io_write(dispatch_io_t channel,
 	dispatch_data_t data,
 	dispatch_queue_t queue,
 	dispatch_io_handler_t io_handler);
+#endif /* __BLOCKS__ */
 
 /*!
  * @typedef dispatch_io_close_flags_t
@@ -442,6 +444,7 @@ DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_io_close(dispatch_io_t channel, dispatch_io_close_flags_t flags);
 
+#ifdef __BLOCKS__
 /*!
  * @function dispatch_io_barrier
  * Schedule a barrier operation on the specified I/O channel; all previously
@@ -460,13 +463,14 @@ dispatch_io_close(dispatch_io_t channel, dispatch_io_close_flags_t flags);
  * While the barrier block is running, it may safely operate on the channel's
  * underlying file descriptor with fsync(2), lseek(2) etc. (but not close(2)).
  *
- * @param channel	The dispatch I/O channel to close.
- * @param barrier	The flags for the close operation.
+ * @param channel	The dispatch I/O channel to schedule the barrier on.
+ * @param barrier	The barrier block.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_io_barrier(dispatch_io_t channel, dispatch_block_t barrier);
+#endif /* __BLOCKS__ */
 
 /*!
  * @function dispatch_io_get_descriptor
@@ -579,8 +583,6 @@ void
 dispatch_io_set_interval(dispatch_io_t channel,
 	uint64_t interval,
 	dispatch_io_interval_flags_t flags);
-
-#endif /* __BLOCKS__ */
 
 __END_DECLS
 
