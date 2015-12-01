@@ -37,38 +37,14 @@ DISPATCH_NOINLINE
 _os_object_t
 _os_object_retain_internal(_os_object_t obj)
 {
-	int ref_cnt = obj->os_obj_ref_cnt;
-	if (slowpath(ref_cnt == _OS_OBJECT_GLOBAL_REFCNT)) {
-		return obj; // global object
-	}
-	ref_cnt = dispatch_atomic_inc2o(obj, os_obj_ref_cnt, relaxed);
-	if (slowpath(ref_cnt <= 0)) {
-		DISPATCH_CRASH("Resurrection of an object");
-	}
-	return obj;
+	return _os_object_retain_internal_inline(obj);
 }
 
 DISPATCH_NOINLINE
 void
 _os_object_release_internal(_os_object_t obj)
 {
-	int ref_cnt = obj->os_obj_ref_cnt;
-	if (slowpath(ref_cnt == _OS_OBJECT_GLOBAL_REFCNT)) {
-		return; // global object
-	}
-	ref_cnt = dispatch_atomic_dec2o(obj, os_obj_ref_cnt, relaxed);
-	if (fastpath(ref_cnt >= 0)) {
-		return;
-	}
-	if (slowpath(ref_cnt < -1)) {
-		DISPATCH_CRASH("Over-release of an object");
-	}
-#if DISPATCH_DEBUG
-	if (slowpath(obj->os_obj_xref_cnt >= 0)) {
-		DISPATCH_CRASH("Release while external references exist");
-	}
-#endif
-	return _os_object_dispose(obj);
+	return _os_object_release_internal_inline(obj);
 }
 
 DISPATCH_NOINLINE
@@ -157,22 +133,10 @@ dispatch_retain(dispatch_object_t dou)
 }
 
 void
-_dispatch_retain(dispatch_object_t dou)
-{
-	(void)_os_object_retain_internal(dou._os_obj);
-}
-
-void
 dispatch_release(dispatch_object_t dou)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_release, dou);
 	_os_object_release(dou._os_obj);
-}
-
-void
-_dispatch_release(dispatch_object_t dou)
-{
-	_os_object_release_internal(dou._os_obj);
 }
 
 static void
@@ -261,7 +225,7 @@ dispatch_suspend(dispatch_object_t dou)
 	// rdar://8181908 explains why we need to do an internal retain at every
 	// suspension.
 	(void)dispatch_atomic_add2o(dou._do, do_suspend_cnt,
-			DISPATCH_OBJECT_SUSPEND_INTERVAL, relaxed);
+			DISPATCH_OBJECT_SUSPEND_INTERVAL, acquire);
 	_dispatch_retain(dou._do);
 }
 
@@ -290,7 +254,7 @@ dispatch_resume(dispatch_object_t dou)
 	// If the previous value was less than the suspend interval, the object
 	// has been over-resumed.
 	unsigned int suspend_cnt = dispatch_atomic_sub_orig2o(dou._do,
-			 do_suspend_cnt, DISPATCH_OBJECT_SUSPEND_INTERVAL, relaxed);
+			 do_suspend_cnt, DISPATCH_OBJECT_SUSPEND_INTERVAL, release);
 	if (fastpath(suspend_cnt > DISPATCH_OBJECT_SUSPEND_INTERVAL)) {
 		// Balancing the retain() done in suspend() for rdar://8181908
 		return _dispatch_release(dou._do);

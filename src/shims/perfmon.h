@@ -27,7 +27,7 @@
 #ifndef __DISPATCH_SHIMS_PERFMON__
 #define __DISPATCH_SHIMS_PERFMON__
 
-#if DISPATCH_PERF_MON
+#if DISPATCH_PERF_MON && !DISPATCH_INTROSPECTION
 
 #if defined (USE_APPLE_TSD_OPTIMIZATIONS) && defined(SIMULATE_5491082) && \
 		(defined(__i386__) || defined(__x86_64__))
@@ -62,32 +62,6 @@ _dispatch_perfmon_workitem_dec(void)
 	_dispatch_thread_setspecific(dispatch_bcounter_key, (void *)--cnt);
 }
 #endif /* USE_APPLE_TSD_OPTIMIZATIONS */
-
-// C99 doesn't define flsll() or ffsll()
-#ifdef __LP64__
-#define flsll(x) flsl(x)
-#else
-static inline unsigned int
-flsll(uint64_t val)
-{
-	union {
-		struct {
-#ifdef __BIG_ENDIAN__
-			unsigned int hi, low;
-#else
-			unsigned int low, hi;
-#endif
-		} words;
-		uint64_t word;
-	} _bucket = {
-		.word = val,
-	};
-	if (_bucket.words.hi) {
-		return fls(_bucket.words.hi) + 32;
-	}
-	return fls(_bucket.words.low);
-}
-#endif
 
 #define _dispatch_perfmon_start() \
 		uint64_t start = _dispatch_absolute_time()

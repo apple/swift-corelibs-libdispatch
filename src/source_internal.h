@@ -123,15 +123,18 @@ struct dispatch_timer_source_s {
 	unsigned long missed;
 };
 
+enum {
+	DS_EVENT_HANDLER = 0,
+	DS_CANCEL_HANDLER,
+	DS_REGISTN_HANDLER,
+};
+
 // Source state which may contain references to the source object
 // Separately allocated so that 'leaks' can see sources <rdar://problem/9050566>
 typedef struct dispatch_source_refs_s {
 	TAILQ_ENTRY(dispatch_source_refs_s) dr_list;
 	uintptr_t dr_source_wref; // "weak" backref to dispatch_source_t
-	dispatch_function_t ds_handler_func;
-	void *ds_handler_ctxt;
-	void *ds_cancel_handler;
-	void *ds_registration_handler;
+	dispatch_continuation_t ds_handler[3];
 } *dispatch_source_refs_t;
 
 typedef struct dispatch_timer_source_refs_s {
@@ -176,9 +179,9 @@ _dispatch_source_timer_idx(dispatch_source_refs_t dr)
 		ds_is_installed:1, \
 		ds_needs_rearm:1, \
 		ds_is_timer:1, \
-		ds_cancel_is_block:1, \
-		ds_handler_is_block:1, \
-		ds_registration_is_block:1, \
+		ds_vmpressure_override:1, \
+		ds_memorystatus_override:1, \
+		dm_handler_is_block:1, \
 		dm_connect_handler_called:1, \
 		dm_cancel_handler_called:1; \
 	unsigned long ds_pending_data_mask;
@@ -206,8 +209,11 @@ typedef struct dispatch_mach_refs_s *dispatch_mach_refs_t;
 struct dispatch_mach_reply_refs_s {
 	TAILQ_ENTRY(dispatch_mach_reply_refs_s) dr_list;
 	uintptr_t dr_source_wref; // "weak" backref to dispatch_mach_t
-	dispatch_kevent_t dm_dkev;
-	TAILQ_ENTRY(dispatch_mach_reply_refs_s) dm_list;
+	dispatch_kevent_t dmr_dkev;
+	void *dmr_ctxt;
+	pthread_priority_t dmr_priority;
+	voucher_t dmr_voucher;
+	TAILQ_ENTRY(dispatch_mach_reply_refs_s) dmr_list;
 };
 typedef struct dispatch_mach_reply_refs_s *dispatch_mach_reply_refs_t;
 
@@ -237,11 +243,14 @@ struct dispatch_mach_s {
 DISPATCH_CLASS_DECL(mach_msg);
 struct dispatch_mach_msg_s {
 	DISPATCH_STRUCT_HEADER(mach_msg);
-	dispatch_mach_msg_destructor_t destructor;
-	size_t size;
+	mach_port_t dmsg_reply;
+	pthread_priority_t dmsg_priority;
+	voucher_t dmsg_voucher;
+	dispatch_mach_msg_destructor_t dmsg_destructor;
+	size_t dmsg_size;
 	union {
-		mach_msg_header_t *msg;
-		char buf[0];
+		mach_msg_header_t *dmsg_msg;
+		char dmsg_buf[0];
 	};
 };
 
@@ -257,6 +266,8 @@ void _dispatch_source_invoke(dispatch_source_t ds);
 unsigned long _dispatch_source_probe(dispatch_source_t ds);
 size_t _dispatch_source_debug(dispatch_source_t ds, char* buf, size_t bufsiz);
 void _dispatch_source_set_interval(dispatch_source_t ds, uint64_t interval);
+void _dispatch_source_set_event_handler_with_context_f(dispatch_source_t ds,
+		void *ctxt, dispatch_function_t handler);
 
 void _dispatch_mach_dispose(dispatch_mach_t dm);
 void _dispatch_mach_invoke(dispatch_mach_t dm);

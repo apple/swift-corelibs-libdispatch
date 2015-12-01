@@ -164,7 +164,7 @@ dispatch_data_apply_f(dispatch_data_t data, void *context,
 __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 mach_port_t
-dispatch_data_make_memory_entry(dispatch_data_t dd);
+dispatch_data_make_memory_entry(dispatch_data_t data);
 #endif
 
 /*!

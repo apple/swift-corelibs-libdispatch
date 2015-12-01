@@ -31,22 +31,6 @@
 #error "Please #include <dispatch/dispatch.h> instead of this file directly."
 #endif
 
-DISPATCH_ALWAYS_INLINE_NDEBUG
-static inline void
-_dispatch_contention_usleep(unsigned int us)
-{
-#if HAVE_MACH
-#if defined(SWITCH_OPTION_DISPATCH_CONTENTION) && !(TARGET_IPHONE_SIMULATOR && \
-		IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 1090)
-	thread_switch(MACH_PORT_NULL, SWITCH_OPTION_DISPATCH_CONTENTION, us);
-#else
-	thread_switch(MACH_PORT_NULL, SWITCH_OPTION_WAIT, ((us-1)/1000)+1);
-#endif
-#else
-	usleep(us);
-#endif
-}
-
 #if TARGET_OS_WIN32
 static inline unsigned int
 sleep(unsigned int seconds)

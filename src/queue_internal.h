@@ -38,77 +38,15 @@
 
 /* x86 & cortex-a8 have a 64 byte cacheline */
 #define DISPATCH_CACHELINE_SIZE 64u
-#define DISPATCH_CONTINUATION_SIZE DISPATCH_CACHELINE_SIZE
 #define ROUND_UP_TO_CACHELINE_SIZE(x) \
 		(((x) + (DISPATCH_CACHELINE_SIZE - 1u)) & \
 		~(DISPATCH_CACHELINE_SIZE - 1u))
-#define ROUND_UP_TO_CONTINUATION_SIZE(x) \
-		(((x) + (DISPATCH_CONTINUATION_SIZE - 1u)) & \
-		~(DISPATCH_CONTINUATION_SIZE - 1u))
-#define ROUND_UP_TO_VECTOR_SIZE(x) \
-		(((x) + 15u) & ~15u)
 #define DISPATCH_CACHELINE_ALIGN \
 		__attribute__((__aligned__(DISPATCH_CACHELINE_SIZE)))
 
 
-#define DISPATCH_QUEUE_CACHELINE_PADDING \
-		char _dq_pad[DISPATCH_QUEUE_CACHELINE_PAD]
-#ifdef __LP64__
-#define DISPATCH_QUEUE_CACHELINE_PAD (( \
-		(3*sizeof(void*) - DISPATCH_INTROSPECTION_QUEUE_LIST_SIZE) \
-		+ DISPATCH_CACHELINE_SIZE) % DISPATCH_CACHELINE_SIZE)
-#else
-#define DISPATCH_QUEUE_CACHELINE_PAD (( \
-		(0*sizeof(void*) - DISPATCH_INTROSPECTION_QUEUE_LIST_SIZE) \
-		+ DISPATCH_CACHELINE_SIZE) % DISPATCH_CACHELINE_SIZE)
-#if !DISPATCH_INTROSPECTION
-// No padding, DISPATCH_QUEUE_CACHELINE_PAD == 0
-#undef DISPATCH_QUEUE_CACHELINE_PADDING
-#define DISPATCH_QUEUE_CACHELINE_PADDING
-#endif
-#endif
-
-// If dc_vtable is less than 127, then the object is a continuation.
-// Otherwise, the object has a private layout and memory management rules. The
-// layout until after 'do_next' must align with normal objects.
-#define DISPATCH_CONTINUATION_HEADER(x) \
-	_OS_OBJECT_HEADER( \
-	const void *do_vtable, \
-	do_ref_cnt, \
-	do_xref_cnt); \
-	struct dispatch_##x##_s *volatile do_next; \
-	dispatch_function_t dc_func; \
-	void *dc_ctxt; \
-	void *dc_data; \
-	void *dc_other;
-
-#define DISPATCH_OBJ_ASYNC_BIT		0x1
-#define DISPATCH_OBJ_BARRIER_BIT	0x2
-#define DISPATCH_OBJ_GROUP_BIT		0x4
-#define DISPATCH_OBJ_SYNC_SLOW_BIT	0x8
-// vtables are pointers far away from the low page in memory
-#define DISPATCH_OBJ_IS_VTABLE(x) ((unsigned long)(x)->do_vtable > 127ul)
-
-struct dispatch_continuation_s {
-	DISPATCH_CONTINUATION_HEADER(continuation);
-};
-
-typedef struct dispatch_continuation_s *dispatch_continuation_t;
-
-struct dispatch_apply_s {
-	size_t volatile da_index, da_todo;
-	size_t da_iterations, da_nested;
-	dispatch_continuation_t da_dc;
-	_dispatch_thread_semaphore_t da_sema;
-	uint32_t da_thr_cnt;
-};
-
-typedef struct dispatch_apply_s *dispatch_apply_t;
-
-DISPATCH_CLASS_DECL(queue_attr);
-struct dispatch_queue_attr_s {
-	DISPATCH_STRUCT_HEADER(queue_attr);
-};
+#pragma mark -
+#pragma mark dispatch_queue_t
 
 #define DISPATCH_QUEUE_HEADER \
 	uint32_t volatile dq_running; \
@@ -116,11 +54,29 @@ struct dispatch_queue_attr_s {
 	/* LP64 global queue cacheline boundary */ \
 	struct dispatch_object_s *volatile dq_items_tail; \
 	dispatch_queue_t dq_specific_q; \
-	uint32_t dq_width; \
-	unsigned int dq_is_thread_bound:1; \
+	uint16_t dq_width; \
+	uint16_t dq_is_thread_bound:1; \
+	pthread_priority_t dq_priority; \
+	mach_port_t dq_thread; \
+	mach_port_t volatile dq_tqthread; \
+	uint32_t volatile dq_override; \
 	unsigned long dq_serialnum; \
 	const char *dq_label; \
 	DISPATCH_INTROSPECTION_QUEUE_LIST;
+
+#define DISPATCH_QUEUE_WIDTH_MAX UINT16_MAX
+
+#define DISPATCH_QUEUE_CACHELINE_PADDING \
+		char _dq_pad[DISPATCH_QUEUE_CACHELINE_PAD]
+#ifdef __LP64__
+#define DISPATCH_QUEUE_CACHELINE_PAD (( \
+		(0*sizeof(void*) - DISPATCH_INTROSPECTION_QUEUE_LIST_SIZE) \
+		+ DISPATCH_CACHELINE_SIZE) % DISPATCH_CACHELINE_SIZE)
+#else
+#define DISPATCH_QUEUE_CACHELINE_PAD (( \
+		(13*sizeof(void*) - DISPATCH_INTROSPECTION_QUEUE_LIST_SIZE) \
+		+ DISPATCH_CACHELINE_SIZE) % DISPATCH_CACHELINE_SIZE)
+#endif
 
 DISPATCH_CLASS_DECL(queue);
 struct dispatch_queue_s {
@@ -136,17 +92,21 @@ DISPATCH_INTERNAL_SUBCLASS_DECL(queue_mgr, queue);
 DISPATCH_DECL_INTERNAL_SUBCLASS(dispatch_queue_specific_queue, dispatch_queue);
 DISPATCH_CLASS_DECL(queue_specific_queue);
 
-extern struct dispatch_queue_s _dispatch_mgr_q;
-
 void _dispatch_queue_destroy(dispatch_object_t dou);
 void _dispatch_queue_dispose(dispatch_queue_t dq);
 void _dispatch_queue_invoke(dispatch_queue_t dq);
 void _dispatch_queue_push_list_slow(dispatch_queue_t dq,
-		struct dispatch_object_s *obj, unsigned int n);
+		pthread_priority_t pp, struct dispatch_object_s *obj, unsigned int n,
+		bool retained);
 void _dispatch_queue_push_slow(dispatch_queue_t dq,
-		struct dispatch_object_s *obj);
+		pthread_priority_t pp, struct dispatch_object_s *obj, bool retained);
 unsigned long _dispatch_queue_probe(dispatch_queue_t dq);
 dispatch_queue_t _dispatch_wakeup(dispatch_object_t dou);
+dispatch_queue_t _dispatch_queue_wakeup(dispatch_queue_t dq);
+void _dispatch_queue_wakeup_with_qos(dispatch_queue_t dq,
+		pthread_priority_t pp);
+void _dispatch_queue_wakeup_with_qos_and_release(dispatch_queue_t dq,
+		pthread_priority_t pp);
 _dispatch_thread_semaphore_t _dispatch_queue_drain(dispatch_object_t dou);
 void _dispatch_queue_specific_queue_dispose(dispatch_queue_specific_queue_t
 		dqsq);
@@ -167,6 +127,8 @@ void _dispatch_async_redirect_invoke(void *ctxt);
 void _dispatch_sync_recurse_invoke(void *ctxt);
 void _dispatch_apply_invoke(void *ctxt);
 void _dispatch_apply_redirect_invoke(void *ctxt);
+void _dispatch_barrier_async_detached_f(dispatch_queue_t dq, void *ctxt,
+		dispatch_function_t func);
 void _dispatch_barrier_trysync_f(dispatch_queue_t dq, void *ctxt,
 		dispatch_function_t func);
 
@@ -181,192 +143,136 @@ size_t dispatch_queue_debug(dispatch_queue_t dq, char* buf, size_t bufsiz);
 size_t _dispatch_queue_debug_attr(dispatch_queue_t dq, char* buf,
 		size_t bufsiz);
 
-#define DISPATCH_QUEUE_PRIORITY_COUNT 4
-#define DISPATCH_ROOT_QUEUE_COUNT (DISPATCH_QUEUE_PRIORITY_COUNT * 2)
+#define DISPATCH_QUEUE_QOS_COUNT 6
+#define DISPATCH_ROOT_QUEUE_COUNT (DISPATCH_QUEUE_QOS_COUNT * 2)
 
-// overcommit priority index values need bit 1 set
+// must be in lowest to highest qos order (as encoded in pthread_priority_t)
+// overcommit qos index values need bit 1 set
 enum {
-	DISPATCH_ROOT_QUEUE_IDX_LOW_PRIORITY = 0,
-	DISPATCH_ROOT_QUEUE_IDX_LOW_OVERCOMMIT_PRIORITY,
-	DISPATCH_ROOT_QUEUE_IDX_DEFAULT_PRIORITY,
-	DISPATCH_ROOT_QUEUE_IDX_DEFAULT_OVERCOMMIT_PRIORITY,
-	DISPATCH_ROOT_QUEUE_IDX_HIGH_PRIORITY,
-	DISPATCH_ROOT_QUEUE_IDX_HIGH_OVERCOMMIT_PRIORITY,
-	DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_PRIORITY,
-	DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_OVERCOMMIT_PRIORITY,
+	DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS = 0,
+	DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS,
+	DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_UTILITY_QOS,
+	DISPATCH_ROOT_QUEUE_IDX_UTILITY_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS,
+	DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_USER_INITIATED_QOS,
+	DISPATCH_ROOT_QUEUE_IDX_USER_INITIATED_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS,
+	DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS_OVERCOMMIT,
 };
 
 extern unsigned long volatile _dispatch_queue_serial_numbers;
 extern struct dispatch_queue_s _dispatch_root_queues[];
+extern struct dispatch_queue_s _dispatch_mgr_q;
 
-#if !(USE_OBJC && __OBJC2__)
-
-DISPATCH_ALWAYS_INLINE
-static inline bool
-_dispatch_queue_push_list2(dispatch_queue_t dq, struct dispatch_object_s *head,
-		struct dispatch_object_s *tail)
-{
-	struct dispatch_object_s *prev;
-	tail->do_next = NULL;
-	prev = dispatch_atomic_xchg2o(dq, dq_items_tail, tail, release);
-	if (fastpath(prev)) {
-		// if we crash here with a value less than 0x1000, then we are at a
-		// known bug in client code for example, see _dispatch_queue_dispose
-		// or _dispatch_atfork_child
-		prev->do_next = head;
-	}
-	return (prev != NULL);
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_queue_push_list(dispatch_queue_t dq, dispatch_object_t _head,
-		dispatch_object_t _tail, unsigned int n)
-{
-	struct dispatch_object_s *head = _head._do, *tail = _tail._do;
-	if (!fastpath(_dispatch_queue_push_list2(dq, head, tail))) {
-		_dispatch_queue_push_list_slow(dq, head, n);
-	}
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_queue_push(dispatch_queue_t dq, dispatch_object_t _tail)
-{
-	struct dispatch_object_s *tail = _tail._do;
-	if (!fastpath(_dispatch_queue_push_list2(dq, tail, tail))) {
-		_dispatch_queue_push_slow(dq, tail);
-	}
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_queue_push_wakeup(dispatch_queue_t dq, dispatch_object_t _tail,
-		bool wakeup)
-{
-	struct dispatch_object_s *tail = _tail._do;
-	if (!fastpath(_dispatch_queue_push_list2(dq, tail, tail))) {
-		_dispatch_queue_push_slow(dq, tail);
-	} else if (slowpath(wakeup)) {
-		_dispatch_wakeup(dq);
-	}
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_queue_class_invoke(dispatch_object_t dou,
-		dispatch_queue_t (*invoke)(dispatch_object_t,
-		_dispatch_thread_semaphore_t*))
-{
-	dispatch_queue_t dq = dou._dq;
-	if (!slowpath(DISPATCH_OBJECT_SUSPENDED(dq)) &&
-			fastpath(dispatch_atomic_cmpxchg2o(dq, dq_running, 0, 1, acquire))){
-		dispatch_queue_t tq = NULL;
-		_dispatch_thread_semaphore_t sema = 0;
-		tq = invoke(dq, &sema);
-		// We do not need to check the result.
-		// When the suspend-count lock is dropped, then the check will happen.
-		(void)dispatch_atomic_dec2o(dq, dq_running, release);
-		if (sema) {
-			_dispatch_thread_semaphore_signal(sema);
-		} else if (tq) {
-			return _dispatch_queue_push(tq, dq);
-		}
-	}
-	dq->do_next = DISPATCH_OBJECT_LISTLESS;
-	if (!dispatch_atomic_sub2o(dq, do_suspend_cnt,
-			DISPATCH_OBJECT_SUSPEND_LOCK, release)) {
-		dispatch_atomic_barrier(seq_cst); // <rdar://problem/11915417>
-		if (dispatch_atomic_load2o(dq, dq_running, seq_cst) == 0) {
-			_dispatch_wakeup(dq); // verify that the queue is idle
-		}
-	}
-	_dispatch_release(dq); // added when the queue is put on the list
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline dispatch_queue_t
-_dispatch_queue_get_current(void)
-{
-	return (dispatch_queue_t)_dispatch_thread_getspecific(dispatch_queue_key);
-}
-
-DISPATCH_ALWAYS_INLINE DISPATCH_CONST
-static inline dispatch_queue_t
-_dispatch_get_root_queue(long priority, bool overcommit)
-{
-	if (overcommit) switch (priority) {
-	case DISPATCH_QUEUE_PRIORITY_BACKGROUND:
-#if !DISPATCH_NO_BG_PRIORITY
-		return &_dispatch_root_queues[
-				DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_OVERCOMMIT_PRIORITY];
+#if HAVE_PTHREAD_WORKQUEUE_QOS
+extern pthread_priority_t _dispatch_background_priority;
+extern pthread_priority_t _dispatch_user_initiated_priority;
 #endif
-	case DISPATCH_QUEUE_PRIORITY_LOW:
-	case DISPATCH_QUEUE_PRIORITY_NON_INTERACTIVE:
-		return &_dispatch_root_queues[
-				DISPATCH_ROOT_QUEUE_IDX_LOW_OVERCOMMIT_PRIORITY];
-	case DISPATCH_QUEUE_PRIORITY_DEFAULT:
-		return &_dispatch_root_queues[
-				DISPATCH_ROOT_QUEUE_IDX_DEFAULT_OVERCOMMIT_PRIORITY];
-	case DISPATCH_QUEUE_PRIORITY_HIGH:
-		return &_dispatch_root_queues[
-				DISPATCH_ROOT_QUEUE_IDX_HIGH_OVERCOMMIT_PRIORITY];
-	}
-	switch (priority) {
-	case DISPATCH_QUEUE_PRIORITY_BACKGROUND:
-#if !DISPATCH_NO_BG_PRIORITY
-		return &_dispatch_root_queues[
-				DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_PRIORITY];
+
+#pragma mark -
+#pragma mark dispatch_queue_attr_t
+
+DISPATCH_CLASS_DECL(queue_attr);
+struct dispatch_queue_attr_s {
+	DISPATCH_STRUCT_HEADER(queue_attr);
+	qos_class_t dqa_qos_class;
+	int dqa_relative_priority;
+	unsigned int dqa_overcommit:1, dqa_concurrent:1;
+};
+
+enum {
+	DQA_INDEX_NON_OVERCOMMIT = 0,
+	DQA_INDEX_OVERCOMMIT,
+};
+
+enum {
+	DQA_INDEX_CONCURRENT = 0,
+	DQA_INDEX_SERIAL,
+};
+
+#define DISPATCH_QUEUE_ATTR_PRIO_COUNT (1 - QOS_MIN_RELATIVE_PRIORITY)
+
+typedef enum {
+	DQA_INDEX_QOS_CLASS_UNSPECIFIED = 0,
+	DQA_INDEX_QOS_CLASS_MAINTENANCE,
+	DQA_INDEX_QOS_CLASS_BACKGROUND,
+	DQA_INDEX_QOS_CLASS_UTILITY,
+	DQA_INDEX_QOS_CLASS_DEFAULT,
+	DQA_INDEX_QOS_CLASS_USER_INITIATED,
+	DQA_INDEX_QOS_CLASS_USER_INTERACTIVE,
+} _dispatch_queue_attr_index_qos_class_t;
+
+extern const struct dispatch_queue_attr_s _dispatch_queue_attrs[]
+		[DISPATCH_QUEUE_ATTR_PRIO_COUNT][2][2];
+
+#pragma mark -
+#pragma mark dispatch_continuation_t
+
+// If dc_vtable is less than 127, then the object is a continuation.
+// Otherwise, the object has a private layout and memory management rules. The
+// layout until after 'do_next' must align with normal objects.
+#if __LP64__
+#define DISPATCH_CONTINUATION_HEADER(x) \
+	const void *do_vtable; \
+	union { \
+		pthread_priority_t dc_priority; \
+		int dc_cache_cnt; \
+		uintptr_t dc_pad; \
+	}; \
+	struct dispatch_##x##_s *volatile do_next; \
+	struct voucher_s *dc_voucher; \
+	dispatch_function_t dc_func; \
+	void *dc_ctxt; \
+	void *dc_data; \
+	void *dc_other;
+#define _DISPATCH_SIZEOF_PTR 8
+#else
+#define DISPATCH_CONTINUATION_HEADER(x) \
+	const void *do_vtable; \
+	union { \
+		pthread_priority_t dc_priority; \
+		int dc_cache_cnt; \
+		uintptr_t dc_pad; \
+	}; \
+	struct voucher_s *dc_voucher; \
+	struct dispatch_##x##_s *volatile do_next; \
+	dispatch_function_t dc_func; \
+	void *dc_ctxt; \
+	void *dc_data; \
+	void *dc_other;
+#define _DISPATCH_SIZEOF_PTR 4
 #endif
-	case DISPATCH_QUEUE_PRIORITY_LOW:
-	case DISPATCH_QUEUE_PRIORITY_NON_INTERACTIVE:
-		return &_dispatch_root_queues[DISPATCH_ROOT_QUEUE_IDX_LOW_PRIORITY];
-	case DISPATCH_QUEUE_PRIORITY_DEFAULT:
-		return &_dispatch_root_queues[DISPATCH_ROOT_QUEUE_IDX_DEFAULT_PRIORITY];
-	case DISPATCH_QUEUE_PRIORITY_HIGH:
-		return &_dispatch_root_queues[DISPATCH_ROOT_QUEUE_IDX_HIGH_PRIORITY];
-	default:
-		return NULL;
-	}
-}
+#define _DISPATCH_CONTINUATION_PTRS 8
+#if DISPATCH_HW_CONFIG_UP
+// UP devices don't contend on continuations so we don't need to force them to
+// occupy a whole cacheline (which is intended to avoid contention)
+#define DISPATCH_CONTINUATION_SIZE \
+		(_DISPATCH_CONTINUATION_PTRS * _DISPATCH_SIZEOF_PTR)
+#else
+#define DISPATCH_CONTINUATION_SIZE  ROUND_UP_TO_CACHELINE_SIZE( \
+		(_DISPATCH_CONTINUATION_PTRS * _DISPATCH_SIZEOF_PTR))
+#endif
+#define ROUND_UP_TO_CONTINUATION_SIZE(x) \
+		(((x) + (DISPATCH_CONTINUATION_SIZE - 1u)) & \
+		~(DISPATCH_CONTINUATION_SIZE - 1u))
 
-// Note to later developers: ensure that any initialization changes are
-// made for statically allocated queues (i.e. _dispatch_main_q).
-static inline void
-_dispatch_queue_init(dispatch_queue_t dq)
-{
-	dq->do_next = (struct dispatch_queue_s *)DISPATCH_OBJECT_LISTLESS;
+#define DISPATCH_OBJ_ASYNC_BIT		0x1
+#define DISPATCH_OBJ_BARRIER_BIT	0x2
+#define DISPATCH_OBJ_GROUP_BIT		0x4
+#define DISPATCH_OBJ_SYNC_SLOW_BIT	0x8
+#define DISPATCH_OBJ_BLOCK_RELEASE_BIT 0x10
+#define DISPATCH_OBJ_CTXT_FETCH_BIT 0x20
+#define DISPATCH_OBJ_HAS_VOUCHER_BIT 0x80
+// vtables are pointers far away from the low page in memory
+#define DISPATCH_OBJ_IS_VTABLE(x) ((unsigned long)(x)->do_vtable > 0xfful)
 
-	dq->dq_running = 0;
-	dq->dq_width = 1;
-	dq->dq_serialnum = dispatch_atomic_inc_orig(&_dispatch_queue_serial_numbers,
-			relaxed);
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_queue_set_bound_thread(dispatch_queue_t dq)
-{
-	//Tag thread-bound queues with the owning thread
-	dispatch_assert(dq->dq_is_thread_bound);
-	dq->do_finalizer = (void*)_dispatch_thread_self();
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_queue_clear_bound_thread(dispatch_queue_t dq)
-{
-	dispatch_assert(dq->dq_is_thread_bound);
-	dq->do_finalizer = NULL;
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline pthread_t
-_dispatch_queue_get_bound_thread(dispatch_queue_t dq)
-{
-	dispatch_assert(dq->dq_is_thread_bound);
-	return (pthread_t)dq->do_finalizer;
-}
+struct dispatch_continuation_s {
+	DISPATCH_CONTINUATION_HEADER(continuation);
+};
+typedef struct dispatch_continuation_s *dispatch_continuation_t;
 
 #ifndef DISPATCH_CONTINUATION_CACHE_LIMIT
 #if TARGET_OS_EMBEDDED
@@ -390,56 +296,63 @@ void _dispatch_continuation_free_to_cache_limit(dispatch_continuation_t c);
 		_dispatch_continuation_free_to_heap(c)
 #endif
 
-DISPATCH_ALWAYS_INLINE
-static inline dispatch_continuation_t
-_dispatch_continuation_alloc_cacheonly(void)
-{
-	dispatch_continuation_t dc = (dispatch_continuation_t)
-			fastpath(_dispatch_thread_getspecific(dispatch_cache_key));
-	if (dc) {
-		_dispatch_thread_setspecific(dispatch_cache_key, dc->do_next);
-	}
-	return dc;
-}
+#pragma mark -
+#pragma mark dispatch_apply_t
 
-DISPATCH_ALWAYS_INLINE
-static inline dispatch_continuation_t
-_dispatch_continuation_alloc(void)
-{
-	dispatch_continuation_t dc =
-			fastpath(_dispatch_continuation_alloc_cacheonly());
-	if(!dc) {
-		return _dispatch_continuation_alloc_from_heap();
-	}
-	return dc;
-}
+struct dispatch_apply_s {
+	size_t volatile da_index, da_todo;
+	size_t da_iterations, da_nested;
+	dispatch_continuation_t da_dc;
+	_dispatch_thread_semaphore_t da_sema;
+	uint32_t da_thr_cnt;
+};
+typedef struct dispatch_apply_s *dispatch_apply_t;
 
-DISPATCH_ALWAYS_INLINE
-static inline dispatch_continuation_t
-_dispatch_continuation_free_cacheonly(dispatch_continuation_t dc)
-{
-	dispatch_continuation_t prev_dc = (dispatch_continuation_t)
-			fastpath(_dispatch_thread_getspecific(dispatch_cache_key));
-	int cnt = prev_dc ? prev_dc->do_ref_cnt + 1 : 1;
-	// Cap continuation cache
-	if (slowpath(cnt > _dispatch_continuation_cache_limit)) {
-		return dc;
-	}
-	dc->do_next = prev_dc;
-	dc->do_ref_cnt = cnt;
-	_dispatch_thread_setspecific(dispatch_cache_key, dc);
-	return NULL;
-}
+#pragma mark -
+#pragma mark dispatch_block_t
 
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_continuation_free(dispatch_continuation_t dc)
-{
-	dc = _dispatch_continuation_free_cacheonly(dc);
-	if (slowpath(dc)) {
-		_dispatch_continuation_free_to_cache_limit(dc);
-	}
-}
-#endif // !(USE_OBJC && __OBJC2__)
+#ifdef __BLOCKS__
+
+#define DISPATCH_BLOCK_API_MASK (0x80u - 1)
+#define DISPATCH_BLOCK_HAS_VOUCHER (1u << 31)
+#define DISPATCH_BLOCK_HAS_PRIORITY (1u << 30)
+
+struct dispatch_block_private_data_s {
+	unsigned long dbpd_magic;
+	dispatch_block_flags_t dbpd_flags;
+	unsigned int volatile dbpd_atomic_flags;
+	int volatile dbpd_performed;
+	pthread_priority_t dbpd_priority;
+	voucher_t dbpd_voucher;
+	dispatch_block_t dbpd_block;
+	struct dispatch_semaphore_s dbpd_group;
+	dispatch_queue_t volatile dbpd_queue;
+	mach_port_t dbpd_thread;
+};
+typedef struct dispatch_block_private_data_s *dispatch_block_private_data_t;
+
+// dbpd_atomic_flags bits
+#define DBF_CANCELED 1u // block has been cancelled
+#define DBF_WAITING 2u // dispatch_block_wait has begun
+#define DBF_WAITED 4u // dispatch_block_wait has finished without timeout
+#define DBF_PERFORM 8u // dispatch_block_perform: don't group_leave
+
+#define DISPATCH_BLOCK_PRIVATE_DATA_MAGIC 0xD159B10C // 0xDISPatch_BLOCk
+
+#define DISPATCH_BLOCK_PRIVATE_DATA_INITIALIZER(flags, voucher, prio, block) \
+		{ \
+			.dbpd_magic = DISPATCH_BLOCK_PRIVATE_DATA_MAGIC, \
+			.dbpd_flags = (flags), \
+			.dbpd_priority = (prio), \
+			.dbpd_voucher = (voucher), \
+			.dbpd_block = (block), \
+			.dbpd_group = DISPATCH_GROUP_INITIALIZER(1), \
+		}
+
+dispatch_block_t _dispatch_block_create(dispatch_block_flags_t flags,
+		voucher_t voucher, pthread_priority_t priority, dispatch_block_t block);
+void _dispatch_block_invoke(const struct dispatch_block_private_data_s *dbcpd);
+
+#endif /* __BLOCKS__ */
 
 #endif

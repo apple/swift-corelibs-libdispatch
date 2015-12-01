@@ -57,13 +57,14 @@
 #include <dispatch/mach_private.h>
 #include <dispatch/data_private.h>
 #include <dispatch/io_private.h>
+#include <dispatch/layout_private.h>
 
 #undef __DISPATCH_INDIRECT__
 
 #endif /* !__DISPATCH_BUILDING_DISPATCH__ */
 
 // <rdar://problem/9627726> Check that public and private dispatch headers match
-#if DISPATCH_API_VERSION != 20130520 // Keep in sync with <dispatch/dispatch.h>
+#if DISPATCH_API_VERSION != 20140804 // Keep in sync with <dispatch/dispatch.h>
 #error "Dispatch header mismatch between /usr/include and /usr/local/include"
 #endif
 

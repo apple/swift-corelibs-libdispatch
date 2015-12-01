@@ -183,23 +183,25 @@ typedef enum _dispatch_atomic_memory_order
 		default: \
 			_dispatch_atomic_full_barrier(); break; \
 		} })
-// Only emulate store seq_cst -> load seq_cst
+// seq_cst: only emulate explicit store(seq_cst) -> load(seq_cst)
 #define dispatch_atomic_load(p, m) \
-		({ switch(dispatch_atomic_memory_order_##m) { \
-		case _dispatch_atomic_memory_order_relaxed: \
+		({ typeof(*(p)) _r = *(p); \
+		switch(dispatch_atomic_memory_order_##m) { \
 		case _dispatch_atomic_memory_order_seq_cst: \
+			_dispatch_atomic_barrier(m); /* fallthrough */ \
+		case _dispatch_atomic_memory_order_relaxed: \
 			break; \
 		default: \
 			_dispatch_atomic_unimplemented(); break; \
-		}; *(p); })
+		} _r; })
 #define dispatch_atomic_store(p, v, m) \
 		({ switch(dispatch_atomic_memory_order_##m) { \
 		case _dispatch_atomic_memory_order_release: \
+		case _dispatch_atomic_memory_order_seq_cst: \
 			_dispatch_atomic_barrier(m); /* fallthrough */ \
 		case _dispatch_atomic_memory_order_relaxed: \
-		case _dispatch_atomic_memory_order_seq_cst: \
 			*(p) = (v); break; \
-		default:\
+		default: \
 			_dispatch_atomic_unimplemented(); break; \
 		} switch(dispatch_atomic_memory_order_##m) { \
 		case _dispatch_atomic_memory_order_seq_cst: \
@@ -251,6 +253,15 @@ typedef enum _dispatch_atomic_memory_order
 		({ __asm__ __volatile__( \
 		"mfence" \
 		: : : "memory"); })
+#undef dispatch_atomic_load
+#define dispatch_atomic_load(p, m) \
+		({ switch(dispatch_atomic_memory_order_##m) { \
+		case _dispatch_atomic_memory_order_seq_cst: \
+		case _dispatch_atomic_memory_order_relaxed: \
+			break; \
+		default: \
+			_dispatch_atomic_unimplemented(); break; \
+		} *(p); })
 // xchg is faster than store + mfence
 #undef dispatch_atomic_store
 #define dispatch_atomic_store(p, v, m) \
@@ -272,7 +283,6 @@ typedef enum _dispatch_atomic_memory_order
 #pragma mark -
 #pragma mark generic
 
-#define dispatch_hardware_pause() ({ __asm__(""); })
 // assume atomic builtins provide barriers
 #define dispatch_atomic_barrier(m)
 // see comment in dispatch_once.c
@@ -341,9 +351,6 @@ typedef enum _dispatch_atomic_memory_order
 #if defined(__x86_64__) || defined(__i386__)
 #pragma mark -
 #pragma mark x86
-
-#undef dispatch_hardware_pause
-#define dispatch_hardware_pause() ({ __asm__("pause"); })
 
 #undef dispatch_atomic_maximally_synchronizing_barrier
 #ifdef __LP64__

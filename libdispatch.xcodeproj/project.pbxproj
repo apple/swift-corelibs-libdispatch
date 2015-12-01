@@ -39,6 +39,8 @@
 		2BBF5A65154B64F5002B20F9 /* allocator.c in Sources */ = {isa = PBXBuildFile; fileRef = 2BBF5A62154B64F5002B20F9 /* allocator.c */; };
 		2BBF5A66154B64F5002B20F9 /* allocator.c in Sources */ = {isa = PBXBuildFile; fileRef = 2BBF5A62154B64F5002B20F9 /* allocator.c */; };
 		2BBF5A67154B64F5002B20F9 /* allocator.c in Sources */ = {isa = PBXBuildFile; fileRef = 2BBF5A62154B64F5002B20F9 /* allocator.c */; };
+		2BE17C6418EA305E002CA4E8 /* layout_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 2BE17C6318EA305E002CA4E8 /* layout_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
+		2BE17C6518EA305E002CA4E8 /* layout_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 2BE17C6318EA305E002CA4E8 /* layout_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		5A0095A210F274B0000E2A31 /* io_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 5A0095A110F274B0000E2A31 /* io_internal.h */; };
 		5A27262610F26F1900751FBC /* io.c in Sources */ = {isa = PBXBuildFile; fileRef = 5A27262510F26F1900751FBC /* io.c */; };
 		5A5D13AC0F6B280500197CC3 /* semaphore_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 5A5D13AB0F6B280500197CC3 /* semaphore_internal.h */; };
@@ -82,6 +84,20 @@
 		E43570B9126E93380097AB9F /* provider.d in Sources */ = {isa = PBXBuildFile; fileRef = E43570B8126E93380097AB9F /* provider.d */; };
 		E43570BA126E93380097AB9F /* provider.d in Sources */ = {isa = PBXBuildFile; fileRef = E43570B8126E93380097AB9F /* provider.d */; };
 		E43A710615783F7E0012D38D /* data_private.h in Headers */ = {isa = PBXBuildFile; fileRef = C913AC0E143BD34800B78976 /* data_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
+		E44757DA17F4572600B82CA1 /* inline_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = E44757D917F4572600B82CA1 /* inline_internal.h */; };
+		E44757DB17F4573500B82CA1 /* inline_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = E44757D917F4572600B82CA1 /* inline_internal.h */; };
+		E44757DC17F4573600B82CA1 /* inline_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = E44757D917F4572600B82CA1 /* inline_internal.h */; };
+		E44A8E6B1805C3E0009FFDB6 /* voucher.c in Sources */ = {isa = PBXBuildFile; fileRef = E44A8E6A1805C3E0009FFDB6 /* voucher.c */; };
+		E44A8E6C1805C3E0009FFDB6 /* voucher.c in Sources */ = {isa = PBXBuildFile; fileRef = E44A8E6A1805C3E0009FFDB6 /* voucher.c */; };
+		E44A8E6D1805C3E0009FFDB6 /* voucher.c in Sources */ = {isa = PBXBuildFile; fileRef = E44A8E6A1805C3E0009FFDB6 /* voucher.c */; };
+		E44A8E6E1805C3E0009FFDB6 /* voucher.c in Sources */ = {isa = PBXBuildFile; fileRef = E44A8E6A1805C3E0009FFDB6 /* voucher.c */; };
+		E44A8E6F1805C3E0009FFDB6 /* voucher.c in Sources */ = {isa = PBXBuildFile; fileRef = E44A8E6A1805C3E0009FFDB6 /* voucher.c */; };
+		E44A8E701805C3E0009FFDB6 /* voucher.c in Sources */ = {isa = PBXBuildFile; fileRef = E44A8E6A1805C3E0009FFDB6 /* voucher.c */; };
+		E44A8E721805C473009FFDB6 /* voucher_private.h in Headers */ = {isa = PBXBuildFile; fileRef = E44A8E711805C473009FFDB6 /* voucher_private.h */; };
+		E44A8E731805C473009FFDB6 /* voucher_private.h in Headers */ = {isa = PBXBuildFile; fileRef = E44A8E711805C473009FFDB6 /* voucher_private.h */; };
+		E44A8E7518066276009FFDB6 /* voucher_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = E44A8E7418066276009FFDB6 /* voucher_internal.h */; };
+		E44A8E7618066276009FFDB6 /* voucher_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = E44A8E7418066276009FFDB6 /* voucher_internal.h */; };
+		E44A8E7718066276009FFDB6 /* voucher_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = E44A8E7418066276009FFDB6 /* voucher_internal.h */; };
 		E44EBE3E1251659900645D88 /* init.c in Sources */ = {isa = PBXBuildFile; fileRef = E44EBE3B1251659900645D88 /* init.c */; };
 		E44EBE5412517EBE00645D88 /* protocol.defs in Sources */ = {isa = PBXBuildFile; fileRef = FC7BED950E8361E600161930 /* protocol.defs */; settings = {ATTRIBUTES = (Client, Server, ); }; };
 		E44EBE5512517EBE00645D88 /* init.c in Sources */ = {isa = PBXBuildFile; fileRef = E44EBE3B1251659900645D88 /* init.c */; };
@@ -129,6 +145,9 @@
 		E46DBC4D14EE10C80001F9F6 /* transform.c in Sources */ = {isa = PBXBuildFile; fileRef = C9C5F80D143C1771006DC718 /* transform.c */; };
 		E48AF55A16E70FD9004105FF /* io_private.h in Headers */ = {isa = PBXBuildFile; fileRef = E48AF55916E70FD9004105FF /* io_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		E48AF55B16E72D44004105FF /* io_private.h in Headers */ = {isa = PBXBuildFile; fileRef = E48AF55916E70FD9004105FF /* io_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
+		E48EC97C1835BADD00EAC4F1 /* yield.h in Headers */ = {isa = PBXBuildFile; fileRef = E48EC97B1835BADD00EAC4F1 /* yield.h */; };
+		E48EC97D1835BADD00EAC4F1 /* yield.h in Headers */ = {isa = PBXBuildFile; fileRef = E48EC97B1835BADD00EAC4F1 /* yield.h */; };
+		E48EC97E1835BADD00EAC4F1 /* yield.h in Headers */ = {isa = PBXBuildFile; fileRef = E48EC97B1835BADD00EAC4F1 /* yield.h */; };
 		E49F2423125D3C960057C971 /* resolver.c in Sources */ = {isa = PBXBuildFile; fileRef = E44EBE371251656400645D88 /* resolver.c */; };
 		E49F2424125D3C970057C971 /* resolver.c in Sources */ = {isa = PBXBuildFile; fileRef = E44EBE371251656400645D88 /* resolver.c */; };
 		E49F2499125D48D80057C971 /* resolver.c in Sources */ = {isa = PBXBuildFile; fileRef = E44EBE371251656400645D88 /* resolver.c */; };
@@ -175,6 +194,8 @@
 		E4A2C9C5176019820000F809 /* atomic_llsc.h in Headers */ = {isa = PBXBuildFile; fileRef = E4A2C9C4176019760000F809 /* atomic_llsc.h */; };
 		E4A2C9C6176019830000F809 /* atomic_llsc.h in Headers */ = {isa = PBXBuildFile; fileRef = E4A2C9C4176019760000F809 /* atomic_llsc.h */; };
 		E4A2C9C7176019840000F809 /* atomic_llsc.h in Headers */ = {isa = PBXBuildFile; fileRef = E4A2C9C4176019760000F809 /* atomic_llsc.h */; };
+		E4B3C3FE18C50D000039F49F /* voucher_activity_private.h in Headers */ = {isa = PBXBuildFile; fileRef = E4B3C3FD18C50D000039F49F /* voucher_activity_private.h */; };
+		E4B3C3FF18C50D0E0039F49F /* voucher_activity_private.h in Headers */ = {isa = PBXBuildFile; fileRef = E4B3C3FD18C50D000039F49F /* voucher_activity_private.h */; };
 		E4B515BD164B2DA300E003AF /* provider.d in Sources */ = {isa = PBXBuildFile; fileRef = E43570B8126E93380097AB9F /* provider.d */; };
 		E4B515BE164B2DA300E003AF /* protocol.defs in Sources */ = {isa = PBXBuildFile; fileRef = FC7BED950E8361E600161930 /* protocol.defs */; settings = {ATTRIBUTES = (Client, Server, ); }; };
 		E4B515BF164B2DA300E003AF /* resolver.c in Sources */ = {isa = PBXBuildFile; fileRef = E44EBE371251656400645D88 /* resolver.c */; };
@@ -199,6 +220,8 @@
 		E4BA743C13A8911B0095BDF1 /* getprogname.h in Headers */ = {isa = PBXBuildFile; fileRef = E4BA743913A8911B0095BDF1 /* getprogname.h */; };
 		E4C1ED6F1263E714000D3C8B /* data_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = E4C1ED6E1263E714000D3C8B /* data_internal.h */; };
 		E4C1ED701263E714000D3C8B /* data_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = E4C1ED6E1263E714000D3C8B /* data_internal.h */; };
+		E4D76A9318E325D200B1F98B /* block.h in Headers */ = {isa = PBXBuildFile; fileRef = E4D76A9218E325D200B1F98B /* block.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		E4D76A9418E325D200B1F98B /* block.h in Headers */ = {isa = PBXBuildFile; fileRef = E4D76A9218E325D200B1F98B /* block.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		E4EB4A2714C35ECE00AA0FA9 /* object.h in Headers */ = {isa = PBXBuildFile; fileRef = E4EB4A2614C35ECE00AA0FA9 /* object.h */; };
 		E4EB4A2814C35ECE00AA0FA9 /* object.h in Headers */ = {isa = PBXBuildFile; fileRef = E4EB4A2614C35ECE00AA0FA9 /* object.h */; };
 		E4EC11AE12514302000DDBD1 /* queue.c in Sources */ = {isa = PBXBuildFile; fileRef = FC7BED8A0E8361E600161930 /* queue.c */; };
@@ -298,6 +321,7 @@
 /* Begin PBXFileReference section */
 		2BBF5A5F154B64D8002B20F9 /* allocator_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = allocator_internal.h; sourceTree = "<group>"; };
 		2BBF5A62154B64F5002B20F9 /* allocator.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = allocator.c; sourceTree = "<group>"; };
+		2BE17C6318EA305E002CA4E8 /* layout_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = layout_private.h; sourceTree = "<group>"; };
 		5A0095A110F274B0000E2A31 /* io_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = io_internal.h; sourceTree = "<group>"; };
 		5A27262510F26F1900751FBC /* io.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; lineEnding = 0; path = io.c; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.c; };
 		5A5D13AB0F6B280500197CC3 /* semaphore_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = semaphore_internal.h; sourceTree = "<group>"; };
@@ -346,7 +370,11 @@
 		E422DA3714D2AE11003C6EE4 /* libdispatch.unexport */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = libdispatch.unexport; sourceTree = "<group>"; };
 		E43570B8126E93380097AB9F /* provider.d */ = {isa = PBXFileReference; explicitFileType = sourcecode.dtrace; fileEncoding = 4; path = provider.d; sourceTree = "<group>"; };
 		E43D93F11097917E004F6A62 /* libdispatch.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = libdispatch.xcconfig; sourceTree = "<group>"; };
+		E44757D917F4572600B82CA1 /* inline_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = inline_internal.h; sourceTree = "<group>"; };
 		E448727914C6215D00BB45C2 /* libdispatch.order */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = libdispatch.order; sourceTree = "<group>"; };
+		E44A8E6A1805C3E0009FFDB6 /* voucher.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = voucher.c; sourceTree = "<group>"; };
+		E44A8E711805C473009FFDB6 /* voucher_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = voucher_private.h; sourceTree = "<group>"; };
+		E44A8E7418066276009FFDB6 /* voucher_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = voucher_internal.h; sourceTree = "<group>"; };
 		E44EBE331251654000645D88 /* resolver.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = resolver.h; sourceTree = "<group>"; };
 		E44EBE371251656400645D88 /* resolver.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = resolver.c; sourceTree = "<group>"; };
 		E44EBE3B1251659900645D88 /* init.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = init.c; sourceTree = "<group>"; };
@@ -358,10 +386,14 @@
 		E47D6BB5125F0F800070D91C /* resolved.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = resolved.h; sourceTree = "<group>"; };
 		E482F1CD12DBAB590030614D /* postprocess-headers.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = "postprocess-headers.sh"; sourceTree = "<group>"; };
 		E48AF55916E70FD9004105FF /* io_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = io_private.h; path = private/io_private.h; sourceTree = SOURCE_ROOT; tabWidth = 8; };
+		E48EC97B1835BADD00EAC4F1 /* yield.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = yield.h; sourceTree = "<group>"; };
 		E49F24DF125D57FA0057C971 /* libdispatch.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = libdispatch.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
 		E49F251D125D630A0057C971 /* install-manpages.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = "install-manpages.sh"; sourceTree = "<group>"; };
 		E49F251E125D631D0057C971 /* mig-headers.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = "mig-headers.sh"; sourceTree = "<group>"; };
 		E4A2C9C4176019760000F809 /* atomic_llsc.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = atomic_llsc.h; sourceTree = "<group>"; };
+		E4B2D42D17A7F0F90034A18F /* libdispatch-resolver_iphoneos.order */ = {isa = PBXFileReference; lastKnownFileType = text; path = "libdispatch-resolver_iphoneos.order"; sourceTree = "<group>"; };
+		E4B2D42E17A7F0F90034A18F /* libdispatch_iphoneos.order */ = {isa = PBXFileReference; lastKnownFileType = text; path = libdispatch_iphoneos.order; sourceTree = "<group>"; };
+		E4B3C3FD18C50D000039F49F /* voucher_activity_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = voucher_activity_private.h; sourceTree = "<group>"; };
 		E4B515D6164B2DA300E003AF /* libdispatch.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = libdispatch.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4B515D7164B2DFB00E003AF /* introspection_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = introspection_private.h; sourceTree = "<group>"; };
 		E4B515D9164B2E9B00E003AF /* libdispatch-introspection.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = "libdispatch-introspection.xcconfig"; sourceTree = "<group>"; };
@@ -372,6 +404,8 @@
 		E4BA743813A8900B0095BDF1 /* dispatch_read.3 */ = {isa = PBXFileReference; explicitFileType = text.man; path = dispatch_read.3; sourceTree = "<group>"; };
 		E4BA743913A8911B0095BDF1 /* getprogname.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = getprogname.h; sourceTree = "<group>"; };
 		E4C1ED6E1263E714000D3C8B /* data_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = data_internal.h; sourceTree = "<group>"; };
+		E4D76A9218E325D200B1F98B /* block.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = block.h; sourceTree = "<group>"; };
+		E4DC8D45191053EE0005C6F4 /* libdispatch_objc.aliases */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = libdispatch_objc.aliases; sourceTree = "<group>"; };
 		E4EB4A2614C35ECE00AA0FA9 /* object.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = object.h; sourceTree = "<group>"; };
 		E4EB4A2A14C36F4E00AA0FA9 /* install-headers.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = "install-headers.sh"; sourceTree = "<group>"; };
 		E4EC11C312514302000DDBD1 /* libdispatch_up.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libdispatch_up.a; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -455,6 +489,7 @@
 				96A8AA860F41E7A400CD570B /* source.c */,
 				96032E4A0F5CC8C700241C5F /* time.c */,
 				C9C5F80D143C1771006DC718 /* transform.c */,
+				E44A8E6A1805C3E0009FFDB6 /* voucher.c */,
 				FC7BED950E8361E600161930 /* protocol.defs */,
 				E43570B8126E93380097AB9F /* provider.d */,
 			);
@@ -517,8 +552,11 @@
 				E46DBC5814EE11BC0001F9F6 /* libdispatch-static.xcconfig */,
 				E4B515D9164B2E9B00E003AF /* libdispatch-introspection.xcconfig */,
 				E422DA3614D2A7E7003C6EE4 /* libdispatch.aliases */,
+				E4DC8D45191053EE0005C6F4 /* libdispatch_objc.aliases */,
 				E416F53F175D04B800B23711 /* libdispatch_macosx.aliases */,
 				E448727914C6215D00BB45C2 /* libdispatch.order */,
+				E4B2D42E17A7F0F90034A18F /* libdispatch_iphoneos.order */,
+				E4B2D42D17A7F0F90034A18F /* libdispatch-resolver_iphoneos.order */,
 				E422DA3714D2AE11003C6EE4 /* libdispatch.unexport */,
 				E421E5FD1716BEA70090DC9B /* libdispatch.interposable */,
 			);
@@ -588,6 +626,7 @@
 				FC1832A2109923C7003403D5 /* perfmon.h */,
 				FC1832A3109923C7003403D5 /* time.h */,
 				FC1832A4109923C7003403D5 /* tsd.h */,
+				E48EC97B1835BADD00EAC4F1 /* yield.h */,
 			);
 			path = shims;
 			sourceTree = "<group>";
@@ -596,6 +635,7 @@
 			isa = PBXGroup;
 			children = (
 				72CC942F0ECCD8750031B751 /* base.h */,
+				E4D76A9218E325D200B1F98B /* block.h */,
 				5AAB45C510D30D0C004407EA /* data.h */,
 				FC7BED960E8361E600161930 /* dispatch.h */,
 				FC5C9C1D0EADABE3006E462D /* group.h */,
@@ -621,8 +661,11 @@
 				96BC39BC0F3EBAB100C59689 /* queue_private.h */,
 				FCEF047F0F5661960067401F /* source_private.h */,
 				E4ECBAA415253C25002C313C /* mach_private.h */,
+				E44A8E711805C473009FFDB6 /* voucher_private.h */,
+				E4B3C3FD18C50D000039F49F /* voucher_activity_private.h */,
 				961B99350F3E83980006BC96 /* benchmark.h */,
 				E4B515D7164B2DFB00E003AF /* introspection_private.h */,
+				2BE17C6318EA305E002CA4E8 /* layout_private.h */,
 			);
 			name = "Private Headers";
 			path = private;
@@ -633,12 +676,14 @@
 			children = (
 				2BBF5A5F154B64D8002B20F9 /* allocator_internal.h */,
 				FC7BED8F0E8361E600161930 /* internal.h */,
+				E44757D917F4572600B82CA1 /* inline_internal.h */,
 				E4C1ED6E1263E714000D3C8B /* data_internal.h */,
 				5A0095A110F274B0000E2A31 /* io_internal.h */,
 				965ECC200F3EAB71004DDD89 /* object_internal.h */,
 				96929D950F3EA2170041FF5D /* queue_internal.h */,
 				5A5D13AB0F6B280500197CC3 /* semaphore_internal.h */,
 				FC0B34780FA2851C0080FFA0 /* source_internal.h */,
+				E44A8E7418066276009FFDB6 /* voucher_internal.h */,
 				E422A0D412A557B5005E5BDB /* trace.h */,
 				E44F9DA816543F79001DCD38 /* introspection_internal.h */,
 				96929D830F3EA1020041FF5D /* shims.h */,
@@ -658,16 +703,20 @@
 				FC7BEDA50E8361E600161930 /* dispatch.h in Headers */,
 				72CC94300ECCD8750031B751 /* base.h in Headers */,
 				961B99500F3E85C30006BC96 /* object.h in Headers */,
+				E44757DA17F4572600B82CA1 /* inline_internal.h in Headers */,
 				FC7BED9A0E8361E600161930 /* queue.h in Headers */,
 				FC7BED9C0E8361E600161930 /* source.h in Headers */,
+				E4B3C3FE18C50D000039F49F /* voucher_activity_private.h in Headers */,
 				721F5C5D0F15520500FF03A6 /* semaphore.h in Headers */,
 				FC5C9C1E0EADABE3006E462D /* group.h in Headers */,
 				96C9553B0F3EAEDD000D2CA4 /* once.h in Headers */,
 				5AAB45C410D30CC7004407EA /* io.h in Headers */,
+				E44A8E7518066276009FFDB6 /* voucher_internal.h in Headers */,
 				E4630253176162D400E11F4C /* atomic_sfb.h in Headers */,
 				5AAB45C610D30D0C004407EA /* data.h in Headers */,
 				96032E4D0F5CC8D100241C5F /* time.h in Headers */,
 				FC7BEDA20E8361E600161930 /* private.h in Headers */,
+				E4D76A9318E325D200B1F98B /* block.h in Headers */,
 				E4A2C9C7176019840000F809 /* atomic_llsc.h in Headers */,
 				C913AC0F143BD34800B78976 /* data_private.h in Headers */,
 				96BC39BD0F3EBAB100C59689 /* queue_private.h in Headers */,
@@ -679,11 +728,14 @@
 				FC0B34790FA2851C0080FFA0 /* source_internal.h in Headers */,
 				5A5D13AC0F6B280500197CC3 /* semaphore_internal.h in Headers */,
 				E4C1ED6F1263E714000D3C8B /* data_internal.h in Headers */,
+				E44A8E721805C473009FFDB6 /* voucher_private.h in Headers */,
 				5A0095A210F274B0000E2A31 /* io_internal.h in Headers */,
 				FC1832A8109923C7003403D5 /* tsd.h in Headers */,
 				96929D840F3EA1020041FF5D /* atomic.h in Headers */,
 				96929D850F3EA1020041FF5D /* shims.h in Headers */,
 				FC1832A7109923C7003403D5 /* time.h in Headers */,
+				E48EC97C1835BADD00EAC4F1 /* yield.h in Headers */,
+				2BE17C6418EA305E002CA4E8 /* layout_private.h in Headers */,
 				FC1832A6109923C7003403D5 /* perfmon.h in Headers */,
 				FC9C70E8105EC9620074F9CA /* config.h in Headers */,
 				E422A0D512A557B5005E5BDB /* trace.h in Headers */,
@@ -705,16 +757,20 @@
 				E49F24AB125D57FA0057C971 /* dispatch.h in Headers */,
 				E49F24AC125D57FA0057C971 /* base.h in Headers */,
 				E49F24AD125D57FA0057C971 /* object.h in Headers */,
+				E44757DC17F4573600B82CA1 /* inline_internal.h in Headers */,
 				E49F24AE125D57FA0057C971 /* queue.h in Headers */,
 				E49F24AF125D57FA0057C971 /* source.h in Headers */,
+				E4B3C3FF18C50D0E0039F49F /* voucher_activity_private.h in Headers */,
 				E49F24B0125D57FA0057C971 /* semaphore.h in Headers */,
 				E49F24B1125D57FA0057C971 /* group.h in Headers */,
 				E49F24B2125D57FA0057C971 /* once.h in Headers */,
 				E49F24B3125D57FA0057C971 /* io.h in Headers */,
+				E44A8E7618066276009FFDB6 /* voucher_internal.h in Headers */,
 				E4630252176162D300E11F4C /* atomic_sfb.h in Headers */,
 				E49F24B4125D57FA0057C971 /* data.h in Headers */,
 				E49F24B5125D57FA0057C971 /* time.h in Headers */,
 				E49F24B6125D57FA0057C971 /* private.h in Headers */,
+				E4D76A9418E325D200B1F98B /* block.h in Headers */,
 				E4A2C9C6176019830000F809 /* atomic_llsc.h in Headers */,
 				E49F24B7125D57FA0057C971 /* queue_private.h in Headers */,
 				E49F24B8125D57FA0057C971 /* source_private.h in Headers */,
@@ -726,11 +782,14 @@
 				E49F24BD125D57FA0057C971 /* semaphore_internal.h in Headers */,
 				E4C1ED701263E714000D3C8B /* data_internal.h in Headers */,
 				E49F24BF125D57FA0057C971 /* io_internal.h in Headers */,
+				E44A8E731805C473009FFDB6 /* voucher_private.h in Headers */,
 				E49F24C1125D57FA0057C971 /* tsd.h in Headers */,
 				E49F24C2125D57FA0057C971 /* atomic.h in Headers */,
 				E49F24C3125D57FA0057C971 /* shims.h in Headers */,
 				E49F24C4125D57FA0057C971 /* time.h in Headers */,
 				E49F24C5125D57FA0057C971 /* perfmon.h in Headers */,
+				E48EC97D1835BADD00EAC4F1 /* yield.h in Headers */,
+				2BE17C6518EA305E002CA4E8 /* layout_private.h in Headers */,
 				E49F24C6125D57FA0057C971 /* config.h in Headers */,
 				E422A0D612A557B5005E5BDB /* trace.h in Headers */,
 				E4BA743C13A8911B0095BDF1 /* getprogname.h in Headers */,
@@ -761,12 +820,15 @@
 				E4630251176162D200E11F4C /* atomic_sfb.h in Headers */,
 				E44F9DBE1654405B001DCD38 /* tsd.h in Headers */,
 				E44F9DB816544053001DCD38 /* atomic.h in Headers */,
+				E44757DB17F4573500B82CA1 /* inline_internal.h in Headers */,
 				E44F9DB71654404F001DCD38 /* shims.h in Headers */,
 				E44F9DBC1654405B001DCD38 /* perfmon.h in Headers */,
 				E44F9DBF165440EF001DCD38 /* config.h in Headers */,
+				E44A8E7718066276009FFDB6 /* voucher_internal.h in Headers */,
 				E4A2C9C5176019820000F809 /* atomic_llsc.h in Headers */,
 				E44F9DB616544043001DCD38 /* trace.h in Headers */,
 				E44F9DB916544056001DCD38 /* getprogname.h in Headers */,
+				E48EC97E1835BADD00EAC4F1 /* yield.h in Headers */,
 				E44F9DBA1654405B001DCD38 /* hw_config.h in Headers */,
 				E44F9DC116544115001DCD38 /* object_private.h in Headers */,
 				E44F9DC016544115001DCD38 /* object.h in Headers */,
@@ -895,7 +957,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 0500;
+				LastUpgradeCheck = 0600;
 			};
 			buildConfigurationList = 1DEB91EF08733DB70010E9CD /* Build configuration list for PBXProject "libdispatch" */;
 			compatibilityVersion = "Xcode 3.2";
@@ -1031,11 +1093,15 @@
 				"$(SRCROOT)/xcodescripts/install-headers.sh",
 				"$(SRCROOT)/os/object.h",
 				"$(SRCROOT)/os/object_private.h",
+				"$(SRCROOT)/private/voucher_private.h",
+				"$(SRCROOT)/private/voucher_activity_private.h",
 			);
 			name = "Install Headers";
 			outputPaths = (
 				"$(CONFIGURATION_BUILD_DIR)/$(OS_PUBLIC_HEADERS_FOLDER_PATH)/object.h",
 				"$(CONFIGURATION_BUILD_DIR)/$(OS_PRIVATE_HEADERS_FOLDER_PATH)/object_private.h",
+				"$(CONFIGURATION_BUILD_DIR)/$(OS_PRIVATE_HEADERS_FOLDER_PATH)/voucher_private.h",
+				"$(CONFIGURATION_BUILD_DIR)/$(OS_PRIVATE_HEADERS_FOLDER_PATH)/voucher_activity_private.h",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = "/bin/bash -e";
@@ -1051,11 +1117,15 @@
 				"$(SRCROOT)/xcodescripts/install-headers.sh",
 				"$(SRCROOT)/os/object.h",
 				"$(SRCROOT)/os/object_private.h",
+				"$(SRCROOT)/private/voucher_private.h",
+				"$(SRCROOT)/private/voucher_activity_private.h",
 			);
 			name = "Install Headers";
 			outputPaths = (
 				"$(CONFIGURATION_BUILD_DIR)/$(OS_PUBLIC_HEADERS_FOLDER_PATH)/object.h",
 				"$(CONFIGURATION_BUILD_DIR)/$(OS_PRIVATE_HEADERS_FOLDER_PATH)/object_private.h",
+				"$(CONFIGURATION_BUILD_DIR)/$(OS_PRIVATE_HEADERS_FOLDER_PATH)/voucher_private.h",
+				"$(CONFIGURATION_BUILD_DIR)/$(OS_PRIVATE_HEADERS_FOLDER_PATH)/voucher_activity_private.h",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = "/bin/bash -e";
@@ -1157,6 +1227,7 @@
 				E4FC3264145F46C9002FBDDB /* object.m in Sources */,
 				2BBF5A63154B64F5002B20F9 /* allocator.c in Sources */,
 				E420867016027AE500EEE210 /* data.m in Sources */,
+				E44A8E6B1805C3E0009FFDB6 /* voucher.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1170,6 +1241,7 @@
 				E46DBC4314EE10C80001F9F6 /* queue.c in Sources */,
 				E46DBC4414EE10C80001F9F6 /* semaphore.c in Sources */,
 				E46DBC4514EE10C80001F9F6 /* once.c in Sources */,
+				E44A8E701805C3E0009FFDB6 /* voucher.c in Sources */,
 				E46DBC4614EE10C80001F9F6 /* apply.c in Sources */,
 				E46DBC4714EE10C80001F9F6 /* object.c in Sources */,
 				E46DBC4814EE10C80001F9F6 /* benchmark.c in Sources */,
@@ -1204,6 +1276,7 @@
 				E4FC3265145F46C9002FBDDB /* object.m in Sources */,
 				2BBF5A64154B64F5002B20F9 /* allocator.c in Sources */,
 				E420867116027AE500EEE210 /* data.m in Sources */,
+				E44A8E6C1805C3E0009FFDB6 /* voucher.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1225,6 +1298,7 @@
 				E4B515C8164B2DA300E003AF /* time.c in Sources */,
 				E4B515C9164B2DA300E003AF /* data.c in Sources */,
 				E4B515CA164B2DA300E003AF /* io.c in Sources */,
+				E44A8E6F1805C3E0009FFDB6 /* voucher.c in Sources */,
 				E4B515CB164B2DA300E003AF /* transform.c in Sources */,
 				E4B515CC164B2DA300E003AF /* object.m in Sources */,
 				E4B515CD164B2DA300E003AF /* allocator.c in Sources */,
@@ -1255,6 +1329,7 @@
 				E4FC3266145F46C9002FBDDB /* object.m in Sources */,
 				2BBF5A65154B64F5002B20F9 /* allocator.c in Sources */,
 				E420867316027AE500EEE210 /* data.m in Sources */,
+				E44A8E6E1805C3E0009FFDB6 /* voucher.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1280,6 +1355,7 @@
 				E4FC3267145F46C9002FBDDB /* object.m in Sources */,
 				2BBF5A66154B64F5002B20F9 /* allocator.c in Sources */,
 				E420867216027AE500EEE210 /* data.m in Sources */,
+				E44A8E6D1805C3E0009FFDB6 /* voucher.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

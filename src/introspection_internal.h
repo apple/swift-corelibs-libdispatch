@@ -42,6 +42,7 @@ void _dispatch_introspection_queue_item_enqueue(dispatch_queue_t dq,
 		dispatch_object_t dou);
 void _dispatch_introspection_queue_item_dequeue(dispatch_queue_t dq,
 		dispatch_object_t dou);
+void _dispatch_introspection_queue_item_complete(dispatch_object_t dou);
 void _dispatch_introspection_callout_entry(void *ctxt, dispatch_function_t f);
 void _dispatch_introspection_callout_return(void *ctxt, dispatch_function_t f);
 
@@ -102,6 +103,11 @@ _dispatch_introspection_queue_push(dispatch_queue_t dq DISPATCH_UNUSED,
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_introspection_queue_pop(dispatch_queue_t dq DISPATCH_UNUSED,
+		dispatch_object_t dou DISPATCH_UNUSED) {}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_introspection_queue_item_complete(
 		dispatch_object_t dou DISPATCH_UNUSED) {}
 
 DISPATCH_ALWAYS_INLINE

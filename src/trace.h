@@ -27,16 +27,17 @@
 #ifndef __DISPATCH_TRACE__
 #define __DISPATCH_TRACE__
 
-#if DISPATCH_USE_DTRACE && !__OBJC2__
+#if !__OBJC2__
 
+#if DISPATCH_USE_DTRACE || DISPATCH_USE_DTRACE_INTROSPECTION
 typedef struct dispatch_trace_timer_params_s {
 	int64_t deadline, interval, leeway;
 } *dispatch_trace_timer_params_t;
 
 #include "provider.h"
+#endif // DISPATCH_USE_DTRACE || DISPATCH_USE_DTRACE_INTROSPECTION
 
 #if DISPATCH_USE_DTRACE_INTROSPECTION
-
 #define _dispatch_trace_callout(_c, _f, _dcc) do { \
 		if (slowpath(DISPATCH_CALLOUT_ENTRY_ENABLED()) || \
 				slowpath(DISPATCH_CALLOUT_RETURN_ENABLED())) { \
@@ -51,7 +52,12 @@ typedef struct dispatch_trace_timer_params_s {
 			_dcc; \
 		} \
 	} while (0)
+#elif DISPATCH_INTROSPECTION
+#define _dispatch_trace_callout(_c, _f, _dcc) \
+		do { (void)(_c); (void)(_f); _dcc; } while (0)
+#endif // DISPATCH_USE_DTRACE_INTROSPECTION || DISPATCH_INTROSPECTION
 
+#if DISPATCH_USE_DTRACE_INTROSPECTION || DISPATCH_INTROSPECTION
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_trace_client_callout(void *ctxt, dispatch_function_t f)
@@ -73,40 +79,33 @@ _dispatch_trace_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 	_dispatch_introspection_callout_return(ctxt, func);
 }
 
-#ifdef __BLOCKS__
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_trace_client_callout_block(dispatch_block_t b)
-{
-	dispatch_function_t func = _dispatch_Block_invoke(b);
-	_dispatch_introspection_callout_entry(b, func);
-	_dispatch_trace_callout(b, func, _dispatch_client_callout(b, func));
-	_dispatch_introspection_callout_return(b, func);
-}
-#endif
-
 #define _dispatch_client_callout		_dispatch_trace_client_callout
 #define _dispatch_client_callout2		_dispatch_trace_client_callout2
-#define _dispatch_client_callout_block	_dispatch_trace_client_callout_block
+#endif // DISPATCH_USE_DTRACE_INTROSPECTION || DISPATCH_INTROSPECTION
 
+#if DISPATCH_USE_DTRACE_INTROSPECTION
 #define _dispatch_trace_continuation(_q, _o, _t) do { \
 		dispatch_queue_t _dq = (_q); \
 		const char *_label = _dq && _dq->dq_label ? _dq->dq_label : ""; \
 		struct dispatch_object_s *_do = (_o); \
+		dispatch_continuation_t _dc; \
 		char *_kind; \
 		dispatch_function_t _func; \
 		void *_ctxt; \
 		if (DISPATCH_OBJ_IS_VTABLE(_do)) { \
-			_ctxt = _do->do_ctxt; \
 			_kind = (char*)dx_kind(_do); \
 			if ((dx_type(_do) & _DISPATCH_META_TYPE_MASK) == \
 					_DISPATCH_SOURCE_TYPE && (_dq) != &_dispatch_mgr_q) { \
-				_func = ((dispatch_source_t)_do)->ds_refs->ds_handler_func; \
+				dispatch_source_t _ds = (dispatch_source_t)_do; \
+				_dc = _ds->ds_refs->ds_handler[DS_EVENT_HANDLER]; \
+				_func = _dc->dc_func; \
+				_ctxt = _dc->dc_ctxt; \
 			} else { \
 				_func = (dispatch_function_t)_dispatch_queue_invoke; \
+				_ctxt = _do->do_ctxt; \
 			} \
 		} else { \
-			struct dispatch_continuation_s *_dc = (void*)(_do); \
+			_dc = (void*)_do; \
 			_ctxt = _dc->dc_ctxt; \
 			if ((long)_dc->do_vtable & DISPATCH_OBJ_SYNC_SLOW_BIT) { \
 				_kind = "semaphore"; \
@@ -121,11 +120,18 @@ _dispatch_trace_client_callout_block(dispatch_block_t b)
 		} \
 		_t(_dq, _label, _do, _kind, _func, _ctxt); \
 	} while (0)
+#elif DISPATCH_INTROSPECTION
+#define _dispatch_trace_continuation(_q, _o, _t) \
+		do { (void)(_q); (void)(_o); } while(0)
+#define DISPATCH_QUEUE_PUSH_ENABLED() 0
+#define DISPATCH_QUEUE_POP_ENABLED() 0
+#endif // DISPATCH_USE_DTRACE_INTROSPECTION || DISPATCH_INTROSPECTION
 
+#if DISPATCH_USE_DTRACE_INTROSPECTION || DISPATCH_INTROSPECTION
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_trace_queue_push_list(dispatch_queue_t dq, dispatch_object_t _head,
-		dispatch_object_t _tail, unsigned int n)
+		dispatch_object_t _tail, pthread_priority_t pp, unsigned int n)
 {
 	if (slowpath(DISPATCH_QUEUE_PUSH_ENABLED())) {
 		struct dispatch_object_s *dou = _head._do;
@@ -134,39 +140,50 @@ _dispatch_trace_queue_push_list(dispatch_queue_t dq, dispatch_object_t _head,
 		} while (dou != _tail._do && (dou = dou->do_next));
 	}
 	_dispatch_introspection_queue_push_list(dq, _head, _tail);
-	_dispatch_queue_push_list(dq, _head, _tail, n);
+	_dispatch_queue_push_list(dq, _head, _tail, pp, n);
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_trace_queue_push(dispatch_queue_t dq, dispatch_object_t _tail)
+_dispatch_trace_queue_push(dispatch_queue_t dq, dispatch_object_t _tail, pthread_priority_t pp)
 {
 	if (slowpath(DISPATCH_QUEUE_PUSH_ENABLED())) {
 		struct dispatch_object_s *dou = _tail._do;
 		_dispatch_trace_continuation(dq, dou, DISPATCH_QUEUE_PUSH);
 	}
 	_dispatch_introspection_queue_push(dq, _tail);
-	_dispatch_queue_push(dq, _tail);
+	_dispatch_queue_push(dq, _tail, pp);
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_trace_queue_push_wakeup(dispatch_queue_t dq, dispatch_object_t _tail,
-		bool wakeup)
+		pthread_priority_t pp, bool wakeup)
 {
 	if (slowpath(DISPATCH_QUEUE_PUSH_ENABLED())) {
 		struct dispatch_object_s *dou = _tail._do;
 		_dispatch_trace_continuation(dq, dou, DISPATCH_QUEUE_PUSH);
 	}
 	_dispatch_introspection_queue_push(dq, _tail);
-	_dispatch_queue_push_wakeup(dq, _tail, wakeup);
+	_dispatch_queue_push_wakeup(dq, _tail, pp, wakeup);
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_queue_push_notrace(dispatch_queue_t dq, dispatch_object_t dou)
+_dispatch_trace_continuation_push(dispatch_queue_t dq, dispatch_object_t _tail)
 {
-	_dispatch_queue_push(dq, dou);
+	if (slowpath(DISPATCH_QUEUE_PUSH_ENABLED())) {
+		struct dispatch_object_s *dou = _tail._do;
+		_dispatch_trace_continuation(dq, dou, DISPATCH_QUEUE_PUSH);
+	}
+	_dispatch_introspection_queue_push(dq, _tail);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_queue_push_notrace(dispatch_queue_t dq, dispatch_object_t dou, pthread_priority_t pp)
+{
+	_dispatch_queue_push(dq, dou, pp);
 }
 
 #define _dispatch_queue_push_list _dispatch_trace_queue_push_list
@@ -175,23 +192,30 @@ _dispatch_queue_push_notrace(dispatch_queue_t dq, dispatch_object_t dou)
 
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_trace_continuation_pop(dispatch_queue_t dq,
-		dispatch_object_t dou)
+_dispatch_trace_continuation_pop(dispatch_queue_t dq, dispatch_object_t dou)
 {
 	if (slowpath(DISPATCH_QUEUE_POP_ENABLED())) {
 		_dispatch_trace_continuation(dq, dou._do, DISPATCH_QUEUE_POP);
 	}
 	_dispatch_introspection_queue_pop(dq, dou);
 }
+#else
+#define _dispatch_queue_push_notrace _dispatch_queue_push
+#define _dispatch_trace_continuation_push(dq, dou) \
+		do { (void)(dq); (void)(dou); } while(0)
+#define _dispatch_trace_continuation_pop(dq, dou) \
+		do { (void)(dq); (void)(dou); } while(0)
+#endif // DISPATCH_USE_DTRACE_INTROSPECTION || DISPATCH_INTROSPECTION
 
-#endif // DISPATCH_USE_DTRACE_INTROSPECTION
-
+#if DISPATCH_USE_DTRACE
 static inline dispatch_function_t
 _dispatch_trace_timer_function(dispatch_source_t ds, dispatch_source_refs_t dr)
 {
-	dispatch_function_t func = dr->ds_handler_func;
-	if (func == _dispatch_after_timer_callback) {
-		dispatch_continuation_t dc = ds->do_ctxt;
+	dispatch_continuation_t dc = dr->ds_handler[DS_EVENT_HANDLER];
+	dispatch_function_t func = dc ? dc->dc_func : NULL;
+	if (func == _dispatch_after_timer_callback &&
+			!(ds->ds_atomic_flags & DSF_CANCELED)) {
+		dc = ds->do_ctxt;
 		func = dc->dc_func != _dispatch_call_block_and_release ? dc->dc_func :
 				dc->dc_ctxt ? _dispatch_Block_invoke(dc->dc_ctxt) : NULL;
 	}
@@ -295,14 +319,8 @@ _dispatch_trace_timer_fire(dispatch_source_refs_t dr, unsigned long data,
 #define _dispatch_trace_timer_fire(dr, data, missed) \
 		do { (void)(dr); (void)(data); (void)(missed); } while(0)
 
-#endif // DISPATCH_USE_DTRACE && !__OBJC2__
+#endif // DISPATCH_USE_DTRACE
 
-#if !DISPATCH_USE_DTRACE_INTROSPECTION
-
-#define _dispatch_queue_push_notrace _dispatch_queue_push
-#define _dispatch_trace_continuation_pop(dq, dou) \
-		do { (void)(dq); (void)(dou); } while(0)
-
-#endif // !DISPATCH_USE_DTRACE_INTROSPECTION
+#endif // !__OBJC2__
 
 #endif // __DISPATCH_TRACE__

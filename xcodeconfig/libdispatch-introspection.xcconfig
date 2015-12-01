@@ -19,8 +19,8 @@
 //
 
 BUILD_VARIANTS = normal
-INSTALL_PATH = /usr/lib/system/introspection
-INSTALL_PATH[sdk=iphonesimulator*] = $(SDKROOT)/usr/lib/system/introspection
+INSTALL_PATH_ACTUAL = /usr/lib/system/introspection
+
 GCC_PREPROCESSOR_DEFINITIONS = $(GCC_PREPROCESSOR_DEFINITIONS) DISPATCH_INTROSPECTION=1
 CONFIGURATION_BUILD_DIR = $(BUILD_DIR)/introspection
 OTHER_LDFLAGS = $(OTHER_LDFLAGS) -Wl,-interposable_list,$(SRCROOT)/xcodeconfig/libdispatch.interposable

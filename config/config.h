@@ -108,6 +108,12 @@
 /* Define to 1 if you have the `pthread_workqueue_setdispatch_np' function. */
 #define HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP 1
 
+/* Define to 1 if you have the `_pthread_workqueue_init' function. */
+#define HAVE__PTHREAD_WORKQUEUE_INIT 1
+
+/* Define to 1 if you have the <pthread/qos.h> header file. */
+#define HAVE_PTHREAD_QOS_H 1
+
 /* Define to 1 if you have the <stdint.h> header file. */
 #define HAVE_STDINT_H 1
 

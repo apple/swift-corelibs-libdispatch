@@ -82,9 +82,11 @@ DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vfs;
  * @const DISPATCH_SOURCE_TYPE_VM
  * @discussion A dispatch source that monitors virtual memory
  * The mask is a mask of desired events from dispatch_source_vm_flags_t.
+ * This type is deprecated, use DISPATCH_SOURCE_TYPE_MEMORYSTATUS instead.
  */
 #define DISPATCH_SOURCE_TYPE_VM (&_dispatch_source_type_vm)
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
+__OSX_AVAILABLE_BUT_DEPRECATED_MSG(__MAC_10_7, __MAC_10_10, __IPHONE_4_3,
+		__IPHONE_8_0, "Use DISPATCH_SOURCE_TYPE_MEMORYSTATUS instead")
 DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vm;
 
 /*!
@@ -262,7 +264,9 @@ enum {
  */
 
 enum {
-	DISPATCH_VM_PRESSURE = 0x80000000,
+	DISPATCH_VM_PRESSURE __OSX_AVAILABLE_BUT_DEPRECATED_MSG(
+			__MAC_10_7, __MAC_10_10, __IPHONE_4_3, __IPHONE_8_0,
+			"Use DISPATCH_MEMORYSTATUS_PRESSURE_WARN instead") = 0x80000000,
 };
 
 /*!
@@ -274,19 +278,21 @@ enum {
  * The system's memory pressure state has changed to warning.
  * @constant DISPATCH_MEMORYSTATUS_PRESSURE_CRITICAL
  * The system's memory pressure state has changed to critical.
+ * @constant DISPATCH_MEMORYSTATUS_LOW_SWAP
+ * The system's memory pressure state has entered the "low swap" condition.
+ * Restricted to the root user.
  */
 
 enum {
-	DISPATCH_MEMORYSTATUS_PRESSURE_NORMAL = 0x01,
-	DISPATCH_MEMORYSTATUS_PRESSURE_WARN = 0x02,
-#if !TARGET_OS_EMBEDDED
-	DISPATCH_MEMORYSTATUS_PRESSURE_CRITICAL = 0x04,
-#endif
+	DISPATCH_MEMORYSTATUS_PRESSURE_NORMAL
+			__OSX_AVAILABLE_STARTING(__MAC_10_9, __IPHONE_6_0) = 0x01,
+	DISPATCH_MEMORYSTATUS_PRESSURE_WARN
+			__OSX_AVAILABLE_STARTING(__MAC_10_9, __IPHONE_6_0) = 0x02,
+	DISPATCH_MEMORYSTATUS_PRESSURE_CRITICAL
+			__OSX_AVAILABLE_STARTING(__MAC_10_9, __IPHONE_8_0) = 0x04,
+	DISPATCH_MEMORYSTATUS_LOW_SWAP
+			__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0) = 0x08,
 };
-
-#if TARGET_IPHONE_SIMULATOR // rdar://problem/9219483
-#define DISPATCH_VM_PRESSURE DISPATCH_VNODE_ATTRIB
-#endif
 
 __BEGIN_DECLS
 

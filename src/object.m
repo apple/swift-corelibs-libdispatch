@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2013 Apple Inc. All rights reserved.
+ * Copyright (c) 2011-2014 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -48,6 +48,7 @@ _os_object_gc_init(void)
 	_os_object_have_gc = objc_collectingEnabled();
 	if (slowpath(_os_object_have_gc)) {
 		_os_object_gc_zone = objc_collectableZone();
+		(void)[OS_OBJECT_CLASS(object) class]; // OS_object class realization
 	}
 }
 
@@ -69,22 +70,55 @@ _os_object_make_collectable(_os_object_t obj)
 	return obj;
 }
 
-#define _os_objc_gc_retain(obj) \
-	if (slowpath(_os_object_have_gc)) { \
-		return auto_zone_retain(_os_object_gc_zone, obj); \
+DISPATCH_NOINLINE
+static id
+_os_objc_gc_retain(id obj)
+{
+	if (fastpath(obj)) {
+		auto_zone_retain(_os_object_gc_zone, obj);
 	}
+	return obj;
+}
 
-#define _os_objc_gc_release(obj) \
-	if (slowpath(_os_object_have_gc)) { \
-		return (void)auto_zone_release(_os_object_gc_zone, obj); \
+DISPATCH_NOINLINE
+static void
+_os_objc_gc_release(id obj)
+{
+	if (fastpath(obj)) {
+		(void)auto_zone_release(_os_object_gc_zone, obj);
 	}
+	asm(""); // prevent tailcall
+}
+
+DISPATCH_NOINLINE
+static id
+_os_object_gc_retain(id obj)
+{
+	if ([obj isKindOfClass:OS_OBJECT_OBJC_CLASS(object)]) {
+		return _os_object_retain(obj);
+	} else {
+		return _os_objc_gc_retain(obj);
+	}
+}
+
+DISPATCH_NOINLINE
+static void
+_os_object_gc_release(id obj)
+{
+	if ([obj isKindOfClass:OS_OBJECT_OBJC_CLASS(object)]) {
+		return _os_object_release(obj);
+	} else {
+		return _os_objc_gc_release(obj);
+	}
+}
 
 #else // __OBJC_GC__
 #define _os_object_gc_init()
 #define _os_object_make_uncollectable(obj) (obj)
 #define _os_object_make_collectable(obj) (obj)
-#define _os_objc_gc_retain(obj)
-#define _os_objc_gc_release(obj)
+#define _os_object_have_gc 0
+#define _os_object_gc_retain(obj) (obj)
+#define _os_object_gc_release(obj)
 #endif // __OBJC_GC__
 
 #pragma mark -
@@ -101,11 +135,26 @@ _os_objc_alloc(Class cls, size_t size)
 	return obj;
 }
 
+static void*
+_os_objc_destructInstance(id obj)
+{
+	// noop if only Libystem is loaded
+	return obj;
+}
+
 void
 _os_object_init(void)
 {
 	_objc_init();
 	_os_object_gc_init();
+	if (slowpath(_os_object_have_gc)) return;
+	Block_callbacks_RR callbacks = {
+		sizeof(Block_callbacks_RR),
+		(void (*)(const void *))&objc_retain,
+		(void (*)(const void *))&objc_release,
+		(void (*)(const void *))&_os_objc_destructInstance
+	};
+	_Block_use_RR2(&callbacks);
 }
 
 _os_object_t
@@ -139,6 +188,22 @@ void
 _os_object_dispose(_os_object_t obj)
 {
 	[obj _dispose];
+}
+
+#undef os_retain
+void*
+os_retain(void *obj)
+{
+	if (slowpath(_os_object_have_gc)) return _os_object_gc_retain(obj);
+	return objc_retain(obj);
+}
+
+#undef os_release
+void
+os_release(void *obj)
+{
+	if (slowpath(_os_object_have_gc)) return _os_object_gc_release(obj);
+	return objc_release(obj);
 }
 
 #pragma mark -
@@ -190,15 +255,13 @@ _dispatch_objc_alloc(Class cls, size_t size)
 void
 _dispatch_objc_retain(dispatch_object_t dou)
 {
-	_os_objc_gc_retain(dou);
-	return (void)[dou retain];
+	return (void)os_retain(dou);
 }
 
 void
 _dispatch_objc_release(dispatch_object_t dou)
 {
-	_os_objc_gc_release(dou);
-	return [dou release];
+	return os_release(dou);
 }
 
 void
@@ -341,6 +404,58 @@ DISPATCH_CLASS_IMPL(io)
 DISPATCH_CLASS_IMPL(operation)
 DISPATCH_CLASS_IMPL(disk)
 
+@implementation OS_OBJECT_CLASS(voucher)
+DISPATCH_OBJC_LOAD()
+
+- (id)init {
+	self = [super init];
+	[self release];
+	self = nil;
+	return self;
+}
+
+- (void)_xref_dispose {
+	return _voucher_xref_dispose(self); // calls _os_object_release_internal()
+}
+
+- (void)_dispose {
+	return _voucher_dispose(self); // calls _os_object_dealloc()
+}
+
+- (NSString *)debugDescription {
+	Class nsstring = objc_lookUpClass("NSString");
+	if (!nsstring) return nil;
+	char buf[2048];
+	_voucher_debug(self, buf, sizeof(buf));
+	return [nsstring stringWithFormat:
+			[nsstring stringWithUTF8String:"<%s: %s>"],
+			class_getName([self class]), buf];
+}
+
+@end
+
+#if VOUCHER_ENABLE_RECIPE_OBJECTS
+@implementation OS_OBJECT_CLASS(voucher_recipe)
+DISPATCH_OBJC_LOAD()
+
+- (id)init {
+	self = [super init];
+	[self release];
+	self = nil;
+	return self;
+}
+
+- (void)_dispose {
+
+}
+
+- (NSString *)debugDescription {
+	return nil; // TODO: voucher_recipe debugDescription
+}
+
+@end
+#endif
+
 #pragma mark -
 #pragma mark dispatch_autorelease_pool
 
@@ -362,7 +477,7 @@ _dispatch_autorelease_pool_pop(void *context) {
 #pragma mark dispatch_client_callout
 
 // Abort on uncaught exceptions thrown from client callouts rdar://8577499
-#if DISPATCH_USE_CLIENT_CALLOUT && !__arm__
+#if DISPATCH_USE_CLIENT_CALLOUT && !__USING_SJLJ_EXCEPTIONS__
 // On platforms with zero-cost exceptions, use a compiler-generated catch-all
 // exception handler.
 
@@ -420,5 +535,35 @@ _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 }
 
 #endif // DISPATCH_USE_CLIENT_CALLOUT
+
+#pragma mark -
+#pragma mark _dispatch_block_create
+
+// The compiler hides the name of the function it generates, and changes it if
+// we try to reference it directly, but the linker still sees it.
+extern void DISPATCH_BLOCK_SPECIAL_INVOKE(void *)
+		asm("____dispatch_block_create_block_invoke");
+void (*_dispatch_block_special_invoke)(void*) = DISPATCH_BLOCK_SPECIAL_INVOKE;
+
+dispatch_block_t
+_dispatch_block_create(dispatch_block_flags_t flags, voucher_t voucher,
+		pthread_priority_t pri, dispatch_block_t block)
+{
+	dispatch_block_t copy_block = _dispatch_Block_copy(block); // 17094902
+	struct dispatch_block_private_data_s dbpds =
+			DISPATCH_BLOCK_PRIVATE_DATA_INITIALIZER(flags, voucher, pri, copy_block);
+	dispatch_block_t new_block = _dispatch_Block_copy(^{
+		// Capture object references, which retains copy_block and voucher.
+		// All retained objects must be captured by the *block*. We
+		// cannot borrow any references, because the block might be
+		// called zero or several times, so Block_release() is the
+		// only place that can release retained objects.
+		(void)copy_block;
+		(void)voucher;
+		_dispatch_block_invoke(&dbpds);
+	});
+	Block_release(copy_block);
+	return new_block;
+}
 
 #endif // USE_OBJC

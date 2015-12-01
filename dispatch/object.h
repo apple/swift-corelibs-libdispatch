@@ -99,41 +99,50 @@ typedef union {
 #define DISPATCH_RETURNS_RETAINED
 #endif
 
-__BEGIN_DECLS
-
 /*!
- * @function dispatch_debug
+ * @typedef dispatch_block_t
  *
  * @abstract
- * Programmatically log debug information about a dispatch object.
+ * The type of blocks submitted to dispatch queues, which take no arguments
+ * and have no return value.
  *
  * @discussion
- * Programmatically log debug information about a dispatch object. By default,
- * the log output is sent to syslog at notice level. In the debug version of
- * the library, the log output is sent to a file in /var/tmp.
- * The log output destination can be configured via the LIBDISPATCH_LOG
- * environment variable, valid values are: YES, NO, syslog, stderr, file.
+ * When not building with Objective-C ARC, a block object allocated on or
+ * copied to the heap must be released with a -[release] message or the
+ * Block_release() function.
  *
- * This function is deprecated and will be removed in a future release.
- * Objective-C callers may use -debugDescription instead.
+ * The declaration of a block literal allocates storage on the stack.
+ * Therefore, this is an invalid construct:
+ * <code>
+ * dispatch_block_t block;
+ * if (x) {
+ *     block = ^{ printf("true\n"); };
+ * } else {
+ *     block = ^{ printf("false\n"); };
+ * }
+ * block(); // unsafe!!!
+ * </code>
  *
- * @param object
- * The object to introspect.
+ * What is happening behind the scenes:
+ * <code>
+ * if (x) {
+ *     struct Block __tmp_1 = ...; // setup details
+ *     block = &__tmp_1;
+ * } else {
+ *     struct Block __tmp_2 = ...; // setup details
+ *     block = &__tmp_2;
+ * }
+ * </code>
  *
- * @param message
- * The message to log above and beyond the introspection.
+ * As the example demonstrates, the address of a stack variable is escaping the
+ * scope in which it is allocated. That is a classic C bug.
+ *
+ * Instead, the block literal must be copied to the heap with the Block_copy()
+ * function or by sending it a -[copy] message.
  */
-__OSX_AVAILABLE_BUT_DEPRECATED(__MAC_10_6,__MAC_10_9,__IPHONE_4_0,__IPHONE_6_0)
-DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW
-__attribute__((__format__(printf,2,3)))
-void
-dispatch_debug(dispatch_object_t object, const char *message, ...);
+typedef void (^dispatch_block_t)(void);
 
-__OSX_AVAILABLE_BUT_DEPRECATED(__MAC_10_6,__MAC_10_9,__IPHONE_4_0,__IPHONE_6_0)
-DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW
-__attribute__((__format__(printf,2,0)))
-void
-dispatch_debugv(dispatch_object_t object, const char *message, va_list ap);
+__BEGIN_DECLS
 
 /*!
  * @function dispatch_retain
@@ -227,11 +236,11 @@ dispatch_set_context(dispatch_object_t object, void *context);
  * @abstract
  * Set the finalizer function for a dispatch object.
  *
- * @param
+ * @param object
  * The dispatch object to modify.
  * The result of passing NULL in this parameter is undefined.
  *
- * @param
+ * @param finalizer
  * The finalizer function pointer.
  *
  * @discussion
@@ -246,7 +255,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NOTHROW //DISPATCH_NONNULL1
 void
 dispatch_set_finalizer_f(dispatch_object_t object,
-	dispatch_function_t finalizer);
+		dispatch_function_t finalizer);
 
 /*!
  * @function dispatch_suspend
@@ -285,6 +294,173 @@ __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_resume(dispatch_object_t object);
+
+/*!
+ * @function dispatch_wait
+ *
+ * @abstract
+ * Wait synchronously for an object or until the specified timeout has elapsed.
+ *
+ * @discussion
+ * Type-generic macro that maps to dispatch_block_wait, dispatch_group_wait or
+ * dispatch_semaphore_wait, depending on the type of the first argument.
+ * See documentation for these functions for more details.
+ * This function is unavailable for any other object type.
+ *
+ * @param object
+ * The object to wait on.
+ * The result of passing NULL in this parameter is undefined.
+ *
+ * @param timeout
+ * When to timeout (see dispatch_time). As a convenience, there are the
+ * DISPATCH_TIME_NOW and DISPATCH_TIME_FOREVER constants.
+ *
+ * @result
+ * Returns zero on success or non-zero on error (i.e. timed out).
+ */
+DISPATCH_UNAVAILABLE
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+long
+dispatch_wait(void *object, dispatch_time_t timeout);
+#if __has_extension(c_generic_selections)
+#define dispatch_wait(object, timeout) \
+		_Generic((object), \
+			dispatch_block_t:dispatch_block_wait, \
+			dispatch_group_t:dispatch_group_wait, \
+			dispatch_semaphore_t:dispatch_semaphore_wait \
+		)((object),(timeout))
+#endif
+
+/*!
+ * @function dispatch_notify
+ *
+ * @abstract
+ * Schedule a notification block to be submitted to a queue when the execution
+ * of a specified object has completed.
+ *
+ * @discussion
+ * Type-generic macro that maps to dispatch_block_notify or
+ * dispatch_group_notify, depending on the type of the first argument.
+ * See documentation for these functions for more details.
+ * This function is unavailable for any other object type.
+ *
+ * @param object
+ * The object to observe.
+ * The result of passing NULL in this parameter is undefined.
+ *
+ * @param queue
+ * The queue to which the supplied notification block will be submitted when
+ * the observed object completes.
+ *
+ * @param notification_block
+ * The block to submit when the observed object completes.
+ */
+DISPATCH_UNAVAILABLE
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+void
+dispatch_notify(void *object, dispatch_object_t queue,
+		dispatch_block_t notification_block);
+#if __has_extension(c_generic_selections)
+#define dispatch_notify(object, queue, notification_block) \
+		_Generic((object), \
+			dispatch_block_t:dispatch_block_notify, \
+			dispatch_group_t:dispatch_group_notify \
+		)((object),(queue), (notification_block))
+#endif
+
+/*!
+ * @function dispatch_cancel
+ *
+ * @abstract
+ * Cancel the specified object.
+ *
+ * @discussion
+ * Type-generic macro that maps to dispatch_block_cancel or
+ * dispatch_source_cancel, depending on the type of the first argument.
+ * See documentation for these functions for more details.
+ * This function is unavailable for any other object type.
+ *
+ * @param object
+ * The object to cancel.
+ * The result of passing NULL in this parameter is undefined.
+ */
+DISPATCH_UNAVAILABLE
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+void
+dispatch_cancel(void *object);
+#if __has_extension(c_generic_selections)
+#define dispatch_cancel(object) \
+		_Generic((object), \
+			dispatch_block_t:dispatch_block_cancel, \
+			dispatch_source_t:dispatch_source_cancel \
+		)((object))
+#endif
+
+/*!
+ * @function dispatch_testcancel
+ *
+ * @abstract
+ * Test whether the specified object has been canceled
+ *
+ * @discussion
+ * Type-generic macro that maps to dispatch_block_testcancel or
+ * dispatch_source_testcancel, depending on the type of the first argument.
+ * See documentation for these functions for more details.
+ * This function is unavailable for any other object type.
+ *
+ * @param object
+ * The object to test.
+ * The result of passing NULL in this parameter is undefined.
+ *
+ * @result
+ * Non-zero if canceled and zero if not canceled.
+ */
+DISPATCH_UNAVAILABLE
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
+DISPATCH_NOTHROW
+long
+dispatch_testcancel(void *object);
+#if __has_extension(c_generic_selections)
+#define dispatch_testcancel(object) \
+		_Generic((object), \
+			dispatch_block_t:dispatch_block_testcancel, \
+			dispatch_source_t:dispatch_source_testcancel \
+		)((object))
+#endif
+
+/*!
+ * @function dispatch_debug
+ *
+ * @abstract
+ * Programmatically log debug information about a dispatch object.
+ *
+ * @discussion
+ * Programmatically log debug information about a dispatch object. By default,
+ * the log output is sent to syslog at notice level. In the debug version of
+ * the library, the log output is sent to a file in /var/tmp.
+ * The log output destination can be configured via the LIBDISPATCH_LOG
+ * environment variable, valid values are: YES, NO, syslog, stderr, file.
+ *
+ * This function is deprecated and will be removed in a future release.
+ * Objective-C callers may use -debugDescription instead.
+ *
+ * @param object
+ * The object to introspect.
+ *
+ * @param message
+ * The message to log above and beyond the introspection.
+ */
+__OSX_AVAILABLE_BUT_DEPRECATED(__MAC_10_6,__MAC_10_9,__IPHONE_4_0,__IPHONE_6_0)
+DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW
+__attribute__((__format__(printf,2,3)))
+void
+dispatch_debug(dispatch_object_t object, const char *message, ...);
+
+__OSX_AVAILABLE_BUT_DEPRECATED(__MAC_10_6,__MAC_10_9,__IPHONE_4_0,__IPHONE_6_0)
+DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW
+__attribute__((__format__(printf,2,0)))
+void
+dispatch_debugv(dispatch_object_t object, const char *message, va_list ap);
 
 __END_DECLS
 

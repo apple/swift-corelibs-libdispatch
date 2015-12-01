@@ -34,18 +34,18 @@
 // Returns UINT_MAX if all the bits in p were already set.
 #define dispatch_atomic_set_first_bit(p,m) _dispatch_atomic_set_first_bit(p,m)
 
-// TODO: rdar://11477843
 DISPATCH_ALWAYS_INLINE
 static inline unsigned int
-_dispatch_atomic_set_first_bit(volatile uint32_t *p, unsigned int max_index)
+_dispatch_atomic_set_first_bit(volatile unsigned long *p,
+		unsigned int max_index)
 {
 	unsigned int index;
-	typeof(*p) b, mask, b_masked;
+	unsigned long b, mask, b_masked;
 
 	for (;;) {
 		b = *p;
 		// ffs returns 1 + index, or 0 if none set.
-		index = (unsigned int)__builtin_ffs((int)~b);
+		index = (unsigned int)__builtin_ffsl((long)~b);
 		if (slowpath(index == 0)) {
 			return UINT_MAX;
 		}
@@ -64,12 +64,11 @@ _dispatch_atomic_set_first_bit(volatile uint32_t *p, unsigned int max_index)
 #if defined(__x86_64__) || defined(__i386__)
 
 #undef dispatch_atomic_set_first_bit
-// TODO: rdar://11477843 uint64_t -> long
 DISPATCH_ALWAYS_INLINE
 static inline unsigned int
-dispatch_atomic_set_first_bit(volatile uint64_t *p, unsigned int max)
+dispatch_atomic_set_first_bit(volatile unsigned long *p, unsigned int max)
 {
-	typeof(*p) val, bit;
+	unsigned long val, bit;
 	if (max > (sizeof(val) * 8)) {
 		__asm__ (
 				 "1: \n\t"

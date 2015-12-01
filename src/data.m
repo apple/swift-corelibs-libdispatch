@@ -83,7 +83,7 @@
 		dispatch_async_f(tq, ctxt, func); \
 	} \
 	if (tq) { \
-		_dispatch_release(tq); \
+		_os_object_release_internal((_os_object_t)tq); \
 	}
 
 - (void)dealloc {
@@ -116,10 +116,10 @@
 
 - (void)_setTargetQueue:(dispatch_queue_t)queue {
 	struct dispatch_data_s *dd = (void*)self;
-	_dispatch_retain(queue);
+	_os_object_retain_internal((_os_object_t)queue);
 	dispatch_queue_t prev;
 	prev = dispatch_atomic_xchg2o(dd, do_targetq, queue, release);
-	if (prev) _dispatch_release(prev);
+	if (prev) _os_object_release_internal((_os_object_t)prev);
 }
 
 - (NSString *)debugDescription {

@@ -212,7 +212,8 @@ _dispatch_io_create(dispatch_io_type_t type)
 	dispatch_io_t channel = _dispatch_alloc(DISPATCH_VTABLE(io),
 			sizeof(struct dispatch_io_s));
 	channel->do_next = DISPATCH_OBJECT_LISTLESS;
-	channel->do_targetq = _dispatch_get_root_queue(0, true);
+	channel->do_targetq = _dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT,
+			true);
 	channel->params.type = type;
 	channel->params.high = SIZE_MAX;
 	channel->params.low = dispatch_io_defaults.low_water_chunks *
@@ -854,8 +855,8 @@ dispatch_read(dispatch_fd_t fd, size_t length, dispatch_queue_t queue,
 		dispatch_operation_t op =
 			_dispatch_operation_create(DOP_DIR_READ, channel, 0,
 					length, dispatch_data_empty,
-					_dispatch_get_root_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,
-					false), ^(bool done, dispatch_data_t data, int error) {
+					_dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT,false),
+					^(bool done, dispatch_data_t data, int error) {
 				if (data) {
 					data = dispatch_data_create_concat(deliver_data, data);
 					_dispatch_io_data_release(deliver_data);
@@ -925,8 +926,8 @@ dispatch_write(dispatch_fd_t fd, dispatch_data_t data, dispatch_queue_t queue,
 		dispatch_operation_t op =
 			_dispatch_operation_create(DOP_DIR_WRITE, channel, 0,
 					dispatch_data_get_size(data), data,
-					_dispatch_get_root_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,
-					false), ^(bool done, dispatch_data_t d, int error) {
+					_dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT,false),
+					^(bool done, dispatch_data_t d, int error) {
 				if (done) {
 					if (d) {
 						_dispatch_io_data_retain(d);
@@ -1352,7 +1353,7 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 				);
 			}
 			_dispatch_stream_init(fd_entry, _dispatch_get_root_queue(
-					DISPATCH_QUEUE_PRIORITY_DEFAULT, false));
+					_DISPATCH_QOS_CLASS_DEFAULT, false));
 		}
 		fd_entry->orig_flags = orig_flags;
 		fd_entry->orig_nosigpipe = orig_nosigpipe;
@@ -1420,7 +1421,7 @@ _dispatch_fd_entry_create_with_path(dispatch_io_path_data_t path_data,
 		_dispatch_disk_init(fd_entry, major(dev));
 	} else {
 		_dispatch_stream_init(fd_entry, _dispatch_get_root_queue(
-				DISPATCH_QUEUE_PRIORITY_DEFAULT, false));
+				_DISPATCH_QOS_CLASS_DEFAULT, false));
 	}
 	fd_entry->fd = -1;
 	fd_entry->orig_flags = -1;
@@ -1599,7 +1600,7 @@ _dispatch_disk_init(dispatch_fd_entry_t fd_entry, dev_t dev)
 	disk->do_next = DISPATCH_OBJECT_LISTLESS;
 	disk->do_xref_cnt = -1;
 	disk->advise_list_depth = pending_reqs_depth;
-	disk->do_targetq = _dispatch_get_root_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,
+	disk->do_targetq = _dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT,
 			false);
 	disk->dev = dev;
 	TAILQ_INIT(&disk->operations);

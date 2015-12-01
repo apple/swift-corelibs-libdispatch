@@ -41,6 +41,19 @@
 #if !defined(DISPATCH_MACH_SPI) && TARGET_OS_MAC
 #define DISPATCH_MACH_SPI 1
 #endif
+#if !defined(OS_VOUCHER_CREATION_SPI) && TARGET_OS_MAC
+#define OS_VOUCHER_CREATION_SPI 1
+#endif
+#if !defined(OS_VOUCHER_ACTIVITY_SPI) && TARGET_OS_MAC
+#define OS_VOUCHER_ACTIVITY_SPI 1
+#endif
+#if !defined(OS_VOUCHER_ACTIVITY_BUFFER_SPI) && TARGET_OS_MAC && \
+		__has_include(<atm/atm_types.h>)
+#define OS_VOUCHER_ACTIVITY_BUFFER_SPI 1
+#endif
+#if !defined(DISPATCH_LAYOUT_SPI) && TARGET_OS_MAC
+#define DISPATCH_LAYOUT_SPI 1
+#endif
 
 #if !defined(USE_OBJC) && HAVE_OBJC
 #define USE_OBJC 1
@@ -69,9 +82,10 @@
 
 
 #include <os/object.h>
-#include <dispatch/object.h>
 #include <dispatch/time.h>
+#include <dispatch/object.h>
 #include <dispatch/queue.h>
+#include <dispatch/block.h>
 #include <dispatch/source.h>
 #include <dispatch/group.h>
 #include <dispatch/semaphore.h>
@@ -120,6 +134,9 @@ struct type name = { 0 }
 #if !TARGET_OS_WIN32
 #include "io_private.h"
 #endif
+#include "voucher_private.h"
+#include "voucher_activity_private.h"
+#include "layout_private.h"
 #include "benchmark.h"
 #include "private.h"
 
@@ -152,7 +169,7 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #define DISPATCH_USE_DTRACE 1
 #endif
 
-#if ((!TARGET_OS_EMBEDDED && DISPATCH_INTROSPECTION) || DISPATCH_DEBUG || \
+#if DISPATCH_USE_DTRACE && (DISPATCH_INTROSPECTION || DISPATCH_DEBUG || \
 		DISPATCH_PROFILE) && !defined(DISPATCH_USE_DTRACE_INTROSPECTION)
 #define DISPATCH_USE_DTRACE_INTROSPECTION 1
 #endif
@@ -176,6 +193,7 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #include <mach/mach_traps.h>
 #include <mach/message.h>
 #include <mach/mig_errors.h>
+#include <mach/host_special_ports.h>
 #include <mach/host_info.h>
 #include <mach/notify.h>
 #include <mach/mach_vm.h>
@@ -222,9 +240,6 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#if !TARGET_OS_WIN32 
-#include <syslog.h>
-#endif
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -303,19 +318,30 @@ void _dispatch_bug_kevent_client(const char* msg, const char* filter,
 DISPATCH_NOINLINE DISPATCH_NORETURN
 void _dispatch_abort(size_t line, long val);
 
-#if !defined(DISPATCH_USE_OS_TRACE) && DISPATCH_DEBUG
-#if __has_include(<os/trace.h>)
-#define DISPATCH_USE_OS_TRACE 1
-#include <os/trace.h>
+#if !defined(DISPATCH_USE_OS_DEBUG_LOG) && DISPATCH_DEBUG
+#if __has_include(<os/debug_private.h>)
+#define DISPATCH_USE_OS_DEBUG_LOG 1
+#include <os/debug_private.h>
 #endif
-#endif // DISPATCH_USE_OS_TRACE
+#endif // DISPATCH_USE_OS_DEBUG_LOG
 
-#if DISPATCH_USE_OS_TRACE
-#define _dispatch_log(msg, ...) os_trace("libdispatch", msg, ## __VA_ARGS__)
+#if !defined(DISPATCH_USE_SIMPLE_ASL) && !DISPATCH_USE_OS_DEBUG_LOG
+#if __has_include(<_simple.h>)
+#define DISPATCH_USE_SIMPLE_ASL 1
+#include <_simple.h>
+#endif
+#endif // DISPATCH_USE_SIMPLE_ASL
+
+#if !DISPATCH_USE_SIMPLE_ASL && !DISPATCH_USE_OS_DEBUG_LOG && !TARGET_OS_WIN32
+#include <syslog.h>
+#endif
+
+#if DISPATCH_USE_OS_DEBUG_LOG
+#define _dispatch_log(msg, ...) os_debug_log("libdispatch", msg, ## __VA_ARGS__)
 #else
 DISPATCH_NOINLINE __attribute__((__format__(__printf__,1,2)))
 void _dispatch_log(const char *msg, ...);
-#endif // DISPATCH_USE_OS_TRACE
+#endif // DISPATCH_USE_OS_DEBUG_LOG
 
 #define dsnprintf(...) \
 		({ int _r = snprintf(__VA_ARGS__); _r < 0 ? 0u : (size_t)_r; })
@@ -464,72 +490,15 @@ _dispatch_object_debug(dispatch_object_t object, const char *message, ...);
 #define _dispatch_object_debug(object, message, ...)
 #endif // DISPATCH_DEBUG
 
-#if DISPATCH_USE_CLIENT_CALLOUT
-
-DISPATCH_NOTHROW void
-_dispatch_client_callout(void *ctxt, dispatch_function_t f);
-DISPATCH_NOTHROW void
-_dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t));
-DISPATCH_NOTHROW bool
-_dispatch_client_callout3(void *ctxt, dispatch_data_t region, size_t offset,
-		const void *buffer, size_t size, dispatch_data_applier_function_t f);
-DISPATCH_NOTHROW void
-_dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
-		dispatch_mach_msg_t dmsg, mach_error_t error,
-		dispatch_mach_handler_function_t f);
-
-#else // !DISPATCH_USE_CLIENT_CALLOUT
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_client_callout(void *ctxt, dispatch_function_t f)
-{
-	return f(ctxt);
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
-{
-	return f(ctxt, i);
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline bool
-_dispatch_client_callout3(void *ctxt, dispatch_data_t region, size_t offset,
-		const void *buffer, size_t size, dispatch_data_applier_function_t f)
-{
-	return f(ctxt, region, offset, buffer, size);
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
-		dispatch_mach_msg_t dmsg, mach_error_t error,
-		dispatch_mach_handler_function_t f);
-{
-	return f(ctxt, reason, dmsg, error);
-}
-
-#endif // !DISPATCH_USE_CLIENT_CALLOUT
-
 #ifdef __BLOCKS__
 #define _dispatch_Block_invoke(bb) \
 		((dispatch_function_t)((struct Block_layout *)bb)->invoke)
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_client_callout_block(dispatch_block_t b)
-{
-	return _dispatch_client_callout(b, _dispatch_Block_invoke(b));
-}
-
 #if __GNUC__
 dispatch_block_t _dispatch_Block_copy(dispatch_block_t block);
 #define _dispatch_Block_copy(x) ((typeof(x))_dispatch_Block_copy(x))
 #else
 dispatch_block_t _dispatch_Block_copy(const void *block);
 #endif
-
 void _dispatch_call_block_and_release(void *block);
 #endif /* __BLOCKS__ */
 
@@ -542,14 +511,8 @@ uint64_t _dispatch_timeout(dispatch_time_t when);
 
 extern bool _dispatch_safe_fork, _dispatch_child_of_unsafe_fork;
 
-extern struct _dispatch_hw_config_s {
-	uint32_t cc_max_active;
-	uint32_t cc_max_logical;
-	uint32_t cc_max_physical;
-} _dispatch_hw_config;
-
-#if !defined(DISPATCH_USE_OS_SEMAPHORE_CACHE) && !(TARGET_IPHONE_SIMULATOR && \
-		IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 1090)
+#if !defined(DISPATCH_USE_OS_SEMAPHORE_CACHE) && !(TARGET_IPHONE_SIMULATOR)
+// rdar://problem/15492045
 #if __has_include(<os/semaphore_private.h>)
 #define DISPATCH_USE_OS_SEMAPHORE_CACHE 1
 #include <os/semaphore_private.h>
@@ -562,16 +525,8 @@ extern struct _dispatch_hw_config_s {
 // Older Mac OS X and iOS Simulator fallbacks
 
 #if HAVE_PTHREAD_WORKQUEUES
-#ifndef WORKQ_BG_PRIOQUEUE
-#define WORKQ_BG_PRIOQUEUE 3
-#endif
 #ifndef WORKQ_ADDTHREADS_OPTION_OVERCOMMIT
 #define WORKQ_ADDTHREADS_OPTION_OVERCOMMIT 0x00000001
-#endif
-#if TARGET_IPHONE_SIMULATOR && IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 1070
-#ifndef DISPATCH_NO_BG_PRIORITY
-#define DISPATCH_NO_BG_PRIORITY 1
-#endif
 #endif
 #if TARGET_IPHONE_SIMULATOR && IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 1080
 #ifndef DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK
@@ -582,7 +537,21 @@ extern struct _dispatch_hw_config_s {
 #undef HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP
 #define HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP 0
 #endif
+#if TARGET_IPHONE_SIMULATOR && \
+		IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 101000
+#ifndef DISPATCH_USE_NOQOS_WORKQUEUE_FALLBACK
+#define DISPATCH_USE_NOQOS_WORKQUEUE_FALLBACK 1
+#endif
+#endif
+#if !TARGET_OS_IPHONE && __MAC_OS_X_VERSION_MIN_REQUIRED < 101000
+#undef HAVE__PTHREAD_WORKQUEUE_INIT
+#define HAVE__PTHREAD_WORKQUEUE_INIT 0
+#endif
 #endif // HAVE_PTHREAD_WORKQUEUES
+#if HAVE__PTHREAD_WORKQUEUE_INIT && PTHREAD_WORKQUEUE_SPI_VERSION >= 20140213 \
+		&& !defined(HAVE_PTHREAD_WORKQUEUE_QOS)
+#define HAVE_PTHREAD_WORKQUEUE_QOS 1
+#endif
 
 #if HAVE_MACH
 #if !defined(MACH_NOTIFY_SEND_POSSIBLE) || (TARGET_IPHONE_SIMULATOR && \
@@ -592,33 +561,29 @@ extern struct _dispatch_hw_config_s {
 #endif
 #endif // HAVE_MACH
 
-#ifdef EVFILT_VM
-#ifndef DISPATCH_USE_VM_PRESSURE
-#define DISPATCH_USE_VM_PRESSURE 1
-#endif
-#endif // EVFILT_VM
-
 #ifdef EVFILT_MEMORYSTATUS
 #ifndef DISPATCH_USE_MEMORYSTATUS
 #define DISPATCH_USE_MEMORYSTATUS 1
 #endif
 #endif // EVFILT_MEMORYSTATUS
 
-#if TARGET_IPHONE_SIMULATOR && IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 1070
+#if defined(EVFILT_VM) && !DISPATCH_USE_MEMORYSTATUS
+#ifndef DISPATCH_USE_VM_PRESSURE
+#define DISPATCH_USE_VM_PRESSURE 1
+#endif
+#endif // EVFILT_VM
+
+#if TARGET_IPHONE_SIMULATOR
+#undef DISPATCH_USE_MEMORYSTATUS_SOURCE
+#define DISPATCH_USE_MEMORYSTATUS_SOURCE 0
 #undef DISPATCH_USE_VM_PRESSURE_SOURCE
 #define DISPATCH_USE_VM_PRESSURE_SOURCE 0
 #endif // TARGET_IPHONE_SIMULATOR
-#if TARGET_OS_EMBEDDED
-#if !defined(DISPATCH_USE_VM_PRESSURE_SOURCE) && DISPATCH_USE_VM_PRESSURE
-#define DISPATCH_USE_VM_PRESSURE_SOURCE 1
-#endif
-#else // !TARGET_OS_EMBEDDED
 #if !defined(DISPATCH_USE_MEMORYSTATUS_SOURCE) && DISPATCH_USE_MEMORYSTATUS
 #define DISPATCH_USE_MEMORYSTATUS_SOURCE 1
 #elif !defined(DISPATCH_USE_VM_PRESSURE_SOURCE) && DISPATCH_USE_VM_PRESSURE
 #define DISPATCH_USE_VM_PRESSURE_SOURCE 1
 #endif
-#endif // TARGET_OS_EMBEDDED
 
 #if !defined(NOTE_LEEWAY) || (TARGET_IPHONE_SIMULATOR && \
 		IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 1090)
@@ -646,6 +611,12 @@ extern struct _dispatch_hw_config_s {
 #define DISPATCH_USE_SETNOSIGPIPE 1
 #endif
 #endif // F_SETNOSIGPIPE
+
+#if defined(MACH_SEND_NOIMPORTANCE)
+#ifndef DISPATCH_USE_CHECKIN_NOIMPORTANCE
+#define DISPATCH_USE_CHECKIN_NOIMPORTANCE 1 // rdar://problem/16996737
+#endif
+#endif // MACH_SEND_NOIMPORTANCE
 
 
 #if HAVE_LIBPROC_INTERNAL_H
@@ -680,9 +651,26 @@ extern struct _dispatch_hw_config_s {
 #endif // HAVE_SYS_GUARDED_H
 
 
-#define _dispatch_hardware_crash()	__builtin_trap()
+#ifndef MACH_MSGH_BITS_VOUCHER_MASK
+#define MACH_MSGH_BITS_VOUCHER_MASK	0x001f0000
+#define	MACH_MSGH_BITS_SET_PORTS(remote, local, voucher)	\
+	(((remote) & MACH_MSGH_BITS_REMOTE_MASK) | 		\
+	 (((local) << 8) & MACH_MSGH_BITS_LOCAL_MASK) | 	\
+	 (((voucher) << 16) & MACH_MSGH_BITS_VOUCHER_MASK))
+#define	MACH_MSGH_BITS_VOUCHER(bits)				\
+		(((bits) & MACH_MSGH_BITS_VOUCHER_MASK) >> 16)
+#define MACH_MSGH_BITS_HAS_VOUCHER(bits)			\
+	(MACH_MSGH_BITS_VOUCHER(bits) != MACH_MSGH_BITS_ZERO)
+#define msgh_voucher_port msgh_reserved
+#define mach_voucher_t mach_port_t
+#define MACH_VOUCHER_NULL MACH_PORT_NULL
+#define MACH_SEND_INVALID_VOUCHER 0x10000005
+#endif
 
-#define _dispatch_set_crash_log_message(x)
+#define _dispatch_hardware_crash() \
+		__asm__(""); __builtin_trap() // <rdar://problem/17464981>
+
+#define _dispatch_set_crash_log_message(msg)
 
 #if HAVE_MACH
 // MIG_REPLY_MISMATCH means either:
@@ -712,16 +700,30 @@ extern struct _dispatch_hw_config_s {
 		_dispatch_hardware_crash(); \
 	} while (0)
 
+extern int _dispatch_set_qos_class_enabled;
+#define DISPATCH_NO_VOUCHER ((voucher_t)(void*)~0ul)
+#define DISPATCH_NO_PRIORITY ((pthread_priority_t)~0ul)
+#define DISPATCH_PRIORITY_ENFORCE 0x1
+static inline void _dispatch_adopt_priority_and_replace_voucher(
+		pthread_priority_t priority, voucher_t voucher, unsigned long flags);
+#if HAVE_MACH
+static inline void _dispatch_set_priority_and_mach_voucher(
+		pthread_priority_t priority, mach_voucher_t kv);
+mach_port_t _dispatch_get_mach_host_port(void);
+#endif
+
+
 /* #includes dependent on internal.h */
 #include "object_internal.h"
 #include "semaphore_internal.h"
 #include "introspection_internal.h"
 #include "queue_internal.h"
 #include "source_internal.h"
+#include "voucher_internal.h"
 #include "data_internal.h"
 #if !TARGET_OS_WIN32
 #include "io_internal.h"
 #endif
-#include "trace.h"
+#include "inline_internal.h"
 
 #endif /* __DISPATCH_INTERNAL__ */
