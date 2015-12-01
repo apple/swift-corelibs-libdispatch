@@ -1,7 +1,8 @@
-#ifndef __OS_STUBS__
-#define __OS_STUBS__
+// forward declarations for functions we are stubbing out
+// in the intial linux port.
 
-
+#ifndef __DISPATCH__STUBS__INTERNAL
+#define __DISPATCH__STUBS__INTERNAL
 
 int sysctlbyname(const char *name, void *oldp, size_t *oldlenp,
 		 void *newp, size_t newlen);

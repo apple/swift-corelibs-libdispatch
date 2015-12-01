@@ -118,8 +118,4 @@ struct voucher_offsets_s {
 #define LINUX_PORT_ERROR()  do { printf("LINUX_PORT_ERROR_CALLED %s:%d: %s\n",__FILE__,__LINE__,__FUNCTION__); } while (0)
 
 
-// Functions we are stubbing out
-#include<os/stubs.h>
-
-
 #endif /* __OS_LINUX_BASE__ */

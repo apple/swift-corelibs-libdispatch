@@ -82,6 +82,7 @@
 
 
 #include <os/object.h>
+#include "stubs_internal.h"
 #include <dispatch/time.h>
 #include <dispatch/object.h>
 #include <dispatch/queue.h>
