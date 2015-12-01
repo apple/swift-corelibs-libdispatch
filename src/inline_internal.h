@@ -38,9 +38,6 @@ DISPATCH_NOTHROW void
 _dispatch_client_callout(void *ctxt, dispatch_function_t f);
 DISPATCH_NOTHROW void
 _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t));
-DISPATCH_NOTHROW bool
-_dispatch_client_callout3(void *ctxt, dispatch_data_t region, size_t offset,
-		const void *buffer, size_t size, dispatch_data_applier_function_t f);
 DISPATCH_NOTHROW void
 _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 		dispatch_mach_msg_t dmsg, mach_error_t error,
@@ -63,14 +60,6 @@ _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 }
 
 DISPATCH_ALWAYS_INLINE
-static inline bool
-_dispatch_client_callout3(void *ctxt, dispatch_data_t region, size_t offset,
-		const void *buffer, size_t size, dispatch_data_applier_function_t f)
-{
-	return f(ctxt, region, offset, buffer, size);
-}
-
-DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 		dispatch_mach_msg_t dmsg, mach_error_t error,
@@ -81,7 +70,7 @@ _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 
 #endif // !DISPATCH_USE_CLIENT_CALLOUT
 
-#if !(USE_OBJC && __OBJC2__)
+#if !(USE_OBJC && __OBJC2__) && !defined(__cplusplus)
 
 #pragma mark -
 #pragma mark _os_object_t & dispatch_object_t
@@ -90,11 +79,7 @@ DISPATCH_ALWAYS_INLINE
 static inline _os_object_t
 _os_object_retain_internal_inline(_os_object_t obj)
 {
-	int ref_cnt = obj->os_obj_ref_cnt;
-	if (slowpath(ref_cnt == _OS_OBJECT_GLOBAL_REFCNT)) {
-		return obj; // global object
-	}
-	ref_cnt = dispatch_atomic_inc2o(obj, os_obj_ref_cnt, relaxed);
+	int ref_cnt = _os_object_refcnt_inc(obj);
 	if (slowpath(ref_cnt <= 0)) {
 		DISPATCH_CRASH("Resurrection of an object");
 	}
@@ -105,11 +90,7 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _os_object_release_internal_inline(_os_object_t obj)
 {
-	int ref_cnt = obj->os_obj_ref_cnt;
-	if (slowpath(ref_cnt == _OS_OBJECT_GLOBAL_REFCNT)) {
-		return; // global object
-	}
-	ref_cnt = dispatch_atomic_dec2o(obj, os_obj_ref_cnt, relaxed);
+	int ref_cnt = _os_object_refcnt_dec(obj);
 	if (fastpath(ref_cnt >= 0)) {
 		return;
 	}
@@ -121,6 +102,7 @@ _os_object_release_internal_inline(_os_object_t obj)
 		DISPATCH_CRASH("Release while external references exist");
 	}
 #endif
+	// _os_object_refcnt_dispose_barrier() is in _os_object_dispose()
 	return _os_object_dispose(obj);
 }
 
@@ -204,7 +186,15 @@ static inline pthread_priority_t _dispatch_queue_reset_override_priority(
 static inline pthread_priority_t _dispatch_get_defaultpriority(void);
 static inline void _dispatch_set_defaultpriority_override(void);
 static inline void _dispatch_reset_defaultpriority(pthread_priority_t priority);
+static inline pthread_priority_t _dispatch_get_priority(void);
 static inline void _dispatch_set_priority(pthread_priority_t priority);
+
+DISPATCH_ALWAYS_INLINE
+static inline dispatch_queue_t
+_dispatch_queue_get_current(void)
+{
+	return (dispatch_queue_t)_dispatch_thread_getspecific(dispatch_queue_key);
+}
 
 DISPATCH_ALWAYS_INLINE
 static inline void
@@ -286,44 +276,135 @@ _dispatch_queue_push_wakeup(dispatch_queue_t dq, dispatch_object_t _tail,
 	}
 }
 
+struct _dispatch_identity_s {
+	pthread_priority_t old_pri;
+	pthread_priority_t old_pp;
+	dispatch_queue_t old_dq;
+};
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_root_queue_identity_assume(struct _dispatch_identity_s *di,
+		dispatch_queue_t assumed_rq)
+{
+	di->old_dq = _dispatch_queue_get_current();
+	di->old_pri = _dispatch_get_priority();
+	di->old_pp = _dispatch_get_defaultpriority();
+
+	dispatch_assert(dx_type(di->old_dq) == DISPATCH_QUEUE_ROOT_TYPE);
+	dispatch_assert(dx_type(assumed_rq) == DISPATCH_QUEUE_ROOT_TYPE);
+
+	_dispatch_wqthread_override_start(_dispatch_thread_port(), di->old_pri);
+	_dispatch_set_priority(assumed_rq->dq_priority);
+	_dispatch_reset_defaultpriority(assumed_rq->dq_priority);
+	_dispatch_thread_setspecific(dispatch_queue_key, assumed_rq);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_root_queue_identity_restore(struct _dispatch_identity_s *di)
+{
+	_dispatch_thread_setspecific(dispatch_queue_key, di->old_dq);
+	_dispatch_set_priority(di->old_pri);
+	_dispatch_reset_defaultpriority(di->old_pp);
+	// Ensure that the root queue sees that this thread was overridden.
+	_dispatch_set_defaultpriority_override();
+}
+
+typedef dispatch_queue_t
+_dispatch_queue_class_invoke_handler_t(dispatch_object_t,
+		_dispatch_thread_semaphore_t*);
+
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_queue_class_invoke(dispatch_object_t dou,
-		dispatch_queue_t (*invoke)(dispatch_object_t,
-		_dispatch_thread_semaphore_t*))
+		dispatch_continuation_t dc, dispatch_invoke_flags_t flags,
+		_dispatch_queue_class_invoke_handler_t invoke)
 {
 	pthread_priority_t p = 0;
 	dispatch_queue_t dq = dou._dq;
+	bool owning = !slowpath(flags & DISPATCH_INVOKE_STEALING);
+	bool overriding = slowpath(flags & DISPATCH_INVOKE_OVERRIDING);
+
 	if (!slowpath(DISPATCH_OBJECT_SUSPENDED(dq)) &&
 			fastpath(dispatch_atomic_cmpxchg2o(dq, dq_running, 0, 1, acquire))){
 		_dispatch_queue_set_thread(dq);
+
 		dispatch_queue_t tq = NULL;
 		_dispatch_thread_semaphore_t sema = 0;
+		struct _dispatch_identity_s di;
+
+		if (overriding) {
+			_dispatch_object_debug(dq, "stolen onto thread 0x%x, 0x%lx",
+					dq->dq_thread, _dispatch_get_defaultpriority());
+			_dispatch_root_queue_identity_assume(&di, dc->dc_other);
+		}
+
 		tq = invoke(dq, &sema);
 		_dispatch_queue_clear_thread(dq);
-		p = _dispatch_queue_reset_override_priority(dq);
-		if (p > (dq->dq_priority & _PTHREAD_PRIORITY_QOS_CLASS_MASK)) {
-			// Ensure that the root queue sees that this thread was overridden.
-			_dispatch_set_defaultpriority_override();
+
+		if (!owning && !sema && tq && tq != dq->do_targetq) {
+			/*
+			 * When (tq && tq != dq->do_targetq) this is a source or mach
+			 * channel asking to get to their manager queue.
+			 *
+			 * Since stealers cannot call _dispatch_queue_push_queue and
+			 * retarget those, they need ot destroy the override so that
+			 * when waking those sources or mach channels on their target queue
+			 * we don't risk a stealer taking them over and not be able to
+			 * retarget again, effectively live-locking them.
+			 *
+			 * Also, we're in the `overriding` case so the thread will be marked
+			 * dirty by _dispatch_root_queue_identity_restore anyway
+			 * so forgetting about p is fine.
+			 */
+			(void)_dispatch_queue_reset_override_priority(dq);
+			p = 0;
+		} else if (sema || tq || DISPATCH_OBJECT_SUSPENDED(dq)) {
+			p = _dispatch_queue_get_override_priority(dq);
+		} else {
+			p = _dispatch_queue_reset_override_priority(dq);
 		}
-		// We do not need to check the result.
-		// When the suspend-count lock is dropped, then the check will happen.
-		(void)dispatch_atomic_dec2o(dq, dq_running, release);
+		if (overriding) {
+			_dispatch_root_queue_identity_restore(&di);
+		} else {
+			if (p > (dq->dq_priority & _PTHREAD_PRIORITY_QOS_CLASS_MASK)) {
+				// Ensure that the root queue sees that this thread was overridden.
+				_dispatch_set_defaultpriority_override();
+			}
+		}
+
+		uint32_t running = dispatch_atomic_dec2o(dq, dq_running, release);
 		if (sema) {
 			_dispatch_thread_semaphore_signal(sema);
-		} else if (tq) {
+		} else if (owning && tq) {
 			_dispatch_introspection_queue_item_complete(dq);
-			return _dispatch_queue_push(tq, dq, p);
+			return _dispatch_queue_push_queue(tq, dq, p);
+		}
+		if (!owning && running == 0) {
+			_dispatch_introspection_queue_item_complete(dq);
+			return _dispatch_queue_wakeup_with_qos_and_release(dq, p);
+		}
+	} else if (overriding) {
+		mach_port_t th = dq->dq_thread;
+		if (th) {
+			p = _dispatch_queue_get_override_priority(dq);
+			_dispatch_object_debug(dq, "overriding thr 0x%x to priority 0x%lx",
+					th, p);
+			_dispatch_wqthread_override_start(th, p);
 		}
 	}
-	dq->do_next = DISPATCH_OBJECT_LISTLESS;
+
 	_dispatch_introspection_queue_item_complete(dq);
-	if (!dispatch_atomic_sub2o(dq, do_suspend_cnt,
-			DISPATCH_OBJECT_SUSPEND_LOCK, seq_cst)) {
-		// seq_cst with atomic store to suspend_cnt <rdar://problem/11915417>
-		if (dispatch_atomic_load2o(dq, dq_running, seq_cst) == 0) {
-			// verify that the queue is idle
-			return _dispatch_queue_wakeup_with_qos_and_release(dq, p);
+	if (owning) {
+		dq->do_next = DISPATCH_OBJECT_LISTLESS;
+		if (!dispatch_atomic_sub2o(dq, do_suspend_cnt,
+				DISPATCH_OBJECT_SUSPEND_LOCK, seq_cst)) {
+			// seq_cst with atomic store to suspend_cnt <rdar://problem/11915417>
+			if (dispatch_atomic_load2o(dq, dq_running, seq_cst) == 0) {
+				// verify that the queue is idle
+				return _dispatch_queue_wakeup_with_qos_and_release(dq, p);
+			}
 		}
 	}
 	_dispatch_release(dq); // added when the queue is put on the list
@@ -349,13 +430,6 @@ _dispatch_object_suspended(dispatch_object_t dou)
 	// seq_cst with atomic store to tail <rdar://problem/14637483>
 	suspend_cnt = dispatch_atomic_load2o(obj, do_suspend_cnt, seq_cst);
 	return slowpath(suspend_cnt >= DISPATCH_OBJECT_SUSPEND_INTERVAL);
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline dispatch_queue_t
-_dispatch_queue_get_current(void)
-{
-	return (dispatch_queue_t)_dispatch_thread_getspecific(dispatch_queue_key);
 }
 
 DISPATCH_ALWAYS_INLINE DISPATCH_CONST
@@ -409,6 +483,7 @@ _dispatch_queue_init(dispatch_queue_t dq)
 
 	dq->dq_running = 0;
 	dq->dq_width = 1;
+	dq->dq_override_voucher = DISPATCH_NO_VOUCHER;
 	dq->dq_serialnum = dispatch_atomic_inc_orig(&_dispatch_queue_serial_numbers,
 			relaxed);
 }
@@ -436,6 +511,23 @@ _dispatch_queue_get_bound_thread(dispatch_queue_t dq)
 {
 	dispatch_assert(dq->dq_is_thread_bound);
 	return dq->dq_thread;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline dispatch_pthread_root_queue_observer_hooks_t
+_dispatch_get_pthread_root_queue_observer_hooks(void)
+{
+	return _dispatch_thread_getspecific(
+			dispatch_pthread_root_queue_observer_hooks_key);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_set_pthread_root_queue_observer_hooks(
+		dispatch_pthread_root_queue_observer_hooks_t observer_hooks)
+{
+	_dispatch_thread_setspecific(dispatch_pthread_root_queue_observer_hooks_key,
+			observer_hooks);
 }
 
 #pragma mark -
@@ -516,7 +608,8 @@ _dispatch_queue_priority_inherit_from_target(dispatch_queue_t dq,
 	const pthread_priority_t rootqueue_flag = _PTHREAD_PRIORITY_ROOTQUEUE_FLAG;
 	const pthread_priority_t inherited_flag = _PTHREAD_PRIORITY_INHERIT_FLAG;
 	pthread_priority_t dqp = dq->dq_priority, tqp = tq->dq_priority;
-	if ((!dqp || (dqp & inherited_flag)) && (tqp & rootqueue_flag)) {
+	if ((!(dqp & ~_PTHREAD_PRIORITY_FLAGS_MASK) || (dqp & inherited_flag)) &&
+			(tqp & rootqueue_flag)) {
 		dq->dq_priority = (tqp & ~rootqueue_flag) | inherited_flag;
 	}
 #else
@@ -646,13 +739,31 @@ _dispatch_set_priority_and_adopt_voucher(pthread_priority_t priority,
 DISPATCH_ALWAYS_INLINE DISPATCH_WARN_RESULT
 static inline voucher_t
 _dispatch_adopt_priority_and_voucher(pthread_priority_t priority,
-		voucher_t voucher, unsigned long flags)
+		voucher_t v, unsigned long flags)
 {
 	pthread_priority_t p = 0;
 	if (priority != DISPATCH_NO_PRIORITY) {
 		p = _dispatch_priority_adopt(priority, flags);
 	}
-	return _dispatch_set_priority_and_adopt_voucher(p, voucher);
+	if (!(flags & DISPATCH_VOUCHER_IGNORE_QUEUE_OVERRIDE)) {
+		dispatch_queue_t dq = _dispatch_queue_get_current();
+		if (dq && dq->dq_override_voucher != DISPATCH_NO_VOUCHER) {
+			if (v != DISPATCH_NO_VOUCHER && v) _voucher_release(v);
+			v = dq->dq_override_voucher;
+			if (v) _voucher_retain(v);
+		}
+	}
+	return _dispatch_set_priority_and_adopt_voucher(p, v);
+}
+
+DISPATCH_ALWAYS_INLINE DISPATCH_WARN_RESULT
+static inline voucher_t
+_dispatch_adopt_queue_override_voucher(dispatch_queue_t dq)
+{
+	voucher_t v = dq->dq_override_voucher;
+	if (v == DISPATCH_NO_VOUCHER) return DISPATCH_NO_VOUCHER;
+	if (v) _voucher_retain(v);
+	return _dispatch_set_priority_and_adopt_voucher(DISPATCH_NO_PRIORITY, v);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -667,12 +778,19 @@ _dispatch_adopt_priority_and_replace_voucher(pthread_priority_t priority,
 
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_set_priority_and_replace_voucher(pthread_priority_t priority,
+_dispatch_reset_priority_and_voucher(pthread_priority_t priority,
 		voucher_t voucher)
 {
 	voucher_t ov;
 	ov = _dispatch_set_priority_and_adopt_voucher(priority, voucher);
 	if (voucher != DISPATCH_NO_VOUCHER && ov) _voucher_release(ov);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_reset_voucher(voucher_t voucher)
+{
+	return _dispatch_reset_priority_and_voucher(DISPATCH_NO_PRIORITY, voucher);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -716,11 +834,25 @@ _dispatch_queue_need_override_retain(dispatch_queue_t dq, pthread_priority_t pp)
 
 DISPATCH_ALWAYS_INLINE
 static inline bool
-_dispatch_queue_override_priority(dispatch_queue_t dq, pthread_priority_t pp)
+_dispatch_queue_override_priority(dispatch_queue_t dq, pthread_priority_t *pp,
+		bool *was_overridden)
 {
-	uint32_t p = (pp & _PTHREAD_PRIORITY_QOS_CLASS_MASK);
 	uint32_t o = dq->dq_override;
-	if (o < p) o = dispatch_atomic_or_orig2o(dq, dq_override, p, relaxed);
+	uint32_t p = (*pp & _PTHREAD_PRIORITY_QOS_CLASS_MASK);
+	if (o < p) {
+		o = dispatch_atomic_or_orig2o(dq, dq_override, p, relaxed);
+		if (was_overridden) {
+			o = (uint32_t)_dispatch_priority_normalize(o);
+		}
+		*pp = _dispatch_priority_normalize(o | p);
+	} else {
+		o = (uint32_t)_dispatch_priority_normalize(o);
+		*pp = o;
+	}
+	if (was_overridden) {
+		*was_overridden =
+				(dq->dq_priority & _PTHREAD_PRIORITY_QOS_CLASS_MASK) < o;
+	}
 	return (o < p);
 }
 
@@ -812,13 +944,7 @@ _dispatch_block_get_data(const dispatch_block_t db)
 	uint8_t *x = (uint8_t *)db;
 	// x points to base of struct Block_layout
 	x += sizeof(struct Block_layout);
-	// x points to addresss of captured block
-	x += sizeof(dispatch_block_t);
-#if USE_OBJC
-	// x points to addresss of captured voucher
-	x += sizeof(voucher_t);
-#endif
-	// x points to base of captured dispatch_block_private_data_s structure
+	// x points to base of captured dispatch_block_private_data_s object
 	dispatch_block_private_data_t dbpd = (dispatch_block_private_data_t)x;
 	if (dbpd->dbpd_magic != DISPATCH_BLOCK_PRIVATE_DATA_MAGIC) {
 		DISPATCH_CRASH("Corruption of dispatch block object");
@@ -905,16 +1031,16 @@ _dispatch_continuation_free(dispatch_continuation_t dc)
 
 #include "trace.h"
 
-DISPATCH_ALWAYS_INLINE_NDEBUG
+DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_continuation_pop(dispatch_object_t dou)
+_dispatch_continuation_invoke(dispatch_object_t dou, dispatch_queue_t dq)
 {
 	dispatch_continuation_t dc = dou._dc, dc1;
 	dispatch_group_t dg;
 
-	_dispatch_trace_continuation_pop(_dispatch_queue_get_current(), dou);
+	_dispatch_trace_continuation_pop(dq, dou);
 	if (DISPATCH_OBJ_IS_VTABLE(dou._do)) {
-		return dx_invoke(dou._do);
+		return dx_invoke(dou._do, NULL, DISPATCH_INVOKE_NONE);
 	}
 
 	// Add the item back to the cache before calling the function. This
@@ -943,6 +1069,18 @@ _dispatch_continuation_pop(dispatch_object_t dou)
 	if (slowpath(dc1)) {
 		_dispatch_continuation_free_to_cache_limit(dc1);
 	}
+}
+
+DISPATCH_ALWAYS_INLINE_NDEBUG
+static inline void
+_dispatch_continuation_pop(dispatch_object_t dou)
+{
+	dispatch_queue_t dq = _dispatch_queue_get_current();
+	dispatch_pthread_root_queue_observer_hooks_t observer_hooks =
+			_dispatch_get_pthread_root_queue_observer_hooks();
+	if (observer_hooks) observer_hooks->queue_will_execute(dq);
+	_dispatch_continuation_invoke(dou, dq);
+	if (observer_hooks) observer_hooks->queue_did_execute(dq);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -991,6 +1129,6 @@ _dispatch_continuation_get_override_priority(dispatch_queue_t dq,
 #endif
 }
 
-#endif // !(USE_OBJC && __OBJC2__)
+#endif // !(USE_OBJC && __OBJC2__) && !defined(__cplusplus)
 
 #endif /* __DISPATCH_INLINE_INTERNAL__ */

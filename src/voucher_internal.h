@@ -93,7 +93,7 @@ voucher_get_mach_voucher(voucher_t voucher);
 #pragma mark voucher_t
 
 #if TARGET_IPHONE_SIMULATOR && \
-		IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 101000
+		IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 101100
 #undef VOUCHER_USE_MACH_VOUCHER
 #define VOUCHER_USE_MACH_VOUCHER 0
 #endif
@@ -121,6 +121,7 @@ size_t _voucher_debug(voucher_t v, char* buf, size_t bufsiz);
 void _voucher_thread_cleanup(void *voucher);
 mach_voucher_t _voucher_get_mach_voucher(voucher_t voucher);
 voucher_t _voucher_create_without_importance(voucher_t voucher);
+voucher_t _voucher_create_accounting_voucher(voucher_t voucher);
 mach_voucher_t _voucher_create_mach_voucher_with_priority(voucher_t voucher,
 		pthread_priority_t priority);
 voucher_t _voucher_create_with_priority_and_mach_voucher(voucher_t voucher,
@@ -133,6 +134,9 @@ _OS_OBJECT_DECL_SUBCLASS_INTERFACE(voucher, object)
 _OS_OBJECT_DECL_SUBCLASS_INTERFACE(voucher_recipe, object)
 #endif
 #endif
+
+voucher_t voucher_retain(voucher_t voucher);
+void voucher_release(voucher_t voucher);
 
 #define _TAILQ_IS_ENQUEUED(elm, field) \
 		((elm)->field.tqe_prev != NULL)
@@ -156,7 +160,8 @@ typedef struct voucher_s {
 	TAILQ_ENTRY(voucher_s) v_list;
 	mach_voucher_t v_kvoucher, v_ipc_kvoucher; // if equal, only one reference
 	voucher_t v_kvbase; // if non-NULL, v_kvoucher is a borrowed reference
-	_voucher_activity_t v_activity;
+	struct _voucher_atm_s *v_atm;
+	struct _voucher_activity_s *v_activity;
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
 	size_t v_recipe_extra_offset;
 	mach_voucher_attr_recipe_size_t v_recipe_extra_size;
@@ -230,13 +235,15 @@ typedef uint32_t _voucher_priority_t;
 #define _dispatch_voucher_debug_machport(name) ((void)(name))
 #endif
 
-#if !(USE_OBJC && __OBJC2__)
+#if !(USE_OBJC && __OBJC2__) && !defined(__cplusplus)
 
 DISPATCH_ALWAYS_INLINE
 static inline voucher_t
 _voucher_retain(voucher_t voucher)
 {
 #if !DISPATCH_VOUCHER_OBJC_DEBUG
+	// not using _os_object_refcnt* because we don't need barriers:
+	// vouchers are immutable and are in a hash table with a lock
 	int xref_cnt = dispatch_atomic_inc2o(voucher, os_obj_xref_cnt, relaxed);
 	_dispatch_voucher_debug("retain  -> %d", voucher, xref_cnt + 1);
 	if (slowpath(xref_cnt <= 0)) {
@@ -256,6 +263,8 @@ static inline void
 _voucher_release(voucher_t voucher)
 {
 #if !DISPATCH_VOUCHER_OBJC_DEBUG
+	// not using _os_object_refcnt* because we don't need barriers:
+	// vouchers are immutable and are in a hash table with a lock
 	int xref_cnt = dispatch_atomic_dec2o(voucher, os_obj_xref_cnt, relaxed);
 	_dispatch_voucher_debug("release -> %d", voucher, xref_cnt + 1);
 	if (fastpath(xref_cnt >= 0)) {
@@ -515,76 +524,81 @@ typedef uint32_t _voucher_atm_subid_t;
 static const size_t _voucher_activity_hash_bits = 6;
 static const size_t _voucher_activity_hash_size =
 		1 << _voucher_activity_hash_bits;
-#define VACTID_HASH(x) ((((uint32_t)((x) >> 32) + (uint32_t)(x)) * \
-		2654435761u) >> (32-_voucher_activity_hash_bits))
+#define VACTID_HASH(x) \
+		(((uint32_t)(x) * 2654435761u) >> (32-_voucher_activity_hash_bits))
 #define VATMID_HASH(x) \
 		(((uint32_t)(x) * 2654435761u) >> (32-_voucher_activity_hash_bits))
-#define VATMID2ACTID(x) ((uint64_t)(x) << 32)
-#define VACTID_BASEID(x) ((uint64_t)(x) & (((uint64_t)UINT32_MAX) << 32))
-#define VACTID_SUBID(x)  ((uint32_t)(x))
-#define VATM_ACTID(vatm, subid) (VATMID2ACTID((vatm)->vatm_id) + (subid))
-#define VATM_SUBID_BITS2MAX(bits) ((1u << (bits)) - 1)
-#define VATM_SUBID_MAXBITS (32)
-#define VATM_SUBID_MAX (ATM_SUBAID32_MAX)
-#define MAILBOX_OFFSET_UNSET UINT64_MAX
-
-static const size_t _voucher_activity_buffers_per_heap = 512;
-typedef unsigned long _voucher_activity_bitmap_base_t;
-static const size_t _voucher_activity_bits_per_bitmap_base_t =
-		8 * sizeof(_voucher_activity_bitmap_base_t);
-static const size_t _voucher_activity_bitmaps_per_heap =
-		_voucher_activity_buffers_per_heap /
-		_voucher_activity_bits_per_bitmap_base_t;
-typedef _voucher_activity_bitmap_base_t
-		_voucher_activity_bitmap_t[_voucher_activity_bitmaps_per_heap];
+#define VATMID2ACTID(x, flags) \
+		(((voucher_activity_id_t)(x) & 0xffffffffffffff) | \
+		(((voucher_activity_id_t)(flags) & 0xfe) << 55))
 
 typedef struct _voucher_activity_metadata_s {
-	_voucher_activity_buffer_t vam_kernel_metadata;
 	_voucher_activity_buffer_t vam_client_metadata;
-	struct _voucher_activity_self_metadata_s vam_self_metadata;
-#if __LP64__
-	uintptr_t vam_pad0[7];
-#else
-	uintptr_t vam_pad0[15];
-#endif
-	// cacheline
-	_voucher_activity_bitmap_t volatile vam_atm_mbox_bitmap;
+	struct _voucher_activity_metadata_opaque_s *vasm_baseaddr;
 	_voucher_activity_bitmap_t volatile vam_buffer_bitmap;
 	_voucher_activity_bitmap_t volatile vam_pressure_locked_bitmap;
-	// cacheline
-	_voucher_atm_subid_t vam_base_atm_subid;
-	_voucher_atm_subid_t vam_base_atm_subid_max;
-	_voucher_atm_subid_t vam_nested_atm_subid;
-	_voucher_atm_t vam_default_activity_atm;
-	_voucher_atm_t volatile vam_base_atm;
-	voucher_activity_id_t volatile vam_nested_atm_id;
-#if __LP64__
-	uintptr_t vam_pad2[3];
-#else
-	uintptr_t vam_pad2[1];
-#endif
-	_voucher_activity_lock_s vam_base_atm_lock;
-	_voucher_activity_lock_s vam_nested_atm_lock;
 	_voucher_activity_lock_s vam_atms_lock;
 	_voucher_activity_lock_s vam_activities_lock;
-	// cacheline
 	TAILQ_HEAD(, _voucher_atm_s) vam_atms[_voucher_activity_hash_size];
 	TAILQ_HEAD(, _voucher_activity_s)
 			vam_activities[_voucher_activity_hash_size];
 } *_voucher_activity_metadata_t;
 
 #pragma mark -
+#pragma mark _voucher_atm_t
+
+typedef struct _voucher_atm_s {
+	int32_t volatile vatm_refcnt;
+	mach_voucher_t vatm_kvoucher;
+	atm_aid_t vatm_id;
+	atm_guard_t vatm_generation;
+	TAILQ_ENTRY(_voucher_atm_s) vatm_list;
+#if __LP64__
+	uintptr_t vatm_pad[3];
+	// cacheline
+#endif
+} *_voucher_atm_t;
+
+extern _voucher_atm_t _voucher_task_atm;
+
+#pragma mark -
 #pragma mark _voucher_activity_t
 
-_voucher_activity_tracepoint_t _voucher_activity_tracepoint_get_slow(
-		unsigned int slots);
+typedef struct _voucher_activity_s {
+	voucher_activity_id_t va_id;
+	voucher_activity_trace_id_t va_trace_id;
+	uint64_t va_location;
+	int32_t volatile va_refcnt;
+	uint32_t volatile va_buffer_count;
+	uint32_t va_buffer_limit;
+	_voucher_activity_buffer_header_t volatile va_current_buffer;
+	_voucher_atm_t va_atm;
+#if __LP64__
+	uint64_t va_unused;
+#endif
+	// cacheline
+	_voucher_activity_lock_s va_buffers_lock;
+	TAILQ_HEAD(_voucher_activity_buffer_list_s,
+			_voucher_activity_buffer_header_s) va_buffers;
+	TAILQ_ENTRY(_voucher_activity_s) va_list;
+	TAILQ_ENTRY(_voucher_activity_s) va_atm_list;
+	TAILQ_ENTRY(_voucher_activity_s) va_atm_used_list;
+	pthread_mutex_t va_mutex;
+	pthread_cond_t va_cond;
+} *_voucher_activity_t;
+
+_voucher_activity_tracepoint_t _voucher_activity_buffer_tracepoint_acquire_slow(
+		_voucher_activity_t *vap, _voucher_activity_buffer_header_t *vabp,
+		unsigned int slots, size_t strsize, uint16_t *stroffsetp);
+void _voucher_activity_firehose_push(_voucher_activity_t act,
+		_voucher_activity_buffer_header_t buffer);
 extern _voucher_activity_t _voucher_activity_default;
 extern voucher_activity_mode_t _voucher_activity_mode;
 
 #if DISPATCH_DEBUG && DISPATCH_VOUCHER_ACTIVITY_DEBUG
 #define _dispatch_voucher_activity_debug(msg, act, ...) \
-		_dispatch_debug("activity[%p] <0x%x>: atm[%p] <%lld>: " msg, (act), \
-		(act) ? VACTID_SUBID((act)->va_id) : 0, (act) ? (act)->va_atm : NULL, \
+		_dispatch_debug("activity[%p] <0x%llx>: atm[%p] <%lld>: " msg, (act), \
+		(act) ? (act)->va_id : 0, (act) ? (act)->va_atm : NULL, \
 		(act) && (act)->va_atm ? (act)->va_atm->vatm_id : 0, ##__VA_ARGS__)
 #define _dispatch_voucher_atm_debug(msg, atm, ...) \
 		_dispatch_debug("atm[%p] <%lld> kvoucher[0x%08x]: " msg, (atm), \
@@ -597,13 +611,14 @@ extern voucher_activity_mode_t _voucher_activity_mode;
 
 DISPATCH_ALWAYS_INLINE
 static inline uint64_t
-_voucher_activity_timestamp(void)
+_voucher_activity_timestamp(bool approx)
 {
 #if TARGET_IPHONE_SIMULATOR && \
 		IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 101000
+	(void)approx;
 	return mach_absolute_time();
 #else
-	return mach_approximate_time();
+	return approx ? mach_approximate_time() : mach_absolute_time();
 #endif
 }
 
@@ -616,45 +631,116 @@ _voucher_activity_thread_id(void)
 	return thread_id;
 }
 
-DISPATCH_ALWAYS_INLINE
-static inline _voucher_activity_tracepoint_t
-_voucher_activity_buffer_tracepoint_get(_voucher_activity_buffer_header_t vab,
-		unsigned int slots)
-{
-	uint32_t idx = dispatch_atomic_add2o(vab, vabh_next_tracepoint_idx,
-			slots, relaxed);
-	if (idx <= _voucher_activity_tracepoints_per_buffer) {
-		return (_voucher_activity_tracepoint_t)vab + (idx - slots);
-	}
-	return NULL;
-}
+#define _voucher_activity_buffer_pos2length(pos) \
+		({ _voucher_activity_buffer_position_u _pos = (pos); \
+		_pos.vabp_pos.vabp_next_tracepoint_idx * \
+		sizeof(struct _voucher_activity_tracepoint_s) + \
+		_pos.vabp_pos.vabp_string_offset; })
 
 DISPATCH_ALWAYS_INLINE
 static inline _voucher_activity_tracepoint_t
-_voucher_activity_tracepoint_get_from_activity(_voucher_activity_t va,
-		unsigned int slots)
+_voucher_activity_buffer_tracepoint_acquire(
+		_voucher_activity_buffer_header_t vab, unsigned int slots,
+		size_t strsize, uint16_t *stroffsetp)
 {
-	_voucher_activity_buffer_header_t vab = va ? va->va_current_buffer : NULL;
-	return vab ? _voucher_activity_buffer_tracepoint_get(vab, slots) : NULL;
+	if (!vab) return NULL;
+	_voucher_activity_buffer_position_u pos_orig, pos;
+	pos_orig.vabp_atomic_pos = vab->vabh_pos.vabp_atomic_pos;
+	do {
+		pos.vabp_atomic_pos = pos_orig.vabp_atomic_pos;
+		pos.vabp_pos.vabp_next_tracepoint_idx += slots;
+		pos.vabp_pos.vabp_string_offset += strsize;
+		size_t len = _voucher_activity_buffer_pos2length(pos);
+		if (len > _voucher_activity_buffer_size || pos.vabp_pos.vabp_flags) {
+			return NULL;
+		}
+		if (len == _voucher_activity_buffer_size) {
+			pos.vabp_pos.vabp_flags |= _voucher_activity_buffer_full;
+		}
+		pos.vabp_pos.vabp_refcnt++;
+	} while (!dispatch_atomic_cmpxchgvw2o(vab, vabh_pos.vabp_atomic_pos,
+			pos_orig.vabp_atomic_pos, pos.vabp_atomic_pos,
+			&pos_orig.vabp_atomic_pos, relaxed));
+	if (stroffsetp) *stroffsetp = pos.vabp_pos.vabp_string_offset;
+	return (_voucher_activity_tracepoint_t)vab +
+			pos_orig.vabp_pos.vabp_next_tracepoint_idx;
 }
 
 DISPATCH_ALWAYS_INLINE
-static inline _voucher_activity_tracepoint_t
-_voucher_activity_tracepoint_get(unsigned int slots)
+static inline bool
+_voucher_activity_buffer_tracepoint_release(
+		_voucher_activity_buffer_header_t vab)
+{
+	_voucher_activity_buffer_position_u pos_orig, pos;
+	pos_orig.vabp_atomic_pos = vab->vabh_pos.vabp_atomic_pos;
+	do {
+		pos.vabp_atomic_pos = pos_orig.vabp_atomic_pos;
+		pos.vabp_pos.vabp_refcnt--;
+		if (!pos.vabp_pos.vabp_refcnt &&
+				(pos.vabp_pos.vabp_flags & _voucher_activity_buffer_full)) {
+			pos.vabp_pos.vabp_flags |= _voucher_activity_buffer_pushing;
+		}
+	} while (!dispatch_atomic_cmpxchgvw2o(vab, vabh_pos.vabp_atomic_pos,
+			pos_orig.vabp_atomic_pos, pos.vabp_atomic_pos,
+			&pos_orig.vabp_atomic_pos, relaxed));
+	return (pos.vabp_pos.vabp_flags & _voucher_activity_buffer_pushing);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_voucher_activity_buffer_mark_full(_voucher_activity_buffer_header_t vab)
+{
+	_voucher_activity_buffer_position_u pos_orig, pos;
+	pos_orig.vabp_atomic_pos = vab->vabh_pos.vabp_atomic_pos;
+	do {
+		pos.vabp_atomic_pos = pos_orig.vabp_atomic_pos;
+		if (pos.vabp_pos.vabp_flags & _voucher_activity_buffer_full) {
+			return false;
+		}
+		pos.vabp_pos.vabp_flags |= _voucher_activity_buffer_full;
+		if (!pos.vabp_pos.vabp_refcnt) {
+			pos.vabp_pos.vabp_flags |= _voucher_activity_buffer_pushing;
+		}
+	} while (!dispatch_atomic_cmpxchgvw2o(vab, vabh_pos.vabp_atomic_pos,
+			pos_orig.vabp_atomic_pos, pos.vabp_atomic_pos,
+			&pos_orig.vabp_atomic_pos, relaxed));
+	return (pos.vabp_pos.vabp_flags & _voucher_activity_buffer_pushing);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_voucher_activity_buffer_is_full(_voucher_activity_buffer_header_t vab)
+{
+	_voucher_activity_buffer_position_u pos;
+	pos.vabp_atomic_pos = vab->vabh_pos.vabp_atomic_pos;
+	return (pos.vabp_pos.vabp_flags);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline _voucher_activity_buffer_header_t
+_voucher_activity_buffer_get_from_activity(_voucher_activity_t va)
+{
+	return va ? va->va_current_buffer : NULL;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline _voucher_activity_t
+_voucher_activity_get(void)
 {
 	_voucher_activity_t va;
 	voucher_t v = _voucher_get();
 	va = v && v->v_activity ? v->v_activity : _voucher_activity_default;
-	return _voucher_activity_tracepoint_get_from_activity(va, slots);
+	return va;
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline uint64_t
 _voucher_activity_tracepoint_init(_voucher_activity_tracepoint_t vat,
-		uint8_t type, uint8_t code_namespace, uint32_t code, uint64_t location)
+		uint8_t type, uint8_t code_namespace, uint32_t code, uint64_t location,
+		bool approx)
 {
 	if (!location) location = (uint64_t)__builtin_return_address(0);
-	uint64_t timestamp = _voucher_activity_timestamp();
+	uint64_t timestamp = _voucher_activity_timestamp(approx);
 	vat->vat_flags = _voucher_activity_trace_flag_tracepoint,
 	vat->vat_type = type,
 	vat->vat_namespace = code_namespace,
@@ -668,13 +754,14 @@ _voucher_activity_tracepoint_init(_voucher_activity_tracepoint_t vat,
 DISPATCH_ALWAYS_INLINE
 static inline uint64_t
 _voucher_activity_tracepoint_init_with_id(_voucher_activity_tracepoint_t vat,
-		voucher_activity_trace_id_t trace_id, uint64_t location)
+		voucher_activity_trace_id_t trace_id, uint64_t location, bool approx)
 {
 	uint8_t type = (uint8_t)(trace_id >> _voucher_activity_trace_id_type_shift);
 	uint8_t cns = (uint8_t)(trace_id >>
 			_voucher_activity_trace_id_code_namespace_shift);
 	uint32_t code = (uint32_t)trace_id;
-	return _voucher_activity_tracepoint_init(vat, type, cns, code, location);
+	return _voucher_activity_tracepoint_init(vat, type, cns, code, location,
+			approx);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -720,69 +807,82 @@ _voucher_activity_disabled(void)
 }
 
 DISPATCH_ALWAYS_INLINE
-static inline _voucher_activity_tracepoint_t
+static inline void
 _voucher_activity_trace_args_inline(uint8_t type, uint8_t code_namespace,
 		uint32_t code, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3,
 		uintptr_t arg4)
 {
-	if (!_voucher_activity_trace_type_enabled(type)) return NULL;
+	if (!_voucher_activity_trace_type_enabled(type)) return;
+	_voucher_activity_t act;
+	_voucher_activity_buffer_header_t vab;
 	_voucher_activity_tracepoint_t vat;
-	vat = _voucher_activity_tracepoint_get(1);
-	if (!vat) return NULL;
-	_voucher_activity_tracepoint_init(vat, type, code_namespace, code, 0);
+	act = _voucher_activity_get();
+	vab = _voucher_activity_buffer_get_from_activity(act);
+	vat = _voucher_activity_buffer_tracepoint_acquire(vab, 1, 0, NULL);
+	if (!vat) return;
+	_voucher_activity_tracepoint_init(vat, type, code_namespace, code, 0, true);
 	vat->vat_flags |= _voucher_activity_trace_flag_tracepoint_args;
 	vat->vat_data[0] = arg1;
 	vat->vat_data[1] = arg2;
 	vat->vat_data[2] = arg3;
 	vat->vat_data[3] = arg4;
-	return vat;
+	if (_voucher_activity_buffer_tracepoint_release(vab)) {
+		_voucher_activity_firehose_push(act, vab);
+	}
 }
 
 DISPATCH_ALWAYS_INLINE
-static inline _voucher_activity_tracepoint_t
-_voucher_activity_trace_with_id_inline(voucher_activity_trace_id_t trace_id)
+static inline void
+_voucher_activity_trace_activity_event(voucher_activity_trace_id_t trace_id,
+		voucher_activity_id_t va_id, _voucher_activity_tracepoint_flag_t flags)
 {
-	_voucher_activity_tracepoint_t vat = _voucher_activity_tracepoint_get(1);
-	if (!vat) return NULL;
-	_voucher_activity_tracepoint_init_with_id(vat, trace_id, 0);
-	return vat;
+	_voucher_activity_t act;
+	_voucher_activity_buffer_header_t vab;
+	_voucher_activity_tracepoint_t vat;
+	act = _voucher_activity_get();
+	vab = _voucher_activity_buffer_get_from_activity(act);
+	vat = _voucher_activity_buffer_tracepoint_acquire(vab, 1, 0, NULL);
+	if (!vat) return;
+	_voucher_activity_tracepoint_init_with_id(vat, trace_id, 0, false);
+	vat->vat_flags |= _voucher_activity_trace_flag_activity | flags;
+	vat->vat_data[0] = va_id;
+	if (_voucher_activity_buffer_tracepoint_release(vab)) {
+		_voucher_activity_firehose_push(act, vab);
+	}
 }
-
-DISPATCH_ALWAYS_INLINE
-static inline _voucher_activity_tracepoint_t
-_voucher_activity_trace_with_id(voucher_activity_trace_id_t trace_id)
-{
-	_voucher_activity_tracepoint_t vat = _voucher_activity_tracepoint_get(1);
-	if (!vat) vat = _voucher_activity_tracepoint_get_slow(1);
-	if (!vat) return NULL;
-	_voucher_activity_tracepoint_init_with_id(vat, trace_id, 0);
-	return vat;
-}
+#define _voucher_activity_trace_activity_event(trace_id, va_id, type) \
+		_voucher_activity_trace_activity_event(trace_id, va_id, \
+				_voucher_activity_trace_flag_ ## type)
 
 DISPATCH_ALWAYS_INLINE
 static inline void
 _voucher_activity_trace_msg(voucher_t v, mach_msg_header_t *msg, uint32_t code)
 {
 	if (!v || !v->v_activity) return; // Don't use default activity for IPC
-	const uint8_t type = voucher_activity_tracepoint_type_release;
+	const uint8_t type = voucher_activity_tracepoint_type_debug;
 	const uint8_t code_namespace = _voucher_activity_tracepoint_namespace_ipc;
 	if (!_voucher_activity_trace_type_enabled(type)) return;
+	_voucher_activity_buffer_header_t vab;
 	_voucher_activity_tracepoint_t vat;
-	vat = _voucher_activity_tracepoint_get_from_activity(v->v_activity, 1);
+	vab = _voucher_activity_buffer_get_from_activity(v->v_activity);
+	vat = _voucher_activity_buffer_tracepoint_acquire(vab, 1, 0, NULL);
 	if (!vat) return; // TODO: slowpath ?
-	_voucher_activity_tracepoint_init(vat, type, code_namespace, code, 0);
+	_voucher_activity_tracepoint_init(vat, type, code_namespace, code, 0, true);
 	vat->vat_flags |= _voucher_activity_trace_flag_libdispatch;
 #if __has_extension(c_static_assert)
 	_Static_assert(sizeof(mach_msg_header_t) <= sizeof(vat->vat_data),
 			"mach_msg_header_t too large");
 #endif
 	memcpy(vat->vat_data, msg, sizeof(mach_msg_header_t));
+	if (_voucher_activity_buffer_tracepoint_release(vab)) {
+		_voucher_activity_firehose_push(v->v_activity, vab);
+	}
 }
 #define _voucher_activity_trace_msg(v, msg, type) \
 		_voucher_activity_trace_msg(v, msg, \
 				_voucher_activity_tracepoint_namespace_ipc_ ## type)
 
-#endif // !(USE_OBJC && __OBJC2__)
+#endif // !(USE_OBJC && __OBJC2__) && !defined(__cplusplus)
 
 #else // VOUCHER_USE_MACH_VOUCHER
 

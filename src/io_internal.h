@@ -35,10 +35,14 @@
 #define _DISPATCH_IO_LABEL_SIZE 16
 
 #if TARGET_OS_EMBEDDED // rdar://problem/9032036
-#define DIO_MAX_CHUNK_PAGES				128u //  512kB chunk size
+#define DIO_MAX_CHUNK_SIZE				(512u * 1024)
+#define DIO_HASH_SIZE					64u  // must be a power of two
 #else
-#define DIO_MAX_CHUNK_PAGES				256u // 1024kB chunk size
+#define DIO_MAX_CHUNK_SIZE				(1024u * 1024)
+#define DIO_HASH_SIZE					256u // must be a power of two
 #endif
+
+#define DIO_HASH(x) ((uintptr_t)(x) & (DIO_HASH_SIZE - 1))
 
 #define DIO_DEFAULT_LOW_WATER_CHUNKS	  1u // default low-water mark
 #define DIO_MAX_PENDING_IO_REQS			  6u // Pending I/O read advises
@@ -93,7 +97,6 @@ struct dispatch_stat_s {
 DISPATCH_CLASS_DECL(disk);
 struct dispatch_disk_s {
 	DISPATCH_STRUCT_HEADER(disk);
-	dev_t dev;
 	TAILQ_HEAD(dispatch_disk_operations_s, dispatch_operation_s) operations;
 	dispatch_operation_t cur_rq;
 	dispatch_queue_t pick_queue;
@@ -101,8 +104,8 @@ struct dispatch_disk_s {
 	size_t free_idx;
 	size_t req_idx;
 	size_t advise_idx;
+	dev_t dev;
 	bool io_active;
-	int err;
 	TAILQ_ENTRY(dispatch_disk_s) disk_list;
 	size_t advise_list_depth;
 	dispatch_operation_t advise_list[];

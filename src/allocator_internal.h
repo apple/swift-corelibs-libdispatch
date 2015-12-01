@@ -141,6 +141,16 @@ typedef unsigned long bitmap_t;
 #define HEAP_MASK (~(uintptr_t)(BYTES_PER_HEAP - 1))
 #define MAGAZINE_MASK (~(uintptr_t)(BYTES_PER_MAGAZINE - 1))
 
+// this will round up such that first_bitmap_in_same_page() can mask the address
+// of a bitmap_t in the maps to obtain the first bitmap for that same page
+#define ROUND_UP_TO_BITMAP_ALIGNMENT(x) \
+		(((x) + ((BITMAPS_PER_PAGE * BYTES_PER_BITMAP) - 1u)) & \
+		~((BITMAPS_PER_PAGE * BYTES_PER_BITMAP) - 1u))
+// Since these are both powers of two, we end up with not only the max alignment,
+// but happily the least common multiple, which will be the greater of the two.
+#define ROUND_UP_TO_BITMAP_ALIGNMENT_AND_CONTINUATION_SIZE(x) (ROUND_UP_TO_CONTINUATION_SIZE(ROUND_UP_TO_BITMAP_ALIGNMENT(x)))
+#define PADDING_TO_BITMAP_ALIGNMENT_AND_CONTINUATION_SIZE(x) (ROUND_UP_TO_BITMAP_ALIGNMENT_AND_CONTINUATION_SIZE(x) - (x))
+
 #define PADDING_TO_CONTINUATION_SIZE(x) (ROUND_UP_TO_CONTINUATION_SIZE(x) - (x))
 
 #if defined(__LP64__)
@@ -155,8 +165,11 @@ typedef unsigned long bitmap_t;
 
 // header is expected to end on supermap's required alignment
 #define HEADER_TO_SUPERMAPS_PADDING 0
-#define SUPERMAPS_TO_MAPS_PADDING (PADDING_TO_CONTINUATION_SIZE( \
+// we want to align the maps to a continuation size, but we must also have proper padding
+// so that we can perform first_bitmap_in_same_page()
+#define SUPERMAPS_TO_MAPS_PADDING (PADDING_TO_BITMAP_ALIGNMENT_AND_CONTINUATION_SIZE( \
 		SIZEOF_SUPERMAPS + HEADER_TO_SUPERMAPS_PADDING + SIZEOF_HEADER))
+
 #define MAPS_TO_FPMAPS_PADDING (PADDING_TO_CONTINUATION_SIZE(SIZEOF_MAPS))
 
 #define BYTES_LEFT_IN_FIRST_PAGE (BYTES_PER_PAGE - \

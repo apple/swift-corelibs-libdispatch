@@ -27,7 +27,7 @@
 #ifndef __DISPATCH_TRACE__
 #define __DISPATCH_TRACE__
 
-#if !__OBJC2__
+#if !__OBJC2__ && !defined(__cplusplus)
 
 #if DISPATCH_USE_DTRACE || DISPATCH_USE_DTRACE_INTROSPECTION
 typedef struct dispatch_trace_timer_params_s {
@@ -98,8 +98,8 @@ _dispatch_trace_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 					_DISPATCH_SOURCE_TYPE && (_dq) != &_dispatch_mgr_q) { \
 				dispatch_source_t _ds = (dispatch_source_t)_do; \
 				_dc = _ds->ds_refs->ds_handler[DS_EVENT_HANDLER]; \
-				_func = _dc->dc_func; \
-				_ctxt = _dc->dc_ctxt; \
+				_func = _dc ? _dc->dc_func : NULL; \
+				_ctxt = _dc ? _dc->dc_ctxt : NULL; \
 			} else { \
 				_func = (dispatch_function_t)_dispatch_queue_invoke; \
 				_ctxt = _do->do_ctxt; \
@@ -321,6 +321,6 @@ _dispatch_trace_timer_fire(dispatch_source_refs_t dr, unsigned long data,
 
 #endif // DISPATCH_USE_DTRACE
 
-#endif // !__OBJC2__
+#endif // !__OBJC2__ && !defined(__cplusplus)
 
 #endif // __DISPATCH_TRACE__

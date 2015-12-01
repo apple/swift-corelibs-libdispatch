@@ -930,7 +930,7 @@ dispatch_barrier_sync_f(dispatch_queue_t queue,
  * is NULL.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
-DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL2 DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_queue_set_specific(dispatch_queue_t queue, const void *key,
 	void *context, dispatch_function_t destructor);
@@ -959,7 +959,7 @@ dispatch_queue_set_specific(dispatch_queue_t queue, const void *key,
  * The context for the specified key or NULL if no context was found.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
-DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_PURE DISPATCH_WARN_RESULT
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_PURE DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 void *
 dispatch_queue_get_specific(dispatch_queue_t queue, const void *key);
@@ -986,8 +986,7 @@ dispatch_queue_get_specific(dispatch_queue_t queue, const void *key);
  * The context for the specified key or NULL if no context was found.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
-DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_PURE DISPATCH_WARN_RESULT
-DISPATCH_NOTHROW
+DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 void *
 dispatch_get_specific(const void *key);
 

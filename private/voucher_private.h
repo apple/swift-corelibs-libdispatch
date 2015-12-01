@@ -24,7 +24,7 @@
 #include <os/base.h>
 #include <os/object.h>
 
-#define OS_VOUCHER_SPI_VERSION 20140425
+#define OS_VOUCHER_SPI_VERSION 20141203
 
 #if OS_VOUCHER_WEAK_IMPORT
 #define OS_VOUCHER_EXPORT OS_EXPORT OS_WEAK_IMPORT
@@ -161,7 +161,7 @@ void
 voucher_decrement_importance_count4CF(voucher_t voucher);
 
 /*!
- * @group Dispatch block objects
+ * @group Voucher dispatch block SPI
  */
 
 #ifndef __DISPATCH_BUILDING_DISPATCH__
@@ -333,6 +333,66 @@ dispatch_block_t
 dispatch_block_create_with_voucher_and_qos_class(dispatch_block_flags_t flags,
 		voucher_t voucher, dispatch_qos_class_t qos_class,
 		int relative_priority, dispatch_block_t block);
+
+/*!
+ * @group Voucher dispatch queue SPI
+ */
+
+/*!
+ * @function dispatch_queue_create_with_accounting_override_voucher
+ *
+ * @abstract
+ * Creates a new dispatch queue with an accounting override voucher created
+ * from the specified voucher.
+ *
+ * @discussion
+ * See dispatch_queue_create() headerdoc for generic details on queue creation.
+ *
+ * The resource accounting attributes of the specified voucher are extracted
+ * and used to create an accounting override voucher for the new queue.
+ *
+ * Every block executed on the returned queue will initially have this override
+ * voucher adopted, any voucher automatically associated with or explicitly
+ * assigned to the block will NOT be used and released immediately before block
+ * execution starts.
+ *
+ * The accounting override voucher will be automatically propagated to any
+ * asynchronous work generated from the queue following standard voucher
+ * propagation rules.
+ *
+ * NOTE: this SPI should only be used in special circumstances when a subsystem
+ * has complete control over all workitems submitted to a queue (e.g. no client
+ * block is ever submitted to the queue) and if and only if such queues have a
+ * one-to-one mapping with resource accounting identities.
+ *
+ * CAUTION: use of this SPI represents a potential voucher propagation hole. It
+ * is the responsibility of the caller to ensure that any callbacks into client
+ * code from the queue have the correct client voucher applied (rather than the
+ * automatically propagated accounting override voucher), e.g. by use of the
+ * dispatch_block_create() API to capture client state at the time the callback
+ * is registered.
+ *
+ * @param label
+ * A string label to attach to the queue.
+ * This parameter is optional and may be NULL.
+ *
+ * @param attr
+ * DISPATCH_QUEUE_SERIAL, DISPATCH_QUEUE_CONCURRENT, or the result of a call to
+ * the function dispatch_queue_attr_make_with_qos_class().
+ *
+ * @param voucher
+ * A voucher whose resource accounting attributes are used to create the
+ * accounting override voucher attached to the queue.
+ *
+ * @result
+ * The newly created dispatch queue.
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_11,__IPHONE_9_0)
+DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
+DISPATCH_NOTHROW
+dispatch_queue_t
+dispatch_queue_create_with_accounting_override_voucher(const char *label,
+	dispatch_queue_attr_t attr, voucher_t voucher);
 
 /*!
  * @group Voucher Mach SPI

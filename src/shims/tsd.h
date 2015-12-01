@@ -49,15 +49,17 @@ static const unsigned long dispatch_io_key			= __PTK_LIBDISPATCH_KEY3;
 static const unsigned long dispatch_apply_key		= __PTK_LIBDISPATCH_KEY4;
 static const unsigned long dispatch_defaultpriority_key =__PTK_LIBDISPATCH_KEY5;
 #if DISPATCH_INTROSPECTION
-static const unsigned long dispatch_introspection_key =__PTK_LIBDISPATCH_KEY5+1;
+static const unsigned long dispatch_introspection_key = __PTK_LIBDISPATCH_KEY6;
 #elif DISPATCH_PERF_MON
-static const unsigned long dispatch_bcounter_key	= __PTK_LIBDISPATCH_KEY5+1;
+static const unsigned long dispatch_bcounter_key	= __PTK_LIBDISPATCH_KEY6;
 #endif
 #if DISPATCH_USE_OS_SEMAPHORE_CACHE
 static const unsigned long dispatch_sema4_key		= __TSD_SEMAPHORE_CACHE;
 #else
-static const unsigned long dispatch_sema4_key		= __PTK_LIBDISPATCH_KEY5+2;
+static const unsigned long dispatch_sema4_key		= __PTK_LIBDISPATCH_KEY7;
 #endif
+static const unsigned long dispatch_pthread_root_queue_observer_hooks_key =
+		__PTK_LIBDISPATCH_KEY8;
 
 #ifndef __TSD_THREAD_QOS_CLASS
 #define __TSD_THREAD_QOS_CLASS 4
@@ -88,7 +90,7 @@ extern pthread_key_t dispatch_introspection_key;
 #elif DISPATCH_PERF_MON
 extern pthread_key_t dispatch_bcounter_key;
 #endif
-
+exern pthread_key_t dispatch_pthread_root_queue_observer_hooks_key;
 
 DISPATCH_TSD_INLINE
 static inline void

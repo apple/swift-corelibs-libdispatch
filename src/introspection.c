@@ -311,7 +311,8 @@ dispatch_introspection_queue_item_get_info(dispatch_queue_t dq,
 				type != DISPATCH_QUEUE_SPECIFIC_TYPE) {
 			diqi.type = dispatch_introspection_queue_item_type_queue;
 			diqi.queue = dispatch_introspection_queue_get_info(dou._dq);
-		} else if (metatype == _DISPATCH_SOURCE_TYPE) {
+		} else if (metatype == _DISPATCH_SOURCE_TYPE &&
+				type != DISPATCH_MACH_CHANNEL_TYPE) {
 			diqi.type = dispatch_introspection_queue_item_type_source;
 			diqi.source = _dispatch_introspection_source_get_info(dou._ds);
 		} else {

@@ -302,6 +302,20 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #define slowpath(x) (x)
 #endif // __GNUC__
 
+#if DISPATCH_DEBUG
+// sys/queue.h debugging
+#undef TRASHIT
+#define TRASHIT(x) do {(x) = (void *)-1;} while (0)
+#endif // DISPATCH_DEBUG
+#define _TAILQ_TRASH_ENTRY(elm, field) do { \
+			TRASHIT((elm)->field.tqe_next); \
+			TRASHIT((elm)->field.tqe_prev); \
+		} while (0)
+#define _TAILQ_TRASH_HEAD(head) do { \
+			TRASHIT((head)->tqh_first); \
+			TRASHIT((head)->tqh_last); \
+		} while (0)
+
 DISPATCH_NOINLINE
 void _dispatch_bug(size_t line, long val);
 
@@ -346,6 +360,14 @@ void _dispatch_log(const char *msg, ...);
 #define dsnprintf(...) \
 		({ int _r = snprintf(__VA_ARGS__); _r < 0 ? 0u : (size_t)_r; })
 
+#if __GNUC__
+#define dispatch_static_assert(e) ({ \
+		char __compile_time_assert__[(bool)(e) ? 1 : -1] DISPATCH_UNUSED; \
+	})
+#else
+#define dispatch_static_assert(e)
+#endif
+
 /*
  * For reporting bugs within libdispatch when using the "_debug" version of the
  * library.
@@ -353,7 +375,7 @@ void _dispatch_log(const char *msg, ...);
 #if __GNUC__
 #define dispatch_assert(e) do { \
 		if (__builtin_constant_p(e)) { \
-			char __compile_time_assert__[(bool)(e) ? 1 : -1] DISPATCH_UNUSED; \
+			dispatch_static_assert(e); \
 		} else { \
 			typeof(e) _e = fastpath(e); /* always eval 'e' */ \
 			if (DISPATCH_DEBUG && !_e) { \
@@ -375,7 +397,7 @@ static inline void _dispatch_assert(long e, long line) {
  */
 #define dispatch_assert_zero(e) do { \
 		if (__builtin_constant_p(e)) { \
-			char __compile_time_assert__[(bool)(e) ? -1 : 1] DISPATCH_UNUSED; \
+			dispatch_static_assert(e); \
 		} else { \
 			typeof(e) _e = slowpath(e); /* always eval 'e' */ \
 			if (DISPATCH_DEBUG && _e) { \
@@ -401,8 +423,7 @@ static inline void _dispatch_assert_zero(long e, long line) {
 		typeof(e) _e = fastpath(e); /* always eval 'e' */ \
 		if (!_e) { \
 			if (__builtin_constant_p(e)) { \
-				char __compile_time_assert__[(bool)(e) ? 1 : -1]; \
-				(void)__compile_time_assert__; \
+				dispatch_static_assert(e); \
 			} \
 			_dispatch_bug(__LINE__, (long)_e); \
 		} \
@@ -425,8 +446,7 @@ static inline long _dispatch_assume(long e, long line) {
 		typeof(e) _e = slowpath(e); /* always eval 'e' */ \
 		if (_e) { \
 			if (__builtin_constant_p(e)) { \
-				char __compile_time_assert__[(bool)(e) ? -1 : 1]; \
-				(void)__compile_time_assert__; \
+				dispatch_static_assert(e); \
 			} \
 			_dispatch_bug(__LINE__, (long)_e); \
 		} \
@@ -446,7 +466,7 @@ static inline long _dispatch_assume_zero(long e, long line) {
 #if __GNUC__
 #define dispatch_debug_assert(e, msg, args...) do { \
 		if (__builtin_constant_p(e)) { \
-			char __compile_time_assert__[(bool)(e) ? 1 : -1] DISPATCH_UNUSED; \
+			dispatch_static_assert(e); \
 		} else { \
 			typeof(e) _e = fastpath(e); /* always eval 'e' */ \
 			if (DISPATCH_DEBUG && !_e) { \
@@ -602,6 +622,56 @@ extern bool _dispatch_safe_fork, _dispatch_child_of_unsafe_fork;
 #endif
 #endif // HAVE_DECL_NOTE_REAP
 
+#if !defined(EV_UDATA_SPECIFIC) || (TARGET_IPHONE_SIMULATOR && \
+		IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 101100) || \
+		(!TARGET_OS_IPHONE && __MAC_OS_X_VERSION_MIN_REQUIRED < 101100)
+#undef DISPATCH_USE_EV_UDATA_SPECIFIC
+#define DISPATCH_USE_EV_UDATA_SPECIFIC 0
+#elif !defined(DISPATCH_USE_EV_UDATA_SPECIFIC)
+#define DISPATCH_USE_EV_UDATA_SPECIFIC 1
+#endif // EV_UDATA_SPECIFIC
+
+#if !DISPATCH_USE_EV_UDATA_SPECIFIC
+#undef EV_UDATA_SPECIFIC
+#define EV_UDATA_SPECIFIC 0
+#undef DISPATCH_DYNAMIC_SELECT_FALLBACK
+#define DISPATCH_DYNAMIC_SELECT_FALLBACK 0
+#undef DISPATCH_USE_SELECT_FALLBACK
+#define DISPATCH_USE_SELECT_FALLBACK 1
+#endif // !DISPATCH_USE_EV_UDATA_SPECIFIC
+
+#if !defined(EV_SET_QOS) || (TARGET_IPHONE_SIMULATOR && \
+		IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 101100) || \
+		(!TARGET_OS_IPHONE && __MAC_OS_X_VERSION_MIN_REQUIRED < 101100)
+#undef DISPATCH_USE_KEVENT_QOS
+#define DISPATCH_USE_KEVENT_QOS 0
+#elif !defined(DISPATCH_USE_KEVENT_QOS)
+#define DISPATCH_USE_KEVENT_QOS 1
+#endif // EV_SET_QOS
+
+#if DISPATCH_USE_KEVENT_QOS
+typedef struct kevent_qos_s _dispatch_kevent_qos_s;
+#else // DISPATCH_USE_KEVENT_QOS
+#ifndef KEVENT_FLAG_IMMEDIATE
+#define KEVENT_FLAG_NONE 0x00
+#define KEVENT_FLAG_IMMEDIATE 0x01
+#define KEVENT_FLAG_ERROR_EVENTS 0x02
+#endif // KEVENT_FLAG_IMMEDIATE
+typedef struct kevent64_s _dispatch_kevent_qos_s;
+#define kevent_qos(_kq, _changelist, _nchanges, _eventlist, _nevents, \
+		_data_out, _data_available, _flags) \
+		({ unsigned int _f = (_flags); _dispatch_kevent_qos_s _kev_copy; \
+		const _dispatch_kevent_qos_s *_cl = (_changelist); \
+		int _n = (_nchanges); const struct timespec _timeout_immediately = {}; \
+		dispatch_static_assert(!(_data_out) && !(_data_available)); \
+		if (_f & KEVENT_FLAG_ERROR_EVENTS) { \
+			dispatch_static_assert(_n == 1); \
+			_kev_copy = *_cl; _kev_copy.flags |= EV_RECEIPT; } \
+		kevent64((_kq), _f & KEVENT_FLAG_ERROR_EVENTS ? &_kev_copy : _cl, _n, \
+			(_eventlist), (_nevents), 0, \
+			_f & KEVENT_FLAG_IMMEDIATE ? &_timeout_immediately : NULL); })
+#endif // DISPATCH_USE_KEVENT_QOS
+
 #if defined(F_SETNOSIGPIPE) && defined(F_GETNOSIGPIPE)
 #if TARGET_IPHONE_SIMULATOR && IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 1070
 #undef DISPATCH_USE_SETNOSIGPIPE
@@ -615,6 +685,9 @@ extern bool _dispatch_safe_fork, _dispatch_child_of_unsafe_fork;
 #if defined(MACH_SEND_NOIMPORTANCE)
 #ifndef DISPATCH_USE_CHECKIN_NOIMPORTANCE
 #define DISPATCH_USE_CHECKIN_NOIMPORTANCE 1 // rdar://problem/16996737
+#endif
+#ifndef DISPATCH_USE_NOIMPORTANCE_QOS
+#define DISPATCH_USE_NOIMPORTANCE_QOS 1 // rdar://problem/21414476
 #endif
 #endif // MACH_SEND_NOIMPORTANCE
 
@@ -671,6 +744,7 @@ extern bool _dispatch_safe_fork, _dispatch_child_of_unsafe_fork;
 		__asm__(""); __builtin_trap() // <rdar://problem/17464981>
 
 #define _dispatch_set_crash_log_message(msg)
+#define _dispatch_set_crash_log_message_dynamic(msg)
 
 #if HAVE_MACH
 // MIG_REPLY_MISMATCH means either:
@@ -704,6 +778,7 @@ extern int _dispatch_set_qos_class_enabled;
 #define DISPATCH_NO_VOUCHER ((voucher_t)(void*)~0ul)
 #define DISPATCH_NO_PRIORITY ((pthread_priority_t)~0ul)
 #define DISPATCH_PRIORITY_ENFORCE 0x1
+#define DISPATCH_VOUCHER_IGNORE_QUEUE_OVERRIDE 0x2
 static inline void _dispatch_adopt_priority_and_replace_voucher(
 		pthread_priority_t priority, voucher_t voucher, unsigned long flags);
 #if HAVE_MACH

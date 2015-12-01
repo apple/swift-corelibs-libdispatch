@@ -32,9 +32,13 @@
 #include <Foundation/NSString.h>
 
 @interface DISPATCH_CLASS(data) ()
+@property (readonly) NSUInteger length;
+@property (readonly) const void *bytes NS_RETURNS_INNER_POINTER;
+
 - (id)initWithBytes:(void *)bytes length:(NSUInteger)length copy:(BOOL)copy
 		freeWhenDone:(BOOL)freeBytes bytesAreVM:(BOOL)vm;
 - (BOOL)_bytesAreVM;
+- (BOOL)_isCompact;
 @end
 
 @interface DISPATCH_CLASS(data_empty) : DISPATCH_CLASS(data)
@@ -130,6 +134,21 @@
 	return [nsstring stringWithFormat:
 			[nsstring stringWithUTF8String:"<%s: %s>"],
 			class_getName([self class]), buf];
+}
+
+- (NSUInteger)length {
+	struct dispatch_data_s *dd = (void*)self;
+	return dd->size;
+}
+
+- (const void *)bytes {
+	struct dispatch_data_s *dd = (void*)self;
+	return _dispatch_data_get_flattened_bytes(dd);
+}
+
+- (BOOL)_isCompact {
+	struct dispatch_data_s *dd = (void*)self;
+	return !dd->size || _dispatch_data_map_direct(dd, 0, NULL, NULL) != NULL;
 }
 
 @end

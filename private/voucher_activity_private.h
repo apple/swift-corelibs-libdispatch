@@ -27,7 +27,7 @@
 #include <os/voucher_private.h>
 #endif
 
-#define OS_VOUCHER_ACTIVITY_SPI_VERSION 20140708
+#define OS_VOUCHER_ACTIVITY_SPI_VERSION 20150318
 
 #if OS_VOUCHER_WEAK_IMPORT
 #define OS_VOUCHER_EXPORT OS_EXPORT OS_WEAK_IMPORT
@@ -77,6 +77,9 @@ OS_ENUM(voucher_activity_tracepoint_type, uint8_t,
 OS_ENUM(voucher_activity_flag, unsigned long,
 	voucher_activity_flag_default = 0,
 	voucher_activity_flag_force = 0x1,
+	voucher_activity_flag_debug = 0x2,
+	voucher_activity_flag_persist = 0x4,
+	voucher_activity_flag_stream = 0x8,
 );
 
 /*!
@@ -278,6 +281,47 @@ voucher_activity_trace(voucher_activity_trace_id_t trace_id, uint64_t location,
 		void *buffer, size_t length);
 
 /*!
+ * @function voucher_activity_trace_strings
+ *
+ * @abstract
+ * Add a tracepoint with strings data to trace buffer of the current activity.
+ *
+ * @param trace_id
+ * Tracepoint identifier returned by voucher_activity_trace_id()
+ *
+ * @param location
+ * Tracepoint location.
+ *
+ * @param buffer
+ * Pointer to packed buffer of tracepoint data.
+ *
+ * @param length
+ * Length of data at 'buffer'.
+ *
+ * @param strings
+ * NULL-terminated array of strings data.
+ *
+ * @param string_lengths
+ * Array of string lengths (required to have the same number of elements as the
+ * 'strings' array): string_lengths[i] is the maximum number of characters to
+ * copy from strings[i], excluding the NUL-terminator (may be smaller than the
+ * length of the string present in strings[i]).
+ *
+ * @param total_strings_size
+ * Total size of all strings data to be copied from strings array (including
+ * all NUL-terminators).
+ *
+ * @result
+ * Timestamp recorded in tracepoint or 0 if no tracepoint was recorded.
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_11,__IPHONE_9_0)
+OS_VOUCHER_EXPORT OS_NOTHROW
+uint64_t
+voucher_activity_trace_strings(voucher_activity_trace_id_t trace_id,
+		uint64_t location, void *buffer, size_t length, const char *strings[],
+		size_t string_lengths[], size_t total_strings_size);
+
+/*!
  * @function voucher_activity_trace_args
  *
  * @abstract
@@ -349,7 +393,7 @@ voucher_activity_mode_t
 voucher_activity_get_mode(void);
 
 /*!
- * @function voucher_activity_set_mode_4libtrace(void)
+ * @function voucher_activity_set_mode_4libtrace
  *
  * @abstract
  * Set the current mode of voucher activity subsystem.
@@ -400,6 +444,7 @@ OS_ENUM(_voucher_activity_tracepoint_flag, uint16_t,
 	_voucher_activity_trace_flag_buffer_empty = 0,
 	_voucher_activity_trace_flag_tracepoint = (1u << 0),
 	_voucher_activity_trace_flag_tracepoint_args = (1u << 1),
+	_voucher_activity_trace_flag_tracepoint_strings = (1u << 2),
 	_voucher_activity_trace_flag_wide_first = (1u << 6),
 	_voucher_activity_trace_flag_wide_second = (1u << 6) | (1u << 7),
 	_voucher_activity_trace_flag_start = (1u << 8),
@@ -426,7 +471,13 @@ typedef struct _voucher_activity_tracepoint_s {
 	uint64_t vat_thread;	// pthread_t
 	uint64_t vat_timestamp;	// absolute time
 	uint64_t vat_location;	// tracepoint PC
-	uint64_t vat_data[4];	// trace data
+	union {
+		uint64_t vat_data[4];	// trace data
+		struct {
+			uint16_t vats_offset;	// offset to string data (from buffer end)
+			uint8_t vats_data[30];	// trace data
+		} vat_stroff;				// iff _vat_flag_tracepoint_strings present
+	};
 } *_voucher_activity_tracepoint_t;
 
 /*!
@@ -439,20 +490,33 @@ typedef struct _voucher_activity_tracepoint_s {
 #include <atm/atm_types.h>
 #include <os/lock_private.h>
 
-static const atm_subaid32_t _voucher_default_activity_subid =
-		ATM_SUBAID32_MAX-1;
-
 static const size_t _voucher_activity_buffer_size = 4096;
 static const size_t _voucher_activity_tracepoints_per_buffer =
 		_voucher_activity_buffer_size /
 		sizeof(struct _voucher_activity_tracepoint_s);
+static const size_t _voucher_activity_buffer_header_size =
+		sizeof(struct _voucher_activity_tracepoint_s);
+static const size_t _voucher_activity_strings_header_size = 0; // TODO
+
 typedef uint8_t _voucher_activity_buffer_t[_voucher_activity_buffer_size];
+
+static const size_t _voucher_activity_buffers_per_heap = 512;
+typedef unsigned long _voucher_activity_bitmap_base_t;
+static const size_t _voucher_activity_bits_per_bitmap_base_t =
+		8 * sizeof(_voucher_activity_bitmap_base_t);
+static const size_t _voucher_activity_bitmaps_per_heap =
+		_voucher_activity_buffers_per_heap /
+		_voucher_activity_bits_per_bitmap_base_t;
+typedef _voucher_activity_bitmap_base_t
+		_voucher_activity_bitmap_t[_voucher_activity_bitmaps_per_heap]
+		__attribute__((__aligned__(64)));
 
 struct _voucher_activity_self_metadata_s {
 	struct _voucher_activity_metadata_opaque_s *vasm_baseaddr;
+	_voucher_activity_bitmap_t volatile vam_buffer_bitmap;
 };
+
 typedef struct _voucher_activity_metadata_opaque_s {
-	_voucher_activity_buffer_t vam_kernel_metadata;
 	_voucher_activity_buffer_t vam_client_metadata;
 	union {
 		struct _voucher_activity_self_metadata_s vam_self_metadata;
@@ -462,80 +526,91 @@ typedef struct _voucher_activity_metadata_opaque_s {
 
 typedef os_lock_handoff_s _voucher_activity_lock_s;
 
-typedef struct _voucher_atm_s {
-	int32_t volatile vatm_refcnt;
-	mach_voucher_t vatm_kvoucher;
-	atm_aid_t vatm_id;
-	atm_mailbox_offset_t vatm_mailbox_offset;
-	TAILQ_ENTRY(_voucher_atm_s) vatm_list;
-#if __LP64__
-	uintptr_t vatm_pad[3];
-	// cacheline
-#endif
-	_voucher_activity_lock_s vatm_activities_lock;
-	TAILQ_HEAD(_voucher_atm_activities_s, _voucher_activity_s) vatm_activities;
-	TAILQ_HEAD(, _voucher_activity_s) vatm_used_activities;
-} *_voucher_atm_t;
+OS_ENUM(_voucher_activity_buffer_atomic_flags, uint8_t,
+	_voucher_activity_buffer_full = (1u << 0),
+	_voucher_activity_buffer_pushing = (1u << 1),
+);
+
+typedef union {
+	uint64_t vabp_atomic_pos;
+	struct {
+		uint16_t vabp_refcnt;
+		uint8_t vabp_flags;
+		uint8_t vabp_unused;
+		uint16_t vabp_next_tracepoint_idx;
+		uint16_t vabp_string_offset; // offset from the _end_ of the buffer
+	} vabp_pos;
+} _voucher_activity_buffer_position_u;
 
 // must match layout of _voucher_activity_tracepoint_s
 typedef struct _voucher_activity_buffer_header_s {
 	uint16_t vabh_flags;	// _voucher_activity_trace_flag_buffer_header
-	uint8_t  vabh_unused[6];
-	uint64_t vabh_thread;
-	uint64_t vabh_timestamp;
-	uint32_t volatile vabh_next_tracepoint_idx;
-	uint32_t vabh_sequence_no;
+	uint8_t  vat_type;
+	uint8_t  vat_namespace;
+	uint32_t vat_code;
+	uint64_t vat_thread;
+	uint64_t vat_timestamp;
+	uint64_t vat_location;
 	voucher_activity_id_t vabh_activity_id;
-	uint64_t vabh_reserved;
+	_voucher_activity_buffer_position_u volatile vabh_pos;
 	TAILQ_ENTRY(_voucher_activity_buffer_header_s) vabh_list;
 } *_voucher_activity_buffer_header_t;
 
-// must match layout of _voucher_activity_buffer_header_s
-typedef struct _voucher_activity_s {
-	// first tracepoint entry
-	// must match layout of _voucher_activity_tracepoint_s
-	uint16_t va_flags;		// _voucher_activity_trace_flag_buffer_header |
-							// _voucher_activity_trace_flag_activity |
-							// _voucher_activity_trace_flag_start |
-							// _voucher_activity_trace_flag_wide_first
-	uint8_t  va_type;
-	uint8_t  va_namespace;
-	uint32_t va_code;
-	uint64_t va_thread;
-	uint64_t va_timestamp;
-	uint32_t volatile vabh_next_tracepoint_idx;
-	uint32_t volatile va_max_sequence_no;
-	voucher_activity_id_t va_id;
-	int32_t volatile va_use_count;
-	uint32_t va_buffer_limit;
-	TAILQ_HEAD(_voucher_activity_buffer_list_s,
-			_voucher_activity_buffer_header_s) va_buffers;
-#if !__LP64__
-	uint64_t va_pad;
-#endif
+/*!
+ * @enum _voucher_activity_buffer_hook_reason
+ *
+ * @constant _voucher_activity_buffer_hook_reason_full
+ * Specified activity buffer is full.
+ * Will be reported reused or freed later.
+ *
+ * @constant _voucher_activity_buffer_hook_reason_reuse
+ * Specified activity buffer is about to be reused.
+ * Was previously reported as full.
+ *
+ * @constant _voucher_activity_buffer_hook_reason_free
+ * Specified activity buffer is about to be freed.
+ * May have been previously reported as full or may be only partially filled.
+ */
+typedef enum _voucher_activity_buffer_hook_reason {
+	_voucher_activity_buffer_hook_reason_full = 0x1,
+	_voucher_activity_buffer_hook_reason_reuse = 0x2,
+	_voucher_activity_buffer_hook_reason_free = 0x4,
+} _voucher_activity_buffer_hook_reason;
 
-	// second tracepoint entry
-	// must match layout of _voucher_activity_tracepoint_s
-	uint16_t va_flags2;
-	uint8_t va_unused2[2];
-	int32_t volatile va_refcnt;
-	uint64_t va_location;
-	_voucher_activity_buffer_header_t volatile va_current_buffer;
-	_voucher_atm_t va_atm;
-	_voucher_activity_lock_s va_buffers_lock;
-	uintptr_t va_pad2[2];
+/*!
+ * @typedef _voucher_activity_buffer_hook_t
+ *
+ * @abstract
+ * A function pointer called when an activity buffer is full or being freed.
+ * NOTE: callbacks occur under an activity-wide handoff lock and work done
+ * inside the callback function must not block or otherwise cause that lock to
+ * be held for a extended period of time.
+ *
+ * @param reason
+ * Reason for callback.
+ *
+ * @param buffer
+ * Pointer to activity buffer.
+ */
+typedef void (*_voucher_activity_buffer_hook_t)(
+		_voucher_activity_buffer_hook_reason reason,
+		_voucher_activity_buffer_header_t buffer);
 
-#if __LP64__
-	// third tracepoint entry
-	// must match layout of _voucher_activity_tracepoint_s
-	uint16_t va_flags3;
-	uint8_t va_unused3[6];
-	uintptr_t va_pad3;
-#endif
-	TAILQ_ENTRY(_voucher_activity_s) va_list;
-	TAILQ_ENTRY(_voucher_activity_s) va_atm_list;
-	TAILQ_ENTRY(_voucher_activity_s) va_atm_used_list;
-} *_voucher_activity_t;
+/*!
+ * @function voucher_activity_buffer_hook_install_4libtrace
+ *
+ * @abstract
+ * Install activity buffer hook callback function.
+ * Must be called from the libtrace initializer, and at most once.
+ *
+ * @param hook
+ * Hook function to install.
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_11,__IPHONE_9_0)
+OS_VOUCHER_EXPORT OS_NOTHROW
+void
+voucher_activity_buffer_hook_install_4libtrace(
+		_voucher_activity_buffer_hook_t hook);
 
 #endif // OS_VOUCHER_ACTIVITY_BUFFER_SPI
 

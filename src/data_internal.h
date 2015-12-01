@@ -32,11 +32,6 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
-#if defined(__LP64__) && !defined(DISPATCH_DATA_USE_LEAF_MEMBER) && !USE_OBJC
-// explicit leaf member is free on 64bit due to padding
-#define DISPATCH_DATA_USE_LEAF_MEMBER 1
-#endif
-
 typedef struct range_record_s {
 	dispatch_data_t data_object;
 	size_t from;
@@ -67,25 +62,31 @@ struct dispatch_data_s {
 #else // USE_OBJC
 	DISPATCH_STRUCT_HEADER(data);
 #endif // USE_OBJC
-#if DISPATCH_DATA_USE_LEAF_MEMBER
-	bool leaf;
-#endif
+	const void *buf;
 	dispatch_block_t destructor;
 	size_t size, num_records;
-	union {
-		const void* buf;
-		range_record records[0];
-	};
+	range_record records[0];
 };
 
-#if DISPATCH_DATA_USE_LEAF_MEMBER
-#define _dispatch_data_leaf(d) ((d)->leaf)
-#define _dispatch_data_num_records(d) ((d)->num_records)
-#else
-#define _dispatch_data_leaf(d) ((d)->num_records ? 0 : ((d)->size ? 1 : 0))
-#define _dispatch_data_num_records(d) \
-		(_dispatch_data_leaf(d) ? 1 : (d)->num_records)
-#endif // DISPATCH_DATA_USE_LEAF_MEMBER
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_data_leaf(struct dispatch_data_s *dd)
+{
+	return dd->num_records == 0;
+}
+
+/*
+ * This is about the number of records required to hold that dispatch data
+ * if it's not a leaf. Callers either want that value, or have to special
+ * case the case when the dispatch data *is* a leaf before (and that the actual
+ * embeded record count of that dispatch data is 0)
+ */
+DISPATCH_ALWAYS_INLINE
+static inline size_t
+_dispatch_data_num_records(struct dispatch_data_s *dd)
+{
+	return dd->num_records ?: 1;
+}
 
 typedef dispatch_data_t (*dispatch_transform_t)(dispatch_data_t data);
 
@@ -101,27 +102,49 @@ void dispatch_data_init(dispatch_data_t data, const void *buffer, size_t size,
 		dispatch_block_t destructor);
 void _dispatch_data_dispose(dispatch_data_t data);
 size_t _dispatch_data_debug(dispatch_data_t data, char* buf, size_t bufsiz);
+const void*
+_dispatch_data_get_flattened_bytes(struct dispatch_data_s *dd);
+
+#if !defined(__cplusplus)
+#if !__OBJC2__
 const dispatch_block_t _dispatch_data_destructor_inline;
 #define DISPATCH_DATA_DESTRUCTOR_INLINE (_dispatch_data_destructor_inline)
+#endif // !__OBJC2__
 
-#if !__OBJC2__
-
+/*
+ * the out parameters are about seeing "through" trivial subranges
+ * so for something like this: dd = { subrange [ dd1, offset1 ] },
+ * this will return { dd1, offset + offset1 }
+ *
+ * If the dispatch object isn't a trivial subrange, it returns { dd, offset }
+ */
+DISPATCH_ALWAYS_INLINE
 static inline const void*
-_dispatch_data_map_direct(dispatch_data_t dd)
+_dispatch_data_map_direct(struct dispatch_data_s *dd, size_t offset,
+		struct dispatch_data_s **dd_out, size_t *from_out)
 {
-	size_t offset = 0;
-	if (slowpath(!dd->size)) {
-		return NULL;
-	}
+	const void *buffer = NULL;
+
+	dispatch_assert(dd->size);
 	if (slowpath(!_dispatch_data_leaf(dd)) &&
-			_dispatch_data_num_records(dd) == 1 &&
-			_dispatch_data_leaf(dd->records[0].data_object)) {
-		offset = dd->records[0].from;
-		dd = dd->records[0].data_object;
+			_dispatch_data_num_records(dd) == 1) {
+		offset += dd->records[0].from;
+		dd = (struct dispatch_data_s *)dd->records[0].data_object;
 	}
-	return fastpath(_dispatch_data_leaf(dd)) ? (dd->buf + offset) : NULL;
+
+	if (fastpath(_dispatch_data_leaf(dd))) {
+		buffer = dd->buf + offset;
+	} else {
+		buffer = dispatch_atomic_load((void **)&dd->buf, relaxed);
+		if (buffer) {
+			buffer += offset;
+		}
+	}
+	if (dd_out) *dd_out = dd;
+	if (from_out) *from_out = offset;
+	return buffer;
 }
 
-#endif // !__OBJC2__
+#endif // !defined(__cplusplus)
 
 #endif // __DISPATCH_DATA_INTERNAL__
