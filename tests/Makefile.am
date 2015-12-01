@@ -9,13 +9,6 @@ libbsdtests_la_SOURCES=			\
 	bsdtests.h					\
 	dispatch_test.c				\
 	dispatch_test.h				\
-	shims.h						\
-	shims/asprintf.c			\
-	shims/asprintf.h			\
-	shims/arc4random.c			\
-	shims/arc4random.h			\
-	shims/fgetln.c				\
-	shims/fgetln.h
 
 check_PROGRAMS=					\
 	bsdtestharness				\
