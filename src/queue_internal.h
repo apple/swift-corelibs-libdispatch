@@ -379,4 +379,29 @@ void _dispatch_block_invoke(const struct dispatch_block_private_data_s *dbcpd);
 
 #endif /* __BLOCKS__ */
 
+typedef struct dispatch_pthread_root_queue_observer_hooks_s {
+	void (*queue_will_execute)(dispatch_queue_t queue);
+	void (*queue_did_execute)(dispatch_queue_t queue);
+} dispatch_pthread_root_queue_observer_hooks_s;
+typedef dispatch_pthread_root_queue_observer_hooks_s
+		*dispatch_pthread_root_queue_observer_hooks_t;
+
+#ifdef __APPLE__
+#define DISPATCH_IOHID_SPI 1
+
+DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
+DISPATCH_NOTHROW DISPATCH_NONNULL4
+dispatch_queue_t
+_dispatch_pthread_root_queue_create_with_observer_hooks_4IOHID(
+	const char *label, unsigned long flags, const pthread_attr_t *attr,
+	dispatch_pthread_root_queue_observer_hooks_t observer_hooks,
+	dispatch_block_t configure);
+
+DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+bool
+_dispatch_queue_is_exclusively_owned_by_current_thread_4IOHID(
+		dispatch_queue_t queue);
+
+#endif // __APPLE__
+
 #endif

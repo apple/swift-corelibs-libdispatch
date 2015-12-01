@@ -711,7 +711,6 @@ dispatch_assert_queue_not(dispatch_queue_t dq)
 #pragma mark dispatch_init
 
 #if HAVE_PTHREAD_WORKQUEUE_QOS
-int _dispatch_set_qos_class_enabled;
 pthread_priority_t _dispatch_background_priority;
 pthread_priority_t _dispatch_user_initiated_priority;
 
@@ -1651,6 +1650,21 @@ dispatch_pthread_root_queue_create(const char *label, unsigned long flags,
 			NULL);
 }
 
+#if DISPATCH_IOHID_SPI
+dispatch_queue_t
+_dispatch_pthread_root_queue_create_with_observer_hooks_4IOHID(const char *label,
+		unsigned long flags, const pthread_attr_t *attr,
+		dispatch_pthread_root_queue_observer_hooks_t observer_hooks,
+		dispatch_block_t configure)
+{
+	if (!observer_hooks->queue_will_execute ||
+			!observer_hooks->queue_did_execute) {
+		DISPATCH_CLIENT_CRASH("Invalid pthread root queue observer hooks");
+	}
+	return _dispatch_pthread_root_queue_create(label, flags, attr, configure,
+			observer_hooks);
+}
+#endif
 
 #endif // DISPATCH_ENABLE_PTHREAD_ROOT_QUEUES
 
@@ -1842,6 +1856,17 @@ dispatch_get_specific(const void *key)
 	return ctxt;
 }
 
+#if DISPATCH_IOHID_SPI
+bool
+_dispatch_queue_is_exclusively_owned_by_current_thread_4IOHID(
+		dispatch_queue_t dq) // rdar://problem/18033810
+{
+	if (dq->dq_width > 1) {
+		DISPATCH_CLIENT_CRASH("Invalid queue type");
+	}
+	return (dq->dq_thread && dq->dq_thread == _dispatch_thread_port());
+}
+#endif
 
 #pragma mark -
 #pragma mark dispatch_queue_debug
