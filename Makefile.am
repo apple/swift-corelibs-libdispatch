@@ -9,9 +9,11 @@ SUBDIRS=					\
 	man						\
 	os						\
 	private					\
-	src
+	src						\
+	tests
 
 EXTRA_DIST=					\
+	README.md				\
 	LICENSE					\
 	PATCHES					\
 	autogen.sh				\
