@@ -31,6 +31,15 @@ typedef uint32_t dispatch_mach_t;
 
 typedef uint32_t dispatch_mach_reason_t;
 
+typedef uint32_t voucher_activity_mode_t;
+
+typedef uint32_t voucher_activity_trace_id_t;
+
+typedef uint32_t voucher_activity_id_t;
+
+typedef uint32_t _voucher_activity_buffer_hook_t;;
+
+typedef uint32_t voucher_activity_flag_t;
 
 typedef struct
 {
