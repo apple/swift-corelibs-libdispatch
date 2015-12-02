@@ -513,18 +513,6 @@ _dispatch_queue_get_bound_thread(dispatch_queue_t dq)
 	return dq->dq_thread;
 }
 
-#if __LINUX_PORT_HDD__
-// START HACK: DAVE.  These types are not defined anywhere in libdispatch sources,
-//                     so make something plausible up...
-typedef struct dispatch_pthread_root_queue_observer_hooks_s {
-    void (*queue_will_execute)(dispatch_queue_t);
-    void (*queue_did_execute)(dispatch_queue_t);
-} dispatch_pthread_root_queue_observer_hooks_s;
-
-typedef struct dispatch_pthread_root_queue_observer_hooks_s *
-    dispatch_pthread_root_queue_observer_hooks_t;
-#endif
-
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_pthread_root_queue_observer_hooks_t
 _dispatch_get_pthread_root_queue_observer_hooks(void)
