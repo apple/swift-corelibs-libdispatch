@@ -1,41 +1,73 @@
+#include <stdint.h>
+
+#include <config/config.h>
+
 #include "pthread.h"
 
-// void _dispatch_source_type_timer() { }
-//void dispatch_source_create() { }
-//void dispatch_source_set_event_handler_f() { }
-//void dispatch_source_set_timer() { }
-//void dispatch_resume() { }
-//void dispatch_main() { }
-void pthread_workqueue_attr_destroy_np() { }
-void dispatch_timer__program_semaphore() { }
-void kqueue() { }
-void _dispatch_mach_msg_dispose() { }
-void dispatch_timer__wake_semaphore() { }
-void _dispatch_mach_probe() { }
-void _dispatch_block_create() { }
-void _dispatch_mach_invoke() { }
-void _dispatch_mach_msg_debug() { }
-void _dispatch_mach_dispose() { }
-void TRASHIT() { }
-void _dispatch_mach_msg_invoke() { }
-void pthread_workqueue_attr_setovercommit_np() { }
-void _dispatch_runloop_queue_probe() { }
-void _dispatch_runloop_queue_xref_dispose() { }
-void pthread_workqueue_attr_setqueuepriority_np() { }
-void dispatch_timer__configure_semaphore() { }
-void strlcpy() { }
-void _dispatch_runloop_queue_dispose() { }
-void kevent64() { }
-void mach_error_string() { }
-void pthread_workqueue_additem_np() { }
-void _dispatch_block_special_invoke() { }
-void dispatch_timer__fire_semaphore() { }
-void mach_vm_deallocate() { }
-void pthread_mach_thread_np() { }
-void pthread_workqueue_create_np() { }
-void mach_task_self() { }
-void pthread_workqueue_attr_init_np() { }
-void sysctlbyname() { }
+#define program_invocation_short_name "hi"
+
+#include "os/base.h"
+#include "internal.h"
+
+
+#undef LINUX_PORT_ERROR
+#define LINUX_PORT_ERROR()  do { printf("LINUX_PORT_ERROR_CALLED %s:%d: %s\n",__FILE__,__LINE__,__FUNCTION__); abort(); } while (0)
+
+int kqueue() { LINUX_PORT_ERROR();  }
+
+void _dispatch_mach_msg_dispose() { LINUX_PORT_ERROR();  }
+
+unsigned long _dispatch_mach_probe(dispatch_mach_t dm) {
+  LINUX_PORT_ERROR();
+}
+
+dispatch_block_t _dispatch_block_create(dispatch_block_flags_t flags,
+					voucher_t voucher, pthread_priority_t priority,
+					dispatch_block_t block) {
+  LINUX_PORT_ERROR();
+}
+
+void _dispatch_mach_invoke() { LINUX_PORT_ERROR();  }
+
+size_t _dispatch_mach_msg_debug(dispatch_mach_msg_t dmsg, char* buf, size_t bufsiz) {
+  LINUX_PORT_ERROR();
+}
+void _dispatch_mach_dispose() { LINUX_PORT_ERROR();  }
+void TRASHIT() { LINUX_PORT_ERROR();  }
+void _dispatch_mach_msg_invoke() { LINUX_PORT_ERROR();  }
+
+unsigned long _dispatch_runloop_queue_probe(dispatch_queue_t dq) {
+  LINUX_PORT_ERROR();
+}
+void _dispatch_runloop_queue_xref_dispose() { LINUX_PORT_ERROR();  }
+
+void strlcpy() { LINUX_PORT_ERROR();  }
+void _dispatch_runloop_queue_dispose() { LINUX_PORT_ERROR();  }
+void kevent64() { LINUX_PORT_ERROR();  }
+char* mach_error_string(mach_msg_return_t x) {
+  LINUX_PORT_ERROR();
+}
+
+void mach_vm_deallocate() { LINUX_PORT_ERROR();  }
+
+mach_port_t pthread_mach_thread_np() {
+  return (mach_port_t)pthread_self();
+}
+
+mach_port_t mach_task_self() {
+  return (mach_port_t)pthread_self();
+}
+
+int sysctlbyname(const char *name, void *oldp, size_t *oldlenp,
+		 void *newp, size_t newlen) {
+  LINUX_PORT_ERROR();
+}
 
 pthread_key_t dispatch_voucher_key;
 pthread_key_t dispatch_pthread_root_queue_observer_hooks_key;
+
+unsigned short dispatch_timer__program_semaphore;
+unsigned short dispatch_timer__wake_semaphore;
+unsigned short dispatch_timer__fire_semaphore;
+unsigned short dispatch_timer__configure_semaphore;
+void (*_dispatch_block_special_invoke)(void*);
