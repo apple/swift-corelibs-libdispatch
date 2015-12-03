@@ -1,3 +1,28 @@
+/*
+ * @APPLE_APACHE_LICENSE_HEADER_START@
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * @APPLE_APACHE_LICENSE_HEADER_END@
+ */
+
+
+/*
+ * This file contains stubbed out functions we are using during
+ * the initial linux port.  When the port is complete, this file
+ * should be empty (and thus removed).
+ */
+
 #include <stdint.h>
 
 #include <config/config.h>
@@ -62,6 +87,10 @@ int sysctlbyname(const char *name, void *oldp, size_t *oldlenp,
 		 void *newp, size_t newlen) {
   LINUX_PORT_ERROR();
 }
+
+/*
+ * Stubbed out static data
+ */
 
 pthread_key_t dispatch_voucher_key;
 pthread_key_t dispatch_pthread_root_queue_observer_hooks_key;
