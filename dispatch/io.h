@@ -38,7 +38,7 @@ __BEGIN_DECLS
  * The application may set policies on the dispatch I/O channel to indicate the
  * desired frequency of I/O handlers for long-running operations.
  *
- * Dispatch I/O also provides a memory managment model for I/O buffers that
+ * Dispatch I/O also provides a memory management model for I/O buffers that
  * avoids unnecessary copying of data when pipelined between channels. Dispatch
  * I/O monitors the overall memory pressure and I/O access patterns for the
  * application to optimize resource utilization.
@@ -168,7 +168,7 @@ DISPATCH_DECL(dispatch_io);
  * bytes. Read and write operations on a channel of this type are performed
  * serially (in order of creation) and read/write data at the file pointer
  * position that is current at the time the operation starts executing.
- * Operations of different type (read vs. write) may be perfomed simultaneously.
+ * Operations of different type (read vs. write) may be performed simultaneously.
  * Offsets passed to operations on a channel of this type are ignored.
  *
  * @const DISPATCH_IO_RANDOM	A dispatch I/O channel representing a random

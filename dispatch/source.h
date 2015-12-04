@@ -64,7 +64,7 @@ __BEGIN_DECLS
  * is being monitored by the dispatch source. Constants of this type are
  * passed as a parameter to dispatch_source_create() and determine how the
  * handle argument is interpreted (i.e. as a file descriptor, mach port,
- * signal number, process identifer, etc.), and how the mask arugment is
+ * signal number, process identifier, etc.), and how the mask argument is
  * interpreted.
  */
 typedef const struct dispatch_source_type_s *dispatch_source_type_t;

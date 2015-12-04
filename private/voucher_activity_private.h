@@ -198,7 +198,7 @@ voucher_activity_start_with_location(voucher_activity_trace_id_t trace_id,
  * @function voucher_activity_end
  *
  * @abstract
- * Unmarks the current thread if it is marked as particpating in the activity
+ * Unmarks the current thread if it is marked as participating in the activity
  * with the specified identifier.
  *
  * @discussion
