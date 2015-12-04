@@ -159,7 +159,7 @@ dispatch_data_apply_f(dispatch_data_t data, void *context,
  *
  * @param data		The data object to make a memory entry for.
  * @result		A mach port for the newly made memory entry, or
- *			MACH_PORT_NULL if an error ocurred.
+ *			MACH_PORT_NULL if an error occurred.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
@@ -286,7 +286,7 @@ DISPATCH_DATA_FORMAT_TYPE_DECL(utf_any);
  * Flags specifying the input format of the source dispatch_data_t
  *
  * @param output_type
- * Flags specifying the expected output format of the resulting transfomation.
+ * Flags specifying the expected output format of the resulting transformation.
  *
  * @result
  * A newly created dispatch data object, dispatch_data_empty if no has been

@@ -35,7 +35,7 @@
 // once to non-zero. They are not marked volatile. There is a small risk that
 // some thread may see a stale 0 value and enter try_create_heap. It will
 // waste some time in an allocate syscall, but eventually it will try to
-// cmpxchg, expecting to overwite 0 with an address. This will fail
+// cmpxchg, expecting to overwrite 0 with an address. This will fail
 // (because another thread already did this), the thread will deallocate the
 // unused allocated memory, and continue with the new value.
 //

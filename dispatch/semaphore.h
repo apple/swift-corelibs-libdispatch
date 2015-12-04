@@ -44,7 +44,7 @@ __BEGIN_DECLS
  *
  * @discussion
  * Passing zero for the value is useful for when two threads need to reconcile
- * the completion of a particular event. Passing a value greather than zero is
+ * the completion of a particular event. Passing a value greater than zero is
  * useful for managing a finite pool of resources, where the pool size is equal
  * to the value.
  *

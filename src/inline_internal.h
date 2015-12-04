@@ -552,8 +552,8 @@ _dispatch_reset_defaultpriority(pthread_priority_t priority)
 {
 #if HAVE_PTHREAD_WORKQUEUE_QOS
 	pthread_priority_t old_priority = _dispatch_get_defaultpriority();
-	// if an inner-loop or'd in the override flag to the per-thread priority,
-	// it needs to be propogated up the chain
+	// If an inner-loop or'd in the override flag to the per-thread priority,
+	// it needs to be propagated up the chain.
 	priority |= old_priority & _PTHREAD_PRIORITY_OVERRIDE_FLAG;
 
 	if (slowpath(priority != old_priority)) {
