@@ -740,6 +740,7 @@ _dispatch_thread_semaphore_dispose(_dispatch_thread_semaphore_t sema)
 #elif USE_POSIX_SEM
 	sem_t *s4 = (sem_t*)sema;
 	int ret = sem_destroy(s4);
+	free(s4);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #elif USE_WIN32_SEM
 	// XXX: signal the semaphore?
