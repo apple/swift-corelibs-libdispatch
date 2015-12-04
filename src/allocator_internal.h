@@ -218,7 +218,7 @@ struct dispatch_magazine_header_s {
 	// Link to the next heap in the chain. Only used in magazine 0's header
 	dispatch_heap_t dh_next;
 
-	// Points to the first bitmap in the page where this CPU succesfully
+	// Points to the first bitmap in the page where this CPU successfully
 	// allocated a continuation last time. Only used in the first heap.
 	bitmap_t *last_found_page;
 };

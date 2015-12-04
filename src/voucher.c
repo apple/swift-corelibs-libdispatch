@@ -188,8 +188,8 @@ _voucher_find_and_retain(mach_voucher_t kv)
 			int xref_cnt = dispatch_atomic_inc2o(v, os_obj_xref_cnt, relaxed);
 			_dispatch_voucher_debug("retain  -> %d", v, xref_cnt + 1);
 			if (slowpath(xref_cnt < 0)) {
-				_dispatch_voucher_debug("overrelease", v);
-				DISPATCH_CRASH("Voucher overrelease");
+				_dispatch_voucher_debug("over-release", v);
+				DISPATCH_CRASH("Voucher over-release");
 			}
 			if (xref_cnt == 0) {
 				// resurrection: raced with _voucher_remove
@@ -1398,8 +1398,8 @@ _voucher_activity_try_retain(_voucher_activity_t act)
 	int use_cnt = dispatch_atomic_inc2o(act, va_refcnt, relaxed);
 	_dispatch_voucher_activity_debug("retain  -> %d", act, use_cnt + 1);
 	if (slowpath(use_cnt < 0)) {
-		_dispatch_voucher_activity_debug("overrelease", act);
-		DISPATCH_CRASH("Activity overrelease");
+		_dispatch_voucher_activity_debug("over-release", act);
+		DISPATCH_CRASH("Activity over-release");
 	}
 	return use_cnt > 0;
 }
@@ -1427,8 +1427,8 @@ _voucher_activity_release(_voucher_activity_t act)
 		return;
 	}
 	if (slowpath(use_cnt < -1)) {
-		_dispatch_voucher_activity_debug("overrelease", act);
-		DISPATCH_CRASH("Activity overrelease");
+		_dispatch_voucher_activity_debug("over-release", act);
+		DISPATCH_CRASH("Activity over-release");
 	}
 	_voucher_activity_remove(act);
 	_voucher_activity_dispose(act);
@@ -1661,8 +1661,8 @@ _voucher_atm_try_retain(_voucher_atm_t vatm)
 	int refcnt = dispatch_atomic_inc2o(vatm, vatm_refcnt, relaxed);
 	_dispatch_voucher_atm_debug("retain  -> %d", vatm, refcnt + 1);
 	if (slowpath(refcnt < 0)) {
-		_dispatch_voucher_atm_debug("overrelease", vatm);
-		DISPATCH_CRASH("ATM overrelease");
+		_dispatch_voucher_atm_debug("over-release", vatm);
+		DISPATCH_CRASH("ATM over-release");
 	}
 	return refcnt > 0;
 }
@@ -1690,8 +1690,8 @@ _voucher_atm_release(_voucher_atm_t vatm)
 		return;
 	}
 	if (slowpath(refcnt < -1)) {
-		_dispatch_voucher_atm_debug("overrelease", vatm);
-		DISPATCH_CRASH("ATM overrelease");
+		_dispatch_voucher_atm_debug("over-release", vatm);
+		DISPATCH_CRASH("ATM over-release");
 	}
 	_voucher_atm_remove(vatm);
 	_voucher_atm_dispose(vatm, true);

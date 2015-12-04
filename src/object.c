@@ -64,7 +64,7 @@ _os_object_retain_with_resurrect(_os_object_t obj)
 {
 	int xref_cnt = _os_object_xrefcnt_inc(obj);
 	if (slowpath(xref_cnt < 0)) {
-		_OS_OBJECT_CLIENT_CRASH("Resurrection of an overreleased object");
+		_OS_OBJECT_CLIENT_CRASH("Resurrection of an over-released object");
 	}
 	if (slowpath(xref_cnt == 0)) {
 		_os_object_retain_internal(obj);

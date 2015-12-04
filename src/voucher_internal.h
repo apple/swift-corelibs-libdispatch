@@ -271,8 +271,8 @@ _voucher_release(voucher_t voucher)
 		return;
 	}
 	if (slowpath(xref_cnt < -1)) {
-		_dispatch_voucher_debug("overrelease", voucher);
-		DISPATCH_CRASH("Voucher overrelease");
+		_dispatch_voucher_debug("over-release", voucher);
+		DISPATCH_CRASH("Voucher over-release");
 	}
 	return _os_object_xref_dispose((_os_object_t)voucher);
 #else
