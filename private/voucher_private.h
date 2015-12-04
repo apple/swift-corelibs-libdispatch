@@ -400,7 +400,9 @@ dispatch_queue_create_with_accounting_override_voucher(const char *label,
  * voucher ports directly.
  */
 
+#ifdef HAVE_MACH
 #include <mach/mach.h>
+#endif
 
 /*!
  * @function voucher_create_with_mach_msg

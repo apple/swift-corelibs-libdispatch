@@ -17,6 +17,7 @@ libdispatch_la_SOURCES=		\
 	queue.c					\
 	semaphore.c				\
 	source.c				\
+	stubs.c					\
 	time.c					\
 	transform.c				\
 	voucher.c				\
