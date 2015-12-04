@@ -297,15 +297,17 @@ AS_IF([test "x$dispatch_cv_cc_omit_leaf_fp" != "xno"], [
 ])
 AC_SUBST([OMIT_LEAF_FP_FLAGS])
 
-AC_CACHE_CHECK([for darwin linker], [dispatch_cv_ld_darwin], [
-  saveLDFLAGS="$LDFLAGS"
-  LDFLAGS="$LDFLAGS -dynamiclib -compatibility_version 1.2.3 -current_version 4.5.6 -dead_strip"
-  AC_LINK_IFELSE([AC_LANG_PROGRAM([
-    extern int foo; int foo;], [foo = 0;])],
-    [dispatch_cv_ld_darwin="yes"], [dispatch_cv_ld_darwin="no"])
-  LDFLAGS="$saveLDFLAGS"
+AS_IF([test "x$have_mach" = "xtrue"], [
+  AC_CACHE_CHECK([for darwin linker], [dispatch_cv_ld_darwin], [
+    saveLDFLAGS="$LDFLAGS"
+    LDFLAGS="$LDFLAGS -dynamiclib -compatibility_version 1.2.3 -current_version 4.5.6 -dead_strip"
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([
+      extern int foo; int foo;], [foo = 0;])],
+      [dispatch_cv_ld_darwin="yes"], [dispatch_cv_ld_darwin="no"])
+    LDFLAGS="$saveLDFLAGS"
+  ])
 ])
-AM_CONDITIONAL(HAVE_DARWIN_LD, [test "x$dispatch_cv_ld_darwin" != "xno"])
+AM_CONDITIONAL(HAVE_DARWIN_LD, [test "x$dispatch_cv_ld_darwin" == "xyes"])
 
 #
 # Temporary: some versions of clang do not mark __builtin_trap() as

@@ -387,9 +387,11 @@ dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 		int err = 0;
 		struct stat st;
 		_dispatch_io_syscall_switch_noerr(err,
-			(path_data->oflag & O_NOFOLLOW) == O_NOFOLLOW ||
-					(path_data->oflag & O_SYMLINK) == O_SYMLINK ?
-					lstat(path_data->path, &st) : stat(path_data->path, &st),
+			(path_data->oflag & O_NOFOLLOW) == O_NOFOLLOW
+#ifndef __linux__
+					|| (path_data->oflag & O_SYMLINK) == O_SYMLINK
+#endif						  
+					? lstat(path_data->path, &st) : stat(path_data->path, &st),
 			case 0:
 				err = _dispatch_io_validate_type(channel, st.st_mode);
 				break;
@@ -2064,6 +2066,9 @@ _dispatch_disk_perform(void *ctxt)
 static void
 _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 {
+#ifndef F_RDADVISE
+  LINUX_PORT_ERROR();
+#else
 	int err;
 	struct radvisory advise;
 	// No point in issuing a read advise for the next chunk if we are already
@@ -2090,6 +2095,7 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 		// TODO: set disk status on error
 		default: (void)dispatch_assume_zero(err); break;
 	);
+#endif	
 }
 
 static int

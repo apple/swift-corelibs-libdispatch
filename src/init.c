@@ -162,7 +162,9 @@ const struct dispatch_tsd_indexes_s dispatch_tsd_indexes = {
 	.dti_qos_class_index = dispatch_priority_key,
 };
 #else // DISPATCH_USE_DIRECT_TSD
+#ifndef __LINUX_PORT_HDD__
 #error Not implemented on this platform
+#endif
 #endif // DISPATCH_USE_DIRECT_TSD
 
 // 6618342 Contact the team that owns the Instrument DTrace probe before
@@ -1157,7 +1159,10 @@ const struct dispatch_source_type_s _dispatch_source_type_vnode = {
 		.flags = EV_CLEAR|EV_UDATA_SPECIFIC,
 	},
 	.mask = NOTE_DELETE|NOTE_WRITE|NOTE_EXTEND|NOTE_ATTRIB|NOTE_LINK|
-			NOTE_RENAME|NOTE_REVOKE
+			NOTE_RENAME
+#if HAVE_DECL_NOTE_REVOKE
+	                |NOTE_REVOKE
+#endif
 #if HAVE_DECL_NOTE_NONE
 			|NOTE_NONE
 #endif

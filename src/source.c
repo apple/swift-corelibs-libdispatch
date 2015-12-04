@@ -4735,6 +4735,10 @@ _dispatch_source_debug(dispatch_source_t ds, char* buf, size_t bufsiz)
 static size_t
 _dispatch_mach_debug_attr(dispatch_mach_t dm, char* buf, size_t bufsiz)
 {
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+	return (size_t)0;
+#else
 	dispatch_queue_t target = dm->do_targetq;
 	return dsnprintf(buf, bufsiz, "target = %s[%p], receive = 0x%x, "
 			"send = 0x%x, send-possible = 0x%x%s, checkin = 0x%x%s, "
@@ -4748,10 +4752,15 @@ _dispatch_mach_debug_attr(dispatch_mach_t dm, char* buf, size_t bufsiz)
 			dm->dm_refs->dm_checkin ? " (pending)" : "",
 			dm->dm_refs->dm_sending, dm->dm_refs->dm_disconnect_cnt,
 			(bool)(dm->ds_atomic_flags & DSF_CANCELED));
+#endif	
 }
 size_t
 _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz)
 {
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+	return (size_t)0;
+#else
 	size_t offset = 0;
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "%s[%p] = { ",
 			dm->dq_label && !dm->dm_cancel_handler_called ? dm->dq_label :
@@ -4760,6 +4769,7 @@ _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz)
 	offset += _dispatch_mach_debug_attr(dm, &buf[offset], bufsiz - offset);
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "}");
 	return offset;
+#endif	
 }
 
 #if DISPATCH_DEBUG
