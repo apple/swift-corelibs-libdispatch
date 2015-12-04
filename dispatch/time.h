@@ -102,7 +102,7 @@ dispatch_time(dispatch_time_t when, int64_t delta);
  * On Mac OS X the wall clock is based on gettimeofday(3).
  *
  * @param when
- * A struct timespect to add time to. If NULL is passed, then
+ * A struct timespec to add time to. If NULL is passed, then
  * dispatch_walltime() will use the result of gettimeofday(3).
  *
  * @param delta

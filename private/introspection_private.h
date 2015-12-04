@@ -535,7 +535,7 @@ typedef void (*dispatch_introspection_hook_queue_item_complete_t)(
  * @typedef dispatch_introspection_hooks_s
  *
  * @abstract
- * A structure of function pointer hoooks into libdispatch.
+ * A structure of function pointer hooks into libdispatch.
  */
 
 typedef struct dispatch_introspection_hooks_s {

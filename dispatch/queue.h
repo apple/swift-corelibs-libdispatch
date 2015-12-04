@@ -920,7 +920,7 @@ dispatch_barrier_sync_f(dispatch_queue_t queue,
  * The key to set the context for, typically a pointer to a static variable
  * specific to the subsystem. Keys are only compared as pointers and never
  * dereferenced. Passing a string constant directly is not recommended.
- * The NULL key is reserved and attemps to set a context for it are ignored.
+ * The NULL key is reserved and attempts to set a context for it are ignored.
  *
  * @param context
  * The new subsystem-specific context for the object. This may be NULL.

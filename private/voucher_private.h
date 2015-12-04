@@ -151,7 +151,7 @@ voucher_replace_default_voucher(void);
  *
  * @discussion
  * This is only intended for use by CoreFoundation to explicitly manage the
- * App Nap state of an application following receiption of a de-nap IPC message.
+ * App Nap state of an application following reception of a de-nap IPC message.
  *
  * CAUTION: Do NOT use this SPI without contacting the Darwin Runtime team.
  */
