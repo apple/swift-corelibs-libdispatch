@@ -79,7 +79,7 @@ _dispatch_data_leaf(struct dispatch_data_s *dd)
  * This is about the number of records required to hold that dispatch data
  * if it's not a leaf. Callers either want that value, or have to special
  * case the case when the dispatch data *is* a leaf before (and that the actual
- * embeded record count of that dispatch data is 0)
+ * embedded record count of that dispatch data is 0)
  */
 DISPATCH_ALWAYS_INLINE
 static inline size_t

@@ -3144,11 +3144,11 @@ _dispatch_mach_notify_update(dispatch_kevent_t dk, uint32_t new_flags,
 		switch(krr) {
 		case KERN_INVALID_NAME:
 		case KERN_INVALID_RIGHT:
-			// Supress errors & clear registration state
+			// Suppress errors & clear registration state
 			dk->dk_kevent.data &= ~mask;
 			break;
 		default:
-			// Else, we dont expect any errors from mach. Log any errors
+			// Else, we don't expect any errors from mach. Log any errors
 			if (dispatch_assume_zero(krr)) {
 				// log the error & clear registration state
 				dk->dk_kevent.data &= ~mask;
@@ -4814,9 +4814,6 @@ _dispatch_kevent_debugger2(void *context)
 	fprintf(debug_stream, "<html>\n");
 	fprintf(debug_stream, "<head><title>PID %u</title></head>\n", getpid());
 	fprintf(debug_stream, "<body>\n<ul>\n");
-
-	//fprintf(debug_stream, "<tr><td>DK</td><td>DK</td><td>DK</td><td>DK</td>"
-	//		"<td>DK</td><td>DK</td><td>DK</td></tr>\n");
 
 	for (i = 0; i < DSL_HASH_SIZE; i++) {
 		if (TAILQ_EMPTY(&_dispatch_sources[i])) {
