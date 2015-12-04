@@ -39,6 +39,8 @@ libdispatch_la_SOURCES=		\
 	shims/atomic_sfb.h		\
 	shims/getprogname.h		\
 	shims/hw_config.h		\
+	shims/linux_stubs.c		\
+	shims/linux_stubs.h		\
 	shims/perfmon.h			\
 	shims/time.h			\
 	shims/tsd.h				\

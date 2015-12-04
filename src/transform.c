@@ -20,7 +20,9 @@
 
 #include "internal.h"
 
+#ifdef __APPLE__
 #include <libkern/OSByteOrder.h>
+#endif
 
 #if defined(__LITTLE_ENDIAN__)
 #define DISPATCH_DATA_FORMAT_TYPE_UTF16_HOST DISPATCH_DATA_FORMAT_TYPE_UTF16LE
@@ -195,19 +197,29 @@ _dispatch_transform_detect_utf(dispatch_data_t data)
 static uint16_t
 _dispatch_transform_swap_to_host(uint16_t x, int32_t byteOrder)
 {
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+	return x;
+#else	
 	if (byteOrder == OSLittleEndian) {
-		return OSSwapLittleToHostInt16(x);
+	  return OSSwapLittleToHostInt16(x);
 	}
 	return OSSwapBigToHostInt16(x);
+#endif	
 }
 
 static uint16_t
 _dispatch_transform_swap_from_host(uint16_t x, int32_t byteOrder)
 {
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+	return x;
+#else	
 	if (byteOrder == OSLittleEndian) {
 		return OSSwapHostToLittleInt16(x);
 	}
 	return OSSwapHostToBigInt16(x);
+#endif	
 }
 
 #pragma mark -
@@ -519,25 +531,45 @@ _dispatch_transform_from_utf16(dispatch_data_t data, int32_t byteOrder)
 static dispatch_data_t
 _dispatch_transform_from_utf16le(dispatch_data_t data)
 {
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+	return (dispatch_data_t)0;
+#else  
 	return _dispatch_transform_from_utf16(data, OSLittleEndian);
+#endif	
 }
 
 static dispatch_data_t
 _dispatch_transform_from_utf16be(dispatch_data_t data)
 {
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+	return (dispatch_data_t)0;
+#else	
 	return _dispatch_transform_from_utf16(data, OSBigEndian);
+#endif	
 }
 
 static dispatch_data_t
 _dispatch_transform_to_utf16le(dispatch_data_t data)
 {
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+	return (dispatch_data_t)0;
+#else	
 	return _dispatch_transform_to_utf16(data, OSLittleEndian);
+#endif	
 }
 
 static dispatch_data_t
 _dispatch_transform_to_utf16be(dispatch_data_t data)
 {
+#ifdef __LINUX_PORT_HDD__
+	LINUX_PORT_ERROR();
+	return (dispatch_data_t)0;
+#else	
 	return _dispatch_transform_to_utf16(data, OSBigEndian);
+#endif	
 }
 
 #pragma mark -

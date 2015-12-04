@@ -159,6 +159,10 @@ void __builtin_trap(void);
 #define DISPATCH_ATOMIC_UP 1
 #endif
 
+#ifdef __linux__
+#include "shims/linux_stubs.h"
+#endif
+
 #include "shims/atomic.h"
 #include "shims/atomic_sfb.h"
 #include "shims/tsd.h"

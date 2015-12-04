@@ -21,7 +21,9 @@
 #ifndef __OS_VOUCHER_ACTIVITY_PRIVATE__
 #define __OS_VOUCHER_ACTIVITY_PRIVATE__
 
+#ifndef __linux__
 #include <os/base.h>
+#endif
 #include <os/object.h>
 #if !defined(__DISPATCH_BUILDING_DISPATCH__)
 #include <os/voucher_private.h>
