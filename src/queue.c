@@ -199,9 +199,10 @@ struct dispatch_root_queue_context_s {
 };
 typedef struct dispatch_root_queue_context_s *dispatch_root_queue_context_t;
 
+#define WORKQ_PRIO_INVALID (-1)
 #ifdef __linux__
-#define WORKQ_BG_PRIOQUEUE_CONDITIONAL (-1)
-#define WORKQ_HIGH_PRIOQUEUE_CONDITIONAL (-1)
+#define WORKQ_BG_PRIOQUEUE_CONDITIONAL WORKQ_PRIO_INVALID
+#define WORKQ_HIGH_PRIOQUEUE_CONDITIONAL WORKQ_PRIO_INVALID
 #else
 #define WORKQ_BG_PRIOQUEUE_CONDITIONAL WORKQ_BG_PRIOQUEUE
 #define WORKQ_HIGH_PRIOQUEUE_CONDITIONAL WORKQ_HIGH_PRIOQUEUE
@@ -818,7 +819,7 @@ _dispatch_root_queues_init_workq(void)
 			dispatch_root_queue_context_t qc;
 			qc = &_dispatch_root_queue_contexts[i];
 #if DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK
-			if (!disable_wq && qc->dgq_wq_priority != -1) {
+			if (!disable_wq && qc->dgq_wq_priority != WORKQ_PRIO_INVALID) {
 				r = pthread_workqueue_attr_setqueuepriority_np(&pwq_attr,
 						qc->dgq_wq_priority);
 				(void)dispatch_assume_zero(r);
