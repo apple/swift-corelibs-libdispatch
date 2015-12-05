@@ -124,6 +124,12 @@
 #endif
 #endif
 
+#if defined(__has_attribute) && __has_attribute(noescape)
+#define DISPATCH_NOESCAPE __attribute__((__noescape__))
+#else
+#define DISPATCH_NOESCAPE
+#endif
+
 #if defined(__has_feature) && defined(__has_extension)
 #if __has_feature(objc_fixed_enum) || __has_extension(cxx_strong_enums)
 #define DISPATCH_ENUM(name, type, ...) \
