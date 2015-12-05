@@ -21,7 +21,9 @@
 #ifndef __OS_VOUCHER_PRIVATE__
 #define __OS_VOUCHER_PRIVATE__
 
+#ifndef __linux__
 #include <os/base.h>
+#endif
 #include <os/object.h>
 
 #define OS_VOUCHER_SPI_VERSION 20141203
@@ -400,7 +402,9 @@ dispatch_queue_create_with_accounting_override_voucher(const char *label,
  * voucher ports directly.
  */
 
+#ifdef __APPLE__
 #include <mach/mach.h>
+#endif
 
 /*!
  * @function voucher_create_with_mach_msg

@@ -199,6 +199,15 @@ struct dispatch_root_queue_context_s {
 };
 typedef struct dispatch_root_queue_context_s *dispatch_root_queue_context_t;
 
+#define WORKQ_PRIO_INVALID (-1)
+#ifdef __linux__
+#define WORKQ_BG_PRIOQUEUE_CONDITIONAL WORKQ_PRIO_INVALID
+#define WORKQ_HIGH_PRIOQUEUE_CONDITIONAL WORKQ_PRIO_INVALID
+#else
+#define WORKQ_BG_PRIOQUEUE_CONDITIONAL WORKQ_BG_PRIOQUEUE
+#define WORKQ_HIGH_PRIOQUEUE_CONDITIONAL WORKQ_HIGH_PRIOQUEUE
+#endif
+
 DISPATCH_CACHELINE_ALIGN
 static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS] = {{{
@@ -226,7 +235,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
 		.dgq_qos = _DISPATCH_QOS_CLASS_BACKGROUND,
-		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE,
+		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE_CONDITIONAL,
 		.dgq_wq_options = 0,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -237,7 +246,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS_OVERCOMMIT] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
 		.dgq_qos = _DISPATCH_QOS_CLASS_BACKGROUND,
-		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE,
+		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE_CONDITIONAL,
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -314,7 +323,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
 		.dgq_qos = _DISPATCH_QOS_CLASS_USER_INTERACTIVE,
-		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE,
+		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE_CONDITIONAL,
 		.dgq_wq_options = 0,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -325,7 +334,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS_OVERCOMMIT] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
 		.dgq_qos = _DISPATCH_QOS_CLASS_USER_INTERACTIVE,
-		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE,
+		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE_CONDITIONAL,
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -810,7 +819,7 @@ _dispatch_root_queues_init_workq(void)
 			dispatch_root_queue_context_t qc;
 			qc = &_dispatch_root_queue_contexts[i];
 #if DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK
-			if (!disable_wq) {
+			if (!disable_wq && qc->dgq_wq_priority != WORKQ_PRIO_INVALID) {
 				r = pthread_workqueue_attr_setqueuepriority_np(&pwq_attr,
 						qc->dgq_wq_priority);
 				(void)dispatch_assume_zero(r);
@@ -867,7 +876,7 @@ _dispatch_root_queue_init_pthread_pool(dispatch_root_queue_context_t qc,
 	(void)dispatch_assume(pqc->dpq_thread_mediator.dsema_port);
 #elif USE_POSIX_SEM
 	/* XXXRW: POSIX semaphores don't support LIFO? */
-	int ret = sem_init(&pqc->dpq_thread_mediator.dsema_sem), 0, 0);
+	int ret = sem_init(&(pqc->dpq_thread_mediator.dsema_sem), 0, 0);
 	(void)dispatch_assume_zero(ret);
 #endif
 }
@@ -3044,6 +3053,8 @@ _dispatch_barrier_sync_slow(dispatch_queue_t dq, void (^work)(void))
 		// rdar://problem/7176237&7181849&7458685
 		work = _dispatch_Block_copy(work);
 		func = _dispatch_call_block_and_release;
+	}
+#else
 	}
 #endif
 	_dispatch_barrier_sync_f(dq, work, func, pp);

@@ -24,7 +24,11 @@
 #ifdef __APPLE__
 #include <Availability.h>
 #endif
+#ifndef __linux__
 #include <os/base.h>
+#else
+#include <os/linux_base.h>
+#endif
 
 /*!
  * @header
