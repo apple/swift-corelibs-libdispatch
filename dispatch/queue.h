@@ -168,7 +168,7 @@ dispatch_async_f(dispatch_queue_t queue,
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
-dispatch_sync(dispatch_queue_t queue, dispatch_block_t block);
+dispatch_sync(dispatch_queue_t queue, DISPATCH_NOESCAPE dispatch_block_t block);
 #endif
 
 /*!
@@ -230,7 +230,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_apply(size_t iterations, dispatch_queue_t queue,
-		void (^block)(size_t));
+		DISPATCH_NOESCAPE void (^block)(size_t));
 #endif
 
 /*!
@@ -858,7 +858,7 @@ dispatch_barrier_async_f(dispatch_queue_t queue,
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
-dispatch_barrier_sync(dispatch_queue_t queue, dispatch_block_t block);
+dispatch_barrier_sync(dispatch_queue_t queue, DISPATCH_NOESCAPE dispatch_block_t block);
 #endif
 
 /*!
