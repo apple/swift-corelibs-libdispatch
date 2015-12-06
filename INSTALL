@@ -78,6 +78,21 @@ OS X as a replacement for /usr/lib/system/libdispatch.dylib:
 The following command lines create the configuration required to build
 libdispatch for /usr/lib/system on OS X El Capitan:
 
+	cd /path/to/10.11.0
+	curl -LO http://www.opensource.apple.com/tarballs/libpthread/libpthread-137.1.1.tar.gz && \
+		tar xf libpthread-137.1.1.tar.gz
+	curl -LO http://www.opensource.apple.com/tarballs/libplatform/libplatform-73.1.1.tar.gz && \
+		tar xf libplatform-73.1.1.tar.gz
+	curl -LO http://www.opensource.apple.com/tarballs/libclosure/libclosure-65.tar.gz && \
+		tar xf libclosure-65.tar.gz
+	curl -LO http://www.opensource.apple.com/tarballs/xnu/xnu-3247.1.106.tar.gz && \
+		tar xf xnu-3247.1.106.tar.gz
+	curl -LO http://www.opensource.apple.com/tarballs/objc4/objc4-680.tar.gz && \
+		tar xf objc4-680.tar.gz
+	curl -LO http://www.opensource.apple.com/tarballs/libauto/libauto-186.tar.gz && \
+		tar xf libauto-186.tar.gz
+
+	cd /path/to/libdispatch
 	clangpath=$(dirname `xcrun --find clang`)
 	sudo mkdir -p "$clangpath/../local/lib/clang/enable_objc_gc"
 	LIBTOOLIZE=glibtoolize sh autogen.sh
