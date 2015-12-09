@@ -4737,7 +4737,7 @@ _dispatch_mach_debug_attr(dispatch_mach_t dm, char* buf, size_t bufsiz)
 {
 #ifdef __LINUX_PORT_HDD__
 	LINUX_PORT_ERROR();
-	return (size_t)0;
+	return 0;
 #else
 	dispatch_queue_t target = dm->do_targetq;
 	return dsnprintf(buf, bufsiz, "target = %s[%p], receive = 0x%x, "
@@ -4759,7 +4759,7 @@ _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz)
 {
 #ifdef __LINUX_PORT_HDD__
 	LINUX_PORT_ERROR();
-	return (size_t)0;
+	return 0;
 #else
 	size_t offset = 0;
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "%s[%p] = { ",

@@ -712,7 +712,7 @@ _dispatch_thread_semaphore_create(void)
 	}
 	return s4;
 #elif USE_POSIX_SEM
-	sem_t* s4 = malloc(sizeof(sem_t));
+	sem_t *s4 = _dispatch_calloc(1ul, sizeof(sem_t));
 	int ret = sem_init(s4, 0, 0);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 	return (_dispatch_thread_semaphore_t)s4;
@@ -738,7 +738,7 @@ _dispatch_thread_semaphore_dispose(_dispatch_thread_semaphore_t sema)
 	DISPATCH_VERIFY_MIG(kr);
 	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 #elif USE_POSIX_SEM
-	sem_t *s4 = (sem_t*)sema;
+	sem_t *s4 = (sem_t *)sema;
 	int ret = sem_destroy(s4);
 	free(s4);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
@@ -763,7 +763,7 @@ _dispatch_thread_semaphore_signal(_dispatch_thread_semaphore_t sema)
 	kern_return_t kr = semaphore_signal(s4);
 	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 #elif USE_POSIX_SEM
-	sem_t *s4 = (sem_t*)sema;
+	sem_t *s4 = (sem_t *)sema;
 	int ret = sem_post(s4);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #elif USE_WIN32_SEM
@@ -789,7 +789,7 @@ _dispatch_thread_semaphore_wait(_dispatch_thread_semaphore_t sema)
 	} while (slowpath(kr == KERN_ABORTED));
 	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 #elif USE_POSIX_SEM
-	sem_t *s4 = (sem_t*)sema;
+	sem_t *s4 = (sem_t *)sema;
 	int ret;
 	do {
 		ret = sem_wait(s4);

@@ -533,7 +533,7 @@ _dispatch_transform_from_utf16le(dispatch_data_t data)
 {
 #ifdef __LINUX_PORT_HDD__
 	LINUX_PORT_ERROR();
-	return (dispatch_data_t)0;
+	return NULL;
 #else
 	return _dispatch_transform_from_utf16(data, OSLittleEndian);
 #endif
@@ -544,7 +544,7 @@ _dispatch_transform_from_utf16be(dispatch_data_t data)
 {
 #ifdef __LINUX_PORT_HDD__
 	LINUX_PORT_ERROR();
-	return (dispatch_data_t)0;
+	return NULL;
 #else
 	return _dispatch_transform_from_utf16(data, OSBigEndian);
 #endif
@@ -555,7 +555,7 @@ _dispatch_transform_to_utf16le(dispatch_data_t data)
 {
 #ifdef __LINUX_PORT_HDD__
 	LINUX_PORT_ERROR();
-	return (dispatch_data_t)0;
+	return NULL;
 #else
 	return _dispatch_transform_to_utf16(data, OSLittleEndian);
 #endif
@@ -566,7 +566,7 @@ _dispatch_transform_to_utf16be(dispatch_data_t data)
 {
 #ifdef __LINUX_PORT_HDD__
 	LINUX_PORT_ERROR();
-	return (dispatch_data_t)0;
+	return NULL;
 #else
 	return _dispatch_transform_to_utf16(data, OSBigEndian);
 #endif
