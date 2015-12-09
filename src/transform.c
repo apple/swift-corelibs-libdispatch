@@ -200,12 +200,12 @@ _dispatch_transform_swap_to_host(uint16_t x, int32_t byteOrder)
 #ifdef __LINUX_PORT_HDD__
 	LINUX_PORT_ERROR();
 	return x;
-#else	
+#else
 	if (byteOrder == OSLittleEndian) {
 	  return OSSwapLittleToHostInt16(x);
 	}
 	return OSSwapBigToHostInt16(x);
-#endif	
+#endif
 }
 
 static uint16_t
@@ -214,12 +214,12 @@ _dispatch_transform_swap_from_host(uint16_t x, int32_t byteOrder)
 #ifdef __LINUX_PORT_HDD__
 	LINUX_PORT_ERROR();
 	return x;
-#else	
+#else
 	if (byteOrder == OSLittleEndian) {
 		return OSSwapHostToLittleInt16(x);
 	}
 	return OSSwapHostToBigInt16(x);
-#endif	
+#endif
 }
 
 #pragma mark -
@@ -534,9 +534,9 @@ _dispatch_transform_from_utf16le(dispatch_data_t data)
 #ifdef __LINUX_PORT_HDD__
 	LINUX_PORT_ERROR();
 	return (dispatch_data_t)0;
-#else  
+#else
 	return _dispatch_transform_from_utf16(data, OSLittleEndian);
-#endif	
+#endif
 }
 
 static dispatch_data_t
@@ -545,9 +545,9 @@ _dispatch_transform_from_utf16be(dispatch_data_t data)
 #ifdef __LINUX_PORT_HDD__
 	LINUX_PORT_ERROR();
 	return (dispatch_data_t)0;
-#else	
+#else
 	return _dispatch_transform_from_utf16(data, OSBigEndian);
-#endif	
+#endif
 }
 
 static dispatch_data_t
@@ -556,9 +556,9 @@ _dispatch_transform_to_utf16le(dispatch_data_t data)
 #ifdef __LINUX_PORT_HDD__
 	LINUX_PORT_ERROR();
 	return (dispatch_data_t)0;
-#else	
+#else
 	return _dispatch_transform_to_utf16(data, OSLittleEndian);
-#endif	
+#endif
 }
 
 static dispatch_data_t
@@ -567,9 +567,9 @@ _dispatch_transform_to_utf16be(dispatch_data_t data)
 #ifdef __LINUX_PORT_HDD__
 	LINUX_PORT_ERROR();
 	return (dispatch_data_t)0;
-#else	
+#else
 	return _dispatch_transform_to_utf16(data, OSBigEndian);
-#endif	
+#endif
 }
 
 #pragma mark -

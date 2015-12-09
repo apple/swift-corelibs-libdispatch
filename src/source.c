@@ -4752,7 +4752,7 @@ _dispatch_mach_debug_attr(dispatch_mach_t dm, char* buf, size_t bufsiz)
 			dm->dm_refs->dm_checkin ? " (pending)" : "",
 			dm->dm_refs->dm_sending, dm->dm_refs->dm_disconnect_cnt,
 			(bool)(dm->ds_atomic_flags & DSF_CANCELED));
-#endif	
+#endif
 }
 size_t
 _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz)
@@ -4769,7 +4769,7 @@ _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz)
 	offset += _dispatch_mach_debug_attr(dm, &buf[offset], bufsiz - offset);
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "}");
 	return offset;
-#endif	
+#endif
 }
 
 #if DISPATCH_DEBUG

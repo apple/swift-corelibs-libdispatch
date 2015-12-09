@@ -22,7 +22,7 @@
 // #include <sys/event.h>
 
 // marker for hacks we have made to make progress
-#define __LINUX_PORT_HDD__ 1 
+#define __LINUX_PORT_HDD__ 1
 
 /*
  * Stub out defines for some mach types and related macros
@@ -114,8 +114,8 @@ struct kevent64_s {
 #endif
 #define OS_EXPORT
 
-#ifdef OS_WARN_RESULT_NEEDS_RELEASE 
-#undef OS_WARN_RESULT_NEEDS_RELEASE  
+#ifdef OS_WARN_RESULT_NEEDS_RELEASE
+#undef OS_WARN_RESULT_NEEDS_RELEASE
 #endif
 
 #ifdef OS_WARN_RESULT
@@ -132,7 +132,7 @@ struct kevent64_s {
 // These and similar macros come from Availabilty.h on OS X
 // Need a better way to do this long term.
 #define __OSX_AVAILABLE_BUT_DEPRECATED(a,b,c,d) //
-#define __OSX_AVAILABLE_BUT_DEPRECATED_MSG(a,b,c,d,msg) // 
+#define __OSX_AVAILABLE_BUT_DEPRECATED_MSG(a,b,c,d,msg) //
 
 
 // Print a warning when an unported code path executes.

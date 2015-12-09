@@ -390,7 +390,7 @@ dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 			(path_data->oflag & O_NOFOLLOW) == O_NOFOLLOW
 #ifndef __linux__
 					|| (path_data->oflag & O_SYMLINK) == O_SYMLINK
-#endif						  
+#endif
 					? lstat(path_data->path, &st) : stat(path_data->path, &st),
 			case 0:
 				err = _dispatch_io_validate_type(channel, st.st_mode);
@@ -2095,7 +2095,7 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 		// TODO: set disk status on error
 		default: (void)dispatch_assume_zero(err); break;
 	);
-#endif	
+#endif
 }
 
 static int
