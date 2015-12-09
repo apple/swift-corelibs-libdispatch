@@ -1861,10 +1861,15 @@ _dispatch_timers_get_delay(uint64_t nows[], struct dispatch_timer_s timer[],
 
 #if HAVE_KEVENT64
 #	define kevent_set_ext1(ke,val)  (ke)->ext[1] = (val)
-#	define delay_add_wall(delay,at)  (delay) += (at)
+#	define adjust_delay(delay,at)   (delay) += (at)
 #else
 #	define kevent_set_ext1(ke,val)  do { } while (0)
-#	define delay_add_wall(delay,at) do { } while (0) 
+#	define adjust_delay(delay,at)                                                              \
+              do {                                                                                 \	
+		  delay /= 1000000L;                                                               \
+                  if ((int64_t)(delay) <= 0) delay = 1; /* for some reason time turns negative */  \
+              } while (0)
+
 #endif
 
 static bool
@@ -1891,13 +1896,7 @@ _dispatch_timers_program2(uint64_t nows[], _dispatch_kevent_qos_s *ke,
 				TAILQ_FIRST(&_dispatch_kevent_timer[tidx].dk_sources), qos);
 		_dispatch_trace_next_timer_program(delay, qos);
 	        nowtime =_dispatch_source_timer_now(nows, DISPATCH_TIMER_KIND_WALL);
-	        delay_add_wall(delay,nowtime);
-
-	        //printf("%s: delay %ld nsecs\n",__FUNCTION__,delay);
-		// convert delay into msecs
-		delay /= 1000000L;
-                if ((int64_t)(delay) <= 0) delay = 1; // for some reason time turns negative
-                //if ((int64_t)(delay) <= 0) printf("%s: delay =%d\n",__FUNCTION__,(int64_t)delay);
+	        adjust_delay(delay,nowtime);
 
 		if (slowpath(_dispatch_timers_force_max_leeway)) {
 			ke->data = (int64_t)(delay + leeway);
