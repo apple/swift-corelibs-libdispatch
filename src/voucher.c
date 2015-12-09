@@ -1990,14 +1990,15 @@ voucher_activity_start_with_location(voucher_activity_trace_id_t trace_id,
 			goto out;
 		}
 	}
-	_voucher_atm_retain(vatm);
-	// required for v->v_atm = vatm below
-	_voucher_atm_retain(vatm);
 	va_id = _voucher_atm_subid_make(vatm, flags);
-	// consumes vatm reference:
-	act = _voucher_activity_create_with_atm(vatm, va_id, trace_id, location,
-			NULL);
-	vat = (_voucher_activity_tracepoint_t)act;
+	if (activities == 1) {
+		// consumes vatm reference:
+		act = _voucher_activity_create_with_atm(_voucher_atm_retain(vatm),
+				va_id, trace_id, location, NULL);
+		vat = (_voucher_activity_tracepoint_t)act;
+	} else if (ov && ov->v_activity) {
+		act = _voucher_activity_retain(ov->v_activity);
+	}
 	pthread_priority_t priority = _voucher_get_priority(ov);
 	mach_voucher_attr_recipe_size_t extra = ov ? _voucher_extra_size(ov) : 0;
 	voucher_t v = _voucher_alloc(activities, priority, extra);
@@ -2015,10 +2016,10 @@ voucher_activity_start_with_location(voucher_activity_trace_id_t trace_id,
 				oactivities * sizeof(voucher_activity_id_t));
 	}
 	activity_ids[activities-1] = va_id;
-	v->v_atm = vatm;
+	v->v_atm = _voucher_atm_retain(vatm);
 	v->v_activity = act;
 	_voucher_swap(ov, v);
-	return va_id; // new activity buffer contains trace info
+	if (vat) return va_id; // new activity buffer contains trace info
 out:
 	_voucher_activity_trace_activity_event(trace_id, va_id, start);
 	return va_id;

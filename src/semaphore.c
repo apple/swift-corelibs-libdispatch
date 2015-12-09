@@ -93,8 +93,6 @@ _pop_timer_resolution(DWORD ms)
 DISPATCH_WEAK // rdar://problem/8503746
 long _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema);
 
-static long _dispatch_group_wake(dispatch_semaphore_t dsema);
-
 #pragma mark -
 #pragma mark dispatch_semaphore_t
 
@@ -422,6 +420,10 @@ _dispatch_group_create_with_count(long count)
 	dispatch_group_t dg = (dispatch_group_t)_dispatch_alloc(
 			DISPATCH_VTABLE(group), sizeof(struct dispatch_semaphore_s));
 	_dispatch_semaphore_init(LONG_MAX - count, dg);
+	if (count) {
+		dispatch_atomic_store2o((dispatch_semaphore_t)dg, do_ref_cnt, 1,
+				relaxed); // <rdar://problem/22318411>
+	}
 	return dg;
 }
 
@@ -441,8 +443,11 @@ void
 dispatch_group_enter(dispatch_group_t dg)
 {
 	dispatch_semaphore_t dsema = (dispatch_semaphore_t)dg;
-	long value = dispatch_atomic_dec2o(dsema, dsema_value, acquire);
-	if (slowpath(value < 0)) {
+	long value = dispatch_atomic_dec_orig2o(dsema, dsema_value, acquire);
+	if (value == LONG_MAX) {
+		return _dispatch_retain(dg); // <rdar://problem/22318411>
+	}
+	if (slowpath(value <= 0)) {
 		DISPATCH_CLIENT_CRASH(
 				"Too many nested calls to dispatch_group_enter()");
 	}
@@ -450,7 +455,7 @@ dispatch_group_enter(dispatch_group_t dg)
 
 DISPATCH_NOINLINE
 static long
-_dispatch_group_wake(dispatch_semaphore_t dsema)
+_dispatch_group_wake(dispatch_semaphore_t dsema, bool needs_release)
 {
 	dispatch_continuation_t next, head, tail = NULL, dc;
 	long rval;
@@ -500,6 +505,9 @@ _dispatch_group_wake(dispatch_semaphore_t dsema)
 		} while ((head = next));
 		_dispatch_release(dsema);
 	}
+	if (needs_release) {
+		_dispatch_release(dsema); // <rdar://problem/22318411>
+	}
 	return 0;
 }
 
@@ -512,7 +520,7 @@ dispatch_group_leave(dispatch_group_t dg)
 		DISPATCH_CLIENT_CRASH("Unbalanced call to dispatch_group_leave()");
 	}
 	if (slowpath(value == LONG_MAX)) {
-		(void)_dispatch_group_wake(dsema);
+		return (void)_dispatch_group_wake(dsema, true);
 	}
 }
 
@@ -540,7 +548,7 @@ again:
 	// dsema->dsema_group_waiters
 	value = dispatch_atomic_load2o(dsema, dsema_value, seq_cst); // 19296565
 	if (value == LONG_MAX) {
-		return _dispatch_group_wake(dsema);
+		return _dispatch_group_wake(dsema, false);
 	}
 	// Mach semaphores appear to sometimes spuriously wake up. Therefore,
 	// we keep a parallel count of the number of times a Mach semaphore is
@@ -549,7 +557,7 @@ again:
 	// check the values again in case we need to wake any threads
 	value = dispatch_atomic_load2o(dsema, dsema_value, seq_cst); // 19296565
 	if (value == LONG_MAX) {
-		return _dispatch_group_wake(dsema);
+		return _dispatch_group_wake(dsema, false);
 	}
 
 #if USE_MACH_SEM
@@ -678,7 +686,7 @@ dispatch_group_notify_f(dispatch_group_t dg, dispatch_queue_t dq, void *ctxt,
 		dispatch_atomic_store2o(dsema, dsema_notify_head, dsn, seq_cst);
 		// seq_cst with atomic store to notify_head <rdar://problem/11750916>
 		if (dispatch_atomic_load2o(dsema, dsema_value, seq_cst) == LONG_MAX) {
-			_dispatch_group_wake(dsema);
+			_dispatch_group_wake(dsema, false);
 		}
 	}
 }
