@@ -77,10 +77,104 @@ int sysctlbyname(const char *name, void *oldp, size_t *oldlenp,
   LINUX_PORT_ERROR();
 }
 
-int kevent64(int kq, const struct kevent *changelist, int nchanges, struct kevent *eventlist, int nevents,unsigned int flags, const struct timespec *timeout)
+#if 0
+
+// this code remains here purely for debugging purposes
+// ultimately it can be deleted
+
+DISPATCH_NOINLINE
+static const char *
+_evfiltstr(short filt)
 {
-     return kevent(kq,changelist,nchanges,eventlist,nevents,timeout);
+        switch (filt) {
+#define _evfilt2(f) case (f): return #f
+        _evfilt2(EVFILT_READ);
+        _evfilt2(EVFILT_WRITE);
+        _evfilt2(EVFILT_AIO);
+        _evfilt2(EVFILT_VNODE);
+        _evfilt2(EVFILT_PROC);
+        _evfilt2(EVFILT_SIGNAL);
+        _evfilt2(EVFILT_TIMER);
+#if HAVE_MACH
+        _evfilt2(EVFILT_MACHPORT);
+        _evfilt2(DISPATCH_EVFILT_MACH_NOTIFICATION);
+#endif
+        _evfilt2(EVFILT_FS);
+        _evfilt2(EVFILT_USER);
+#ifdef EVFILT_VM
+        _evfilt2(EVFILT_VM);
+#endif
+#ifdef EVFILT_SOCK
+        _evfilt2(EVFILT_SOCK);
+#endif
+#ifdef EVFILT_MEMORYSTATUS
+        _evfilt2(EVFILT_MEMORYSTATUS);
+#endif
+
+        _evfilt2(DISPATCH_EVFILT_TIMER);
+        _evfilt2(DISPATCH_EVFILT_CUSTOM_ADD);
+        _evfilt2(DISPATCH_EVFILT_CUSTOM_OR);
+        default:
+                return "EVFILT_missing";
+        }
 }
+
+#if 0
+#define dbg_kevent64(fmt...)               do { printf(fmt); } while(0)
+#define dbg_cond_kevent64(cond,fmt...)     do { if (cond) printf(fmt); } while(0)
+#else
+#define dbg_kevent64(fmt...)     	   do { } while(0)
+#define dbg_cond_kevent64(cond,fmt...)     do { } while(0)
+#endif
+
+
+int kevent64(int kq, const struct kevent64_s *changelist_c, int nchanges, struct kevent64_s *eventlist,
+             int nevents, unsigned int flags, const struct timespec *timeout) 
+{
+     // Documentation is not really clear. Instrument the code to make sure
+     // we can do type conversions right now between kevent64 <-> kevent, where as 
+     // kevent64 uses the ext[2] extension. So far we only see these used in the EVFILT_TIMER.
+     // right now we do this in the way into kevent, we also have to assert that 
+     // no more than 1 change or one event is passed until we get a better handle of the
+     // usage pattern of this.  (Hubertus Franke)
+
+     struct kevent64_s *changelist = (struct kevent64_s*) changelist_c; // so we can modify it
+
+#if 1 
+     // lets put some checks in here to make sure we do it all correct
+     // we can only convert kevent64_s -> kevent for a single entry since kevent64_s has ext[0:1] extension
+     if ((nchanges > 1) || (nevents > 1)) 
+ 	 LINUX_PORT_ERROR();
+     if (nchanges) { 
+	 dbg_kevent64("kevent64(%s,%x,%x): cl.ext[0,1]=%lx:%ld %lx:%ld cl.data=%lx:%ld\n", 
+	              _evfiltstr(changelist->filter), changelist->flags, changelist->fflags,
+		      changelist->ext[0], changelist->ext[0], 
+                      changelist->ext[1], changelist->ext[1],
+                      changelist->data, changelist->data);
+         if ((changelist->filter == EVFILT_TIMER) && (changelist->fflags & NOTE_ABSOLUTE)) {
+             // NOTE_ABSOLUTE is not recognized by the current kevent we need to convert this
+	     // into a relative. Consider fiddling with creating relative events instead (didn't work 
+	     // on first attempt). We also ignore the LEEWAY. Finally we must convert from 
+             // NSECS to MSECS (might have to expand to deal with OTHER NOTE_xSECS flags
+
+             //changelist->data -= _dispatch_get_nanoseconds();
+             //changelist->data -= time(NULL) * NSEC_PER_SEC;
+             dbg_kevent64("kevent64(%s,%x) data=%lx:%ld\n",
+                          _evfiltstr(changelist->filter),changelist->fflags,
+			  changelist->data,changelist->data);
+	     //changelist->data /= 1000000UL;
+	     //if ((int64_t)(changelist->data) <= 0) changelist->data = 1; // for some reason time turns negative
+         }
+     }
+#endif
+     // eventlist can not return more than 1 event type coersion doesn't work
+     int rc = kevent(kq,(struct kevent*) changelist,nchanges,(struct kevent*) eventlist,nevents,timeout);
+     if (rc > 1) 
+         LINUX_PORT_ERROR();
+     return rc;
+}
+
+#endif
 
 /*
  * Stubbed out static data

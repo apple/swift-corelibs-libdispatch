@@ -137,8 +137,13 @@ AC_SEARCH_LIBS(pthread_create, pthread)
 # Prefer native kqueue(2); otherwise use libkqueue if present.
 #
 AC_CHECK_HEADER(sys/event.h, [],
-  [PKG_CHECK_MODULES(KQUEUE, libkqueue)]
+  [PKG_CHECK_MODULES(KQUEUE, libkqueue)
+   AC_SEARCH_LIBS(kevent, kqueue)
+   AC_SEARCH_LIBS(kevent64, kqueue,
+                 [AC_DEFINE(HAVE_KEVENT64, 1, [Define if kevent64 is present])],
+                 [AC_DEFINE(HAVE_KEVENT64, 0, [Define if kevent64 is present])])]
 )
+
 
 #
 # Checks for header files.
