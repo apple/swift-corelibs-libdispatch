@@ -1161,7 +1161,7 @@ const struct dispatch_source_type_s _dispatch_source_type_vnode = {
 	.mask = NOTE_DELETE|NOTE_WRITE|NOTE_EXTEND|NOTE_ATTRIB|NOTE_LINK|
 			NOTE_RENAME
 #if HAVE_DECL_NOTE_REVOKE
-	                |NOTE_REVOKE
+			|NOTE_REVOKE
 #endif
 #if HAVE_DECL_NOTE_NONE
 			|NOTE_NONE
