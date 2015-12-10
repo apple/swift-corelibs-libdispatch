@@ -102,7 +102,7 @@ AS_IF([test "x$enable_apple_tsd_optimizations" = "xyes"],
 )
 
 AC_USE_SYSTEM_EXTENSIONS
-AM_INIT_AUTOMAKE([foreign no-dependencies])
+AM_INIT_AUTOMAKE([foreign no-dependencies subdir-objects])
 LT_INIT([disable-static])
 
 AC_PROG_INSTALL
