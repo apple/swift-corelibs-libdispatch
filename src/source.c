@@ -1860,31 +1860,35 @@ _dispatch_timers_get_delay(uint64_t nows[], struct dispatch_timer_s timer[],
 
 
 #ifdef __linux__ 
-// in linux we map the _dispatch_kevent_qos_s  to struct kevent instead of struct kevent64.
-// we loose the kevent.ext[] members and the time out is based on relavite msec based time
-// vs. absolute nsec based time. For now we make the adjustments right here until the solution
-// to either extend libkqueue with a proper kevent64 API or removing kevent all together 
-// and move to a lower API (e.g. epoll or kernel_module. Also leeway is ignored.
+// in linux we map the _dispatch_kevent_qos_s  to struct kevent instead 
+// of struct kevent64. We loose the kevent.ext[] members and the time 
+// out is based on relavite msec based time vs. absolute nsec based time. 
+// For now we make the adjustments right here until the solution
+// to either extend libkqueue with a proper kevent64 API or removing kevent 
+// all together and move to a lower API (e.g. epoll or kernel_module. 
+// Also leeway is ignored.
 
 static void 
-kevent_set_delay(_dispatch_kevent_qos_s *ke, uint64_t delay,uint64_t leeway, uint64_t nows[]) 
+_dispatch_kevent_timer_set_delay(_dispatch_kevent_qos_s *ke, uint64_t delay,
+		uint64_t leeway, uint64_t nows[]) 
 {
-	_dispatch_source_timer_now(nows, DISPATCH_TIMER_KIND_WALL); // called to return nows[]
-	
+	// call to return nows[]
+	_dispatch_source_timer_now(nows, DISPATCH_TIMER_KIND_WALL); 
+	// adjust nsec based delay to msec based and ignore leeway	
 	delay /= 1000000L;
-        if ((int64_t)(delay) <= 0) 
-		delay = 1; /* if he value is negative or 0 then the dispatch will stop */
+	if ((int64_t)(delay) <= 0) {
+		delay = 1; // if value <= 0 the dispatch will stop
+	}
 	ke->data = (int64_t)delay;
 }
 
 #else
 
 static void 
-kevent_set_delay(_dispatch_kevent_qos_s *ke, uint64_t delay,uint64_t leeway, uint64_t nows[]) 
+_dispatch_kevent_timer_set_delay(_dispatch_kevent_qos_s *ke, uint64_t delay,
+		uint64_t leeway, uint64_t nows[]) 
 {
-
 	delay += _dispatch_source_timer_now(nows, DISPATCH_TIMER_KIND_WALL);
-	
 	if (slowpath(_dispatch_timers_force_max_leeway)) {
 		ke->data = (int64_t)(delay + leeway);
 		ke->ext[1] = 0;
@@ -1918,12 +1922,10 @@ _dispatch_timers_program2(uint64_t nows[], _dispatch_kevent_qos_s *ke,
 		_dispatch_trace_next_timer_set(
 				TAILQ_FIRST(&_dispatch_kevent_timer[tidx].dk_sources), qos);
 		_dispatch_trace_next_timer_program(delay, qos);
-
-                kevent_set_delay(ke,delay,leeway,nows);
+		_dispatch_kevent_timer_set_delay(ke, delay, leeway, nows);
+		ke->flags |= EV_ADD|EV_ENABLE;
+		ke->flags &= ~EV_DELETE;
 	}
- 
-	ke->flags |= EV_ADD|EV_ENABLE;
-	ke->flags &= ~EV_DELETE;
 	_dispatch_kq_update(ke);
 	return poll;
 }
