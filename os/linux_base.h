@@ -78,7 +78,7 @@ struct voucher_offsets_s {
  * Stub out defines for other missing types
  */
 
-#if !HAVE_KEVENT64
+#if __linux__
 // we fall back to use kevent
 #define kevent64_s kevent
 #define kevent64(kq,cl,nc,el,ne,f,to)  kevent(kq,cl,nc,el,ne,to)
