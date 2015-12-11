@@ -21,9 +21,6 @@
 #include <config/config.h>
 
 #include "pthread.h"
-
-#define program_invocation_short_name "hi"
-
 #include "os/linux_base.h"
 #include "internal.h"
 
@@ -56,7 +53,6 @@ unsigned long _dispatch_runloop_queue_probe(dispatch_queue_t dq) {
 }
 void _dispatch_runloop_queue_xref_dispose() { LINUX_PORT_ERROR();  }
 
-void strlcpy() { LINUX_PORT_ERROR();  }
 void _dispatch_runloop_queue_dispose() { LINUX_PORT_ERROR();  }
 char* mach_error_string(mach_msg_return_t x) {
   LINUX_PORT_ERROR();
@@ -70,11 +66,6 @@ mach_port_t pthread_mach_thread_np() {
 
 mach_port_t mach_task_self() {
   return (mach_port_t)pthread_self();
-}
-
-int sysctlbyname(const char *name, void *oldp, size_t *oldlenp,
-		 void *newp, size_t newlen) {
-  LINUX_PORT_ERROR();
 }
 
 /*
