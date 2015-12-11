@@ -109,7 +109,7 @@ Prepare your system
  2. Install dtrace (to generate provider.h)
     sudo apt-get install systemtap-sdt-dev
  3. Install libdispatch pre-reqs
-    sudo apt-get install libblocksruntime-dev libkqueue-dev libpthread-workqueue-dev 
+    sudo apt-get install libblocksruntime-dev libkqueue-dev libpthread-workqueue-dev libbsd-dev
 
 Build:
 	sh autogen.sh

@@ -70,8 +70,6 @@ typedef void (*dispatch_mach_handler_function_t)(void*, dispatch_mach_reason_t,
 
 typedef void (*dispatch_mach_msg_destructor_t)(void*);
 
-typedef uint32_t voucher_activity_mode_t;
-
 struct voucher_offsets_s {
   uint32_t vo_version;
 };

@@ -22,9 +22,6 @@
 #ifndef __DISPATCH__STUBS__INTERNAL
 #define __DISPATCH__STUBS__INTERNAL
 
-int sysctlbyname(const char *name, void *oldp, size_t *oldlenp,
-		 void *newp, size_t newlen);
-
 mach_port_t pthread_mach_thread_np();
 
 mach_port_t mach_task_self();

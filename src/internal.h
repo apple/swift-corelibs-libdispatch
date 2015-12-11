@@ -208,11 +208,7 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #if !TARGET_OS_WIN32 
 #include <sys/event.h>
 #include <sys/mount.h>
-#ifdef __linux__
-#include <shims/sys_queue.h>
-#else
 #include <sys/queue.h>
-#endif
 #include <sys/sysctl.h>
 #include <sys/socket.h>
 #include <sys/time.h>

@@ -140,6 +140,13 @@ AC_CHECK_HEADER(sys/event.h, [],
   [PKG_CHECK_MODULES(KQUEUE, libkqueue)]
 )
 
+AC_CHECK_FUNCS([strlcpy getprogname], [],
+  [PKG_CHECK_MODULES(BSD_OVERLAY, libbsd-overlay,[
+    AC_DEFINE(HAVE_STRLCPY, 1, [])
+    AC_DEFINE(HAVE_GETPROGNAME, 1, [])
+  ])], [#include <string.h>]
+)
+
 #
 # Checks for header files.
 #
@@ -238,7 +245,7 @@ AC_CHECK_DECLS([FD_COPY], [], [], [[#include <sys/select.h>]])
 AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])
 AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK], [], [], [[#include <sys/mount.h>]])
 AC_CHECK_DECLS([program_invocation_short_name], [], [], [[#include <errno.h>]])
-AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sysconf getprogname])
+AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sysconf])
 
 AC_CHECK_DECLS([POSIX_SPAWN_START_SUSPENDED],
   [have_posix_spawn_start_suspended=true], [have_posix_spawn_start_suspended=false],
