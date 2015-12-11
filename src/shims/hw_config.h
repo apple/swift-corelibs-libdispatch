@@ -101,7 +101,15 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 		(void)dispatch_assume_zero(r);
 		dispatch_assert(valsz == sizeof(uint32_t));
 	} else {
-#if HAVE_SYSCONF && defined(_SC_NPROCESSORS_ONLN)
+#if defined(__linux__)
+	switch (c) {
+	case _dispatch_hw_config_logical_cpus:
+	case _dispatch_hw_config_physical_cpus:
+		return sysconf(_SC_NPROCESSORS_CONF);
+	case _dispatch_hw_config_active_cpus:
+		return sysconf(_SC_NPROCESSORS_ONLN);
+	}
+#elif HAVE_SYSCONF && defined(_SC_NPROCESSORS_ONLN)
 		r = (int)sysconf(_SC_NPROCESSORS_ONLN);
 		if (r > 0) val = (uint32_t)r;
 #endif

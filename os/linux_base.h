@@ -20,6 +20,12 @@
 #define __OS_LINUX_BASE__
 
 // #include <sys/event.h>
+#include <sys/types.h>
+#include <assert.h>
+#include <pthread.h>
+#include <syscall.h>
+#include <unistd.h>
+#include <stdint.h>
 
 // marker for hacks we have made to make progress
 #define __LINUX_PORT_HDD__ 1 
@@ -30,10 +36,19 @@
 
 typedef uint32_t mach_port_t;
 
-#define  MACH_PORT_NULL (0)
-#define  MACH_PORT_DEAD (-1)
+static inline mach_port_t
+pthread_mach_thread_np(pthread_t th)
+{
+	assert(th == pthread_self());
+	return (pid_t)syscall(SYS_gettid);
+}
+
+#define MACH_PORT_NULL (0)
+#define MACH_PORT_DEAD (-1)
 
 #define EVFILT_MACHPORT (-8)
+
+typedef struct mach_msg_header_t mach_msg_header_t;
 
 typedef uint32_t mach_error_t;
 
@@ -42,12 +57,6 @@ typedef uint32_t mach_vm_size_t;
 typedef uint32_t mach_msg_return_t;
 
 typedef uintptr_t mach_vm_address_t;
-
-typedef uint32_t dispatch_mach_msg_t;
-
-typedef uint32_t dispatch_mach_t;
-
-typedef uint32_t dispatch_mach_reason_t;
 
 typedef uint32_t voucher_activity_mode_t;
 
@@ -58,18 +67,6 @@ typedef uint32_t voucher_activity_id_t;
 typedef uint32_t _voucher_activity_buffer_hook_t;;
 
 typedef uint32_t voucher_activity_flag_t;
-
-typedef struct
-{
-} mach_msg_header_t;
-
-
-typedef void (*dispatch_mach_handler_function_t)(void*, dispatch_mach_reason_t,
-						 dispatch_mach_msg_t, mach_error_t);
-
-typedef void (*dispatch_mach_msg_destructor_t)(void*);
-
-typedef uint32_t voucher_activity_mode_t;
 
 struct voucher_offsets_s {
   uint32_t vo_version;

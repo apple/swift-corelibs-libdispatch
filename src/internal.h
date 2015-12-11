@@ -208,11 +208,7 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #if !TARGET_OS_WIN32 
 #include <sys/event.h>
 #include <sys/mount.h>
-#ifdef __linux__
-#include <shims/sys_queue.h>
-#else
 #include <sys/queue.h>
-#endif
 #include <sys/sysctl.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -241,6 +237,7 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -328,10 +325,10 @@ DISPATCH_NOINLINE
 void _dispatch_bug_client(const char* msg);
 DISPATCH_NOINLINE
 void _dispatch_bug_mach_client(const char *msg, mach_msg_return_t kr);
+#endif
 DISPATCH_NOINLINE
 void _dispatch_bug_kevent_client(const char* msg, const char* filter,
 		const char *operation, int err);
-#endif
 
 DISPATCH_NOINLINE DISPATCH_NORETURN
 void _dispatch_abort(size_t line, long val);
