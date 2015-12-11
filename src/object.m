@@ -524,6 +524,7 @@ _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 	}
 }
 
+#if HAVE_MACH
 #undef _dispatch_client_callout4
 void
 _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
@@ -537,6 +538,7 @@ _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 		objc_terminate();
 	}
 }
+#endif
 
 #endif // DISPATCH_USE_CLIENT_CALLOUT
 

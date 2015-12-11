@@ -858,6 +858,7 @@ _dispatch_root_queue_init_pthread_pool(dispatch_root_queue_context_t qc,
 		thread_pool_size = pool_size;
 	}
 	qc->dgq_thread_pool_size = thread_pool_size;
+#if HAVE_PTHREAD_WORKQUEUES
 	if (qc->dgq_qos) {
 		(void)dispatch_assume_zero(pthread_attr_init(&pqc->dpq_thread_attr));
 		(void)dispatch_assume_zero(pthread_attr_setdetachstate(
@@ -867,6 +868,7 @@ _dispatch_root_queue_init_pthread_pool(dispatch_root_queue_context_t qc,
 				&pqc->dpq_thread_attr, qc->dgq_qos, 0));
 #endif
 	}
+#endif
 #if USE_MACH_SEM
 	// override the default FIFO behavior for the pool semaphores
 	kern_return_t kr = semaphore_create(mach_task_self(),
@@ -1464,6 +1466,7 @@ static dispatch_once_t _dispatch_mgr_sched_pred;
 
 // TODO: switch to "event-reflector thread" property <rdar://problem/18126138>
 
+#if HAVE_PTHREAD_WORKQUEUE_QOS
 // Must be kept in sync with list of qos classes in sys/qos.h
 static const int _dispatch_mgr_sched_qos2prio[] = {
 	[_DISPATCH_QOS_CLASS_MAINTENANCE] = 4,
@@ -1473,6 +1476,7 @@ static const int _dispatch_mgr_sched_qos2prio[] = {
 	[_DISPATCH_QOS_CLASS_USER_INITIATED] = 37,
 	[_DISPATCH_QOS_CLASS_USER_INTERACTIVE] = 47,
 };
+#endif
 
 static void
 _dispatch_mgr_sched_init(void *ctxt DISPATCH_UNUSED)
@@ -4056,7 +4060,7 @@ _dispatch_queue_push_override(dispatch_queue_t dq, dispatch_queue_t tq,
 
 	_dispatch_queue_push(rq, dc, 0);
 #else
-	(void)dq; (void)tq; (void)p;
+	(void)dq; (void)tq; (void)p; (void)owning;
 #endif
 }
 

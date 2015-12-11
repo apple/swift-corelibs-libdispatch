@@ -1601,7 +1601,8 @@ _dispatch_disk_init(dispatch_fd_entry_t fd_entry, dev_t dev)
 	TAILQ_INIT(&disk->operations);
 	disk->cur_rq = TAILQ_FIRST(&disk->operations);
 	char label[45];
-	snprintf(label, sizeof(label), "com.apple.libdispatch-io.deviceq.%d", dev);
+	snprintf(label, sizeof(label), "com.apple.libdispatch-io.deviceq.%ld",
+			(long)dev);
 	disk->pick_queue = dispatch_queue_create(label, NULL);
 	TAILQ_INSERT_TAIL(&_dispatch_io_devs[hash], disk, disk_list);
 out:
@@ -2067,7 +2068,9 @@ static void
 _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 {
 #ifndef F_RDADVISE
-  LINUX_PORT_ERROR();
+	(void)op;
+	(void)chunk_size;
+	LINUX_PORT_ERROR();
 #else
 	int err;
 	struct radvisory advise;
@@ -2346,7 +2349,7 @@ _dispatch_io_debug_attr(dispatch_io_t channel, char* buf, size_t bufsiz)
 	dispatch_queue_t target = channel->do_targetq;
 	return dsnprintf(buf, bufsiz, "type = %s, fd = 0x%x, %sfd_entry = %p, "
 			"queue = %p, target = %s[%p], barrier_queue = %p, barrier_group = "
-			"%p, err = 0x%x, low = 0x%zx, high = 0x%zx, interval%s = %llu ",
+			"%p, err = 0x%x, low = 0x%zx, high = 0x%zx, interval%s = %"PRIu64" ",
 			channel->params.type == DISPATCH_IO_STREAM ? "stream" : "random",
 			channel->fd_actual, channel->atomic_flags & DIO_STOPPED ?
 			"stopped, " : channel->atomic_flags & DIO_CLOSED ? "closed, " : "",
@@ -2381,14 +2384,14 @@ _dispatch_operation_debug_attr(dispatch_operation_t op, char* buf,
 			"channel = %p, queue = %p -> %s[%p], target = %s[%p], "
 			"offset = %lld, length = %zu, done = %zu, undelivered = %zu, "
 			"flags = %u, err = 0x%x, low = 0x%zx, high = 0x%zx, "
-			"interval%s = %llu ", op->params.type == DISPATCH_IO_STREAM ?
+			"interval%s = %"PRIu64" ", op->params.type == DISPATCH_IO_STREAM ?
 			"stream" : "random", op->direction == DOP_DIR_READ ? "read" :
 			"write", op->fd_entry ? op->fd_entry->fd : -1, op->fd_entry,
 			op->channel, op->op_q, oqtarget && oqtarget->dq_label ?
 			oqtarget->dq_label : "", oqtarget, target && target->dq_label ?
-			target->dq_label : "", target, op->offset, op->length, op->total,
-			op->undelivered + op->buf_len, op->flags, op->err, op->params.low,
-			op->params.high, op->params.interval_flags &
+			target->dq_label : "", target, (long long)op->offset, op->length,
+			op->total, op->undelivered + op->buf_len, op->flags, op->err,
+			op->params.low, op->params.high, op->params.interval_flags &
 			DISPATCH_IO_STRICT_INTERVAL ? "(strict)" : "", op->params.interval);
 }
 

@@ -524,7 +524,7 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 #endif
 			dprintf(dispatch_logfile, "=== log file opened for %s[%u] at "
 					"%ld.%06u ===\n", getprogname() ?: "", getpid(),
-					tv.tv_sec, tv.tv_usec);
+					tv.tv_sec, (unsigned)tv.tv_usec);
 		}
 	}
 }
@@ -795,6 +795,7 @@ _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 	_dispatch_set_unwind_tsd(u);
 }
 
+#if HAVE_MACH
 #undef _dispatch_client_callout4
 void
 _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
@@ -809,6 +810,7 @@ _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 	_dispatch_free_unwind_tsd();
 	_dispatch_set_unwind_tsd(u);
 }
+#endif
 
 #endif // DISPATCH_USE_CLIENT_CALLOUT
 
