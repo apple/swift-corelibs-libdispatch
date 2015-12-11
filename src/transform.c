@@ -22,6 +22,14 @@
 
 #ifdef __APPLE__
 #include <libkern/OSByteOrder.h>
+#elif __linux__
+#include <endian.h>
+#define OSLittleEndian __LITTLE_ENDIAN
+#define OSBigEndian __BIG_ENDIAN
+#define OSSwapLittleToHostInt16 le16toh
+#define OSSwapBigToHostInt16 be16toh
+#define OSSwapHostToLittleInt16 htole16
+#define OSSwapHostToBigInt16 htobe16
 #endif
 
 #if defined(__LITTLE_ENDIAN__)
@@ -30,6 +38,8 @@
 #elif defined(__BIG_ENDIAN__)
 #define DISPATCH_DATA_FORMAT_TYPE_UTF16_HOST DISPATCH_DATA_FORMAT_TYPE_UTF16BE
 #define DISPATCH_DATA_FORMAT_TYPE_UTF16_REV DISPATCH_DATA_FORMAT_TYPE_UTF16LE
+#else
+#error Unsupported Endianness
 #endif
 
 enum {
@@ -197,29 +207,19 @@ _dispatch_transform_detect_utf(dispatch_data_t data)
 static uint16_t
 _dispatch_transform_swap_to_host(uint16_t x, int32_t byteOrder)
 {
-#ifdef __LINUX_PORT_HDD__
-	LINUX_PORT_ERROR();
-	return x;
-#else
 	if (byteOrder == OSLittleEndian) {
-	  return OSSwapLittleToHostInt16(x);
+		return OSSwapLittleToHostInt16(x);
 	}
 	return OSSwapBigToHostInt16(x);
-#endif
 }
 
 static uint16_t
 _dispatch_transform_swap_from_host(uint16_t x, int32_t byteOrder)
 {
-#ifdef __LINUX_PORT_HDD__
-	LINUX_PORT_ERROR();
-	return x;
-#else
 	if (byteOrder == OSLittleEndian) {
 		return OSSwapHostToLittleInt16(x);
 	}
 	return OSSwapHostToBigInt16(x);
-#endif
 }
 
 #pragma mark -
@@ -531,45 +531,25 @@ _dispatch_transform_from_utf16(dispatch_data_t data, int32_t byteOrder)
 static dispatch_data_t
 _dispatch_transform_from_utf16le(dispatch_data_t data)
 {
-#ifdef __LINUX_PORT_HDD__
-	LINUX_PORT_ERROR();
-	return NULL;
-#else
 	return _dispatch_transform_from_utf16(data, OSLittleEndian);
-#endif
 }
 
 static dispatch_data_t
 _dispatch_transform_from_utf16be(dispatch_data_t data)
 {
-#ifdef __LINUX_PORT_HDD__
-	LINUX_PORT_ERROR();
-	return NULL;
-#else
 	return _dispatch_transform_from_utf16(data, OSBigEndian);
-#endif
 }
 
 static dispatch_data_t
 _dispatch_transform_to_utf16le(dispatch_data_t data)
 {
-#ifdef __LINUX_PORT_HDD__
-	LINUX_PORT_ERROR();
-	return NULL;
-#else
 	return _dispatch_transform_to_utf16(data, OSLittleEndian);
-#endif
 }
 
 static dispatch_data_t
 _dispatch_transform_to_utf16be(dispatch_data_t data)
 {
-#ifdef __LINUX_PORT_HDD__
-	LINUX_PORT_ERROR();
-	return NULL;
-#else
 	return _dispatch_transform_to_utf16(data, OSBigEndian);
-#endif
 }
 
 #pragma mark -
