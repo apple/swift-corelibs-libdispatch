@@ -4,8 +4,9 @@ GCD is a concurrent programming framework first shipped with Mac OS X Snow
 Leopard.  This package is an open source bundling of libdispatch, the core
 user space library implementing GCD.  At the time of writing, support for
 the BSD kqueue API, and specifically extensions introduced in Mac OS X Snow
-Leopard and FreeBSD 9-CURRENT, are required to use libdispatch.  Other
-systems are currently unsupported.
+Leopard and FreeBSD 9-CURRENT, are required to use libdispatch.  Support
+for Linux is a work in progress (see Linux notes below). Other systems are
+currently unsupported.
 
   Configuring and installing libdispatch
 
@@ -99,3 +100,22 @@ clang and blocks support:
 	sh autogen.sh
 	./configure CC=clang --with-blocks-runtime=/usr/local/lib
 	make check
+
+Instructions for building on Linux. Initial focus is on ubuntu 15.04.
+Prepare your system
+ 1. Install compiler, autotools
+    sudo apt-get install clang
+    sudo apt-get install autoconf libtool pkg-config
+ 2. Install dtrace (to generate provider.h)
+    sudo apt-get install systemtap-sdt-dev
+ 3. Install libdispatch pre-reqs
+    sudo apt-get install libblocksruntime-dev libkqueue-dev libpthread-workqueue-dev 
+
+Build:
+	sh autogen.sh
+	./configure
+	cd src && dtrace -h -s provider.d
+	make
+
+Note: the build currently fails building tests, but libdispatch.so should
+      build successfully.
