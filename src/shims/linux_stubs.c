@@ -84,11 +84,6 @@ int sysctlbyname(const char *name, void *oldp, size_t *oldlenp,
   LINUX_PORT_ERROR();
 }
 
-int kevent64(int kq, const struct kevent *changelist, int nchanges, struct kevent *eventlist, int nevents,unsigned int flags, const struct timespec *timeout)
-{
-     return kevent(kq,changelist,nchanges,eventlist,nevents,timeout);
-}
-
 /*
  * Stubbed out static data
  */
