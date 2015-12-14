@@ -335,6 +335,7 @@ DISPATCH_VTABLE_INSTANCE(source,
 	.do_debug = _dispatch_source_debug,
 );
 
+#if HAVE_MACH
 DISPATCH_VTABLE_INSTANCE(mach,
 	.do_type = DISPATCH_MACH_CHANNEL_TYPE,
 	.do_kind = "mach-channel",
@@ -351,6 +352,7 @@ DISPATCH_VTABLE_INSTANCE(mach_msg,
 	.do_invoke = _dispatch_mach_msg_invoke,
 	.do_debug = _dispatch_mach_msg_debug,
 );
+#endif
 
 #if !USE_OBJC
 DISPATCH_VTABLE_INSTANCE(data,
@@ -793,6 +795,7 @@ _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 	_dispatch_set_unwind_tsd(u);
 }
 
+#if HAVE_MACH
 #undef _dispatch_client_callout4
 void
 _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
@@ -807,6 +810,7 @@ _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 	_dispatch_free_unwind_tsd();
 	_dispatch_set_unwind_tsd(u);
 }
+#endif
 
 #endif // DISPATCH_USE_CLIENT_CALLOUT
 

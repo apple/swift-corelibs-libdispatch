@@ -38,10 +38,12 @@ DISPATCH_NOTHROW void
 _dispatch_client_callout(void *ctxt, dispatch_function_t f);
 DISPATCH_NOTHROW void
 _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t));
+#if HAVE_MACH
 DISPATCH_NOTHROW void
 _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 		dispatch_mach_msg_t dmsg, mach_error_t error,
 		dispatch_mach_handler_function_t f);
+#endif
 
 #else // !DISPATCH_USE_CLIENT_CALLOUT
 
@@ -59,6 +61,7 @@ _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 	return f(ctxt, i);
 }
 
+#if HAVE_MACH
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
@@ -67,6 +70,7 @@ _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 {
 	return f(ctxt, reason, dmsg, error);
 }
+#endif
 
 #endif // !DISPATCH_USE_CLIENT_CALLOUT
 

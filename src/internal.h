@@ -324,10 +324,10 @@ DISPATCH_NOINLINE
 void _dispatch_bug_client(const char* msg);
 DISPATCH_NOINLINE
 void _dispatch_bug_mach_client(const char *msg, mach_msg_return_t kr);
+#endif
 DISPATCH_NOINLINE
 void _dispatch_bug_kevent_client(const char* msg, const char* filter,
 		const char *operation, int err);
-#endif
 
 DISPATCH_NOINLINE DISPATCH_NORETURN
 void _dispatch_abort(size_t line, long val);
