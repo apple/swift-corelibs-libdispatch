@@ -57,6 +57,11 @@ AM_CXXFLAGS=$(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 AM_OBJCXXFLAGS=$(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 
 libdispatch_la_LDFLAGS=-avoid-version
+libdispatch_la_LIBADD=$(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS)
+
+if HAVE_PTHREAD_WORKQUEUES
+PTHREAD_WORKQUEUE_LIBS=-lpthread_workqueue
+endif
 
 if HAVE_DARWIN_LD
 libdispatch_la_LDFLAGS+=-Wl,-compatibility_version,1 \
