@@ -164,8 +164,11 @@ AS_IF([test -n "$apple_libpthread_source_path" -a -n "$apple_xnu_source_osfmk_pa
 ])
 AC_CHECK_HEADERS([pthread_machdep.h pthread/qos.h])
 AC_CHECK_HEADERS([pthread/workqueue_private.h pthread_workqueue.h],
-  [AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])]
+  [AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])
+   have_pthread_workqueues=true],
+  [have_pthread_workqueues=false]
 )
+AM_CONDITIONAL(HAVE_PTHREAD_WORKQUEUES, $have_pthread_workqueues)
 AC_CHECK_HEADERS([libproc_internal.h], [], [], [#include <mach/mach.h>])
 AC_CHECK_FUNCS([pthread_workqueue_setdispatch_np _pthread_workqueue_init])
 AS_IF([test -n "$apple_libpthread_source_path" -a -n "$apple_xnu_source_osfmk_path"], [
