@@ -404,7 +404,6 @@ dispatch_queue_create_with_accounting_override_voucher(const char *label,
 
 #ifdef __APPLE__
 #include <mach/mach.h>
-#endif
 
 /*!
  * @function voucher_create_with_mach_msg
@@ -428,6 +427,7 @@ OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t
 voucher_create_with_mach_msg(mach_msg_header_t *msg);
 
+#endif
 __END_DECLS
 
 #endif // __OS_VOUCHER_PRIVATE__

@@ -676,7 +676,7 @@ _dispatch_malloc_init(void)
 	malloc_set_zone_name(_dispatch_ccache_zone, "DispatchContinuations");
 }
 #else
-static inline void _dispatch_malloc_init(void) {}
+#define _dispatch_malloc_init() ((void)0)
 #endif // DISPATCH_USE_MALLOCZONE
 
 static dispatch_continuation_t

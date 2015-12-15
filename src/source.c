@@ -604,11 +604,13 @@ _dispatch_source_kevent_resume(dispatch_source_t ds, uint32_t new_flags)
 		_dispatch_debug("kevent-source[%p]: rearmed kevent[%p]", ds,
 				ds->ds_dkev);
 		return;
+#if HAVE_MACH
 	case EVFILT_MACHPORT:
 		if (ds->ds_pending_data_mask & DISPATCH_MACH_RECV_MESSAGE) {
 			new_flags |= DISPATCH_MACH_RECV_MESSAGE; // emulate EV_DISPATCH
 		}
 		break;
+#endif
 	}
 	if ((ds->ds_atomic_flags & DSF_DELETED) ||
 			_dispatch_kevent_resume(ds->ds_dkev, new_flags, 0)) {
@@ -931,6 +933,7 @@ _dispatch_kevent_hash(uint64_t ident, short filter)
 			MACH_PORT_INDEX(ident) : ident);
 #else
 	value = ident;
+	(void)filter;
 #endif
 	return DSL_HASH((uintptr_t)value);
 }
@@ -1025,6 +1028,10 @@ _dispatch_kevent_resume(dispatch_kevent_t dk, uint32_t new_flags,
 		}
 		return r;
 	}
+#if !HAVE_MACH
+	(void)new_flags;
+	(void)del_flags;
+#endif
 }
 
 static long
@@ -4766,13 +4773,10 @@ _dispatch_source_debug(dispatch_source_t ds, char* buf, size_t bufsiz)
 	return offset;
 }
 
+#if HAVE_MACH
 static size_t
 _dispatch_mach_debug_attr(dispatch_mach_t dm, char* buf, size_t bufsiz)
 {
-#ifdef __LINUX_PORT_HDD__
-	LINUX_PORT_ERROR();
-	return (size_t)0;
-#else
 	dispatch_queue_t target = dm->do_targetq;
 	return dsnprintf(buf, bufsiz, "target = %s[%p], receive = 0x%x, "
 			"send = 0x%x, send-possible = 0x%x%s, checkin = 0x%x%s, "
@@ -4786,15 +4790,10 @@ _dispatch_mach_debug_attr(dispatch_mach_t dm, char* buf, size_t bufsiz)
 			dm->dm_refs->dm_checkin ? " (pending)" : "",
 			dm->dm_refs->dm_sending, dm->dm_refs->dm_disconnect_cnt,
 			(bool)(dm->ds_atomic_flags & DSF_CANCELED));
-#endif	
 }
 size_t
 _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz)
 {
-#ifdef __LINUX_PORT_HDD__
-	LINUX_PORT_ERROR();
-	return (size_t)0;
-#else
 	size_t offset = 0;
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "%s[%p] = { ",
 			dm->dq_label && !dm->dm_cancel_handler_called ? dm->dq_label :
@@ -4803,8 +4802,8 @@ _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz)
 	offset += _dispatch_mach_debug_attr(dm, &buf[offset], bufsiz - offset);
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "}");
 	return offset;
-#endif	
 }
+#endif
 
 #if DISPATCH_DEBUG
 DISPATCH_NOINLINE

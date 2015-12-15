@@ -38,6 +38,7 @@
 #define DISPATCH_EVFILT_MACH_NOTIFICATION	(-EVFILT_SYSCOUNT - 4)
 #define DISPATCH_EVFILT_SYSCOUNT	( EVFILT_SYSCOUNT + 4)
 
+#if HAVE_MACH
 // NOTE: dispatch_source_mach_send_flags_t and dispatch_source_mach_recv_flags_t
 //       bit values must not overlap as they share the same kevent fflags !
 
@@ -68,6 +69,7 @@ enum {
 	DISPATCH_MACH_RECV_MESSAGE_DIRECT_ONCE = 0x20,
 	DISPATCH_MACH_RECV_NO_SENDERS = 0x40,
 };
+#endif
 
 enum {
 	DISPATCH_TIMER_WALL_CLOCK = 0x4,
@@ -201,6 +203,7 @@ struct dispatch_source_s {
 	unsigned long ds_pending_data;
 };
 
+#if HAVE_MACH
 // Mach channel state which may contain references to the channel object
 // layout must match dispatch_source_refs_s
 struct dispatch_mach_refs_s {
@@ -258,6 +261,7 @@ struct dispatch_mach_msg_s {
 		char dmsg_buf[0];
 	};
 };
+#endif
 
 #if TARGET_OS_EMBEDDED
 #define DSL_HASH_SIZE  64u // must be a power of two
@@ -275,6 +279,7 @@ void _dispatch_source_set_interval(dispatch_source_t ds, uint64_t interval);
 void _dispatch_source_set_event_handler_with_context_f(dispatch_source_t ds,
 		void *ctxt, dispatch_function_t handler);
 
+#if HAVE_MACH
 void _dispatch_mach_dispose(dispatch_mach_t dm);
 void _dispatch_mach_invoke(dispatch_mach_t dm, dispatch_object_t dou,
 		dispatch_invoke_flags_t flags);
@@ -287,6 +292,7 @@ void _dispatch_mach_msg_invoke(dispatch_mach_msg_t dmsg, dispatch_object_t dou,
 size_t _dispatch_mach_msg_debug(dispatch_mach_msg_t dmsg, char* buf, size_t bufsiz);
 
 void _dispatch_mach_barrier_invoke(void *ctxt);
+#endif
 
 unsigned long _dispatch_mgr_wakeup(dispatch_queue_t dq);
 void _dispatch_mgr_thread(dispatch_queue_t dq, dispatch_object_t dou,
