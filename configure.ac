@@ -115,8 +115,11 @@ AS_IF([test "x$DTRACE" != "x"], [use_dtrace=true],[
 AM_CONDITIONAL(USE_DTRACE, $use_dtrace)
 AC_PATH_PROG(LEAKS, leaks)
 AS_IF([test "x$LEAKS" != "x"],
-  [AC_DEFINE(HAVE_LEAKS, 1, [Define if Apple leaks program is present])]
+  [AC_DEFINE(HAVE_LEAKS, 1, [Define if Apple leaks program is present])
+   have_leaks=true],
+  [have_leaks=false]
 )
+AM_CONDITIONAL(HAVE_LEAKS, $have_leaks)
 
 DISPATCH_C_ATOMIC_BUILTINS
 
