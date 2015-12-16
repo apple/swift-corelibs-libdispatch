@@ -23,7 +23,9 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <assert.h>
+#ifdef __APPLE__
 #include <libkern/OSAtomic.h>
+#endif
 
 #include <bsdtests.h>
 #include <Block.h>
@@ -31,7 +33,7 @@
 #include "dispatch_test.h"
 
 void
-done(void *arg __unused)
+done(void *arg /*__unused */)
 {
 	sleep(1);
 	test_stop();

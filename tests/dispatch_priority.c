@@ -24,7 +24,9 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <assert.h>
+#ifdef __APPLE__
 #include <TargetConditionals.h>
+#endif
 #include <sys/types.h>
 #include <sys/sysctl.h>
 
@@ -75,9 +77,13 @@ n_blocks(void)
 	static dispatch_once_t pred;
 	static int n;
 	dispatch_once(&pred, ^{
+#ifdef __linux__
+		n = sysconf(_SC_NPROCESSORS_CONF);
+#else
 		size_t l = sizeof(n);
 		int rc = sysctlbyname("hw.ncpu", &n, &l, NULL, 0);
 		assert(rc == 0);
+#endif
 		n *= 32;
 	});
 	return n;

@@ -22,7 +22,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#ifdef __APPLE__
 #include <libkern/OSAtomic.h>
+#endif
 #include <assert.h>
 #include <sys/sysctl.h>
 #include <stdarg.h>
@@ -111,9 +113,13 @@ main(void)
 	}
 	initial = time(NULL);
 	uint64_t memsize;
+#ifdef __linux__
+	memsize = sysconf(_SC_PAGESIZE) * sysconf(_SC_PHYS_PAGES);
+#else
 	size_t s = sizeof(memsize);
 	int rc = sysctlbyname("hw.memsize", &memsize, &s, NULL, 0);
 	assert(rc == 0);
+#endif
 	max_page_count = MIN(memsize, MAXMEM) / ALLOC_SIZE;
 	pages = calloc(max_page_count, sizeof(char*));
 

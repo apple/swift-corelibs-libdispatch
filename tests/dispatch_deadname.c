@@ -20,7 +20,9 @@
 
 #include <dispatch/dispatch.h>
 #include <dispatch/private.h>
+#ifdef __APPLE__
 #include <mach/mach.h>
+#endif
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>

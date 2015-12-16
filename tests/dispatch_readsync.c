@@ -133,10 +133,15 @@ main(void)
 	dispatch_test_start("Dispatch Reader/Writer Queues");
 
 	uint32_t activecpu, wq_max_threads;
+#ifdef __linux__
+	activecpu = sysconf(_SC_NPROCESSORS_ONLN);
+	wq_max_threads = sysconf(_SC_NPROCESSORS_CONF); // LINUX_PORT_HDD FIXME: Is this correct?
+#else
 	size_t s = sizeof(uint32_t);
 	sysctlbyname("hw.activecpu", &activecpu, &s, NULL, 0);
 	s = sizeof(uint32_t);
 	sysctlbyname("kern.wq_max_threads", &wq_max_threads, &s, NULL, 0);
+#endif
 
 	// cap at wq_max_threads - one wq thread for dq - one wq thread for manager
 	size_t n = MIN(activecpu * NTHREADS, wq_max_threads - 2);

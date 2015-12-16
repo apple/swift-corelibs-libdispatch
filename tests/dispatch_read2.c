@@ -28,10 +28,12 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fts.h>
+#ifdef __APPLE__
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <libkern/OSAtomic.h>
 #include <TargetConditionals.h>
+#endif
 #include <Block.h>
 
 #include <dispatch/dispatch.h>
@@ -122,10 +124,15 @@ test_read(void)
 		test_errno("open", errno, 0);
 		test_stop();
 	}
+#ifdef F_NOCACHE
 	if (fcntl(fd, F_NOCACHE, 1)) {
 		test_errno("fcntl F_NOCACHE", errno, 0);
 		test_stop();
 	}
+#else
+	// investigate what the impact of lack of file cache disabling has 
+	// for this test
+#endif
 	struct stat sb;
 	if (fstat(fd, &sb)) {
 		test_errno("fstat", errno, 0);

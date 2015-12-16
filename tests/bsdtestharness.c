@@ -25,14 +25,24 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
+#ifdef __APPLE__
 #include <mach/clock_types.h>
 #include <mach-o/arch.h>
+#endif
 #include <sys/resource.h>
 #include <sys/time.h>
 
 #include <bsdtests.h>
 
 extern char **environ;
+
+#ifdef __linux__
+// FIXME: LINUX_PORT_HDD
+//     For initial bringup, don't use libdispatch to test libdispatch!
+#define SIMPLE_TEST_HARNESS 1
+#else
+#define SIMPLE_TEST_HARNESS 0
+#endif
 
 int
 main(int argc, char *argv[])
@@ -46,9 +56,14 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
+#ifdef __APPLE__
 	short spawnflags = POSIX_SPAWN_START_SUSPENDED;
 #if TARGET_OS_EMBEDDED
 	spawnflags |= POSIX_SPAWN_SETEXEC;
+#endif
+#else
+#define POSIX_SPAWN_SETEXEC 0      /* ignore... */
+	short spawnflags = 0;
 #endif
 
 	posix_spawnattr_t attr;
@@ -58,6 +73,7 @@ main(int argc, char *argv[])
 	assert(res == 0);
 
 	uint64_t to = 0;
+#ifdef __APPLE__
 	char *tos = getenv("BSDTEST_TIMEOUT");
 	if (tos) {
 		to = strtoul(tos, NULL, 0);
@@ -73,6 +89,7 @@ main(int argc, char *argv[])
 		}
 	}
 
+#endif
 	int i;
 	char** newargv = calloc(argc, sizeof(void*));
 	for (i = 1; i < argc; ++i) {
@@ -98,6 +115,29 @@ main(int argc, char *argv[])
 	//fprintf(stderr, "pid = %d\n", pid);
 	assert(pid > 0);
 
+#if SIMPLE_TEST_HARNESS
+	int status;
+	struct rusage usage;
+	struct timeval tv_stop, tv_wall;
+
+	gettimeofday(&tv_stop, NULL);
+	tv_wall.tv_sec = tv_stop.tv_sec - tv_start.tv_sec;
+	tv_wall.tv_sec -= (tv_stop.tv_usec < tv_start.tv_usec);
+	tv_wall.tv_usec = abs(tv_stop.tv_usec - tv_start.tv_usec);
+
+	int res2 = wait4(pid, &status, 0, &usage);
+	assert(res2 != -1);
+	test_long("Process exited", (WIFEXITED(status) && WEXITSTATUS(status) && WEXITSTATUS(status) != 0xff) || WIFSIGNALED(status), 0);
+	printf("[PERF]\twall time: %ld.%06d\n", tv_wall.tv_sec, tv_wall.tv_usec);
+	printf("[PERF]\tuser time: %ld.%06d\n", usage.ru_utime.tv_sec, usage.ru_utime.tv_usec);
+	printf("[PERF]\tsystem time: %ld.%06d\n", usage.ru_stime.tv_sec, usage.ru_stime.tv_usec);
+	printf("[PERF]\tmax resident set size: %ld\n", usage.ru_maxrss);
+	printf("[PERF]\tpage faults: %ld\n", usage.ru_majflt);
+	printf("[PERF]\tswaps: %ld\n", usage.ru_nswap);
+	printf("[PERF]\tvoluntary context switches: %ld\n", usage.ru_nvcsw);
+	printf("[PERF]\tinvoluntary context switches: %ld\n", usage.ru_nivcsw);
+	exit((WIFEXITED(status) && WEXITSTATUS(status)) || WIFSIGNALED(status));
+#else
 	dispatch_queue_t main_q = dispatch_get_main_queue();
 
 	tmp_ds = dispatch_source_create(DISPATCH_SOURCE_TYPE_PROC, pid, DISPATCH_PROC_EXIT, main_q);
@@ -155,6 +195,7 @@ main(int argc, char *argv[])
 	kill(pid, SIGCONT);
 
 	dispatch_main();
+#endif // SIMPLE_TEST_HARNESS
 
 	return 0;
 }

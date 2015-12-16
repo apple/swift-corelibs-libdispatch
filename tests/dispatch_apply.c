@@ -23,7 +23,9 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <assert.h>
+#ifdef __APPLE__
 #include <libkern/OSAtomic.h>
+#endif
 #include <sys/types.h>
 #include <sys/sysctl.h>
 
@@ -74,8 +76,12 @@ void busythread(void *ignored)
 void test_apply_contended(dispatch_queue_t dq)
 {
 	uint32_t activecpu;
+#ifdef __linux__
+	activecpu = sysconf(_SC_NPROCESSORS_ONLN);
+#else
 	size_t s = sizeof(activecpu);
 	sysctlbyname("hw.activecpu", &activecpu, &s, NULL, 0);
+#endif
 	int tIndex, n_threads = activecpu;
 	dispatch_group_t grp = dispatch_group_create();
 

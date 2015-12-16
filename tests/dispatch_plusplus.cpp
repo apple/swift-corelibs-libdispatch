@@ -20,6 +20,7 @@
 
 #include <dispatch/dispatch.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <bsdtests.h>
 #include "dispatch_test.h"

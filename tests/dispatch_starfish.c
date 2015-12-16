@@ -18,13 +18,18 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
+
+#ifdef __APPLE__
 #include <mach/mach.h>
 #include <mach/mach_time.h>
+#endif
 #include <dispatch/dispatch.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#ifdef __APPLE__
 #include <TargetConditionals.h>
+#endif
 
 #include <bsdtests.h>
 #include "dispatch_test.h"

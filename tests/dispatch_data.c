@@ -21,7 +21,9 @@
 #include <stdio.h>
 
 #include <dispatch/dispatch.h>
+#ifdef __APPLE__
 #include <TargetConditionals.h>
+#endif
 
 #include <bsdtests.h>
 #include "dispatch_test.h"

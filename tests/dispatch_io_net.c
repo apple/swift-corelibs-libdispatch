@@ -30,8 +30,10 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <spawn.h>
+#ifdef __APPLE__
 #include <crt_externs.h>
 #include <mach-o/dyld.h>
+#endif
 #include <Block.h>
 #include <bsdtests.h>
 #include "dispatch_test.h"
@@ -43,6 +45,10 @@ extern char **environ;
 #if DISPATCH_API_VERSION >= 20100226 && DISPATCH_API_VERSION != 20101110
 #define DISPATCHTEST_IO 1
 #endif
+#endif
+
+#ifdef __linux__
+#define _NSGetExecutablePath(ef,bs) (*(bs)=snprintf(ef,*(bs),"%s",argv[0]),0)
 #endif
 
 #if DISPATCHTEST_IO
@@ -91,10 +97,15 @@ main(int argc, char** argv)
 			test_errno("client-open", errno, 0);
 			test_stop();
 		}
+#ifdef F_NOCACHE
 		if (fcntl(fd, F_NOCACHE, 1)) {
 			test_errno("client-fcntl F_NOCACHE", errno, 0);
 			test_stop();
 		}
+#else
+		// investigate what the impact of lack of file cache disabling has 
+		// for this test
+#endif
 		struct stat sb;
 		if (fstat(fd, &sb)) {
 			test_errno("client-fstat", errno, 0);
@@ -225,10 +236,15 @@ main(int argc, char** argv)
 			test_errno("open", errno, 0);
 			goto stop_test;
 		}
+#ifdef F_NOCACHE
 		if (fcntl(read_fd, F_NOCACHE, 1)) {
 			test_errno("fcntl F_NOCACHE", errno, 0);
 			goto stop_test;
 		}
+#else
+		// investigate what the impact of lack of file cache disabling has 
+		// for this test
+#endif
 		struct stat sb;
 		if (fstat(read_fd, &sb)) {
 			test_errno("fstat", errno, 0);

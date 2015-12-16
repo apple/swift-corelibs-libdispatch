@@ -202,8 +202,12 @@ main(int argc __attribute__((unused)), char* argv[] __attribute__((unused)))
 	dispatch_test_start("Dispatch Private Concurrent/Wide Queue"); // <rdar://problem/8049506&8169448&8186485>
 
 	uint32_t activecpu;
+#ifdef __linux__
+	activecpu = sysconf(_SC_NPROCESSORS_ONLN);
+#else
 	size_t s = sizeof(activecpu);
 	sysctlbyname("hw.activecpu", &activecpu, &s, NULL, 0);
+#endif
 	size_t n = activecpu / 2 > 1 ? activecpu / 2 : 1, w = activecpu * 2;
 	dispatch_queue_t tq, ttq;
 	long qw, tqw, ttqw;

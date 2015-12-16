@@ -22,6 +22,10 @@
 #include <stdbool.h>
 #include <dispatch/dispatch.h>
 
+#ifdef __linux__
+#include <linux_port.h>
+#endif
+
 #define test_group_wait(g) do { \
 	if (dispatch_group_wait(g, dispatch_time(DISPATCH_TIME_NOW, \
 			25ull * NSEC_PER_SEC))) { \
@@ -37,5 +41,10 @@ bool dispatch_test_check_evfilt_read_for_fd(int fd);
 
 void _dispatch_test_current(const char* file, long line, const char* desc, dispatch_queue_t expected);
 #define dispatch_test_current(a,b) _dispatch_test_current(__SOURCE_FILE__, __LINE__, a, b)
+
+#ifndef __linux__
+int sysctlbyname(const char *name, void *oldp, size_t *oldlenp, void *newp,
+		size_t *newpl);
+#endif
 
 __END_DECLS
