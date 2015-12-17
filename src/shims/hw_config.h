@@ -81,7 +81,7 @@ static inline uint32_t
 _dispatch_hw_get_config(_dispatch_hw_config_t c)
 {
 	uint32_t val = 1;
-#if defined(__linux__)
+#if defined(__linux__) && HAVE_SYSCONF
 	switch (c) {
 	case _dispatch_hw_config_logical_cpus:
 	case _dispatch_hw_config_physical_cpus:

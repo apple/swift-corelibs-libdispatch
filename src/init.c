@@ -352,7 +352,7 @@ DISPATCH_VTABLE_INSTANCE(mach_msg,
 	.do_invoke = _dispatch_mach_msg_invoke,
 	.do_debug = _dispatch_mach_msg_debug,
 );
-#endif
+#endif // HAVE_MACH
 
 #if !USE_OBJC
 DISPATCH_VTABLE_INSTANCE(data,
@@ -810,7 +810,7 @@ _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 	_dispatch_free_unwind_tsd();
 	_dispatch_set_unwind_tsd(u);
 }
-#endif
+#endif // HAVE_MACH
 
 #endif // DISPATCH_USE_CLIENT_CALLOUT
 

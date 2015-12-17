@@ -1013,7 +1013,9 @@ _dispatch_kevent_resume(dispatch_kevent_t dk, uint32_t new_flags,
 		return _dispatch_kevent_machport_resume(dk, new_flags, del_flags);
 	case DISPATCH_EVFILT_MACH_NOTIFICATION:
 		return _dispatch_kevent_mach_notify_resume(dk, new_flags, del_flags);
-#endif
+#else
+	(void)new_flags; (void)del_flags;
+#endif // HAVE_MACH
 	default:
 		if (dk->dk_kevent.flags & EV_DELETE) {
 			return 0;
@@ -1028,10 +1030,6 @@ _dispatch_kevent_resume(dispatch_kevent_t dk, uint32_t new_flags,
 		}
 		return r;
 	}
-#if !HAVE_MACH
-	(void)new_flags;
-	(void)del_flags;
-#endif
 }
 
 static long
@@ -1879,7 +1877,7 @@ static void
 _dispatch_kevent_timer_set_delay(_dispatch_kevent_qos_s *ke, uint64_t delay,
 		uint64_t leeway, uint64_t nows[]) 
 {
-	// call to return nows[]
+	// call to update nows[]
 	_dispatch_source_timer_now(nows, DISPATCH_TIMER_KIND_WALL); 
 	// adjust nsec based delay to msec based and ignore leeway	
 	delay /= 1000000L;
@@ -1890,7 +1888,6 @@ _dispatch_kevent_timer_set_delay(_dispatch_kevent_qos_s *ke, uint64_t delay,
 }
 
 #else
-
 static void 
 _dispatch_kevent_timer_set_delay(_dispatch_kevent_qos_s *ke, uint64_t delay,
 		uint64_t leeway, uint64_t nows[]) 
@@ -1904,7 +1901,7 @@ _dispatch_kevent_timer_set_delay(_dispatch_kevent_qos_s *ke, uint64_t delay,
 		ke->ext[1] = leeway;
 	}
 }
-#endif
+#endif // __linux__
 
 static bool
 _dispatch_timers_program2(uint64_t nows[], _dispatch_kevent_qos_s *ke,
@@ -4791,6 +4788,7 @@ _dispatch_mach_debug_attr(dispatch_mach_t dm, char* buf, size_t bufsiz)
 			dm->dm_refs->dm_sending, dm->dm_refs->dm_disconnect_cnt,
 			(bool)(dm->ds_atomic_flags & DSF_CANCELED));
 }
+
 size_t
 _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz)
 {
@@ -4803,7 +4801,7 @@ _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz)
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "}");
 	return offset;
 }
-#endif
+#endif // HAVE_MACH
 
 #if DISPATCH_DEBUG
 DISPATCH_NOINLINE
