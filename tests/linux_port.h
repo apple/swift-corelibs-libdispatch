@@ -4,19 +4,19 @@
 static inline int32_t
 OSAtomicIncrement32(volatile int32_t *var)
 {
-    return __sync_add_and_fetch(var,1);
+  return __c11_atomic_fetch_add((_Atomic(int)*)var, 1, __ATOMIC_RELAXED)+1;
 }
 
 static inline int32_t
 OSAtomicIncrement32Barrier(volatile int32_t *var)
 {
-    return __sync_add_and_fetch(var,1);
+    return __c11_atomic_fetch_add((_Atomic(int)*)var, 1, __ATOMIC_SEQ_CST)+1;
 }
 
 static inline int32_t
 OSAtomicAdd32(volatile int32_t *var, int32_t val)
 {
-    return __sync_add_and_fetch(var,val);
+    return __c11_atomic_fetch_add((_Atomic(int)*)var, val, __ATOMIC_RELAXED)+val;
 }
 
 // Simulation of mach_absolute_time related infrastructure
