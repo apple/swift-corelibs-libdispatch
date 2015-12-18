@@ -29,10 +29,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
-#ifdef __linux__
-#define __printflike(a,b) __attribute__((format(printf, a, b)))
-#include <inttypes.h>
-#endif
+#include <string.h>
 
 static inline const char*
 __BASENAME__(const char *_str_)
