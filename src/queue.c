@@ -98,7 +98,6 @@ struct dispatch_pthread_root_queue_context_s {
 typedef struct dispatch_pthread_root_queue_context_s *
 		dispatch_pthread_root_queue_context_t;
 
-//#if DISPATCH_ENABLE_THREAD_POOL
 #if DISPATCH_USE_PTHREAD_POOL
 static struct dispatch_pthread_root_queue_context_s
 		_dispatch_pthread_root_queue_contexts[] = {
