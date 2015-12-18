@@ -342,7 +342,7 @@ again:
 		}
 #elif USE_POSIX_SEM
 		do {
-			uint64_t nsec = _dispatch_timeout(timeout);
+			uint64_t nsec = _dispatch_time_to_nanoseconds(timeout);
 			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
 			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
 			ret = slowpath(sem_timedwait(&dsema->dsema_sem, &_timeout));
@@ -582,7 +582,7 @@ again:
 		}
 #elif USE_POSIX_SEM
 		do {
-			uint64_t nsec = _dispatch_timeout(timeout);
+			uint64_t nsec = _dispatch_time_to_nanoseconds(timeout);
 			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
 			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
 			ret = slowpath(sem_timedwait(&dsema->dsema_sem, &_timeout));
