@@ -25,7 +25,10 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <libkern/OSAtomic.h>
-
+#include <math.h>
+#ifdef __linux__
+#include <bsd/stdlib.h>
+#endif
 #include <bsdtests.h>
 #include "dispatch_test.h"
 

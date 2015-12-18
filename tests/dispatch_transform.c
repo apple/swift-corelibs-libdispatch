@@ -18,6 +18,9 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
+#ifdef __linux__
+#include <bsd/stdlib.h>
+#endif
 #include <bsdtests.h>
 
 #if DISPATCH_API_VERSION >= 20111008 && !TARGET_OS_EMBEDDED
