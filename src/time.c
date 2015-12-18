@@ -145,3 +145,19 @@ _dispatch_timeout(dispatch_time_t when)
 	now = _dispatch_absolute_time();
 	return now >= when ? 0 : _dispatch_time_mach2nano(when - now);
 }
+
+uint64_t
+_dispatch_time_to_epoch_time(dispatch_time_t when)
+{
+	if (when == DISPATCH_TIME_FOREVER) {
+		return DISPATCH_TIME_FOREVER;
+	}
+	if (when == 0) {
+		return 0;
+	}
+	if ((int64_t)when < 0) {
+		// time in nanoseconds since the POSIX epoch already
+		return -(int64_t)when;
+	}
+	return _dispatch_get_nanoseconds() + _dispatch_timeout(when);
+}

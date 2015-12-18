@@ -278,31 +278,6 @@ dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 	return _dispatch_semaphore_signal_slow(dsema);
 }
 
-#ifdef USE_POSIX_SEM
-static dispatch_once_t sem_epoch_pred;
-static dispatch_time_t sem_epoch_diff;
-
-static void
-sem_epoch_base_init(void *ctxt DISPATCH_UNUSED)
-{
-	struct timeval epoch_now_tv;
-	dispatch_time_t dispatch_now = _dispatch_absolute_time();
-	gettimeofday(&epoch_now_tv, NULL);
-	uint64_t epoch_now = (epoch_now_tv.tv_sec * NSEC_PER_SEC) + (epoch_now_tv.tv_usec * 1000);
-	sem_epoch_diff = (dispatch_time_t)epoch_now - dispatch_now;
-}
-
-// Convert a dispatch_time_t to POSIX epoch time
-// using a computed-once delta between their time bases.
-static void
-_dispatch_time_to_epoch_time(dispatch_time_t dt, struct timespec *res_ts) {
-	dispatch_once_f(&sem_epoch_pred, NULL, sem_epoch_base_init);
-	dispatch_time_t et = dt + sem_epoch_diff;	
-	res_ts->tv_sec = (typeof(res_ts->tv_sec))(et / NSEC_PER_SEC);
-	res_ts->tv_nsec = (typeof(res_ts->tv_nsec))(et % NSEC_PER_SEC);
-}
-#endif
-
 DISPATCH_NOINLINE
 static long
 _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
@@ -367,7 +342,9 @@ again:
 		}
 #elif USE_POSIX_SEM
 		do {
-			_dispatch_time_to_epoch_time(timeout, &_timeout);
+			uint64_t nsec = _dispatch_time_to_epoch_time(timeout);
+			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
+			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
 			ret = slowpath(sem_timedwait(&dsema->dsema_sem, &_timeout));
 		} while (ret == -1 && errno == EINTR);
 
@@ -605,7 +582,9 @@ again:
 		}
 #elif USE_POSIX_SEM
 		do {
-			_dispatch_time_to_epoch_time(timeout, &_timeout);
+			uint64_t nsec = _dispatch_time_to_epoch_time(timeout);
+			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
+			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
 			ret = slowpath(sem_timedwait(&dsema->dsema_sem, &_timeout));
 		} while (ret == -1 && errno == EINTR);
 
