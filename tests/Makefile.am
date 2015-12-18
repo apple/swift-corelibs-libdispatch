@@ -19,13 +19,55 @@ check_PROGRAMS=					\
 
 noinst_SCRIPTS=leaks-wrapper.sh
 
-TESTS=							\
+UNPORTED_TESTS=					\
+	dispatch_deadname			\
+	dispatch_proc				\
+	dispatch_vm				\
+	dispatch_vnode				\
+	dispatch_select
+
+PORTED_TESTS_FAILED=				\
+	dispatch_group				\
+	dispatch_priority			\
+	dispatch_priority2			\
+	dispatch_concur				\
+	dispatch_context_for_key		\
+	dispatch_read				\
+	dispatch_read2				\
+	dispatch_readsync			\
+	dispatch_io				\
+	dispatch_io_net				
+
+PORTED_TESTS_PASSED=				\
+	dispatch_apply				\
+	dispatch_api				\
+	dispatch_c99				\
+	dispatch_debug				\
+	dispatch_queue_finalizer	\
+	dispatch_overcommit			\
+	dispatch_pingpong			\
+	dispatch_plusplus			\
+	dispatch_after				\
+	dispatch_timer				\
+	dispatch_timer_short			\
+	dispatch_timer_timeout			\
+	dispatch_sema				\
+	dispatch_suspend_timer			\
+	dispatch_timer_bit31			\
+	dispatch_timer_bit63			\
+	dispatch_timer_set_time			\
+	dispatch_starfish			\
+	dispatch_cascade			\
+	dispatch_drift				\
+	dispatch_data
+
+ORIGINAL_LIST_OF_TESTS=				\
 	dispatch_apply				\
 	dispatch_api				\
 	dispatch_c99				\
 	dispatch_deadname			\
 	dispatch_debug				\
-	dispatch_queue_finalizer	\
+	dispatch_queue_finalizer		\
 	dispatch_group				\
 	dispatch_overcommit			\
 	dispatch_pingpong			\
@@ -57,6 +99,8 @@ TESTS=							\
 	dispatch_vnode				\
 	dispatch_select
 
+TESTS=$(PORTED_TESTS_PASSED) $(PORTED_TESTS_FAILED)
+
 dispatch_c99_CFLAGS=$(AM_CFLAGS) -std=c99
 dispatch_plusplus_SOURCES=dispatch_plusplus.cpp
 dispatch_priority2_SOURCES=dispatch_priority.c
@@ -65,15 +109,27 @@ dispatch_priority2_CPPFLAGS=$(AM_CPPFLAGS) -DUSE_SET_TARGET_QUEUE=1
 AM_CPPFLAGS=-I$(top_builddir) -I$(top_srcdir)
 
 DISPATCH_TESTS_CFLAGS=-Wall -Wno-deprecated-declarations $(MARCH_FLAGS)
-AM_CFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CBLOCKS_FLAGS)
+AM_CFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CBLOCKS_FLAGS) $(KQUEUE_CFLAGS)
 AM_OBJCFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CBLOCKS_FLAGS)
 AM_CXXFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CXXBLOCKS_FLAGS)
 AM_OBJCXXFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CXXBLOCKS_FLAGS)
 
-LDADD=libbsdtests.la ../src/libdispatch.la
+if HAVE_PTHREAD_WORKQUEUES
+PTHREAD_WORKQUEUE_LIBS=-lpthread_workqueue
+endif
+
+LDADD=libbsdtests.la ../src/libdispatch.la $(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS)
 libbsdtests_la_LDFLAGS=-avoid-version
 
+bsdtestsummarize_LDADD=-lm
+dispatch_timer_short_LDADD=-lm $(LDADD)
+dispatch_group_LDADD=-lm $(LDADD)
+
+if HAVE_LEAKS
 TESTS_ENVIRONMENT=./bsdtestharness
+else
+TESTS_ENVIRONMENT=NOLEAKS=1 ./bsdtestharness
+endif
 DISTCLEAN=Foundation/bench.cc
 
 if HAVE_COREFOUNDATION
@@ -82,6 +138,7 @@ TESTS+=							\
 	dispatch_transform			\
 	dispatch_sync_on_main		\
 	cffd
+AM_CFLAGS+=-DHAVE_COREFOUNDATION
 
 dispatch_cf_main_LDFLAGS=-framework CoreFoundation
 dispatch_transform_LDFLAGS=-framework CoreFoundation -framework Security
@@ -95,6 +152,7 @@ TESTS+=							\
 	dispatch_apply_gc			\
 	nsoperation					\
 	bench
+AM_CFLAGS+=-DHAVE_FOUNDATION
 
 dispatch_sync_gc_SOURCES=Foundation/dispatch_sync_gc.m
 dispatch_sync_gc_LDFLAGS=-framework Foundation

@@ -24,6 +24,20 @@
 #include <string.h>
 #include <sys/param.h>
 
+#ifndef __APPLE__
+static char*
+fgetln(FILE *stream, size_t *len)
+{
+	static char buf[1024];
+	char *cp = fgets(buf,1024,stream);
+	if (cp)
+		*len = strlen(cp);
+	else
+		*len = 0;
+	return cp;
+}
+#endif
+
 int
 has_prefix(const char* str, const char* prefix)
 {

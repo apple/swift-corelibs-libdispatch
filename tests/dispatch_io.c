@@ -28,10 +28,15 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fts.h>
+#ifdef __APPLE__
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <libkern/OSAtomic.h>
 #include <TargetConditionals.h>
+#endif
+#ifdef __linux__
+#include <sys/resource.h>
+#endif
 
 #include <dispatch/dispatch.h>
 
@@ -80,10 +85,12 @@ test_io_close(int with_timer, bool from_path)
 		test_errno("open", errno, 0);
 		test_stop();
 	}
+#ifdef F_GLOBAL_NOCACHE
 	if (fcntl(fd, F_GLOBAL_NOCACHE, 1) == -1) {
 		test_errno("fcntl F_GLOBAL_NOCACHE", errno, 0);
 		test_stop();
 	}
+#endif
 	struct stat sb;
 	if (fstat(fd, &sb)) {
 		test_errno("fstat", errno, 0);
@@ -341,11 +348,13 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 		test_errno("Failed to open file", errno, 0);
 		test_stop();
 	}
+#ifdef F_GLOBAL_NOCACHE
 	// disable caching also for extra fd opened by dispatch_io_create_with_path
 	if (fcntl(fd, F_GLOBAL_NOCACHE, 1) == -1) {
 		test_errno("fcntl F_GLOBAL_NOCACHE", errno, 0);
 		test_stop();
 	}
+#endif
 	switch (option) {
 		case DISPATCH_ASYNC_READ_ON_CONCURRENT_QUEUE:
 		case DISPATCH_ASYNC_READ_ON_SERIAL_QUEUE:
@@ -560,11 +569,13 @@ test_io_from_io(void) // rdar://problem/8388909
 		test_ptr_notnull("mkdtemp failed", path);
 		test_stop();
 	}
+#ifdef __APPLE__
 	// Make the directory immutable
 	if (chflags(path, UF_IMMUTABLE) == -1) {
 		test_errno("chflags", errno, 0);
 		test_stop();
 	}
+#endif
 	*tmp = '/';
 	dispatch_io_t io = dispatch_io_create_with_path(DISPATCH_IO_RANDOM, path,
 			O_CREAT|O_RDWR, 0600, q, ^(int error) {

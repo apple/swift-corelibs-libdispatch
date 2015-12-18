@@ -23,8 +23,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#ifdef __APPLE__
 #include <mach/mach_time.h>
 #include <libkern/OSAtomic.h>
+#endif
 
 #include <dispatch/dispatch.h>
 

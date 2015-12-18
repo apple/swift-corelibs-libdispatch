@@ -25,8 +25,10 @@
 #include <errno.h>
 #include <sys/errno.h>
 #include <string.h>
+#ifdef __APPLE__
 #include <crt_externs.h>
 #include <mach/mach_error.h>
+#endif
 #include <spawn.h>
 #include <inttypes.h>
 #include "bsdtests.h"
@@ -308,6 +310,7 @@ test_errno_format(long actual, long expected, const char *format, ...)
 	_test_errno(NULL, 0, desc, actual, expected);
 }
 
+#ifdef __APPLE__
 void
 _test_mach_error(const char* file, long line, const char* desc,
 		mach_error_t actual, mach_error_t expected)
@@ -328,6 +331,7 @@ test_mach_error_format(mach_error_t actual, mach_error_t expected, const char *f
 	GENERATE_DESC
 	_test_mach_error(NULL, 0, desc, actual, expected);
 }
+#endif
 
 void
 _test_skip(const char* file, long line, const char* desc)
@@ -400,6 +404,19 @@ test_start(const char* desc)
 	usleep(100000);	// give 'gdb --waitfor=' a chance to find this proc
 }
 
+#if __linux__
+static char** get_environment(void)
+{
+	extern char **environ; 
+	return environ;
+}
+#else
+static char** get_environment(void)
+{
+	return (* _NSGetEnviron());
+}
+#endif
+
 void
 test_leaks_pid(const char *name, pid_t pid)
 {
@@ -435,7 +452,7 @@ test_leaks_pid(const char *name, pid_t pid)
 	snprintf(pidstr, sizeof(pidstr), "%d", pid);
 
 	char* args[] = { "./leaks-wrapper", pidstr, NULL };
-	res = posix_spawnp(&pid, args[0], NULL, NULL, args, * _NSGetEnviron());
+	res = posix_spawnp(&pid, args[0], NULL, NULL, args, get_environment());
 	if (res == 0 && pid > 0) {
 		int status;
 		waitpid(pid, &status, 0);
