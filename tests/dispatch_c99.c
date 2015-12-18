@@ -21,6 +21,14 @@
 #include <dispatch/dispatch.h>
 #include <stdlib.h>
 
+#ifdef __linux__
+// On Linux normally comes from libbsd overlay files,
+// but the headers are not c99 compliant so we compile
+// this test case without $(BSD_OVERLAY_CFLAGS)
+#define __printflike(a,b) __attribute__((format(printf, a, b)))
+#include <inttypes.h>
+#endif
+
 #include <bsdtests.h>
 #include "dispatch_test.h"
 
