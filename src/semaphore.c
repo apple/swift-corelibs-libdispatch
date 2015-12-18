@@ -279,18 +279,27 @@ dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 }
 
 #ifdef USE_POSIX_SEM
+static dispatch_once_t sem_epoch_pred;
+static dispatch_time_t sem_epoch_diff;
+
+static void
+sem_epoch_base_init(void *ctxt DISPATCH_UNUSED)
+{
+	struct timeval epoch_now_tv;
+	dispatch_time_t dispatch_now = _dispatch_absolute_time();
+	gettimeofday(&epoch_now_tv, NULL);
+	uint64_t epoch_now = (epoch_now_tv.tv_sec * NSEC_PER_SEC) + (epoch_now_tv.tv_usec * 1000);
+	sem_epoch_diff = (dispatch_time_t)epoch_now - dispatch_now;
+}
+
 // Convert a dispatch_time_t to POSIX epoch time
+// using a computed-once delta between their time bases.
 static void
 _dispatch_time_to_epoch_time(dispatch_time_t dt, struct timespec *res_ts) {
-	struct timeval now_tv, dt_tv, res_tv;
-
-	uint64_t nsec = _dispatch_timeout(dt);
-	gettimeofday(&now_tv, NULL);
-	dt_tv.tv_sec = (typeof(dt_tv.tv_sec))(nsec / NSEC_PER_SEC);
-	dt_tv.tv_usec = (typeof(dt_tv.tv_usec))((nsec % NSEC_PER_SEC) / 1000) ;
-	timeradd(&now_tv, &dt_tv, &res_tv);
-	res_ts->tv_sec = res_tv.tv_sec;
-	res_ts->tv_nsec = res_tv.tv_usec * 1000;
+	dispatch_once_f(&sem_epoch_pred, NULL, sem_epoch_base_init);
+	dispatch_time_t et = dt + sem_epoch_diff;	
+	res_ts->tv_sec = (typeof(res_ts->tv_sec))(et / NSEC_PER_SEC);
+	res_ts->tv_nsec = (typeof(res_ts->tv_nsec))(et % NSEC_PER_SEC);
 }
 #endif
 
