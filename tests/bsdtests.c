@@ -19,11 +19,15 @@
  */
 
 #include <stdarg.h>
+#ifdef __linux__
+#define _GNU_SOURCE
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
 #include <sys/errno.h>
+#include <sys/wait.h>
 #include <string.h>
 #ifdef __APPLE__
 #include <crt_externs.h>
