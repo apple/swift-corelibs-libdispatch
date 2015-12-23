@@ -21,12 +21,12 @@ noinst_SCRIPTS=leaks-wrapper.sh
 
 UNPORTED_TESTS=					\
 	dispatch_deadname			\
-	dispatch_proc				\
 	dispatch_vm				\
 	dispatch_vnode				\
 	dispatch_select
 
 PORTED_TESTS_FAILED=				\
+	dispatch_proc				\
 	dispatch_group				\
 	dispatch_priority			\
 	dispatch_priority2			\

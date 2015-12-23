@@ -139,8 +139,31 @@ AC_SEARCH_LIBS(pthread_create, pthread)
 #
 # Prefer native kqueue(2); otherwise use libkqueue if present.
 #
-AC_CHECK_HEADER(sys/event.h, [],
+AC_CHECK_HEADER(kqueue/sys/event.h,
+  [kqueue_include="#include <kqueue/sys/event.h>"
+   kqueue_lib="-lkqueue"]
+)
+
+AC_CHECK_HEADER(sys/event.h,
+  [kqueue_include="#include <sys/event.h>"],
   [PKG_CHECK_MODULES(KQUEUE, libkqueue)]
+)
+
+AC_SUBST([LIBS],["${LIBS} $kqueue_lib"])
+AC_RUN_IFELSE(
+        [AC_LANG_PROGRAM([
+                $kqueue_include
+                #include <stdlib.h>], [
+                int kq, i;
+                struct kevent ke;
+                kq = kqueue();
+                if (kq == -1) return(1);
+                EV_SET(&ke, 1, EVFILT_PROC, EV_ADD, NOTE_EXIT | NOTE_FORK | NOTE_EXEC, 0, NULL);
+                i = kevent(kq, &ke, 1, NULL, 0, NULL);
+                if (i == -1) return(1);
+                return(0);])],
+        [AC_DEFINE(HAVE_EVFILT_PROC, 1, [Define if EVFILT_PROC available])],
+        [AC_DEFINE(HAVE_EVFILT_PROC, 0, [Define if EVFILT_PROC available])]
 )
 
 AC_CHECK_FUNCS([strlcpy getprogname], [],

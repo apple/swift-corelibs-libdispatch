@@ -106,6 +106,13 @@ dispatch_source_create(dispatch_source_type_t type,
 	}
 
 	switch (type->ke.filter) {
+#if !HAVE_EVFILT_PROC
+	// return null if not supported
+	case EVFILT_PROC:
+		return NULL;
+		break;
+#endif
+
 	case EVFILT_SIGNAL:
 		if (handle >= NSIG) {
 			return NULL;

@@ -50,8 +50,12 @@ test_proc(pid_t bad_pid)
 	posix_spawnattr_t attr;
 	res = posix_spawnattr_init(&attr);
 	assert(res == 0);
-	res = posix_spawnattr_setflags(&attr, POSIX_SPAWN_START_SUSPENDED);
-	assert(res == 0);
+
+#if HAVE_POSIX_SPAWN_START_SUSPENDED
+    short spawnflags = POSIX_SPAWN_START_SUSPENDED;
+    res = posix_spawnattr_setflags(&attr, spawnflags);
+    assert(res == 0);
+#endif
 
 	char* args[] = {
 		"/bin/sleep", "2", NULL
