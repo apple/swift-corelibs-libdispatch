@@ -179,7 +179,7 @@ test_read(void)
 static void
 test_read_write(void)
 {
-	const char *path_in = "/dev/random";
+	const char *path_in = "/dev/urandom";
 	char path_out[] = "/tmp/dispatchtest_io.XXXXXX";
 	const size_t siz_in = 10240;
 
@@ -246,7 +246,7 @@ test_read_write(void)
 static void
 test_read_writes(void) // <rdar://problem/7785143>
 {
-	const char *path_in = "/dev/random";
+	const char *path_in = "/dev/urandom";
 	char path_out[] = "/tmp/dispatchtest_io.XXXXXX";
 	const size_t chunks_out = 320;
 	const size_t siz_chunk = 32, siz_in = siz_chunk * chunks_out;
@@ -333,7 +333,7 @@ test_read_writes(void) // <rdar://problem/7785143>
 static void
 test_writes_reads_eagain(void) // rdar://problem/8333366
 {
-	int in = open("/dev/random", O_RDONLY);
+	int in = open("/dev/urandom", O_RDONLY);
 	if (in == -1) {
 		test_errno("open", errno, 0);
 		test_stop();
