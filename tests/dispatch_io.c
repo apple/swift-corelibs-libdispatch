@@ -635,7 +635,7 @@ test_io_from_io(void) // rdar://problem/8388909
                 test_stop();
         }
 #endif
-	const char *path_in = "/dev/random";
+	const char *path_in = "/dev/urandom";
 	int in = open(path_in, O_RDONLY);
 	if (in == -1) {
 		test_errno("open", errno, 0);
