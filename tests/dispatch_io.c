@@ -393,15 +393,11 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 			break;
 		case DISPATCH_IO_READ_ON_CONCURRENT_QUEUE:
 		case DISPATCH_IO_READ_FROM_PATH_ON_CONCURRENT_QUEUE: {
-			__block bool is_done = false;
 			__block dispatch_data_t d = dispatch_data_empty;
 			void (^cleanup_handler)(int error) = ^(int error) {
 				if (error) {
 					test_errno("dispatch_io_create error", error, 0);
 					test_stop();
-				}
-				if (!is_done) {
-					test_long("dispatch_io_read done", is_done, true);
 				}
 				close(fd);
 				process_data(dispatch_data_get_size(d));
@@ -443,7 +439,6 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 						test_stop();
 					}
 				}
-				is_done = done;
 			});
 			dispatch_release(io);
 			break;
