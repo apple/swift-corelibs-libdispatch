@@ -575,6 +575,12 @@ test_io_from_io(void) // rdar://problem/8388909
 		test_errno("chflags", errno, 0);
 		test_stop();
 	}
+#else
+	// Make the directory non-read/writeable
+    if (chmod(path, 0) == -1) {
+            test_errno("chmod", errno, 0);
+            test_stop();
+    }
 #endif
 	*tmp = '/';
 	dispatch_io_t io = dispatch_io_create_with_path(DISPATCH_IO_RANDOM, path,
@@ -593,7 +599,11 @@ test_io_from_io(void) // rdar://problem/8388909
 	dispatch_group_enter(g);
 	dispatch_io_write(io, 0, tdata, q, ^(bool done, dispatch_data_t data_out,
 			int err_out) {
+#ifdef __APPLE__
 		test_errno("error from write to immutable directory", err_out, EPERM);
+#else
+		test_errno("error from write to write protected directory", err_out, EACCES);
+#endif
 		test_long("unwritten data", dispatch_data_get_size(data_out), 256);
 		if (!err_out && done) {
 			test_stop();
@@ -605,12 +615,20 @@ test_io_from_io(void) // rdar://problem/8388909
 	dispatch_release(tdata);
 	dispatch_release(io);
 	test_group_wait(g);
-	// Change the directory to mutable
 	*tmp = '\0';
-	if (chflags(path, 0) == -1) {
-		test_errno("chflags", errno, 0);
-		test_stop();
-	}
+#ifdef __APPLE__
+		// Change the directory to mutable
+        if (chflags(path, 0) == -1) {
+                test_errno("chflags", errno, 0);
+                test_stop();
+        }
+#else
+        // Change the directory to user read/write/execute
+        if (chmod(path, S_IRUSR | S_IWUSR | S_IXUSR) == -1) {
+                test_errno("chmod", errno, 0);
+                test_stop();
+        }
+#endif
 	const char *path_in = "/dev/random";
 	int in = open(path_in, O_RDONLY);
 	if (in == -1) {
