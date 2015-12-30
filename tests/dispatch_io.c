@@ -240,13 +240,19 @@ test_io_read_write(void)
 {
 	const char *path_in = "/usr/share/dict/words";
 	char path_out[] = "/tmp/dispatchtest_io.XXXXXX";
-	const size_t siz_in = 1024 * 1024;
 
 	int in = open(path_in, O_RDONLY);
 	if (in == -1) {
 		test_errno("open", errno, 0);
 		test_stop();
 	}
+    struct stat sb;
+    if (fstat(in, &sb)) {
+            test_errno("fstat", errno, 0);
+            test_stop();
+    }
+    const size_t siz_in = MIN(1024 * 1024, sb.st_size);
+
 	int out = mkstemp(path_out);
 	if (out == -1) {
 		test_errno("mkstemp", errno, 0);
