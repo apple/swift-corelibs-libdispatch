@@ -351,6 +351,11 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 {
 	int fd = open(path, O_RDONLY);
 	if (fd == -1) {
+			// Don't stop for access permission issues
+			if (errno == EACCES) {
+				process_data(size);
+				return;
+			}
 		test_errno("Failed to open file", errno, 0);
 		test_stop();
 	}
