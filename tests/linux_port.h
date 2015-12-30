@@ -14,7 +14,7 @@ OSAtomicIncrement32Barrier(volatile int32_t *var)
 }
 
 static inline int32_t
-OSAtomicAdd32(volatile int32_t *var, int32_t val)
+OSAtomicAdd32(int32_t val, volatile int32_t *var)
 {
     return __c11_atomic_fetch_add((_Atomic(int)*)var, val, __ATOMIC_RELAXED)+val;
 }
