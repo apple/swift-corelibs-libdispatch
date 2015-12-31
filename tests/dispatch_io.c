@@ -246,12 +246,12 @@ test_io_read_write(void)
 		test_errno("open", errno, 0);
 		test_stop();
 	}
-    struct stat sb;
-    if (fstat(in, &sb)) {
-            test_errno("fstat", errno, 0);
-            test_stop();
-    }
-    const size_t siz_in = MIN(1024 * 1024, sb.st_size);
+	struct stat sb;
+	if (fstat(in, &sb)) {
+		test_errno("fstat", errno, 0);
+		test_stop();
+	}
+	const size_t siz_in = MIN(1024 * 1024, sb.st_size);
 
 	int out = mkstemp(path_out);
 	if (out == -1) {
@@ -351,11 +351,11 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 {
 	int fd = open(path, O_RDONLY);
 	if (fd == -1) {
-			// Don't stop for access permission issues
-			if (errno == EACCES) {
-				process_data(size);
-				return;
-			}
+		// Don't stop for access permission issues
+		if (errno == EACCES) {
+			process_data(size);
+			return;
+		}
 		test_errno("Failed to open file", errno, 0);
 		test_stop();
 	}
@@ -575,7 +575,7 @@ test_io_from_io(void) // rdar://problem/8388909
 		test_ptr_notnull("mkdtemp failed", path);
 		test_stop();
 	}
-#ifdef __APPLE__
+#ifdef UF_IMMUTABLE
 	// Make the directory immutable
 	if (chflags(path, UF_IMMUTABLE) == -1) {
 		test_errno("chflags", errno, 0);
@@ -583,10 +583,10 @@ test_io_from_io(void) // rdar://problem/8388909
 	}
 #else
 	// Make the directory non-read/writeable
-    if (chmod(path, 0) == -1) {
-            test_errno("chmod", errno, 0);
-            test_stop();
-    }
+	if (chmod(path, 0) == -1) {
+		test_errno("chmod", errno, 0);
+		test_stop();
+	}
 #endif
 	*tmp = '/';
 	dispatch_io_t io = dispatch_io_create_with_path(DISPATCH_IO_RANDOM, path,
@@ -605,7 +605,7 @@ test_io_from_io(void) // rdar://problem/8388909
 	dispatch_group_enter(g);
 	dispatch_io_write(io, 0, tdata, q, ^(bool done, dispatch_data_t data_out,
 			int err_out) {
-#ifdef __APPLE__
+#ifdef UF_IMMUTABLE
 		test_errno("error from write to immutable directory", err_out, EPERM);
 #else
 		test_errno("error from write to write protected directory", err_out, EACCES);
@@ -622,18 +622,18 @@ test_io_from_io(void) // rdar://problem/8388909
 	dispatch_release(io);
 	test_group_wait(g);
 	*tmp = '\0';
-#ifdef __APPLE__
-		// Change the directory to mutable
-        if (chflags(path, 0) == -1) {
-                test_errno("chflags", errno, 0);
-                test_stop();
-        }
+#ifdef UF_IMMUTABLE
+	// Change the directory to mutable
+	if (chflags(path, 0) == -1) {
+		test_errno("chflags", errno, 0);
+		test_stop();
+	}
 #else
-        // Change the directory to user read/write/execute
-        if (chmod(path, S_IRUSR | S_IWUSR | S_IXUSR) == -1) {
-                test_errno("chmod", errno, 0);
-                test_stop();
-        }
+	// Change the directory to user read/write/execute
+	if (chmod(path, S_IRUSR | S_IWUSR | S_IXUSR) == -1) {
+		test_errno("chmod", errno, 0);
+		test_stop();
+	}
 #endif
 	const char *path_in = "/dev/urandom";
 	int in = open(path_in, O_RDONLY);
