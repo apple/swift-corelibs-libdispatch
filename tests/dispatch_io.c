@@ -240,13 +240,19 @@ test_io_read_write(void)
 {
 	const char *path_in = "/usr/share/dict/words";
 	char path_out[] = "/tmp/dispatchtest_io.XXXXXX";
-	const size_t siz_in = 1024 * 1024;
 
 	int in = open(path_in, O_RDONLY);
 	if (in == -1) {
 		test_errno("open", errno, 0);
 		test_stop();
 	}
+	struct stat sb;
+	if (fstat(in, &sb)) {
+		test_errno("fstat", errno, 0);
+		test_stop();
+	}
+	const size_t siz_in = MIN(1024 * 1024, sb.st_size);
+
 	int out = mkstemp(path_out);
 	if (out == -1) {
 		test_errno("mkstemp", errno, 0);
@@ -345,6 +351,11 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 {
 	int fd = open(path, O_RDONLY);
 	if (fd == -1) {
+		// Don't stop for access permission issues
+		if (errno == EACCES) {
+			process_data(size);
+			return;
+		}
 		test_errno("Failed to open file", errno, 0);
 		test_stop();
 	}
@@ -382,15 +393,11 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 			break;
 		case DISPATCH_IO_READ_ON_CONCURRENT_QUEUE:
 		case DISPATCH_IO_READ_FROM_PATH_ON_CONCURRENT_QUEUE: {
-			__block bool is_done = false;
 			__block dispatch_data_t d = dispatch_data_empty;
 			void (^cleanup_handler)(int error) = ^(int error) {
 				if (error) {
 					test_errno("dispatch_io_create error", error, 0);
 					test_stop();
-				}
-				if (!is_done) {
-					test_long("dispatch_io_read done", is_done, true);
 				}
 				close(fd);
 				process_data(dispatch_data_get_size(d));
@@ -432,7 +439,6 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 						test_stop();
 					}
 				}
-				is_done = done;
 			});
 			dispatch_release(io);
 			break;
@@ -569,10 +575,16 @@ test_io_from_io(void) // rdar://problem/8388909
 		test_ptr_notnull("mkdtemp failed", path);
 		test_stop();
 	}
-#ifdef __APPLE__
+#ifdef UF_IMMUTABLE
 	// Make the directory immutable
 	if (chflags(path, UF_IMMUTABLE) == -1) {
 		test_errno("chflags", errno, 0);
+		test_stop();
+	}
+#else
+	// Make the directory non-read/writeable
+	if (chmod(path, 0) == -1) {
+		test_errno("chmod", errno, 0);
 		test_stop();
 	}
 #endif
@@ -593,7 +605,11 @@ test_io_from_io(void) // rdar://problem/8388909
 	dispatch_group_enter(g);
 	dispatch_io_write(io, 0, tdata, q, ^(bool done, dispatch_data_t data_out,
 			int err_out) {
+#ifdef UF_IMMUTABLE
 		test_errno("error from write to immutable directory", err_out, EPERM);
+#else
+		test_errno("error from write to write protected directory", err_out, EACCES);
+#endif
 		test_long("unwritten data", dispatch_data_get_size(data_out), 256);
 		if (!err_out && done) {
 			test_stop();
@@ -605,13 +621,21 @@ test_io_from_io(void) // rdar://problem/8388909
 	dispatch_release(tdata);
 	dispatch_release(io);
 	test_group_wait(g);
-	// Change the directory to mutable
 	*tmp = '\0';
+#ifdef UF_IMMUTABLE
+	// Change the directory to mutable
 	if (chflags(path, 0) == -1) {
 		test_errno("chflags", errno, 0);
 		test_stop();
 	}
-	const char *path_in = "/dev/random";
+#else
+	// Change the directory to user read/write/execute
+	if (chmod(path, S_IRUSR | S_IWUSR | S_IXUSR) == -1) {
+		test_errno("chmod", errno, 0);
+		test_stop();
+	}
+#endif
+	const char *path_in = "/dev/urandom";
 	int in = open(path_in, O_RDONLY);
 	if (in == -1) {
 		test_errno("open", errno, 0);
