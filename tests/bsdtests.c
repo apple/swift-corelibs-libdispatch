@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/errno.h>
+#include <sys/wait.h>
 #include <string.h>
 #ifdef __APPLE__
 #include <crt_externs.h>
