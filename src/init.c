@@ -261,6 +261,14 @@ const struct dispatch_queue_attr_s _dispatch_queue_attrs[]
 };
 
 
+// _dispatch_queue_attr_concurrent is aliased using libdispatch.aliases
+// and the -alias_list linker option on Darwin but needs to be done manually
+// for other platforms.
+#ifndef __APPLE__
+extern struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent
+	__attribute__((__alias__("_dispatch_queue_attrs")));
+#endif
+
 #pragma mark -
 #pragma mark dispatch_vtables
 
