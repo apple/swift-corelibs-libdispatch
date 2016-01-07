@@ -6,9 +6,9 @@ AUTOMAKE_OPTIONS = serial-tests subdir-objects
 
 noinst_LTLIBRARIES=libbsdtests.la
 
-libbsdtests_la_SOURCES=			\
-	bsdtests.c					\
-	bsdtests.h					\
+libbsdtests_la_SOURCES=				\
+	bsdtests.c				\
+	bsdtests.h				\
 	dispatch_test.c				\
 	dispatch_test.h
 
@@ -23,27 +23,27 @@ UNPORTED_TESTS=					\
 	dispatch_deadname			\
 	dispatch_proc				\
 	dispatch_vm				\
-	dispatch_vnode				\
-	dispatch_select
+	dispatch_vnode
 
 PORTED_TESTS_FAILED=				\
-	dispatch_group				\
 	dispatch_priority			\
-	dispatch_priority2			\
+	dispatch_priority2
+
+PORTED_TESTS_PASSED=				\
+	dispatch_select				\
 	dispatch_concur				\
 	dispatch_context_for_key		\
 	dispatch_read				\
 	dispatch_read2				\
 	dispatch_readsync			\
 	dispatch_io				\
-	dispatch_io_net				
-
-PORTED_TESTS_PASSED=				\
+	dispatch_io_net				\
+	dispatch_group				\
 	dispatch_apply				\
 	dispatch_api				\
 	dispatch_c99				\
 	dispatch_debug				\
-	dispatch_queue_finalizer	\
+	dispatch_queue_finalizer		\
 	dispatch_overcommit			\
 	dispatch_pingpong			\
 	dispatch_plusplus			\
