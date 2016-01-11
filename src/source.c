@@ -4707,8 +4707,12 @@ _evflagstr2(uint16_t *flagsp)
 	_evflag2(EV_RECEIPT);
 	_evflag2(EV_DISPATCH);
 	_evflag2(EV_UDATA_SPECIFIC);
+#ifdef EV_POLL
 	_evflag2(EV_POLL);
+#endif
+#ifdef EV_OOBAND
 	_evflag2(EV_OOBAND);
+#endif
 	_evflag2(EV_ERROR);
 	_evflag2(EV_EOF);
 	*flagsp = 0;
@@ -4816,7 +4820,12 @@ _dispatch_kevent_debug(const _dispatch_kevent_qos_s* kev, const char* str)
 			"ext[0] = 0x%llx, ext[1] = 0x%llx }: %s", kev, kev->ident,
 			_evfiltstr(kev->filter), _evflagstr(kev->flags, flagstr,
 			sizeof(flagstr)), kev->flags, kev->fflags, kev->data, kev->udata,
-			kev->ext[0], kev->ext[1], str);
+#if DISPATCH_USE_KEVENT_QOS
+			kev->ext[0], kev->ext[1],
+#else
+			0ull, 0ull,
+#endif
+			str);
 }
 
 static void
@@ -4921,9 +4930,11 @@ _dispatch_kevent_debugger(void *context DISPATCH_UNUSED)
 	int val, r, fd, sock_opt = 1;
 	socklen_t slen = sizeof(sa_u);
 
+#ifndef __linux__
 	if (issetugid()) {
 		return;
 	}
+#endif
 	valstr = getenv("LIBDISPATCH_DEBUGGER");
 	if (!valstr) {
 		return;
