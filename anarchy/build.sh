@@ -2,6 +2,7 @@
 set -e
 if [ `uname` == "Darwin" ]; then
     echo "Not building libdispatch on Darwin; using system libdispatch"
+    cp anarchy/osx.modulemap anarchy/module.modulemap
     exit 0
 fi
 

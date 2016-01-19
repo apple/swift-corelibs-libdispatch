@@ -1,6 +1,10 @@
 (package
 :name "AnarchyDispatch"
-
+    :overlays {
+        :compile-osx {
+            :compileOptions ["-I" "AnarchyDispatch/anarchy"]
+        }
+    }
     :tasks {
         :default {
             :tool "shell"
