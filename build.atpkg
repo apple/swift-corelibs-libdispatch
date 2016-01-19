@@ -6,6 +6,7 @@
         }
         :compile-linux {
             :compileOptions ["-I" "AnarchyDispatch/anarchy" "-I" "AnarchyDispatch/" "-Xcc" "-fblocks"]
+            :linkOptions ["-LAnarchyDispatch/build/lib/"]
         }
     }
     :tasks {
