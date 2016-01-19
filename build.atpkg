@@ -1,0 +1,10 @@
+(package
+:name "AnarchyDispatch"
+
+    :tasks {
+        :default {
+            :tool "shell"
+            :script "anarchy/build.sh"
+        }
+    }
+)
