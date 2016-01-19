@@ -4,6 +4,9 @@
         :compile-osx {
             :compileOptions ["-I" "AnarchyDispatch/anarchy"]
         }
+        :compile-linux {
+            :compileOptions ["-I" "AnarchyDispatch/anarchy" "-I" "AnarchyDispatch/" "-Xcc" "-fblocks"]
+        }
     }
     :tasks {
         :default {

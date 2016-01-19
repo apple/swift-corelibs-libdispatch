@@ -1,0 +1,5 @@
+module AnarchyDispatch [system] {
+    header "../dispatch/dispatch.h"
+    link "dispatch"
+    export *
+}

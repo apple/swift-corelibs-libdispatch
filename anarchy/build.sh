@@ -1,11 +1,12 @@
 #!/bin/bash
 set -e
+rm -rf anarchy/module.modulemap
 if [ `uname` == "Darwin" ]; then
     echo "Not building libdispatch on Darwin; using system libdispatch"
     cp anarchy/osx.modulemap anarchy/module.modulemap
     exit 0
 fi
-
+cp anarchy/linux.modulemap anarchy/module.modulemap
 #install dependencies only if we don't have them
 deps=("make" "gobjc" "automake" "autoconf" "libtool" "pkg-config" "systemtap-sdt-dev" "libblocksruntime-dev" "libkqueue-dev" "libpthread-workqueue-dev" "libbsd-dev")
 install_deps() {
