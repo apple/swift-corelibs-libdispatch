@@ -43,6 +43,8 @@ dispatch_async(dispatch_get_main_queue()) {
 }
 ```
 
+BUG: Currently you have to use `LD_LIBRARY_PATH=AnarchyDispatch/build/lib` with executables.  We should fix this.
+
 Original README follows.
 
 
