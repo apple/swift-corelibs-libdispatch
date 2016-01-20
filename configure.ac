@@ -339,6 +339,6 @@ AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile os/Makefile private/Mak
 #
 # Generate testsuite links
 #
-AC_CONFIG_LINKS([tests/dispatch:${x:+}private tests/leaks-wrapper:tests/leaks-wrapper.sh])
+AC_CONFIG_LINKS([tests/dispatch:$top_srcdir/private tests/leaks-wrapper:tests/leaks-wrapper.sh])
 
 AC_OUTPUT
