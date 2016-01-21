@@ -214,8 +214,6 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #include <sys/time.h>
 #include <sys/mman.h>
 #include <netinet/in.h>
-#else
-#include "sys_queue.h"
 #endif
 
 #ifdef __BLOCKS__
