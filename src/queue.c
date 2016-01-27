@@ -200,12 +200,11 @@ struct dispatch_root_queue_context_s {
 typedef struct dispatch_root_queue_context_s *dispatch_root_queue_context_t;
 
 #define WORKQ_PRIO_INVALID (-1)
-#ifdef __linux__
+#ifndef WORKQ_BG_PRIOQUEUE_CONDITIONAL
 #define WORKQ_BG_PRIOQUEUE_CONDITIONAL WORKQ_PRIO_INVALID
+#endif
+#ifndef WORKQ_HIGH_PRIOQUEUE_CONDITIONAL
 #define WORKQ_HIGH_PRIOQUEUE_CONDITIONAL WORKQ_PRIO_INVALID
-#else
-#define WORKQ_BG_PRIOQUEUE_CONDITIONAL WORKQ_BG_PRIOQUEUE
-#define WORKQ_HIGH_PRIOQUEUE_CONDITIONAL WORKQ_HIGH_PRIOQUEUE
 #endif
 
 DISPATCH_CACHELINE_ALIGN

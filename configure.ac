@@ -166,12 +166,25 @@ AS_IF([test -n "$apple_libpthread_source_path" -a -n "$apple_xnu_source_osfmk_pa
   mkdir -p mach && ln -fsh "$apple_xnu_source_osfmk_path"/mach/coalition.h mach
 ])
 AC_CHECK_HEADERS([pthread_machdep.h pthread/qos.h])
-AC_CHECK_HEADERS([pthread/workqueue_private.h pthread_workqueue.h],
-  [AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])
+
+# pthread_workqueues.
+# Look for own version first, then system version.
+AS_IF([test -f libpwq/configure.ac],
+  [AC_DEFINE(BUILD_OWN_PTHREAD_WORKQUEUES, 1, [Define if building pthread work queues from source])
+   AC_CONFIG_SUBDIRS([libpwq])
+   build_own_pthread_workqueue=true,
+   AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])
    have_pthread_workqueues=true],
-  [have_pthread_workqueues=false]
+  [build_own_pthread_workqueue=false
+   AC_CHECK_HEADERS([pthread/workqueue_private.h pthread_workqueue.h],
+     [AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])
+      have_pthread_workqueues=true],
+     [have_pthread_workqueues=false]
+   )]
 )
+AM_CONDITIONAL(BUILD_OWN_PTHREAD_WORKQUEUES, $build_own_pthread_workqueues)
 AM_CONDITIONAL(HAVE_PTHREAD_WORKQUEUES, $have_pthread_workqueues)
+
 AC_CHECK_HEADERS([libproc_internal.h], [], [], [#include <mach/mach.h>])
 AC_CHECK_FUNCS([pthread_workqueue_setdispatch_np _pthread_workqueue_init])
 AS_IF([test -n "$apple_libpthread_source_path" -a -n "$apple_xnu_source_osfmk_path"], [
