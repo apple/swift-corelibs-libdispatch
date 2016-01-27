@@ -2066,9 +2066,7 @@ _dispatch_disk_perform(void *ctxt)
 static void
 _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 {
-#ifndef F_RDADVISE
-  LINUX_PORT_ERROR();
-#else
+#ifdef F_RDADVISE
 	int err;
 	struct radvisory advise;
 	// No point in issuing a read advise for the next chunk if we are already
