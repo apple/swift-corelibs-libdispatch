@@ -109,12 +109,17 @@ Prepare your system
  2. Install dtrace (to generate provider.h)
     sudo apt-get install systemtap-sdt-dev
  3. Install libdispatch pre-reqs
-    sudo apt-get install libblocksruntime-dev libkqueue-dev libpthread-workqueue-dev libbsd-dev
+    sudo apt-get install libblocksruntime-dev libkqueue-dev libbsd-dev
+
+Initialize git submodules:
+  We are using git submodules to incorporate a specific revision of the
+  upstream pthread_workqueue library into the build.
+    git submodule init
+    git submodule update
 
 Build:
 	sh autogen.sh
 	./configure
-	cd src && dtrace -h -s provider.d
 	make
 
 Note: the build currently fails building tests, but libdispatch.so should
