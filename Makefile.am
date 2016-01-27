@@ -4,6 +4,16 @@
 
 ACLOCAL_AMFLAGS = -I m4
 
+if BUILD_OWN_PTHREAD_WORKQUEUES
+SUBDIRS=					\
+	dispatch				\
+	libpwq					\
+	man						\
+	os						\
+	private					\
+	src						\
+	tests
+else
 SUBDIRS=					\
 	dispatch				\
 	man						\
@@ -11,6 +21,7 @@ SUBDIRS=					\
 	private					\
 	src						\
 	tests
+endif
 
 EXTRA_DIST=					\
 	README.md				\
