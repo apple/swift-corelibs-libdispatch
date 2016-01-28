@@ -135,7 +135,8 @@ main(void)
 	uint32_t activecpu, wq_max_threads;
 #ifdef __linux__
 	activecpu = sysconf(_SC_NPROCESSORS_ONLN);
-	wq_max_threads = sysconf(_SC_NPROCESSORS_CONF); // LINUX_PORT_HDD FIXME: Is this correct?
+	// don't want to parse /proc/sys/kernel/threads-max
+	wq_max_threads = activecpu * NTHREADS + 2;
 #else
 	size_t s = sizeof(uint32_t);
 	sysctlbyname("hw.activecpu", &activecpu, &s, NULL, 0);
