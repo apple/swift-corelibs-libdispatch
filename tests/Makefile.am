@@ -22,44 +22,44 @@ noinst_SCRIPTS=leaks-wrapper.sh
 UNPORTED_TESTS=					\
 	dispatch_deadname			\
 	dispatch_proc				\
-	dispatch_vm				\
+	dispatch_vm					\
 	dispatch_vnode
 
-PORTED_TESTS_FAILED=				\
-	dispatch_priority			\
-	dispatch_priority2
+PORTED_TESTS_FAILED=			\
+	dispatch_concur
 
-PORTED_TESTS_PASSED=				\
-	dispatch_select				\
-	dispatch_concur				\
-	dispatch_context_for_key		\
-	dispatch_read				\
-	dispatch_read2				\
-	dispatch_readsync			\
-	dispatch_io				\
-	dispatch_io_net				\
-	dispatch_group				\
+PORTED_TESTS_PASSED=			\
 	dispatch_apply				\
 	dispatch_api				\
 	dispatch_c99				\
 	dispatch_debug				\
-	dispatch_queue_finalizer		\
+	dispatch_queue_finalizer	\
+	dispatch_group				\
 	dispatch_overcommit			\
 	dispatch_pingpong			\
 	dispatch_plusplus			\
+	dispatch_priority			\
+	dispatch_priority2			\
+	dispatch_context_for_key	\
+	dispatch_read				\
+	dispatch_read2				\
 	dispatch_after				\
 	dispatch_timer				\
-	dispatch_timer_short			\
-	dispatch_timer_timeout			\
+	dispatch_timer_short		\
+	dispatch_timer_timeout		\
 	dispatch_sema				\
-	dispatch_suspend_timer			\
-	dispatch_timer_bit31			\
-	dispatch_timer_bit63			\
-	dispatch_timer_set_time			\
+	dispatch_suspend_timer		\
+	dispatch_timer_bit31		\
+	dispatch_timer_bit63		\
+	dispatch_timer_set_time		\
 	dispatch_starfish			\
 	dispatch_cascade			\
 	dispatch_drift				\
-	dispatch_data
+	dispatch_readsync			\
+	dispatch_data				\
+	dispatch_io					\
+	dispatch_io_net				\
+	dispatch_select
 
 ORIGINAL_LIST_OF_TESTS=				\
 	dispatch_apply				\
