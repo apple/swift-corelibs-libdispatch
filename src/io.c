@@ -2066,9 +2066,14 @@ _dispatch_disk_perform(void *ctxt)
 static void
 _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 {
-#ifndef F_RDADVISE
-  LINUX_PORT_ERROR();
-#else
+#ifdef __linux__
+	// linux does not support fcntl (F_RDAVISE)
+	// define necessary datastructure and use readahead
+	struct radvisory {
+		off_t ra_offset;
+		int   ra_count;
+	};
+#endif
 	int err;
 	struct radvisory advise;
 	// No point in issuing a read advise for the next chunk if we are already
@@ -2088,6 +2093,13 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 	}
 	advise.ra_offset = op->advise_offset;
 	op->advise_offset += advise.ra_count;
+#ifdef __linux__
+	_dispatch_io_syscall_switch(err,
+		readahead(op->fd_entry->fd, advise.ra_offset, advise.ra_count),
+		case EINVAL: break; // fd does refer to a non-supported filetype
+		default: (void)dispatch_assume_zero(err); break;
+	);
+#else
 	_dispatch_io_syscall_switch(err,
 		fcntl(op->fd_entry->fd, F_RDADVISE, &advise),
 		case EFBIG: break; // advised past the end of the file rdar://10415691
