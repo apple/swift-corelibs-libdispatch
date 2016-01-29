@@ -3,6 +3,7 @@
 *.la
 .libs
 bsdtestharness
+bsdtestsummarize
 dispatch
 dispatch_after
 dispatch_api
@@ -26,6 +27,7 @@ dispatch_queue_finalizer
 dispatch_read
 dispatch_read2
 dispatch_readsync
+dispatch_select
 dispatch_sema
 dispatch_starfish
 dispatch_suspend_timer
