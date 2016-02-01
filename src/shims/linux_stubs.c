@@ -53,7 +53,7 @@ char* mach_error_string(mach_msg_return_t x) {
 void mach_vm_deallocate() { LINUX_PORT_ERROR();  }
 
 mach_port_t pthread_mach_thread_np(void) {
-  return (pid_t)syscall(SYS_gettid);
+  return (mach_port_t)pthread_self();
 }
 mach_port_t mach_task_self(void) {
   return (mach_port_t)pthread_self();
