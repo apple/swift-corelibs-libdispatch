@@ -5,7 +5,7 @@
             :compile-options ["-I" "AnarchyDispatch/anarchy"]
         }
         :compile-linux {
-            :compileOptions ["-I" "AnarchyDispatch/anarchy" "-I" "AnarchyDispatch/" "-Xcc" "-fblocks"]
+            :compile-options ["-I" "AnarchyDispatch/anarchy" "-I" "AnarchyDispatch/" "-Xcc" "-fblocks"]
             :link-options ["-LAnarchyDispatch/build/lib/"]
         }
     }
