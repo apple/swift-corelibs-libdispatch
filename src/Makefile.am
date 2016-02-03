@@ -46,6 +46,9 @@ libdispatch_la_SOURCES=		\
 	shims/tsd.h				\
 	shims/yield.h
 
+EXTRA_libdispatch_la_SOURCES=
+EXTRA_libdispatch_la_DEPENDENCIES=
+
 AM_CPPFLAGS=-I$(top_builddir) -I$(top_srcdir) \
 	-I$(top_srcdir)/private -I$(top_srcdir)/os
 
@@ -103,8 +106,39 @@ DTRACE_SOURCES=provider.h
 	$(DTRACE) -h -s $< -o $@
 endif
 
-BUILT_SOURCES=$(MIG_SOURCES) $(DTRACE_SOURCES)
+if HAVE_SWIFT
+libdispatch_la_SOURCES+=swift/swift_wrappers.c
+EXTRA_libdispatch_la_SOURCES+=swift/Dispatch.swift
+EXTRA_libdispatch_la_DEPENDENCIES+=$(abs_builddir)/Dispatch.o $(abs_builddir)/Dispatch.swiftmodule
+libdispatch_la_LIBADD+=$(abs_builddir)/Dispatch.o
+
+SWIFT_MODULEMAPS=$(abs_builddir)/module.map $(abs_builddir)/module.build.map
+SWIFTMODULE_OBJECTS=	\
+	$(abs_builddir)/Dispatch.swiftmodule \
+	$(abs_builddir)/Dispatch.swiftdoc \
+	$(abs_builddir)/Dispatch.o
+
+SWIFTC_FLAGS = -I$(abs_top_srcdir) -parse-as-library -Xcc -fblocks -Xcc -fmodule-map-file=module.build.map
+
+$(abs_builddir)/module.build.map:	 $(abs_srcdir)/swift/module.map.in
+	m4 -DPREFIX=$(abs_top_srcdir) $<  > $@
+
+$(abs_builddir)/module.map:	 $(abs_srcdir)/swift/module.map.in
+	m4 -DPREFIX=$(includedir) $<  > $@
+
+$(abs_builddir)/Dispatch.o: $(abs_srcdir)/swift/Dispatch.swift $(abs_builddir)/module.build.map
+	$(SWIFTC) $(SWIFTC_FLAGS) -c -o $@ $<
+
+$(abs_builddir)/Dispatch.swiftmodule: $(abs_srcdir)/swift/Dispatch.swift $(abs_builddir)/module.build.map
+	$(SWIFTC) $(SWIFTC_FLAGS) -emit-module -emit-module-path $@ $<
+
+swiftdir=$(includedir)/Dispatch
+swift_HEADERS=$(abs_builddir)/module.map $(abs_builddir)/Dispatch.swiftmodule $(abs_builddir)/Dispatch.swiftdoc
+
+endif
+
+BUILT_SOURCES=$(MIG_SOURCES) $(DTRACE_SOURCES) $(SWIFT_MODULEMAPS)
 nodist_libdispatch_la_SOURCES=$(BUILT_SOURCES)
-CLEANFILES=$(BUILT_SOURCES)
+CLEANFILES=$(BUILT_SOURCES) $(SWIFTMODULE_OBJECTS)
 DISTCLEANFILES=pthread_machdep.h pthread System mach objc
 
