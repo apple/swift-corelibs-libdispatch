@@ -913,6 +913,52 @@ _dispatch_root_queues_init(void *context DISPATCH_UNUSED)
 
 #define countof(x) (sizeof(x) / sizeof(x[0]))
 
+#if DISPATCH_USE_THREAD_LOCAL_STORAGE
+#include <unistd.h>
+#include <sys/syscall.h>
+
+#ifdef SYS_gettid
+static inline pid_t gettid() { return (pid_t) syscall(SYS_gettid); }
+#else
+#error "SYS_gettid unavailable on this system"
+#endif
+
+#define _tsd_call_cleanup(k,f)  \
+	do { if (f && __dispatch_tsd.k) ((void(*)(void*))(f))(__dispatch_tsd.k); \
+    } while (0)
+
+static
+void
+_libdispatch_thread_cleanup(void)
+{
+	_tsd_call_cleanup(dispatch_queue_key, _dispatch_queue_cleanup);
+	_tsd_call_cleanup(dispatch_voucher_key, _voucher_thread_cleanup);
+	_tsd_call_cleanup(dispatch_cache_key, _dispatch_cache_cleanup);
+	_tsd_call_cleanup(dispatch_io_key, NULL);
+	_tsd_call_cleanup(dispatch_apply_key, NULL);
+	_tsd_call_cleanup(dispatch_defaultpriority_key, NULL);
+	_tsd_call_cleanup(dispatch_pthread_root_queue_observer_hooks_key,
+			NULL);
+#if DISPATCH_PERF_MON && !DISPATCH_INTROSPECTION
+	_tsd_call_cleanup(dispatch_bcounter_key, NULL);
+#endif
+#if !DISPATCH_USE_OS_SEMAPHORE_CACHE
+	_tsd_call_cleanup(dispatch_sema4_key,
+			(void (*)(void *))_dispatch_thread_semaphore_dispose);
+#endif
+}
+
+DISPATCH_EXPORT
+void
+libdispatch_thread_init(void)
+{
+	__dispatch_tsd.tid = gettid();
+   pthread_setspecific(__dispatch_tsd_key, &__dispatch_tsd);
+   __dispatch_tsd.initialized = true;
+}
+
+#endif
+
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 libdispatch_init(void)
@@ -951,6 +997,9 @@ libdispatch_init(void)
 	dispatch_assert(sizeof(struct dispatch_root_queue_context_s) %
 			DISPATCH_CACHELINE_SIZE == 0);
 
+#if DISPATCH_USE_THREAD_LOCAL_STORAGE
+	_dispatch_thread_key_create(&__dispatch_tsd_key, (void(*)(void*))_libdispatch_thread_cleanup);
+#else
 	_dispatch_thread_key_create(&dispatch_queue_key, _dispatch_queue_cleanup);
 	_dispatch_thread_key_create(&dispatch_voucher_key, _voucher_thread_cleanup);
 	_dispatch_thread_key_create(&dispatch_cache_key, _dispatch_cache_cleanup);
@@ -965,6 +1014,7 @@ libdispatch_init(void)
 #if !DISPATCH_USE_OS_SEMAPHORE_CACHE
 	_dispatch_thread_key_create(&dispatch_sema4_key,
 			(void (*)(void *))_dispatch_thread_semaphore_dispose);
+#endif
 #endif
 
 #if DISPATCH_USE_RESOLVERS // rdar://problem/8541707
