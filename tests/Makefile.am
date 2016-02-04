@@ -120,7 +120,7 @@ if !BUILD_OWN_PTHREAD_WORKQUEUES
   endif
 endif
 
-LDADD=libbsdtests.la ../src/libdispatch.la $(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS)
+LDADD=libbsdtests.la $(top_builddir)/src/libdispatch.la $(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS)
 libbsdtests_la_LDFLAGS=-avoid-version
 
 bsdtestsummarize_LDADD=-lm $(BSD_OVERLAY_LIBS)
