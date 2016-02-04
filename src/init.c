@@ -527,7 +527,7 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 			struct timeval tv;
 			gettimeofday(&tv, NULL);
 #if DISPATCH_DEBUG
-			dispatch_log_basetime = mach_absolute_time();
+			dispatch_log_basetime = _dispatch_absolute_time();
 #endif
 			dprintf(dispatch_logfile, "=== log file opened for %s[%u] at "
 					"%ld.%06u ===\n", getprogname() ?: "", getpid(),
@@ -559,7 +559,7 @@ _dispatch_logv_file(const char *msg, va_list ap)
 
 #if DISPATCH_DEBUG
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "%llu\t",
-			mach_absolute_time() - dispatch_log_basetime);
+			_dispatch_absolute_time() - dispatch_log_basetime);
 #endif
 	r = vsnprintf(&buf[offset], bufsiz - offset, msg, ap);
 	if (r < 0) return;
@@ -656,7 +656,7 @@ _dispatch_debugv(dispatch_object_t dou, const char *msg, va_list ap)
 	int r;
 #if DISPATCH_DEBUG && !DISPATCH_USE_OS_DEBUG_LOG
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "%llu\t\t%p\t",
-			mach_absolute_time() - dispatch_log_basetime,
+			_dispatch_absolute_time() - dispatch_log_basetime,
 			(void *)_dispatch_thread_self());
 #endif
 	if (dou._do) {
