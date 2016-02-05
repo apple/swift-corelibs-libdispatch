@@ -2,10 +2,11 @@
 :name "AnarchyDispatch"
     :overlays {
         :compile-osx {
-            :compile-options ["-I" "AnarchyDispatch/anarchy"]
+            :include-with-user ["AnarchyDispatch/anarchy"]
         }
         :compile-linux {
-            :compile-options ["-I" "AnarchyDispatch/anarchy" "-I" "AnarchyDispatch/" "-Xcc" "-fblocks"]
+            :include-with-user ["AnarchyDispatch/anarchy" "AnarchyDispatch/"]
+            :compile-options ["-Xcc" "-fblocks"]
             :link-options ["-LAnarchyDispatch/build/lib/"]
         }
     }

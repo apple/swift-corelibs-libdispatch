@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+ln -s `pwd` $ATBUILD_USER_PATH/AnarchyDispatch
 rm -rf anarchy/module.modulemap
 if [ `uname` == "Darwin" ]; then
     echo "Not building libdispatch on Darwin; using system libdispatch"
