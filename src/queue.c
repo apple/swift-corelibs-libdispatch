@@ -918,19 +918,25 @@ _dispatch_root_queues_init(void *context DISPATCH_UNUSED)
 #include <sys/syscall.h>
 
 #ifdef SYS_gettid
-static inline pid_t gettid() { return (pid_t) syscall(SYS_gettid); }
+DISPATCH_ALWAYS_INLINE
+static inline pid_t
+gettid(void)
+{
+	return (pid_t) syscall(SYS_gettid);
+}
 #else
 #error "SYS_gettid unavailable on this system"
 #endif
 
-#define _tsd_call_cleanup(k,f)  \
-	do { if (f && __dispatch_tsd.k) ((void(*)(void*))(f))(__dispatch_tsd.k); \
+#define _tsd_call_cleanup(k, f)  do { \
+		if (f && tsd->k) ((void(*)(void*))(f))(tsd->k); \
     } while (0)
 
-static
-void
-_libdispatch_thread_cleanup(void)
+static void
+_libdispatch_tsd_cleanup(void *ctx)
 {
+	struct dispatch_tsd *tsd = (struct dispatch_tsd*) ctx;
+
 	_tsd_call_cleanup(dispatch_queue_key, _dispatch_queue_cleanup);
 	_tsd_call_cleanup(dispatch_voucher_key, _voucher_thread_cleanup);
 	_tsd_call_cleanup(dispatch_cache_key, _dispatch_cache_cleanup);
@@ -946,15 +952,17 @@ _libdispatch_thread_cleanup(void)
 	_tsd_call_cleanup(dispatch_sema4_key,
 			(void (*)(void *))_dispatch_thread_semaphore_dispose);
 #endif
+	tsd->tid = -1;
+	tsd->initialized = false;
 }
 
 DISPATCH_EXPORT
 void
-libdispatch_thread_init(void)
+libdispatch_tsd_init(void)
 {
 	__dispatch_tsd.tid = gettid();
-   pthread_setspecific(__dispatch_tsd_key, &__dispatch_tsd);
-   __dispatch_tsd.initialized = true;
+	pthread_setspecific(__dispatch_tsd_key, &__dispatch_tsd);
+	__dispatch_tsd.initialized = true;
 }
 
 #endif
@@ -998,7 +1006,7 @@ libdispatch_init(void)
 			DISPATCH_CACHELINE_SIZE == 0);
 
 #if DISPATCH_USE_THREAD_LOCAL_STORAGE
-	_dispatch_thread_key_create(&__dispatch_tsd_key, (void(*)(void*))_libdispatch_thread_cleanup);
+	_dispatch_thread_key_create(&__dispatch_tsd_key, _libdispatch_tsd_cleanup);
 #else
 	_dispatch_thread_key_create(&dispatch_queue_key, _dispatch_queue_cleanup);
 	_dispatch_thread_key_create(&dispatch_voucher_key, _voucher_thread_cleanup);

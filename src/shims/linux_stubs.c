@@ -52,15 +52,10 @@ char* mach_error_string(mach_msg_return_t x) {
 }
 void mach_vm_deallocate() { LINUX_PORT_ERROR();  }
 
-#if DISPATCH_USE_THREAD_LOCAL_STORAGE
 mach_port_t pthread_mach_thread_np(void) {
-  return __dispatch_tsd.tid;
+  return (mach_port_t)pthread_self();
 }
-#else
-mach_port_t pthread_mach_thread_np(void) {
-  return (pid_t)syscall(SYS_gettid);
-}
-#endif
+
 mach_port_t mach_task_self(void) {
   return (mach_port_t)pthread_self();
 }
