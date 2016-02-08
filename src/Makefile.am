@@ -44,6 +44,7 @@ libdispatch_la_SOURCES=		\
 	shims/perfmon.h			\
 	shims/time.h			\
 	shims/tsd.h				\
+	shims/pthread_main_np.h		\
 	shims/yield.h
 
 AM_CPPFLAGS=-I$(top_builddir) -I$(top_srcdir) \
