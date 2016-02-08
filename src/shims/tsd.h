@@ -73,6 +73,56 @@ _dispatch_thread_key_create(const unsigned long *k, void (*d)(void *))
 	if (!*k || !d) return;
 	dispatch_assert_zero(pthread_key_init_np((int)*k, d));
 }
+#elif DISPATCH_USE_THREAD_LOCAL_STORAGE
+
+DISPATCH_TSD_INLINE
+static inline void
+_dispatch_thread_key_create(pthread_key_t *k, void (*d)(void *))
+{
+	dispatch_assert_zero(pthread_key_create(k, d));
+}
+
+struct dispatch_tsd {
+	bool initialized;
+	pid_t tid;
+	void *dispatch_queue_key;
+	void *dispatch_voucher_key;
+#if DISPATCH_USE_OS_SEMAPHORE_CACHE
+#error "Invalid DISPATCH_USE_OS_SEMAPHORE_CACHE configuration"
+#else
+	void *dispatch_sema4_key;
+#endif
+	void *dispatch_cache_key;
+	void *dispatch_io_key;
+	void *dispatch_apply_key;
+	void *dispatch_defaultpriority_key;
+#if DISPATCH_INTROSPECTION
+	void *dispatch_introspection_key;
+#elif DISPATCH_PERF_MON
+	void *dispatch_bcounter_key;
+#endif
+	void *dispatch_pthread_root_queue_observer_hooks_key;
+};
+
+extern __thread struct dispatch_tsd __dispatch_tsd;
+extern pthread_key_t __dispatch_tsd_key;
+extern void libdispatch_tsd_init(void);
+
+DISPATCH_ALWAYS_INLINE
+static inline struct dispatch_tsd *
+_dispatch_get_tsd_base(void)
+{
+	if (slowpath(!__dispatch_tsd.initialized)) {
+		libdispatch_tsd_init();
+	}
+	return &__dispatch_tsd;
+}
+
+#define _dispatch_thread_getspecific(key) \
+	(_dispatch_get_tsd_base()->key)
+#define _dispatch_thread_setspecific(key, value) \
+	(void)(_dispatch_get_tsd_base()->key = (value))
+
 #else
 extern pthread_key_t dispatch_queue_key;
 extern pthread_key_t dispatch_voucher_key;
@@ -100,7 +150,7 @@ _dispatch_thread_key_create(pthread_key_t *k, void (*d)(void *))
 }
 #endif
 
-#if DISPATCH_USE_TSD_BASE && !DISPATCH_DEBUG
+#if (DISPATCH_USE_TSD_BASE && !DISPATCH_DEBUG) || DISPATCH_USE_THREAD_LOCAL_STORAGE
 #else // DISPATCH_USE_TSD_BASE
 DISPATCH_TSD_INLINE
 static inline void
@@ -134,6 +184,8 @@ _dispatch_thread_getspecific(pthread_key_t k)
 #if DISPATCH_USE_DIRECT_TSD
 #define _dispatch_thread_self() ((uintptr_t)_dispatch_thread_getspecific( \
 		_PTHREAD_TSD_SLOT_PTHREAD_SELF))
+#elif DISPATCH_USE_THREAD_LOCAL_STORAGE
+#define _dispatch_thread_self() ((uintptr_t)pthread_self())
 #else
 #define _dispatch_thread_self() ((uintptr_t)pthread_self())
 #endif
@@ -145,6 +197,8 @@ _dispatch_thread_getspecific(pthread_key_t k)
 #if DISPATCH_USE_DIRECT_TSD
 #define _dispatch_thread_port() ((mach_port_t)_dispatch_thread_getspecific(\
 		_PTHREAD_TSD_SLOT_MACH_THREAD_SELF))
+#elif DISPATCH_USE_THREAD_LOCAL_STORAGE
+#define _dispatch_thread_port() ((mach_port_t)(_dispatch_get_tsd_base()->tid))
 #else
 #define _dispatch_thread_port() (pthread_mach_thread_np(_dispatch_thread_self()))
 #endif

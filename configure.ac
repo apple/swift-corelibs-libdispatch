@@ -101,6 +101,27 @@ AS_IF([test "x$enable_apple_tsd_optimizations" = "xyes"],
     [Define to use non-portable pthread TSD optimizations for Mac OS X)])]
 )
 
+#
+# Enable __thread based TSD on platforms where it is efficient
+# Allow override based on command line argument to configure
+#
+AC_CANONICAL_TARGET
+AC_ARG_ENABLE([thread-local-storage],
+  [AS_HELP_STRING([--enable-thread-local-storage],
+    [Enable usage of thread local storage via __thread])],,
+  [case $target_os in
+      linux*)
+        enable_thread_local_storage=yes
+	    ;;
+      *)
+        enable_thread_local_storage=no
+   esac]
+)
+AS_IF([test "x$enable_thread_local_storage" = "xyes"],
+  [AC_DEFINE(DISPATCH_USE_THREAD_LOCAL_STORAGE, 1,
+    [Enable usage of thread local storage via __thread])]
+)
+
 AC_USE_SYSTEM_EXTENSIONS
 AM_INIT_AUTOMAKE([foreign no-dependencies subdir-objects])
 LT_INIT([disable-static])

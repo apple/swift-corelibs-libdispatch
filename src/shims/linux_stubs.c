@@ -53,8 +53,9 @@ char* mach_error_string(mach_msg_return_t x) {
 void mach_vm_deallocate() { LINUX_PORT_ERROR();  }
 
 mach_port_t pthread_mach_thread_np(void) {
-  return (pid_t)syscall(SYS_gettid);
+  return (mach_port_t)pthread_self();
 }
+
 mach_port_t mach_task_self(void) {
   return (mach_port_t)pthread_self();
 }
@@ -76,3 +77,8 @@ unsigned short dispatch_callout__return_semaphore;
 unsigned short dispatch_queue__push_semaphore;
 void (*_dispatch_block_special_invoke)(void*);
 struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent;
+
+#if DISPATCH_USE_THREAD_LOCAL_STORAGE
+__thread struct dispatch_tsd __dispatch_tsd;
+pthread_key_t __dispatch_tsd_key;
+#endif
