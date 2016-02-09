@@ -57,8 +57,8 @@ AM_CXXFLAGS=$(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 AM_OBJCXXFLAGS=$(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 
 if BUILD_OWN_PTHREAD_WORKQUEUES
-  PTHREAD_WORKQUEUE_LIBS=../libpwq/libpthread_workqueue.la
-  PTHREAD_WORKQUEUE_CFLAGS=-I../libpwq/include
+  PTHREAD_WORKQUEUE_LIBS=$(top_builddir)/libpwq/libpthread_workqueue.la
+  PTHREAD_WORKQUEUE_CFLAGS=-I$(top_srcdir)/libpwq/include
 else
   if HAVE_PTHREAD_WORKQUEUES
     PTHREAD_WORKQUEUE_LIBS=-lpthread_workqueue
