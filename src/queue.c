@@ -956,7 +956,7 @@ _libdispatch_tsd_cleanup(void *ctx)
 	tsd->initialized = false;
 }
 
-DISPATCH_EXPORT
+DISPATCH_EXPORT DISPATCH_NOINLINE
 void
 libdispatch_tsd_init(void)
 {
