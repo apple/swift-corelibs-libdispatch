@@ -1,5 +1,5 @@
 module Dispatch [system] {
-    umbrella header "PREFIX/dispatch/dispatch.h"
+    umbrella header "dispatch.h"
     requires blocks
     export *
     link "dispatch"

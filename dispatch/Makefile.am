@@ -2,7 +2,11 @@
 #
 #
 
+if HAVE_SWIFT
+dispatchdir=${prefix}/lib/swift/dispatch
+else
 dispatchdir=$(includedir)/dispatch
+endif
 
 dispatch_HEADERS=	\
 	base.h			\
@@ -18,4 +22,8 @@ dispatch_HEADERS=	\
 	semaphore.h		\
 	source.h		\
 	time.h
+
+if HAVE_SWIFT
+dispatch_HEADERS+=module.map
+endif
 
