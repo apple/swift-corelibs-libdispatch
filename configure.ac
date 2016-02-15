@@ -276,6 +276,8 @@ AC_CHECK_FUNC([sem_init],
   [have_sem_init=true], [have_sem_init=false]
 )
 
+AC_CHECK_HEADER(linux/futex.h, [have_futex=true], [have_futex=false])
+
 #
 # We support both Mach semaphores and POSIX semaphores; if the former are
 # available, prefer them.
@@ -284,6 +286,9 @@ AC_MSG_CHECKING([what semaphore type to use]);
 AS_IF([test "x$have_mach" = "xtrue"],
   [AC_DEFINE(USE_MACH_SEM, 1, [Define to use Mach semaphores])
     AC_MSG_RESULT([Mach semaphores])],
+  [test "x$have_futex" = "xtrue"],
+  [AC_DEFINE(USE_FUTEX_SEM, 1, [Define to use Futex semaphores])
+    AC_MSG_RESULT([Futex semaphores])],
   [test "x$have_sem_init" = "xtrue"],
   [AC_DEFINE(USE_POSIX_SEM, 1, [Define to use POSIX semaphores])
     AC_MSG_RESULT([POSIX semaphores])],
