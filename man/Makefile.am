@@ -2,6 +2,7 @@
 #
 #
 
+if !HAVE_SWIFT
 dist_man3_MANS=					\
 	dispatch.3					\
 	dispatch_after.3			\
@@ -148,3 +149,4 @@ uninstall-hook:
 			dispatch_io_barrier.3	\
 			dispatch_io_write.3	\
 			dispatch_write.3
+endif
