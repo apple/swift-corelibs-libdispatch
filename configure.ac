@@ -185,6 +185,7 @@ AC_CHECK_HEADERS([pthread_machdep.h pthread/qos.h])
 # Look for own version first, then system version.
 AS_IF([test -f $srcdir/libpwq/configure.ac],
   [AC_DEFINE(BUILD_OWN_PTHREAD_WORKQUEUES, 1, [Define if building pthread work queues from source])
+   ac_configure_args="--disable-libpwq-install $ac_configure_args"
    AC_CONFIG_SUBDIRS([libpwq])
    build_own_pthread_workqueue=true,
    AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])
