@@ -168,3 +168,7 @@ nsoperation_LDFLAGS=-framework Foundation
 bench_SOURCES=Foundation/bench.mm func.c
 bench_LDFLAGS=-framework Foundation
 endif
+
+# For use by swift/utils/build-script to force test cases to be
+# built during the build phase of CI
+build-tests: $(TESTS) $(check_PROGRAMS)
