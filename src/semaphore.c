@@ -278,6 +278,13 @@ dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 	return _dispatch_semaphore_signal_slow(dsema);
 }
 
+#if USE_POSIX_SEM && HAVE_PTHREAD_WORKQUEUES
+extern void pthread_workqueue_signal_np(void);
+#define _dispatch_threadmgr_inform_wait() pthread_workqueue_signal_np()
+#else
+#define _dispatch_threadmgr_inform_wait()  do { } while (0)
+#endif
+
 DISPATCH_NOINLINE
 static long
 _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
@@ -345,6 +352,7 @@ again:
 			uint64_t nsec = _dispatch_time_to_nanoseconds(timeout);
 			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
 			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
+			_dispatch_threadmgr_inform_wait();
 			ret = slowpath(sem_timedwait(&dsema->dsema_sem, &_timeout));
 		} while (ret == -1 && errno == EINTR);
 
@@ -387,6 +395,7 @@ again:
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 #elif USE_POSIX_SEM
 		do {
+			_dispatch_threadmgr_inform_wait();
 			ret = sem_wait(&dsema->dsema_sem);
 		} while (ret != 0);
 		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
@@ -585,6 +594,7 @@ again:
 			uint64_t nsec = _dispatch_time_to_nanoseconds(timeout);
 			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
 			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
+			_dispatch_threadmgr_inform_wait();
 			ret = slowpath(sem_timedwait(&dsema->dsema_sem, &_timeout));
 		} while (ret == -1 && errno == EINTR);
 
@@ -627,6 +637,7 @@ again:
 		DISPATCH_GROUP_VERIFY_KR(kr);
 #elif USE_POSIX_SEM
 		do {
+			_dispatch_threadmgr_inform_wait();
 			ret = sem_wait(&dsema->dsema_sem);
 		} while (ret == -1 && errno == EINTR);
 		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
