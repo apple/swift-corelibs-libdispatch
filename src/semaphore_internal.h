@@ -29,6 +29,29 @@
 
 struct dispatch_queue_s;
 
+#if USE_FUTEX_SEM
+typedef union {
+	/* Low 32 bits are the count; high bits are the waiter count. */
+	uint64_t volatile dfx_data;
+	struct {
+#if LITTLE_ENDIAN
+		int32_t dfx_futex;
+		uint32_t dfx_waiters;
+#else
+		uint32_t dfx_waiters;
+		int32_t dfx_futex;
+#endif
+	};
+} dispatch_futex_s;
+#define DISPATCH_FUTEX_INIT  ((dispatch_futex_s){ 0 })
+typedef dispatch_futex_s *dispatch_futex_t;
+
+#define DISPATCH_FUTEX_NUM_SPINS 100
+#define DISPATCH_FUTEX_VALUE_MAX INT_MAX
+#define DISPATCH_FUTEX_NWAITERS_SHIFT 32
+#define DISPATCH_FUTEX_VALUE_MASK ((1ull << DISPATCH_FUTEX_NWAITERS_SHIFT) - 1)
+#endif  /* USE_FUTEX_SEM */
+
 DISPATCH_CLASS_DECL(semaphore);
 struct dispatch_semaphore_s {
 	DISPATCH_STRUCT_HEADER(semaphore);
@@ -36,6 +59,8 @@ struct dispatch_semaphore_s {
 	semaphore_t dsema_port;
 #elif USE_POSIX_SEM
 	sem_t dsema_sem;
+#elif USE_FUTEX_SEM
+	dispatch_futex_s dsema_futex;
 #elif USE_WIN32_SEM
 	HANDLE dsema_handle;
 #else
@@ -65,6 +90,10 @@ void _dispatch_thread_semaphore_dispose(_dispatch_thread_semaphore_t);
 void _dispatch_thread_semaphore_wait(_dispatch_thread_semaphore_t);
 void _dispatch_thread_semaphore_signal(_dispatch_thread_semaphore_t);
 
+#if USE_FUTEX_SEM
+#define _dispatch_get_thread_semaphore() _dispatch_thread_semaphore_create()
+#define _dispatch_put_thread_semaphore(s) _dispatch_thread_semaphore_dispose(s)
+#else
 DISPATCH_ALWAYS_INLINE
 static inline _dispatch_thread_semaphore_t
 _dispatch_get_thread_semaphore(void)
@@ -89,5 +118,6 @@ _dispatch_put_thread_semaphore(_dispatch_thread_semaphore_t sema)
 		return _dispatch_thread_semaphore_dispose(old_sema);
 	}
 }
+#endif
 
 #endif
