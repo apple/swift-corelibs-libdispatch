@@ -531,7 +531,7 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 #endif
 			dprintf(dispatch_logfile, "=== log file opened for %s[%u] at "
 					"%ld.%06u ===\n", getprogname() ?: "", getpid(),
-					tv.tv_sec, tv.tv_usec);
+					tv.tv_sec, (int)tv.tv_usec);
 		}
 	}
 }

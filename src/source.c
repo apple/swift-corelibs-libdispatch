@@ -148,7 +148,7 @@ dispatch_source_create(dispatch_source_type_t type,
 	dk->dk_kevent.ident = handle;
 	dk->dk_kevent.flags |= EV_ADD|EV_ENABLE;
 	dk->dk_kevent.fflags |= (uint32_t)mask;
-	dk->dk_kevent.udata = (uintptr_t)dk;
+	dk->dk_kevent.udata = (typeof(dk->dk_kevent.udata))dk;
 	TAILQ_INIT(&dk->dk_sources);
 
 	ds->ds_dkev = dk;
@@ -917,9 +917,9 @@ _dispatch_kevent_init()
 	TAILQ_INSERT_TAIL(&_dispatch_sources[0],
 			&_dispatch_kevent_data_add, dk_list);
 	_dispatch_kevent_data_or.dk_kevent.udata =
-			(uintptr_t)&_dispatch_kevent_data_or;
+			(typeof(_dispatch_kevent_data_or.dk_kevent.udata))&_dispatch_kevent_data_or;
 	_dispatch_kevent_data_add.dk_kevent.udata =
-			(uintptr_t)&_dispatch_kevent_data_add;
+			(typeof(_dispatch_kevent_data_or.dk_kevent.udata))&_dispatch_kevent_data_add;
 #endif // !DISPATCH_USE_EV_UDATA_SPECIFIC
 }
 
@@ -1168,11 +1168,11 @@ _dispatch_kevent_drain(_dispatch_kevent_qos_s *ke)
 			ke->data = 0; // don't return error from caller
 			if (ke->flags & EV_DELETE) {
 				_dispatch_debug("kevent[0x%llx]: ignoring ESRCH from "
-						"EVFILT_PROC EV_DELETE", ke->udata);
+						"EVFILT_PROC EV_DELETE", (unsigned long long)ke->udata);
 				return;
 			}
 			_dispatch_debug("kevent[0x%llx]: ESRCH from EVFILT_PROC: "
-					"generating fake NOTE_EXIT", ke->udata);
+					"generating fake NOTE_EXIT", (unsigned long long)ke->udata);
 			return _dispatch_kevent_proc_exit(ke);
 		}
 		return _dispatch_kevent_error(ke);
@@ -1532,8 +1532,13 @@ struct dispatch_timer_s _dispatch_timer[] =  {
 #define DISPATCH_TIMER_COUNT \
 		((sizeof(_dispatch_timer) / sizeof(_dispatch_timer[0])))
 
+#if __linux__
 #define DISPATCH_KEVENT_TIMER_UDATA(tidx) \
+		(void*)&_dispatch_kevent_timer[tidx]
+#else
+#define DISPATCH_KEVENT_TIMER_UDATA(tidx)			\
 		(uintptr_t)&_dispatch_kevent_timer[tidx]
+#endif
 #ifdef __LP64__
 #define DISPATCH_KEVENT_TIMER_UDATA_INITIALIZER(tidx) \
 		.udata = DISPATCH_KEVENT_TIMER_UDATA(tidx)
@@ -1962,6 +1967,8 @@ _dispatch_timers_configure(void)
 	return _dispatch_timers_check(_dispatch_kevent_timer, _dispatch_timer);
 }
 
+
+#if HAVE_MACH
 static void
 _dispatch_timers_calendar_change(void)
 {
@@ -1969,6 +1976,7 @@ _dispatch_timers_calendar_change(void)
 	_dispatch_timer_expired = true;
 	_dispatch_timers_qos_mask = ~0u;
 }
+#endif
 
 static void
 _dispatch_timers_kevent(_dispatch_kevent_qos_s *ke)
@@ -2194,7 +2202,7 @@ _dispatch_select_register(const _dispatch_kevent_qos_s *kev)
 						sizeof(*_dispatch_rfd_ptrs));
 			}
 			if (!_dispatch_rfd_ptrs[kev->ident]) {
-				_dispatch_rfd_ptrs[kev->ident] = kev->udata;
+				_dispatch_rfd_ptrs[kev->ident] = (uint64_t)kev->udata;
 				_dispatch_select_workaround++;
 				_dispatch_debug("select workaround used to read fd %d: 0x%lx",
 						(int)kev->ident, (long)kev->data);
@@ -2211,7 +2219,7 @@ _dispatch_select_register(const _dispatch_kevent_qos_s *kev)
 						sizeof(*_dispatch_wfd_ptrs));
 			}
 			if (!_dispatch_wfd_ptrs[kev->ident]) {
-				_dispatch_wfd_ptrs[kev->ident] = kev->udata;
+				_dispatch_wfd_ptrs[kev->ident] = (uint64_t)kev->udata;
 				_dispatch_select_workaround++;
 				_dispatch_debug("select workaround used to write fd %d: 0x%lx",
 						(int)kev->ident, (long)kev->data);
@@ -2313,7 +2321,7 @@ _dispatch_mgr_select(bool poll)
 					.filter = EVFILT_READ,
 					.flags = EV_ADD|EV_ENABLE|EV_DISPATCH,
 					.data = 1,
-					.udata = _dispatch_rfd_ptrs[i],
+					.udata = (typeof(kev.udata))_dispatch_rfd_ptrs[i],
 				};
 				_dispatch_kevent_drain(&kev);
 			}
@@ -2324,7 +2332,7 @@ _dispatch_mgr_select(bool poll)
 					.filter = EVFILT_WRITE,
 					.flags = EV_ADD|EV_ENABLE|EV_DISPATCH,
 					.data = 1,
-					.udata = _dispatch_wfd_ptrs[i],
+					.udata = (typeof(kev.udata))_dispatch_wfd_ptrs[i],
 				};
 				_dispatch_kevent_drain(&kev);
 			}
@@ -2482,12 +2490,14 @@ retry:
 
 static _dispatch_kevent_qos_s *_dispatch_kevent_enable;
 
+#if HAVE_MACH
 static void inline
 _dispatch_mgr_kevent_reenable(_dispatch_kevent_qos_s *ke)
 {
 	dispatch_assert(!_dispatch_kevent_enable || _dispatch_kevent_enable == ke);
 	_dispatch_kevent_enable = ke;
 }
+#endif
 
 unsigned long
 _dispatch_mgr_wakeup(dispatch_queue_t dq DISPATCH_UNUSED)
@@ -4755,8 +4765,9 @@ _dispatch_timer_debug_attr(dispatch_source_t ds, char* buf, size_t bufsiz)
 	dispatch_source_refs_t dr = ds->ds_refs;
 	return dsnprintf(buf, bufsiz, "timer = { target = 0x%llx, deadline = 0x%llx,"
 			" last_fire = 0x%llx, interval = 0x%llx, flags = 0x%lx }, ",
-			ds_timer(dr).target, ds_timer(dr).deadline, ds_timer(dr).last_fire,
-			ds_timer(dr).interval, ds_timer(dr).flags);
+			(unsigned long long)ds_timer(dr).target, (unsigned long long)ds_timer(dr).deadline,
+			(unsigned long long)ds_timer(dr).last_fire, (unsigned long long)ds_timer(dr).interval,
+			ds_timer(dr).flags);
 }
 
 size_t

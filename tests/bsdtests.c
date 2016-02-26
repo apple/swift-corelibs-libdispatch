@@ -18,6 +18,10 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
+#ifdef __linux__
+// for asprintf
+#define _GNU_SOURCE 1
+#endif
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
