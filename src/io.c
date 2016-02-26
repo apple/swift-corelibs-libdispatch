@@ -1601,7 +1601,7 @@ _dispatch_disk_init(dispatch_fd_entry_t fd_entry, dev_t dev)
 	TAILQ_INIT(&disk->operations);
 	disk->cur_rq = TAILQ_FIRST(&disk->operations);
 	char label[45];
-	snprintf(label, sizeof(label), "com.apple.libdispatch-io.deviceq.%d", dev);
+	snprintf(label, sizeof(label), "com.apple.libdispatch-io.deviceq.%d", (int)dev);
 	disk->pick_queue = dispatch_queue_create(label, NULL);
 	TAILQ_INSERT_TAIL(&_dispatch_io_devs[hash], disk, disk_list);
 out:
@@ -2367,7 +2367,7 @@ _dispatch_io_debug_attr(dispatch_io_t channel, char* buf, size_t bufsiz)
 			channel->barrier_group, channel->err, channel->params.low,
 			channel->params.high, channel->params.interval_flags &
 			DISPATCH_IO_STRICT_INTERVAL ? "(strict)" : "",
-			channel->params.interval);
+			(unsigned long long) channel->params.interval);
 }
 
 size_t
@@ -2398,10 +2398,10 @@ _dispatch_operation_debug_attr(dispatch_operation_t op, char* buf,
 			"write", op->fd_entry ? op->fd_entry->fd : -1, op->fd_entry,
 			op->channel, op->op_q, oqtarget && oqtarget->dq_label ?
 			oqtarget->dq_label : "", oqtarget, target && target->dq_label ?
-			target->dq_label : "", target, op->offset, op->length, op->total,
+			target->dq_label : "", target, (long long)op->offset, op->length, op->total,
 			op->undelivered + op->buf_len, op->flags, op->err, op->params.low,
 			op->params.high, op->params.interval_flags &
-			DISPATCH_IO_STRICT_INTERVAL ? "(strict)" : "", op->params.interval);
+			DISPATCH_IO_STRICT_INTERVAL ? "(strict)" : "", (unsigned long long)op->params.interval);
 }
 
 size_t
