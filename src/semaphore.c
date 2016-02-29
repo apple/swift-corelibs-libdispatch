@@ -380,7 +380,7 @@ again:
 		}
 #elif USE_FUTEX_SEM
 		do {
-			uint64_t nsec = _dispatch_time_to_nanoseconds(timeout);
+			uint64_t nsec = _dispatch_timeout(timeout);
 			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
 			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
 			ret = slowpath(_dispatch_futex_wait(&dsema->dsema_futex, &_timeout));
@@ -645,7 +645,6 @@ again:
 		}
 #elif USE_FUTEX_SEM
 		do {
-			// HF: check whether we need same timer as POSIX_SEM
 			uint64_t nsec = _dispatch_timeout(timeout);
 			_timeout.tv_sec = nsec / NSEC_PER_SEC;
 			_timeout.tv_nsec = nsec % NSEC_PER_SEC;
