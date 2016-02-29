@@ -646,8 +646,8 @@ again:
 #elif USE_FUTEX_SEM
 		do {
 			uint64_t nsec = _dispatch_timeout(timeout);
-			_timeout.tv_sec = nsec / NSEC_PER_SEC;
-			_timeout.tv_nsec = nsec % NSEC_PER_SEC;
+			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
+			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
 			ret = slowpath(_dispatch_futex_wait(&dsema->dsema_futex, &_timeout));
 		} while (ret == false && errno == EINTR);
 
