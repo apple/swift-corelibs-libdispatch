@@ -42,23 +42,7 @@
 			DISPATCH_CRASH("POSIX semaphore API failure"); \
 		} \
 	} while (0)
-#elif USE_FUTEX_SEM
-#define DISPATCH_SEMAPHORE_VERIFY_RET(x) do { \
-		if (slowpath((x) == false)) { \
-			DISPATCH_CRASH("Futex semaphore API failure"); \
-		} \
-	} while (0)
-#define DISPATCH_SEMAPHORE_VERIFY_SYSRET(x) do { \
-		if (slowpath((x) == -1)) { \
-			DISPATCH_CRASH("Futex semaphore API failure"); \
-		} \
-	} while (0)
 #endif
-
-#if USE_FUTEX_SEM
-static bool _dispatch_futex_signal(dispatch_futex_t dfx);
-static bool _dispatch_futex_wait(dispatch_futex_t dfx, const struct timespec *timeout);
-#endif  /* USE_FUTEX_SEM */
 
 #if USE_WIN32_SEM
 // rdar://problem/8428132
@@ -127,8 +111,6 @@ _dispatch_semaphore_init(long value, dispatch_object_t dou)
 #if USE_POSIX_SEM
 	int ret = sem_init(&dsema->dsema_sem, 0, 0);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_FUTEX_SEM
-    dsema->dsema_futex = DISPATCH_FUTEX_INIT;
 #endif
 }
 
@@ -226,8 +208,6 @@ _dispatch_semaphore_dispose(dispatch_object_t dou)
 #elif USE_POSIX_SEM
 	int ret = sem_destroy(&dsema->dsema_sem);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_FUTEX_SEM
-	// nothing to be done
 #elif USE_WIN32_SEM
 	if (dsema->dsema_handle) {
 		CloseHandle(dsema->dsema_handle);
@@ -264,7 +244,7 @@ _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 	// dsema after the atomic increment.
 	_dispatch_retain(dsema);
 
-#if USE_MACH_SEM || USE_POSIX_SEM // || USE_FUTEX_SEM
+#if USE_MACH_SEM || USE_POSIX_SEM
 	(void)dispatch_atomic_inc2o(dsema, dsema_sent_ksignals, relaxed);
 #endif
 
@@ -275,9 +255,6 @@ _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 #elif USE_POSIX_SEM
 	int ret = sem_post(&dsema->dsema_sem);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_FUTEX_SEM
-    bool ret = _dispatch_futex_signal(&dsema->dsema_futex);
-    DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #elif USE_WIN32_SEM
 	_dispatch_semaphore_create_handle(&dsema->dsema_handle);
 	int ret = ReleaseSemaphore(dsema->dsema_handle, 1, NULL);
@@ -311,12 +288,9 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 #if USE_MACH_SEM
 	mach_timespec_t _timeout;
 	kern_return_t kr;
-#elif USE_POSIX_SEM 
+#elif USE_POSIX_SEM
 	struct timespec _timeout;
 	int ret;
-#elif USE_FUTEX_SEM
-	struct timespec _timeout;
-	bool ret;
 #elif USE_WIN32_SEM
 	uint64_t nsec;
 	DWORD msec;
@@ -324,7 +298,7 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 	DWORD wait_result;
 #endif
 
-#if USE_MACH_SEM || USE_POSIX_SEM // || USE_FUTEX_SEM
+#if USE_MACH_SEM || USE_POSIX_SEM
 again:
 	// Mach semaphores appear to sometimes spuriously wake up. Therefore,
 	// we keep a parallel count of the number of times a Mach semaphore is
@@ -378,18 +352,6 @@ again:
 			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 			break;
 		}
-#elif USE_FUTEX_SEM
-		do {
-			uint64_t nsec = _dispatch_time_to_nanoseconds(timeout);
-			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
-			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
-			ret = slowpath(_dispatch_futex_wait(&dsema->dsema_futex, &_timeout));
-		} while (ret == false && errno == EINTR);
-
-		if (!(ret == false && errno == ETIMEDOUT)) {
-			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-			break;
-		}
 #elif USE_WIN32_SEM
 		nsec = _dispatch_timeout(timeout);
 		msec = (DWORD)(nsec / (uint64_t)1000000);
@@ -409,7 +371,7 @@ again:
 					&orig, relaxed)) {
 #if USE_MACH_SEM
 				return KERN_OPERATION_TIMED_OUT;
-#elif USE_POSIX_SEM || USE_FUTEX_SEM || USE_WIN32_SEM
+#elif USE_POSIX_SEM || USE_WIN32_SEM
 				errno = ETIMEDOUT;
 				return -1;
 #endif
@@ -428,17 +390,12 @@ again:
 			ret = sem_wait(&dsema->dsema_sem);
 		} while (ret != 0);
 		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_FUTEX_SEM
-		do {
-			ret = _dispatch_futex_wait(&dsema->dsema_futex, NULL);
-		} while (ret == false && errno == EINTR);
-		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #elif USE_WIN32_SEM
 		WaitForSingleObject(dsema->dsema_handle, INFINITE);
 #endif
 		break;
 	}
-#if USE_MACH_SEM || USE_POSIX_SEM // || USE_FUTEX_SEM
+#if USE_MACH_SEM || USE_POSIX_SEM
 	goto again;
 #else
 	return 0;
@@ -517,11 +474,6 @@ _dispatch_group_wake(dispatch_semaphore_t dsema)
 			int ret = sem_post(&dsema->dsema_sem);
 			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 		} while (--rval);
-#elif USE_FUTEX_SEM
-		do {
-			bool ret = _dispatch_futex_signal(&dsema->dsema_futex);
-			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-		} while (--rval);
 #elif USE_WIN32_SEM
 		_dispatch_semaphore_create_handle(&dsema->dsema_handle);
 		int ret;
@@ -576,9 +528,6 @@ _dispatch_group_wait_slow(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 #elif USE_POSIX_SEM // KVV
 	struct timespec _timeout;
 	int ret;
-#elif USE_FUTEX_SEM 
-	struct timespec _timeout;
-	bool ret;
 #elif USE_WIN32_SEM // KVV
 	uint64_t nsec;
 	DWORD msec;
@@ -643,19 +592,6 @@ again:
 			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 			break;
 		}
-#elif USE_FUTEX_SEM
-		do {
-			// HF: check whether we need same timer as POSIX_SEM
-			uint64_t nsec = _dispatch_timeout(timeout);
-			_timeout.tv_sec = nsec / NSEC_PER_SEC;
-			_timeout.tv_nsec = nsec % NSEC_PER_SEC;
-			ret = slowpath(_dispatch_futex_wait(&dsema->dsema_futex, &_timeout));
-		} while (ret == false && errno == EINTR);
-
-		if (!(ret == false && errno == ETIMEDOUT)) {
-			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-			break;
-		}
 #elif USE_WIN32_SEM
 		nsec = _dispatch_timeout(timeout);
 		msec = (DWORD)(nsec / (uint64_t)1000000);
@@ -675,7 +611,7 @@ again:
 					orig - 1, &orig, relaxed)) {
 #if USE_MACH_SEM
 				return KERN_OPERATION_TIMED_OUT;
-#elif USE_POSIX_SEM || USE_FUTEX_SEM || USE_WIN32_SEM
+#elif USE_POSIX_SEM || USE_WIN32_SEM
 				errno = ETIMEDOUT;
 				return -1;
 #endif
@@ -693,11 +629,6 @@ again:
 		do {
 			ret = sem_wait(&dsema->dsema_sem);
 		} while (ret == -1 && errno == EINTR);
-		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_FUTEX_SEM
-		do {
-			ret = _dispatch_futex_wait(&dsema->dsema_futex, NULL);
-		} while (ret == false && errno == EINTR);
 		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #elif USE_WIN32_SEM
 		WaitForSingleObject(dsema->dsema_handle, INFINITE);
@@ -718,7 +649,7 @@ dispatch_group_wait(dispatch_group_t dg, dispatch_time_t timeout)
 	if (timeout == 0) {
 #if USE_MACH_SEM
 		return KERN_OPERATION_TIMED_OUT;
-#elif USE_POSIX_SEM || USE_FUTEX_SEM || USE_WIN32_SEM
+#elif USE_POSIX_SEM || USE_WIN32_SEM
 		errno = ETIMEDOUT;
 		return (-1);
 #endif
@@ -785,10 +716,6 @@ _dispatch_thread_semaphore_create(void)
 	int ret = sem_init(s4, 0, 0);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 	return (_dispatch_thread_semaphore_t)s4;
-#elif USE_FUTEX_SEM
-	dispatch_futex_t ftx = (typeof(ftx))_dispatch_continuation_alloc();
-	*ftx = DISPATCH_FUTEX_INIT;
-	return (_dispatch_thread_semaphore_t)ftx;
 #elif USE_WIN32_SEM
 	HANDLE tmp;
 	while (!dispatch_assume(tmp = CreateSemaphore(NULL, 0, LONG_MAX, NULL))) {
@@ -815,8 +742,6 @@ _dispatch_thread_semaphore_dispose(_dispatch_thread_semaphore_t sema)
 	int ret = sem_destroy(s4);
 	free(s4);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_FUTEX_SEM
-	_dispatch_continuation_free((dispatch_continuation_t)sema);
 #elif USE_WIN32_SEM
 	// XXX: signal the semaphore?
 	WINBOOL success;
@@ -841,9 +766,6 @@ _dispatch_thread_semaphore_signal(_dispatch_thread_semaphore_t sema)
 	sem_t *s4 = (sem_t*)sema;
 	int ret = sem_post(s4);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_FUTEX_SEM
-    bool ret = _dispatch_futex_signal((dispatch_futex_t)sema);
-    DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #elif USE_WIN32_SEM
 	int ret;
 	ret = ReleaseSemaphore((HANDLE)sema, 1, NULL);
@@ -873,13 +795,6 @@ _dispatch_thread_semaphore_wait(_dispatch_thread_semaphore_t sema)
 		ret = sem_wait(s4);
 	} while (slowpath(ret != 0));
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_FUTEX_SEM
-	dispatch_futex_t ftx = (dispatch_futex_t)sema;
-	bool ret;
-	do {
-		ret = _dispatch_futex_wait(ftx, NULL);
-	} while (slowpath(ret == false && errno == EINTR));
-	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #elif USE_WIN32_SEM
 	DWORD wait_result;
 	do {
@@ -889,105 +804,3 @@ _dispatch_thread_semaphore_wait(_dispatch_thread_semaphore_t sema)
 #error "No supported semaphore type"
 #endif
 }
-
-#if USE_FUTEX_SEM
-static bool _dispatch_futex_wait_slow(dispatch_futex_t dfx,
-		const struct timespec* timeout);
-
-DISPATCH_INLINE
-static int
-_dispatch_futex_syscall(int *futex_addr, 
-		int op, int val, const struct timespec *timeout)
-{
-	return (int)syscall(SYS_futex, futex_addr, op | FUTEX_PRIVATE_FLAG, val, 
-						timeout, NULL, 0);
-}
-
-/* all memory orders below were added with strict seq_cst semantics
- * assumed to be the strongest
- */
-
-// Atomic-decrement-if-positive on the semaphore value, with acquire MO if
-// successful.
-DISPATCH_INLINE
-bool
-_dispatch_futex_trywait(dispatch_futex_t dfx)
-{
-    uint64_t orig = dispatch_atomic_load2o(dfx, dfx_data, relaxed);
-    while (orig & DISPATCH_FUTEX_VALUE_MASK) {
-		if (dispatch_atomic_cmpxchg2o(dfx, dfx_data, orig, orig - 1, acquire)) {
-			return true;
-		}
-	}
-	return false;
-}
-
-// Increments semaphore value and reads wait count in a single atomic
-// operation, with release MO. If wait count is nonzero, issues a FUTEX_WAKE.
-DISPATCH_INLINE
-bool
-_dispatch_futex_signal(dispatch_futex_t dfx)
-{
-    uint64_t orig = dispatch_atomic_load2o(dfx, dfx_data, relaxed);
-    do {
-		if (slowpath((orig & DISPATCH_FUTEX_VALUE_MASK) ==
-					 DISPATCH_FUTEX_VALUE_MAX)) {
-			DISPATCH_CRASH("semaphore overflow");
-		}
-	} while (!dispatch_atomic_cmpxchgvw2o(dfx, dfx_data, orig, orig + 1, &orig, release));
-	if (slowpath(orig >> DISPATCH_FUTEX_NWAITERS_SHIFT)) {
-		int ret = _dispatch_futex_syscall(&dfx->dfx_futex, FUTEX_WAKE, 1, NULL);
-		DISPATCH_SEMAPHORE_VERIFY_SYSRET(ret);
-	}
-	return true;
-}
-
-// `timeout` is relative, and can be NULL for an infinite timeout--see futex(2).
-DISPATCH_INLINE
-bool
-_dispatch_futex_wait(dispatch_futex_t dfx, const struct timespec *timeout)
-{
-	if (fastpath(_dispatch_futex_trywait(dfx))) {
-		return true;
-	}
-	return _dispatch_futex_wait_slow(dfx, timeout);
-}
-
-DISPATCH_NOINLINE
-static bool
-_dispatch_futex_wait_slow(dispatch_futex_t dfx, const struct timespec *timeout)
-{
-	int spins = DISPATCH_FUTEX_NUM_SPINS;
-	// Spin for a short time (if there are no waiters).
-	while (spins-- && !dispatch_atomic_load2o(dfx, dfx_data, relaxed)) {
-		dispatch_hardware_pause();
-	}
-	while (!_dispatch_futex_trywait(dfx)) {
-		dispatch_atomic_add2o(dfx, dfx_data,
-				1ull << DISPATCH_FUTEX_NWAITERS_SHIFT, relaxed);
-		int ret = _dispatch_futex_syscall(&dfx->dfx_futex, FUTEX_WAIT, 
-							0, timeout);
-		dispatch_atomic_sub2o(dfx, dfx_data,
-				1ull << DISPATCH_FUTEX_NWAITERS_SHIFT, acquire);
-		switch (ret == -1 ? errno : 0) {
-		case EWOULDBLOCK:
-			if (!timeout) {
-				break;
-			} else if (_dispatch_futex_trywait(dfx)) {
-				return true;
-			} else {
-				// Caller must recompute timeout.
-				errno = EINTR;
-				return false;
-			}
-		case EINTR:
-		case ETIMEDOUT:
-			return false;
-		default:
-			DISPATCH_SEMAPHORE_VERIFY_SYSRET(ret);
-			break;
-		}
-	}
-	return true;
-}
-#endif /* USE_FUTEX_SEM */
