@@ -101,6 +101,20 @@ AS_IF([test "x$enable_apple_tsd_optimizations" = "xyes"],
     [Define to use non-portable pthread TSD optimizations for Mac OS X)])]
 )
 
+#
+# Enable building Swift overlay support into libdispatch
+#
+AC_ARG_WITH([swift-toolchain],
+  [AS_HELP_STRING([--with-swift-toolchain], [Specify path to Swift toolchain])],
+  [swift_toolchain_path=${withval}
+   AC_DEFINE(HAVE_SWIFT, 1, [Define if building for Swift])
+   SWIFTC="$swift_toolchain_path/bin/swiftc"
+   have_swift=true],
+  [have_swift=false]
+)
+AM_CONDITIONAL(HAVE_SWIFT, $have_swift)
+AC_SUBST([SWIFTC])
+
 AC_USE_SYSTEM_EXTENSIONS
 AM_INIT_AUTOMAKE([foreign no-dependencies subdir-objects])
 LT_INIT([disable-static])
@@ -171,6 +185,7 @@ AC_CHECK_HEADERS([pthread_machdep.h pthread/qos.h])
 # Look for own version first, then system version.
 AS_IF([test -f $srcdir/libpwq/configure.ac],
   [AC_DEFINE(BUILD_OWN_PTHREAD_WORKQUEUES, 1, [Define if building pthread work queues from source])
+   ac_configure_args="--disable-libpwq-install $ac_configure_args"
    AC_CONFIG_SUBDIRS([libpwq])
    build_own_pthread_workqueue=true,
    AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])
@@ -276,6 +291,8 @@ AC_CHECK_FUNC([sem_init],
   [have_sem_init=true], [have_sem_init=false]
 )
 
+AC_CHECK_HEADER(linux/futex.h, [have_futex=true], [have_futex=false])
+
 #
 # We support both Mach semaphores and POSIX semaphores; if the former are
 # available, prefer them.
@@ -284,6 +301,9 @@ AC_MSG_CHECKING([what semaphore type to use]);
 AS_IF([test "x$have_mach" = "xtrue"],
   [AC_DEFINE(USE_MACH_SEM, 1, [Define to use Mach semaphores])
     AC_MSG_RESULT([Mach semaphores])],
+  [test "x$have_futex" = "xtrue"],
+  [AC_DEFINE(USE_FUTEX_SEM, 1, [Define to use Futex semaphores])
+    AC_MSG_RESULT([Futex semaphores])],
   [test "x$have_sem_init" = "xtrue"],
   [AC_DEFINE(USE_POSIX_SEM, 1, [Define to use POSIX semaphores])
     AC_MSG_RESULT([POSIX semaphores])],
@@ -352,6 +372,6 @@ AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile os/Makefile private/Mak
 #
 # Generate testsuite links
 #
-AC_CONFIG_LINKS([tests/dispatch:${x:+}private tests/leaks-wrapper:tests/leaks-wrapper.sh])
+AC_CONFIG_LINKS([tests/dispatch:$top_srcdir/private tests/leaks-wrapper:tests/leaks-wrapper.sh])
 
 AC_OUTPUT

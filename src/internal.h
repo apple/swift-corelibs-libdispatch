@@ -228,9 +228,14 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #endif
 #include <limits.h>
 #include <search.h>
+#if USE_FUTEX_SEM
+#include <sys/syscall.h>
+#include <linux/futex.h>
+#endif
 #if USE_POSIX_SEM
 #include <semaphore.h>
 #endif
+
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -241,6 +246,24 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
+
+#if defined(__APPLE__)
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#define DISPATCH_LITTLE_ENDIAN
+#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#define DISPATCH_BIG_ENDIAN
+#endif
+#else 
+#include <endian.h>
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+#define DISPATCH_LITTLE_ENDIAN
+#elif __BYTE_ORDER == __BIG_ENDIAN
+#define DISPATCH_BIG_ENDIAN
+#else
+#error "please define DISPATCH_LITTLE_ENDIAN or DISPATCH_BIG_ENDIAN for your architecture / platform"
+#endif
+#endif  /* defined(__APPLE__) */
+
 
 #ifndef __has_builtin
 #define __has_builtin(x) 0

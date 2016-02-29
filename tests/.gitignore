@@ -1,6 +1,8 @@
 *.o
 *.lo
 *.la
+*.log
+*.trs
 .libs
 bsdtestharness
 bsdtestsummarize
