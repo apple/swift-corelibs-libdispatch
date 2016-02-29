@@ -1,5 +1,9 @@
 provider.h
+module.map
+module.build.map
 .libs
 *.lo
 *.la
-
+*.o
+*.swiftmodule
+*.swiftdoc

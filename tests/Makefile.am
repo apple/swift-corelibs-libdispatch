@@ -2,7 +2,7 @@
 #
 #
 
-AUTOMAKE_OPTIONS = serial-tests subdir-objects
+AUTOMAKE_OPTIONS = subdir-objects
 
 noinst_LTLIBRARIES=libbsdtests.la
 
@@ -10,7 +10,8 @@ libbsdtests_la_SOURCES=				\
 	bsdtests.c				\
 	bsdtests.h				\
 	dispatch_test.c				\
-	dispatch_test.h
+	dispatch_test.h				\
+	linux_port.h
 
 check_PROGRAMS=					\
 	bsdtestharness				\
@@ -25,10 +26,7 @@ UNPORTED_TESTS=					\
 	dispatch_vm					\
 	dispatch_vnode
 
-PORTED_TESTS_FAILED=			\
-	dispatch_concur
-
-PORTED_TESTS_PASSED=			\
+TESTS=							\
 	dispatch_apply				\
 	dispatch_api				\
 	dispatch_c99				\
@@ -40,6 +38,7 @@ PORTED_TESTS_PASSED=			\
 	dispatch_plusplus			\
 	dispatch_priority			\
 	dispatch_priority2			\
+	dispatch_concur				\
 	dispatch_context_for_key	\
 	dispatch_read				\
 	dispatch_read2				\
@@ -61,13 +60,17 @@ PORTED_TESTS_PASSED=			\
 	dispatch_io_net				\
 	dispatch_select
 
-ORIGINAL_LIST_OF_TESTS=				\
+# List tests that are expected to fail here.
+# Currently dispatch_concur fails occasionally, but passes more often than fails. 
+XFAIL_TESTS =
+
+ORIGINAL_LIST_OF_TESTS=			\
 	dispatch_apply				\
 	dispatch_api				\
 	dispatch_c99				\
 	dispatch_deadname			\
 	dispatch_debug				\
-	dispatch_queue_finalizer		\
+	dispatch_queue_finalizer	\
 	dispatch_group				\
 	dispatch_overcommit			\
 	dispatch_pingpong			\
@@ -99,8 +102,6 @@ ORIGINAL_LIST_OF_TESTS=				\
 	dispatch_vnode				\
 	dispatch_select
 
-TESTS=$(PORTED_TESTS_PASSED) $(PORTED_TESTS_FAILED)
-
 dispatch_c99_CFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CBLOCKS_FLAGS) $(KQUEUE_CFLAGS) -std=c99
 dispatch_plusplus_SOURCES=dispatch_plusplus.cpp
 dispatch_priority2_SOURCES=dispatch_priority.c
@@ -120,7 +121,7 @@ if !BUILD_OWN_PTHREAD_WORKQUEUES
   endif
 endif
 
-LDADD=libbsdtests.la ../src/libdispatch.la $(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS)
+LDADD=libbsdtests.la $(top_builddir)/src/libdispatch.la $(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS)
 libbsdtests_la_LDFLAGS=-avoid-version
 
 bsdtestsummarize_LDADD=-lm $(BSD_OVERLAY_LIBS)
@@ -128,10 +129,12 @@ dispatch_timer_short_LDADD=-lm $(LDADD)
 dispatch_group_LDADD=-lm $(LDADD)
 
 if HAVE_LEAKS
-TESTS_ENVIRONMENT=./bsdtestharness
+AM_TESTS_ENVIRONMENT=
 else
-TESTS_ENVIRONMENT=NOLEAKS=1 ./bsdtestharness
+AM_TESTS_ENVIRONMENT=NOLEAKS=1
 endif
+LOG_COMPILER=./bsdtestharness
+
 DISTCLEAN=Foundation/bench.cc
 
 if HAVE_COREFOUNDATION
@@ -165,3 +168,7 @@ nsoperation_LDFLAGS=-framework Foundation
 bench_SOURCES=Foundation/bench.mm func.c
 bench_LDFLAGS=-framework Foundation
 endif
+
+# For use by swift/utils/build-script to force test cases to be
+# built during the build phase of CI
+build-tests: $(TESTS) $(check_PROGRAMS)

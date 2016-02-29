@@ -2,7 +2,12 @@
 #
 #
 
+if HAVE_SWIFT
+swiftlibdir=${prefix}/lib/swift/linux
+swiftlib_LTLIBRARIES=libdispatch.la
+else
 lib_LTLIBRARIES=libdispatch.la
+endif
 
 libdispatch_la_SOURCES=		\
 	allocator.c				\
@@ -46,6 +51,9 @@ libdispatch_la_SOURCES=		\
 	shims/tsd.h				\
 	shims/yield.h
 
+EXTRA_libdispatch_la_SOURCES=
+EXTRA_libdispatch_la_DEPENDENCIES=
+
 AM_CPPFLAGS=-I$(top_builddir) -I$(top_srcdir) \
 	-I$(top_srcdir)/private -I$(top_srcdir)/os
 
@@ -57,8 +65,8 @@ AM_CXXFLAGS=$(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 AM_OBJCXXFLAGS=$(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 
 if BUILD_OWN_PTHREAD_WORKQUEUES
-  PTHREAD_WORKQUEUE_LIBS=../libpwq/libpthread_workqueue.la
-  PTHREAD_WORKQUEUE_CFLAGS=-I../libpwq/include
+  PTHREAD_WORKQUEUE_LIBS=$(top_builddir)/libpwq/libpthread_workqueue.la
+  PTHREAD_WORKQUEUE_CFLAGS=-I$(top_srcdir)/libpwq/include
 else
   if HAVE_PTHREAD_WORKQUEUES
     PTHREAD_WORKQUEUE_LIBS=-lpthread_workqueue
@@ -103,8 +111,34 @@ DTRACE_SOURCES=provider.h
 	$(DTRACE) -h -s $< -o $@
 endif
 
+if HAVE_SWIFT
+libdispatch_la_SOURCES+=swift/swift_wrappers.c
+EXTRA_libdispatch_la_SOURCES+=swift/Dispatch.swift
+EXTRA_libdispatch_la_DEPENDENCIES+=$(abs_builddir)/Dispatch.o $(abs_builddir)/Dispatch.swiftmodule
+libdispatch_la_LIBADD+=$(abs_builddir)/Dispatch.o
+
+SWIFT_OBJECTS=	\
+	$(abs_builddir)/Dispatch.swiftmodule \
+	$(abs_builddir)/Dispatch.swiftdoc \
+	$(abs_builddir)/Dispatch.o
+
+SWIFTC_FLAGS = -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.map -I$(abs_top_srcdir) -parse-as-library -Xcc -fblocks
+
+$(abs_builddir)/Dispatch.o: $(abs_srcdir)/swift/Dispatch.swift
+	$(SWIFTC) $(SWIFTC_FLAGS) -c -o $@ $<
+
+$(abs_builddir)/Dispatch.swiftmodule: $(abs_srcdir)/swift/Dispatch.swift
+	$(SWIFTC) $(SWIFTC_FLAGS) -emit-module -emit-module-path $@ $<
+
+if HAVE_SWIFT
+swiftmoddir=${prefix}/lib/swift/linux/${build_cpu}
+swiftmod_HEADERS=$(abs_builddir)/Dispatch.swiftmodule $(abs_builddir)/Dispatch.swiftdoc
+endif
+
+endif
+
 BUILT_SOURCES=$(MIG_SOURCES) $(DTRACE_SOURCES)
 nodist_libdispatch_la_SOURCES=$(BUILT_SOURCES)
-CLEANFILES=$(BUILT_SOURCES)
+CLEANFILES=$(BUILT_SOURCES) $(SWIFT_OBJECTS)
 DISTCLEANFILES=pthread_machdep.h pthread System mach objc
 

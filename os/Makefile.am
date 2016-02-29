@@ -2,7 +2,11 @@
 #
 #
 
+if HAVE_SWIFT
+osdir=${prefix}/lib/swift/os
+else
 osdir=$(includedir)/os
+endif
 
 os_HEADERS=	\
 	object.h \
