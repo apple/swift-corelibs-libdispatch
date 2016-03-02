@@ -894,7 +894,7 @@ static bool _dispatch_futex_wait_slow(dispatch_futex_t dfx,
 		const struct timespec* timeout);
 
 DISPATCH_INLINE
-static int
+int
 _dispatch_futex_syscall(int *futex_addr, 
 		int op, int val, const struct timespec *timeout)
 {

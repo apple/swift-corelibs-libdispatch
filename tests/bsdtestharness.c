@@ -31,6 +31,9 @@
 #endif
 #include <sys/resource.h>
 #include <sys/time.h>
+#ifdef __linux__
+#include <sys/wait.h>
+#endif
 
 #include <bsdtests.h>
 
@@ -47,7 +50,6 @@ extern char **environ;
 int
 main(int argc, char *argv[])
 {
-	dispatch_source_t tmp_ds;
 	int res;
 	pid_t pid = 0;
 
@@ -73,13 +75,13 @@ main(int argc, char *argv[])
 	assert(res == 0);
 
 	uint64_t to = 0;
-#ifdef __APPLE__
 	char *tos = getenv("BSDTEST_TIMEOUT");
 	if (tos) {
 		to = strtoul(tos, NULL, 0);
 		to *= NSEC_PER_SEC;
 	}
 
+#ifdef __APPLE__
 	char *arch = getenv("BSDTEST_ARCH");
 	if (arch) {
 		const NXArchInfo *ai = NXGetArchInfoFromName(arch);
@@ -123,14 +125,14 @@ main(int argc, char *argv[])
 	gettimeofday(&tv_stop, NULL);
 	tv_wall.tv_sec = tv_stop.tv_sec - tv_start.tv_sec;
 	tv_wall.tv_sec -= (tv_stop.tv_usec < tv_start.tv_usec);
-	tv_wall.tv_usec = abs(tv_stop.tv_usec - tv_start.tv_usec);
+	tv_wall.tv_usec = labs(tv_stop.tv_usec - tv_start.tv_usec);
 
 	int res2 = wait4(pid, &status, 0, &usage);
 	assert(res2 != -1);
 	test_long("Process exited", (WIFEXITED(status) && WEXITSTATUS(status) && WEXITSTATUS(status) != 0xff) || WIFSIGNALED(status), 0);
-	printf("[PERF]\twall time: %ld.%06d\n", tv_wall.tv_sec, tv_wall.tv_usec);
-	printf("[PERF]\tuser time: %ld.%06d\n", usage.ru_utime.tv_sec, usage.ru_utime.tv_usec);
-	printf("[PERF]\tsystem time: %ld.%06d\n", usage.ru_stime.tv_sec, usage.ru_stime.tv_usec);
+	printf("[PERF]\twall time: %ld.%06ld\n", tv_wall.tv_sec, tv_wall.tv_usec);
+	printf("[PERF]\tuser time: %ld.%06ld\n", usage.ru_utime.tv_sec, usage.ru_utime.tv_usec);
+	printf("[PERF]\tsystem time: %ld.%06ld\n", usage.ru_stime.tv_sec, usage.ru_stime.tv_usec);
 	printf("[PERF]\tmax resident set size: %ld\n", usage.ru_maxrss);
 	printf("[PERF]\tpage faults: %ld\n", usage.ru_majflt);
 	printf("[PERF]\tswaps: %ld\n", usage.ru_nswap);
@@ -140,7 +142,7 @@ main(int argc, char *argv[])
 #else
 	dispatch_queue_t main_q = dispatch_get_main_queue();
 
-	tmp_ds = dispatch_source_create(DISPATCH_SOURCE_TYPE_PROC, pid, DISPATCH_PROC_EXIT, main_q);
+	dispatch_source_t tmp_ds = dispatch_source_create(DISPATCH_SOURCE_TYPE_PROC, pid, DISPATCH_PROC_EXIT, main_q);
 	assert(tmp_ds);
 	dispatch_source_set_event_handler(tmp_ds, ^{
 		int status;

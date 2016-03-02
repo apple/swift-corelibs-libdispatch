@@ -70,7 +70,7 @@ collect(void *context __attribute__((unused)))
 
 	printf("lap: %ld\n", lap_count_down);
 	printf("count: %lu\n", COUNT);
-	printf("delta: %llu ns\n", delta);
+	printf("delta: %lu ns\n", delta);
 	printf("math: %Lf ns / lap\n", math);
 
 	for (i = 0; i < COUNT; i++) {
