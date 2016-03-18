@@ -30,6 +30,12 @@ _swift_dispatch_data_empty(void) {
   return dispatch_data_empty;
 }
 
+DISPATCH_EXPORT
+dispatch_object_t
+_swift_dispatch_object_type_punner(dispatch_object_t dou) {
+	return dou;
+}
+
 #define SOURCE(t)                               \
   DISPATCH_EXPORT                               \
   dispatch_source_type_t                        \
@@ -45,3 +51,13 @@ SOURCE(SIGNAL)
 SOURCE(TIMER)
 SOURCE(VNODE)
 SOURCE(WRITE)
+
+// See comment in CFRuntime.c explaining why objc_retainAutoreleasedReturnValue is needed.
+extern void swift_retain(void *);
+void * objc_retainAutoreleasedReturnValue(void *obj) {
+    if (obj) {
+        swift_retain(obj);
+        return obj;
+    }
+    else return NULL;
+}

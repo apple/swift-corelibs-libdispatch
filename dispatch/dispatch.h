@@ -32,6 +32,10 @@
 #include <stdarg.h>
 #include <unistd.h>
 #include <fcntl.h>
+#ifndef __APPLE__
+#include <stdio.h>
+#include <sys/types.h>
+#endif
 
 #ifndef __OSX_AVAILABLE_STARTING
 #define __OSX_AVAILABLE_STARTING(x, y)
