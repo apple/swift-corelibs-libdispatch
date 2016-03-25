@@ -122,7 +122,7 @@ SWIFT_OBJECTS=	\
 	$(abs_builddir)/Dispatch.swiftdoc \
 	$(abs_builddir)/Dispatch.o
 
-SWIFTC_FLAGS = -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.map -I$(abs_top_srcdir) -parse-as-library -Xcc -fblocks
+SWIFTC_FLAGS = -Xcc -D__DISPATCH_BUILDING_SWIFT_MODULE__=1 -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.map -I$(abs_top_srcdir) -parse-as-library -Xcc -fblocks
 
 $(abs_builddir)/Dispatch.o: $(abs_srcdir)/swift/Dispatch.swift
 	$(SWIFTC) $(SWIFTC_FLAGS) -c -o $@ $<
