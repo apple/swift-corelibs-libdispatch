@@ -26,6 +26,7 @@
 #include <TargetConditionals.h>
 #endif
 #include <sys/cdefs.h>
+#include <sys/types.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
