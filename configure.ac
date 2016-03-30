@@ -187,10 +187,10 @@ AS_IF([test -f $srcdir/libpwq/configure.ac],
   [AC_DEFINE(BUILD_OWN_PTHREAD_WORKQUEUES, 1, [Define if building pthread work queues from source])
    ac_configure_args="--disable-libpwq-install $ac_configure_args"
    AC_CONFIG_SUBDIRS([libpwq])
-   build_own_pthread_workqueue=true,
+   build_own_pthread_workqueues=true,
    AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])
    have_pthread_workqueues=true],
-  [build_own_pthread_workqueue=false
+  [build_own_pthread_workqueues=false
    AC_CHECK_HEADERS([pthread/workqueue_private.h pthread_workqueue.h],
      [AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])
       have_pthread_workqueues=true],
