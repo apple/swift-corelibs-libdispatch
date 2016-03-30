@@ -68,9 +68,9 @@ if BUILD_OWN_PTHREAD_WORKQUEUES
   PTHREAD_WORKQUEUE_LIBS=$(top_builddir)/libpwq/libpthread_workqueue.la
   PTHREAD_WORKQUEUE_CFLAGS=-I$(top_srcdir)/libpwq/include
 else
-  if HAVE_PTHREAD_WORKQUEUES
-    PTHREAD_WORKQUEUE_LIBS=-lpthread_workqueue
-  endif
+if HAVE_PTHREAD_WORKQUEUES
+  PTHREAD_WORKQUEUE_LIBS=-lpthread_workqueue
+endif
 endif
 
 libdispatch_la_LDFLAGS=-avoid-version
