@@ -383,7 +383,9 @@ again:
 			uint64_t nsec = _dispatch_timeout(timeout);
 			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
 			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
+#if HAVE_PTHREAD_WORKQUEUES
 			pthread_workqueue_signal_np();
+#endif
 			ret = slowpath(_dispatch_futex_wait(&dsema->dsema_futex, &_timeout));
 		} while (ret == false && errno == EINTR);
 
@@ -431,7 +433,9 @@ again:
 		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #elif USE_FUTEX_SEM
 		do {
+#if HAVE_PTHREAD_WORKQUEUES
 			pthread_workqueue_signal_np();
+#endif
 			ret = _dispatch_futex_wait(&dsema->dsema_futex, NULL);
 		} while (ret == false && errno == EINTR);
 		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
@@ -650,7 +654,9 @@ again:
 			uint64_t nsec = _dispatch_timeout(timeout);
 			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
 			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
+#if HAVE_PTHREAD_WORKQUEUES
 			pthread_workqueue_signal_np();
+#endif
 			ret = slowpath(_dispatch_futex_wait(&dsema->dsema_futex, &_timeout));
 		} while (ret == false && errno == EINTR);
 
@@ -698,7 +704,9 @@ again:
 		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #elif USE_FUTEX_SEM
 		do {
+#if HAVE_PTHREAD_WORKQUEUES
 			pthread_workqueue_signal_np();
+#endif
 			ret = _dispatch_futex_wait(&dsema->dsema_futex, NULL);
 		} while (ret == false && errno == EINTR);
 		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
