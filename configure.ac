@@ -108,12 +108,12 @@ AC_ARG_WITH([swift-toolchain],
   [AS_HELP_STRING([--with-swift-toolchain], [Specify path to Swift toolchain])],
   [swift_toolchain_path=${withval}
    AC_DEFINE(HAVE_SWIFT, 1, [Define if building for Swift])
-   SWIFTC="$swift_toolchain_path/bin/swiftc"
+   SWIFT_TOOLCHAIN_PATH="$swift_toolchain_path"
    have_swift=true],
   [have_swift=false]
 )
 AM_CONDITIONAL(HAVE_SWIFT, $have_swift)
-AC_SUBST([SWIFTC])
+AC_SUBST([SWIFT_TOOLCHAIN_PATH])
 
 AC_USE_SYSTEM_EXTENSIONS
 AM_INIT_AUTOMAKE([foreign no-dependencies subdir-objects])

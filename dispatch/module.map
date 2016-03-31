@@ -1,4 +1,11 @@
-module Dispatch [system] {
+module Dispatch {
+    requires blocks
+    export *
+    link "dispatch"
+    link "BlocksRuntime"
+}
+
+module CDispatch [system] {
     umbrella header "dispatch.h"
     requires blocks
     export *
