@@ -497,7 +497,7 @@ static inline void
 _dispatch_queue_set_bound_thread(dispatch_queue_t dq)
 {
 	//Tag thread-bound queues with the owning thread
-	dispatch_assert(dq->dq_is_thread_bound);
+	dispatch_assert(dq->dq_is_thread_bound != 0);
 	dq->dq_thread = _dispatch_thread_port();
 }
 
@@ -505,7 +505,7 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_queue_clear_bound_thread(dispatch_queue_t dq)
 {
-	dispatch_assert(dq->dq_is_thread_bound);
+	dispatch_assert(dq->dq_is_thread_bound != 0);
 	dq->dq_thread = MACH_PORT_NULL;
 }
 
@@ -513,7 +513,7 @@ DISPATCH_ALWAYS_INLINE
 static inline mach_port_t
 _dispatch_queue_get_bound_thread(dispatch_queue_t dq)
 {
-	dispatch_assert(dq->dq_is_thread_bound);
+	dispatch_assert(dq->dq_is_thread_bound != 0);
 	return dq->dq_thread;
 }
 
