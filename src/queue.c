@@ -2839,7 +2839,7 @@ _dispatch_barrier_sync_f_slow_invoke(void *ctxt)
 
 	dispatch_assert(dq == _dispatch_queue_get_current());
 #if DISPATCH_COCOA_COMPAT
-	if (slowpath(dq->dq_is_thread_bound)) {
+	if (slowpath(dq->dq_is_thread_bound != 0)) {
 		// The queue is bound to a non-dispatch thread (e.g. main thread)
 		_dispatch_continuation_voucher_adopt(dc);
 		_dispatch_client_callout(dc->dc_ctxt, dc->dc_func);
@@ -2879,7 +2879,7 @@ _dispatch_barrier_sync_f_slow(dispatch_queue_t dq, void *ctxt,
 	// It's preferred to execute synchronous blocks on the current thread
 	// due to thread-local side effects, garbage collection, etc. However,
 	// blocks submitted to the main thread MUST be run on the main thread
-	if (slowpath(dq->dq_is_thread_bound)) {
+	if (slowpath(dq->dq_is_thread_bound != 0)) {
 		_dispatch_continuation_voucher_set(&dc, 0);
 	}
 #endif
@@ -3074,7 +3074,7 @@ _dispatch_barrier_sync_slow(dispatch_queue_t dq, void (^work)(void))
 void
 dispatch_barrier_sync(dispatch_queue_t dq, void (^work)(void))
 {
-	if (slowpath(dq->dq_is_thread_bound) ||
+	if (slowpath(dq->dq_is_thread_bound != 0) ||
 			slowpath(_dispatch_block_has_private_data(work))) {
 		return _dispatch_barrier_sync_slow(dq, work);
 	}
@@ -3279,7 +3279,7 @@ dispatch_sync(dispatch_queue_t dq, void (^work)(void))
 	if (fastpath(dq->dq_width == 1)) {
 		return dispatch_barrier_sync(dq, work);
 	}
-	if (slowpath(dq->dq_is_thread_bound) ||
+	if (slowpath(dq->dq_is_thread_bound != 0) ||
 			slowpath(_dispatch_block_has_private_data(work)) ) {
 		return _dispatch_sync_slow(dq, work);
 	}
