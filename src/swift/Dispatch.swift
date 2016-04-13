@@ -41,13 +41,13 @@ public var DISPATCH_IO_STRICT_INTERVAL: dispatch_io_interval_flags_t {
   return 1
 }
 
-public var DISPATCH_QUEUE_SERIAL: dispatch_queue_attr_t {
+public var DISPATCH_QUEUE_SERIAL: dispatch_queue_attr_t! {
   return nil
 }
-public var DISPATCH_CURRENT_QUEUE_LABEL: dispatch_queue_t {
+public var DISPATCH_CURRENT_QUEUE_LABEL: dispatch_queue_t! {
   return nil
 }
-public var DISPATCH_TARGET_QUEUE_DEFAULT: dispatch_queue_t {
+public var DISPATCH_TARGET_QUEUE_DEFAULT: dispatch_queue_t! {
   return nil
 }
 public var DISPATCH_QUEUE_PRIORITY_HIGH: dispatch_queue_priority_t {
