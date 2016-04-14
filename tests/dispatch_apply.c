@@ -40,6 +40,8 @@ static volatile int32_t busy_threads_started, busy_threads_finished;
 #if TARGET_OS_EMBEDDED
 // iPhone 4
 #define ITERS_PER_SECOND 50000000UL
+#elif __s390x__
+#define ITERS_PER_SECOND 15000000000UL
 #else
 // On a 2.7 4-core i5 iMac12,2, one thread of this loop runs at ROUGHLY:
 #define ITERS_PER_SECOND 1000000000UL
