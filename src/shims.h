@@ -174,6 +174,8 @@ void __builtin_trap(void);
 #include "shims/getprogname.h"
 #include "shims/time.h"
 
+#include "shims/pthread_main_np.h"
+
 #ifdef __APPLE__
 // Clear the stack before calling long-running thread-handler functions that
 // never return (and don't take arguments), to facilitate leak detection and

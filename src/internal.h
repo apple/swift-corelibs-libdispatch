@@ -37,6 +37,12 @@
 #include <TargetConditionals.h>
 #endif
 
+#ifdef __linux__
+#include <sys/eventfd.h>
+#define DISPATCH_LINUX_COMPAT 1
+#endif
+
+#define DISPATCH_ENABLE_RUNLOOP_SUPPORT (DISPATCH_LINUX_COMPAT || DISPATCH_COCOA_COMPAT)
 
 #if !defined(DISPATCH_MACH_SPI) && TARGET_OS_MAC
 #define DISPATCH_MACH_SPI 1
