@@ -61,7 +61,7 @@ DISPATCH_CFLAGS=-Wall $(VISIBILITY_FLAGS) $(OMIT_LEAF_FP_FLAGS) \
 	$(MARCH_FLAGS) $(KQUEUE_CFLAGS) $(BSD_OVERLAY_CFLAGS)
 AM_CFLAGS= $(PTHREAD_WORKQUEUE_CFLAGS) $(DISPATCH_CFLAGS) $(CBLOCKS_FLAGS)
 AM_OBJCFLAGS=$(DISPATCH_CFLAGS) $(CBLOCKS_FLAGS)
-AM_CXXFLAGS=$(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
+AM_CXXFLAGS=$(PTHREAD_WORKQUEUE_CFLAGS) $(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 AM_OBJCXXFLAGS=$(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 
 if BUILD_OWN_PTHREAD_WORKQUEUES
@@ -90,6 +90,9 @@ libdispatch_la_LDFLAGS+=-Wl,-upward-lobjc -Wl,-upward-lauto \
 	-Wl,-order_file,$(top_srcdir)/xcodeconfig/libdispatch.order \
 	-Wl,-alias_list,$(top_srcdir)/xcodeconfig/libdispatch_objc.aliases \
 	-Wl,-unexported_symbols_list,$(top_srcdir)/xcodeconfig/libdispatch.unexport
+else
+libdispatch_la_SOURCES+=block.cpp
+libdispatch_la_CXXFLAGS=$(AM_CXXFLAGS) -std=gnu++11 -fno-exceptions
 endif
 
 if USE_MIG
