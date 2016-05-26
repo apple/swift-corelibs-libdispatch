@@ -5,31 +5,30 @@
 ACLOCAL_AMFLAGS = -I m4
 
 if BUILD_OWN_PTHREAD_WORKQUEUES
-SUBDIRS=					\
-	dispatch				\
-	libpwq					\
-	man						\
-	os						\
-	private					\
-	src						\
-	tests
-else
-SUBDIRS=					\
-	dispatch				\
-	man						\
-	os						\
-	private					\
-	src						\
-	tests
+  MAYBE_PTHREAD_WORKQUEUES = libpwq
 endif
+
+if BUILD_OWN_KQUEUES
+  MAYBE_KQUEUES = libkqueue
+endif
+
+SUBDIRS=					\
+	dispatch				\
+	$(MAYBE_PTHREAD_WORKQUEUES)		\
+	$(MAYBE_KQUEUES)			\
+	man					\
+	os					\
+	private					\
+	src					\
+	tests
 
 EXTRA_DIST=					\
 	README.md				\
 	LICENSE					\
 	PATCHES					\
 	autogen.sh				\
-	config/config.h			\
-	libdispatch.xcodeproj	\
+	config/config.h				\
+	libdispatch.xcodeproj			\
 	resolver				\
 	tools					\
 	xcodeconfig				\
