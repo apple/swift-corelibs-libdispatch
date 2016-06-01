@@ -26,4 +26,3 @@ dispatch_HEADERS=	\
 if HAVE_SWIFT
 dispatch_HEADERS+=module.map
 endif
-
