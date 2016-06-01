@@ -13,13 +13,13 @@
 #include <dispatch/dispatch.h>
 
 DISPATCH_EXPORT
-dispatch_queue_attr_t 
+dispatch_queue_attr_t
 _swift_dispatch_queue_serial(void) {
   return DISPATCH_QUEUE_SERIAL;
 }
 
 DISPATCH_EXPORT
-dispatch_queue_attr_t 
+dispatch_queue_attr_t
 _swift_dispatch_queue_concurrent(void) {
   return DISPATCH_QUEUE_CONCURRENT;
 }
