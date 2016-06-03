@@ -621,7 +621,7 @@ _dispatch_source_kevent_resume(dispatch_source_t ds, uint32_t new_flags)
 static void
 _dispatch_source_kevent_register(dispatch_source_t ds)
 {
-	dispatch_assert_zero(ds->ds_is_installed);
+	dispatch_assert(ds->ds_is_installed == 0);
 	switch (ds->ds_dkev->dk_kevent.filter) {
 	case DISPATCH_EVFILT_TIMER:
 		_dispatch_timers_update(ds);
