@@ -528,7 +528,7 @@ void _dispatch_vtable_init(void);
 char *_dispatch_get_build(void);
 
 uint64_t _dispatch_timeout(dispatch_time_t when);
-uint64_t _dispatch_time_to_nanoseconds(dispatch_time_t when);
+uint64_t _dispatch_time_nanoseconds_since_epoch(dispatch_time_t when);
 
 extern bool _dispatch_safe_fork, _dispatch_child_of_unsafe_fork;
 

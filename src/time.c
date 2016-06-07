@@ -147,14 +147,14 @@ _dispatch_timeout(dispatch_time_t when)
 }
 
 uint64_t
-_dispatch_time_to_nanoseconds(dispatch_time_t when)
+_dispatch_time_nanoseconds_since_epoch(dispatch_time_t when)
 {
 	if (when == DISPATCH_TIME_FOREVER) {
 		return DISPATCH_TIME_FOREVER;
 	}
 	if ((int64_t)when < 0) {
 		// time in nanoseconds since the POSIX epoch already
-		return -(int64_t)when;
+		return (uint64_t)-(int64_t)when;
 	}
 	return _dispatch_get_nanoseconds() + _dispatch_timeout(when);
 }
