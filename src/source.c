@@ -148,7 +148,7 @@ dispatch_source_create(dispatch_source_type_t type,
 	dk->dk_kevent.ident = handle;
 	dk->dk_kevent.flags |= EV_ADD|EV_ENABLE;
 	dk->dk_kevent.fflags |= (uint32_t)mask;
-	dk->dk_kevent.udata = (typeof(dk->dk_kevent.udata))dk;
+	dk->dk_kevent.udata = (_dispatch_kevent_qos_udata_t)dk;
 	TAILQ_INIT(&dk->dk_sources);
 
 	ds->ds_dkev = dk;
@@ -917,9 +917,9 @@ _dispatch_kevent_init()
 	TAILQ_INSERT_TAIL(&_dispatch_sources[0],
 			&_dispatch_kevent_data_add, dk_list);
 	_dispatch_kevent_data_or.dk_kevent.udata =
-			(typeof(_dispatch_kevent_data_or.dk_kevent.udata))&_dispatch_kevent_data_or;
+			(_dispatch_kevent_qos_udata_t)&_dispatch_kevent_data_or;
 	_dispatch_kevent_data_add.dk_kevent.udata =
-			(typeof(_dispatch_kevent_data_or.dk_kevent.udata))&_dispatch_kevent_data_add;
+			(_dispatch_kevent_qos_udata_t)&_dispatch_kevent_data_add;
 #endif // !DISPATCH_USE_EV_UDATA_SPECIFIC
 }
 
@@ -1666,7 +1666,7 @@ _dispatch_timers_init(void)
 #ifndef __LP64__
 	unsigned int tidx;
 	for (tidx = 0; tidx < DISPATCH_TIMER_COUNT; tidx++) {
-		_dispatch_kevent_timer[tidx].dk_kevent.udata = \
+		_dispatch_kevent_timer[tidx].dk_kevent.udata =
 				DISPATCH_KEVENT_TIMER_UDATA(tidx);
 	}
 #endif // __LP64__
@@ -4760,11 +4760,12 @@ static size_t
 _dispatch_timer_debug_attr(dispatch_source_t ds, char* buf, size_t bufsiz)
 {
 	dispatch_source_refs_t dr = ds->ds_refs;
-	return dsnprintf(buf, bufsiz, "timer = { target = 0x%llx, deadline = 0x%llx,"
-			" last_fire = 0x%llx, interval = 0x%llx, flags = 0x%lx }, ",
-			(unsigned long long)ds_timer(dr).target, (unsigned long long)ds_timer(dr).deadline,
-			(unsigned long long)ds_timer(dr).last_fire, (unsigned long long)ds_timer(dr).interval,
-			ds_timer(dr).flags);
+	return dsnprintf(buf, bufsiz, "timer = { target = 0x%llx, deadline = 0x%llx"
+			", last_fire = 0x%llx, interval = 0x%llx, flags = 0x%lx }, ",
+			(unsigned long long)ds_timer(dr).target,
+			(unsigned long long)ds_timer(dr).deadline,
+			(unsigned long long)ds_timer(dr).last_fire,
+			(unsigned long long)ds_timer(dr).interval, ds_timer(dr).flags);
 }
 
 size_t

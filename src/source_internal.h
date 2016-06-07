@@ -108,6 +108,8 @@ struct dispatch_kevent_s {
 
 typedef struct dispatch_kevent_s *dispatch_kevent_t;
 
+typedef typeof(((dispatch_kevent_t)NULL)->dk_kevent.udata) _dispatch_kevent_qos_udata_t;
+
 struct dispatch_source_type_s {
 	_dispatch_kevent_qos_s ke;
 	uint64_t mask;
