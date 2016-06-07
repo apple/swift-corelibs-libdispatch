@@ -26,10 +26,6 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
-#ifdef __DISPATCH_BUILDING_SWIFT_MODULE__
-#include <stdio.h>
-#endif
-
 __BEGIN_DECLS
 
 /*! @header
