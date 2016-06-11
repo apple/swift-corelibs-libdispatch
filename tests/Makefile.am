@@ -2,6 +2,11 @@
 #
 #
 
+if HAVE_SWIFT
+  SWIFT_RUNTIME_LIBS=$(SWIFT_TOOLCHAIN_PATH)/lib/swift/linux
+  SWIFT_LIBS=-L$(SWIFT_RUNTIME_LIBS) -lswiftCore
+endif
+
 AUTOMAKE_OPTIONS = subdir-objects
 
 noinst_LTLIBRARIES=libbsdtests.la
@@ -128,7 +133,7 @@ if HAVE_PTHREAD_WORKQUEUES
 endif
 endif
 
-LDADD=libbsdtests.la $(top_builddir)/src/libdispatch.la $(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS)
+LDADD=libbsdtests.la $(top_builddir)/src/libdispatch.la $(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS) $(SWIFT_LIBS)
 libbsdtests_la_LDFLAGS=-avoid-version
 
 bsdtestsummarize_LDADD=-lm $(BSD_OVERLAY_LIBS)

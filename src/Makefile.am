@@ -81,8 +81,14 @@ if HAVE_PTHREAD_WORKQUEUES
 endif
 endif
 
+if HAVE_SWIFT
+  SWIFTC=${SWIFT_TOOLCHAIN_PATH}/bin/swiftc
+  SWIFT_RUNTIME_LIBS=$(SWIFT_TOOLCHAIN_PATH)/lib/swift/linux
+  SWIFT_LIBS=-L$(SWIFT_RUNTIME_LIBS) -lswiftCore
+endif
+
 libdispatch_la_LDFLAGS=-avoid-version
-libdispatch_la_LIBADD=$(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS)
+libdispatch_la_LIBADD=$(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS) $(SWIFT_LIBS)
 
 if HAVE_DARWIN_LD
 libdispatch_la_LDFLAGS+=-Wl,-compatibility_version,1 \
@@ -127,6 +133,10 @@ libdispatch_la_SOURCES+=swift/swift_wrappers.c
 EXTRA_libdispatch_la_SOURCES+=swift/Dispatch.swift
 EXTRA_libdispatch_la_DEPENDENCIES+=$(abs_builddir)/Dispatch.o $(abs_builddir)/Dispatch.swiftmodule
 libdispatch_la_LIBADD+=$(abs_builddir)/Dispatch.o
+
+if USE_GOLD_LINKER
+libdispatch_la_LDFLAGS+=-Xcompiler -fuse-ld=gold
+endif
 
 SWIFT_OBJECTS=	\
 	$(abs_builddir)/Dispatch.swiftmodule \
