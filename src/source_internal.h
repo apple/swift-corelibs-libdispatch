@@ -69,7 +69,7 @@ enum {
 	DISPATCH_MACH_RECV_MESSAGE_DIRECT_ONCE = 0x20,
 	DISPATCH_MACH_RECV_NO_SENDERS = 0x40,
 };
-#endif
+#endif // HAVE_MACH
 
 enum {
 	DISPATCH_TIMER_WALL_CLOCK = 0x4,
@@ -107,6 +107,8 @@ struct dispatch_kevent_s {
 };
 
 typedef struct dispatch_kevent_s *dispatch_kevent_t;
+
+typedef typeof(((dispatch_kevent_t)NULL)->dk_kevent.udata) _dispatch_kevent_qos_udata_t;
 
 struct dispatch_source_type_s {
 	_dispatch_kevent_qos_s ke;
@@ -261,7 +263,7 @@ struct dispatch_mach_msg_s {
 		char dmsg_buf[0];
 	};
 };
-#endif
+#endif // HAVE_MACH
 
 #if TARGET_OS_EMBEDDED
 #define DSL_HASH_SIZE  64u // must be a power of two
@@ -292,7 +294,7 @@ void _dispatch_mach_msg_invoke(dispatch_mach_msg_t dmsg, dispatch_object_t dou,
 size_t _dispatch_mach_msg_debug(dispatch_mach_msg_t dmsg, char* buf, size_t bufsiz);
 
 void _dispatch_mach_barrier_invoke(void *ctxt);
-#endif
+#endif // HAVE_MACH
 
 unsigned long _dispatch_mgr_wakeup(dispatch_queue_t dq);
 void _dispatch_mgr_thread(dispatch_queue_t dq, dispatch_object_t dou,

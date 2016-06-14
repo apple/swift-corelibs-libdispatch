@@ -538,7 +538,7 @@ _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 		objc_terminate();
 	}
 }
-#endif
+#endif // HAVE_MACH
 
 #endif // DISPATCH_USE_CLIENT_CALLOUT
 

@@ -368,26 +368,13 @@ again:
 		}
 #elif USE_POSIX_SEM
 		do {
-			uint64_t nsec = _dispatch_time_to_nanoseconds(timeout);
+			uint64_t nsec = _dispatch_time_nanoseconds_since_epoch(timeout);
 			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
 			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
 			ret = slowpath(sem_timedwait(&dsema->dsema_sem, &_timeout));
 		} while (ret == -1 && errno == EINTR);
 
 		if (!(ret == -1 && errno == ETIMEDOUT)) {
-			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-			break;
-		}
-#elif USE_FUTEX_SEM
-		do {
-			uint64_t nsec = _dispatch_timeout(timeout);
-			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
-			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
-			pthread_workqueue_signal_np();
-			ret = slowpath(_dispatch_futex_wait(&dsema->dsema_futex, &_timeout));
-		} while (ret == false && errno == EINTR);
-
-		if (!(ret == false && errno == ETIMEDOUT)) {
 			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 			break;
 		}
@@ -635,7 +622,7 @@ again:
 		}
 #elif USE_POSIX_SEM
 		do {
-			uint64_t nsec = _dispatch_time_to_nanoseconds(timeout);
+			uint64_t nsec = _dispatch_time_nanoseconds_since_epoch(timeout);
 			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
 			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
 			ret = slowpath(sem_timedwait(&dsema->dsema_sem, &_timeout));
@@ -784,14 +771,10 @@ _dispatch_thread_semaphore_create(void)
 	}
 	return s4;
 #elif USE_POSIX_SEM
-	sem_t* s4 = malloc(sizeof(sem_t));
+	sem_t *s4 = _dispatch_calloc(1ul, sizeof(sem_t));
 	int ret = sem_init(s4, 0, 0);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 	return (_dispatch_thread_semaphore_t)s4;
-#elif USE_FUTEX_SEM
-	dispatch_futex_t ftx = (typeof(ftx))_dispatch_continuation_alloc();
-	*ftx = DISPATCH_FUTEX_INIT;
-	return (_dispatch_thread_semaphore_t)ftx;
 #elif USE_WIN32_SEM
 	HANDLE tmp;
 	while (!dispatch_assume(tmp = CreateSemaphore(NULL, 0, LONG_MAX, NULL))) {
@@ -814,7 +797,7 @@ _dispatch_thread_semaphore_dispose(_dispatch_thread_semaphore_t sema)
 	DISPATCH_VERIFY_MIG(kr);
 	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 #elif USE_POSIX_SEM
-	sem_t *s4 = (sem_t*)sema;
+	sem_t *s4 = (sem_t *)sema;
 	int ret = sem_destroy(s4);
 	free(s4);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
@@ -841,7 +824,7 @@ _dispatch_thread_semaphore_signal(_dispatch_thread_semaphore_t sema)
 	kern_return_t kr = semaphore_signal(s4);
 	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 #elif USE_POSIX_SEM
-	sem_t *s4 = (sem_t*)sema;
+	sem_t *s4 = (sem_t *)sema;
 	int ret = sem_post(s4);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #elif USE_FUTEX_SEM
@@ -870,7 +853,7 @@ _dispatch_thread_semaphore_wait(_dispatch_thread_semaphore_t sema)
 	} while (slowpath(kr == KERN_ABORTED));
 	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 #elif USE_POSIX_SEM
-	sem_t *s4 = (sem_t*)sema;
+	sem_t *s4 = (sem_t *)sema;
 	int ret;
 	do {
 		ret = sem_wait(s4);

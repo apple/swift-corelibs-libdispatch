@@ -345,7 +345,7 @@ DISPATCH_NOINLINE
 void _dispatch_bug_client(const char* msg);
 DISPATCH_NOINLINE
 void _dispatch_bug_mach_client(const char *msg, mach_msg_return_t kr);
-#endif
+#endif // HAVE_MACH
 DISPATCH_NOINLINE
 void _dispatch_bug_kevent_client(const char* msg, const char* filter,
 		const char *operation, int err);
@@ -549,7 +549,7 @@ void _dispatch_vtable_init(void);
 char *_dispatch_get_build(void);
 
 uint64_t _dispatch_timeout(dispatch_time_t when);
-uint64_t _dispatch_time_to_nanoseconds(dispatch_time_t when);
+uint64_t _dispatch_time_nanoseconds_since_epoch(dispatch_time_t when);
 
 extern bool _dispatch_safe_fork, _dispatch_child_of_unsafe_fork;
 

@@ -1,13 +1,20 @@
 The libdispatch project exists in a parallel open source repository at:
-  http://svn.macosforge.org/repository/libdispatch/trunk
+  http://github.com/apple/swift-corelibs-libdispatch
 
-Externally committed revisions are periodically synchronized back to the
-internal repository (this repository).
+Externally contributed changes are synchronized back to the internal repository
+via pull request of the result of `git am` of the contributed patch series.
+
+Internal changes are synchronized from the internal darwin/trunk branch to the
+external repository via `gi am` on the github darwin/trunk branch and merge to
+github master.
 
 Key:
   APPLIED: change set was applied to internal repository.
   INTERNAL: change set originated internally (i.e. already applied).
   SKIPPED: change set was skipped.
+
+svn revisions until r218 from legacy open source repository at
+  http://svn.macosforge.org/repository/libdispatch/trunk
 
 [   1] SKIPPED
 [   2] SKIPPED
@@ -192,3 +199,45 @@ Key:
 [ 181]
 [ 182]
 [ 183] INTERNAL rdar://problem/7581831
+[ 202] INTERNAL libdispatch-187.5
+[ 212] INTERNAL libdispatch-228.18
+[ 213] INTERNAL rdar://problem/11754320
+[ 216] INTERNAL libdispatch-339.1.9
+[ 217] INTERNAL libdispatch-442.1.4
+[ 218] INTERNAL libdispatch-500.1.5
+
+github commits starting with 29bdc2f from
+
+  http://github.com/apple/swift-corelibs-libdispatch
+
+[29bdc2f] INTERNAL libdispatch-500.1.5
+[a60acd6] APPLIED rdar://23661056
+[39ac720] APPLIED rdar://23705483
+[acd56f6] APPLIED rdar://23754944
+[394d9a1] APPLIED rdar://23772602
+[3691f26] APPLIED rdar://23868354
+[8904f45] APPLIED rdar://23868354
+[6dbebd6] APPLIED rdar://23868354
+[b2ccfeb] APPLIED rdar://23868354
+[e7ca00f] APPLIED rdar://23868354
+[35eb408] APPLIED rdar://25159995
+[32411c2] APPLIED rdar://25159995
+[31586d5] APPLIED rdar://25159995
+[50faff5] APPLIED rdar://25159995
+[3ce4e3d] APPLIED rdar://25159995
+[b647aee] APPLIED rdar://25159995
+[ab7e16c] APPLIED rdar://25159995
+[cef2960] APPLIED rdar://25159995
+[dfa43cd] APPLIED rdar://25159995
+[8b9c3a9] APPLIED rdar://25159995
+[fefb6cf] APPLIED rdar://25159995
+[1a9c57f] APPLIED rdar://25159995
+[c04488a] APPLIED rdar://25159995
+[f1d58d1] APPLIED rdar://25159995
+[be83e85] APPLIED rdar://25159995
+[79fbb13] APPLIED rdar://25159995
+[6ead519] APPLIED rdar://25159995
+[1fa1513] APPLIED rdar://25159995
+[4a6ec51] APPLIED rdar://25159995
+[bc16cc9] APPLIED rdar://25159995
+[954ace4] APPLIED rdar://25159995

@@ -21,6 +21,10 @@
    don't. */
 #define HAVE_DECL_NOTE_REAP 1
 
+/* Define to 1 if you have the declaration of `NOTE_REVOKE', and to 0 if you
+   don't. */
+#define HAVE_DECL_NOTE_REVOKE 1
+
 /* Define to 1 if you have the declaration of `NOTE_SIGNAL', and to 0 if you
    don't. */
 #define HAVE_DECL_NOTE_SIGNAL 1

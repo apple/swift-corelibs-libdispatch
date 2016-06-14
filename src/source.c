@@ -148,7 +148,7 @@ dispatch_source_create(dispatch_source_type_t type,
 	dk->dk_kevent.ident = handle;
 	dk->dk_kevent.flags |= EV_ADD|EV_ENABLE;
 	dk->dk_kevent.fflags |= (uint32_t)mask;
-	dk->dk_kevent.udata = (typeof(dk->dk_kevent.udata))dk;
+	dk->dk_kevent.udata = (_dispatch_kevent_qos_udata_t)dk;
 	TAILQ_INIT(&dk->dk_sources);
 
 	ds->ds_dkev = dk;
@@ -917,9 +917,9 @@ _dispatch_kevent_init()
 	TAILQ_INSERT_TAIL(&_dispatch_sources[0],
 			&_dispatch_kevent_data_add, dk_list);
 	_dispatch_kevent_data_or.dk_kevent.udata =
-			(typeof(_dispatch_kevent_data_or.dk_kevent.udata))&_dispatch_kevent_data_or;
+			(_dispatch_kevent_qos_udata_t)&_dispatch_kevent_data_or;
 	_dispatch_kevent_data_add.dk_kevent.udata =
-			(typeof(_dispatch_kevent_data_or.dk_kevent.udata))&_dispatch_kevent_data_add;
+			(_dispatch_kevent_qos_udata_t)&_dispatch_kevent_data_add;
 #endif // !DISPATCH_USE_EV_UDATA_SPECIFIC
 }
 
@@ -1013,7 +1013,9 @@ _dispatch_kevent_resume(dispatch_kevent_t dk, uint32_t new_flags,
 		return _dispatch_kevent_machport_resume(dk, new_flags, del_flags);
 	case DISPATCH_EVFILT_MACH_NOTIFICATION:
 		return _dispatch_kevent_mach_notify_resume(dk, new_flags, del_flags);
-#endif
+#else
+	(void)new_flags; (void)del_flags;
+#endif // HAVE_MACH
 	default:
 		if (dk->dk_kevent.flags & EV_DELETE) {
 			return 0;
@@ -1668,7 +1670,7 @@ _dispatch_timers_init(void)
 #ifndef __LP64__
 	unsigned int tidx;
 	for (tidx = 0; tidx < DISPATCH_TIMER_COUNT; tidx++) {
-		_dispatch_kevent_timer[tidx].dk_kevent.udata = \
+		_dispatch_kevent_timer[tidx].dk_kevent.udata =
 				DISPATCH_KEVENT_TIMER_UDATA(tidx);
 	}
 #endif // __LP64__
@@ -1884,7 +1886,7 @@ static void
 _dispatch_kevent_timer_set_delay(_dispatch_kevent_qos_s *ke, uint64_t delay,
 		uint64_t leeway, uint64_t nows[]) 
 {
-	// call to return nows[]
+	// call to update nows[]
 	_dispatch_source_timer_now(nows, DISPATCH_TIMER_KIND_WALL); 
 	// adjust nsec based delay to msec based and ignore leeway	
 	delay /= 1000000L;
@@ -1895,7 +1897,6 @@ _dispatch_kevent_timer_set_delay(_dispatch_kevent_qos_s *ke, uint64_t delay,
 }
 
 #else
-
 static void 
 _dispatch_kevent_timer_set_delay(_dispatch_kevent_qos_s *ke, uint64_t delay,
 		uint64_t leeway, uint64_t nows[]) 
@@ -1909,7 +1910,7 @@ _dispatch_kevent_timer_set_delay(_dispatch_kevent_qos_s *ke, uint64_t delay,
 		ke->ext[1] = leeway;
 	}
 }
-#endif
+#endif // __linux__
 
 static bool
 _dispatch_timers_program2(uint64_t nows[], _dispatch_kevent_qos_s *ke,
@@ -4763,11 +4764,12 @@ static size_t
 _dispatch_timer_debug_attr(dispatch_source_t ds, char* buf, size_t bufsiz)
 {
 	dispatch_source_refs_t dr = ds->ds_refs;
-	return dsnprintf(buf, bufsiz, "timer = { target = 0x%llx, deadline = 0x%llx,"
-			" last_fire = 0x%llx, interval = 0x%llx, flags = 0x%lx }, ",
-			(unsigned long long)ds_timer(dr).target, (unsigned long long)ds_timer(dr).deadline,
-			(unsigned long long)ds_timer(dr).last_fire, (unsigned long long)ds_timer(dr).interval,
-			ds_timer(dr).flags);
+	return dsnprintf(buf, bufsiz, "timer = { target = 0x%llx, deadline = 0x%llx"
+			", last_fire = 0x%llx, interval = 0x%llx, flags = 0x%lx }, ",
+			(unsigned long long)ds_timer(dr).target,
+			(unsigned long long)ds_timer(dr).deadline,
+			(unsigned long long)ds_timer(dr).last_fire,
+			(unsigned long long)ds_timer(dr).interval, ds_timer(dr).flags);
 }
 
 size_t
@@ -4806,6 +4808,7 @@ _dispatch_mach_debug_attr(dispatch_mach_t dm, char* buf, size_t bufsiz)
 			dm->dm_refs->dm_sending, dm->dm_refs->dm_disconnect_cnt,
 			(bool)(dm->ds_atomic_flags & DSF_CANCELED));
 }
+
 size_t
 _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz)
 {
@@ -4818,7 +4821,7 @@ _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz)
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "}");
 	return offset;
 }
-#endif
+#endif // HAVE_MACH
 
 #if DISPATCH_DEBUG
 DISPATCH_NOINLINE

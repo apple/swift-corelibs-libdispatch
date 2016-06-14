@@ -43,7 +43,7 @@ DISPATCH_NOTHROW void
 _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 		dispatch_mach_msg_t dmsg, mach_error_t error,
 		dispatch_mach_handler_function_t f);
-#endif
+#endif // HAVE_MACH
 
 #else // !DISPATCH_USE_CLIENT_CALLOUT
 
@@ -70,7 +70,7 @@ _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 {
 	return f(ctxt, reason, dmsg, error);
 }
-#endif
+#endif // HAVE_MACH
 
 #endif // !DISPATCH_USE_CLIENT_CALLOUT
 

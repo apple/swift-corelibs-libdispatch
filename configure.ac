@@ -273,7 +273,7 @@ AM_CONDITIONAL(USE_MIG, $have_mach)
 #
 AC_CHECK_DECLS([CLOCK_UPTIME, CLOCK_MONOTONIC], [], [],
   [[#include <time.h>]])
-AC_CHECK_DECLS([NOTE_NONE, NOTE_REAP, NOTE_SIGNAL], [], [],
+AC_CHECK_DECLS([NOTE_NONE, NOTE_REAP, NOTE_REVOKE, NOTE_SIGNAL], [], [],
   [[#include <sys/event.h>]])
 AC_CHECK_DECLS([FD_COPY], [], [], [[#include <sys/select.h>]])
 AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])

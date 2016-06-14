@@ -34,6 +34,10 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#if defined(__linux__) && defined(__DISPATCH_BUILDING_SWIFT_MODULE__)
+#include <stdio.h> // for off_t
+#endif
+
 #ifndef __OSX_AVAILABLE_STARTING
 #define __OSX_AVAILABLE_STARTING(x, y)
 #endif

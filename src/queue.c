@@ -867,7 +867,7 @@ _dispatch_root_queue_init_pthread_pool(dispatch_root_queue_context_t qc,
 				&pqc->dpq_thread_attr, qc->dgq_qos, 0));
 #endif
 	}
-#endif
+#endif // HAVE_PTHREAD_WORKQUEUES
 #if USE_MACH_SEM
 	// override the default FIFO behavior for the pool semaphores
 	kern_return_t kr = semaphore_create(mach_task_self(),
@@ -1477,7 +1477,7 @@ static const int _dispatch_mgr_sched_qos2prio[] = {
 	[_DISPATCH_QOS_CLASS_USER_INITIATED] = 37,
 	[_DISPATCH_QOS_CLASS_USER_INTERACTIVE] = 47,
 };
-#endif
+#endif // HAVE_PTHREAD_WORKQUEUE_QOS
 
 static void
 _dispatch_mgr_sched_init(void *ctxt DISPATCH_UNUSED)

@@ -1,19 +1,13 @@
 /*
- * @APPLE_APACHE_LICENSE_HEADER_START@
+ * This source file is part of the Swift.org open source project
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Copyright (c) 2015 Apple Inc. and the Swift project authors
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * Licensed under Apache License v2.0 with Runtime Library Exception
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * See http://swift.org/LICENSE.txt for license information
+ * See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
  *
- * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
 #ifndef __OS_LINUX_BASE__
@@ -23,7 +17,7 @@
 #include <sys/user.h>
 
 // marker for hacks we have made to make progress
-#define __LINUX_PORT_HDD__ 1 
+#define __LINUX_PORT_HDD__ 1
 
 /*
  * Stub out defines for some mach types and related macros
@@ -120,8 +114,8 @@ struct voucher_offsets_s {
 #endif
 #define OS_EXPORT
 
-#ifdef OS_WARN_RESULT_NEEDS_RELEASE 
-#undef OS_WARN_RESULT_NEEDS_RELEASE  
+#ifdef OS_WARN_RESULT_NEEDS_RELEASE
+#undef OS_WARN_RESULT_NEEDS_RELEASE
 #endif
 
 #ifdef OS_WARN_RESULT
@@ -138,7 +132,7 @@ struct voucher_offsets_s {
 // These and similar macros come from Availabilty.h on OS X
 // Need a better way to do this long term.
 #define __OSX_AVAILABLE_BUT_DEPRECATED(a,b,c,d) //
-#define __OSX_AVAILABLE_BUT_DEPRECATED_MSG(a,b,c,d,msg) // 
+#define __OSX_AVAILABLE_BUT_DEPRECATED_MSG(a,b,c,d,msg) //
 
 
 

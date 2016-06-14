@@ -427,7 +427,7 @@ OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t
 voucher_create_with_mach_msg(mach_msg_header_t *msg);
 
-#endif
+#endif // __APPLE__
 __END_DECLS
 
 #endif // __OS_VOUCHER_PRIVATE__

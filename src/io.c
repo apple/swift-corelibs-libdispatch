@@ -390,7 +390,7 @@ dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 			(path_data->oflag & O_NOFOLLOW) == O_NOFOLLOW
 #ifndef __linux__
 					|| (path_data->oflag & O_SYMLINK) == O_SYMLINK
-#endif						  
+#endif
 					? lstat(path_data->path, &st) : stat(path_data->path, &st),
 			case 0:
 				err = _dispatch_io_validate_type(channel, st.st_mode);
@@ -1601,7 +1601,8 @@ _dispatch_disk_init(dispatch_fd_entry_t fd_entry, dev_t dev)
 	TAILQ_INIT(&disk->operations);
 	disk->cur_rq = TAILQ_FIRST(&disk->operations);
 	char label[45];
-	snprintf(label, sizeof(label), "com.apple.libdispatch-io.deviceq.%d", (int)dev);
+	snprintf(label, sizeof(label), "com.apple.libdispatch-io.deviceq.%d",
+			(int)dev);
 	disk->pick_queue = dispatch_queue_create(label, NULL);
 	TAILQ_INSERT_TAIL(&_dispatch_io_devs[hash], disk, disk_list);
 out:
@@ -2107,7 +2108,7 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 		// TODO: set disk status on error
 		default: (void)dispatch_assume_zero(err); break;
 	);
-#endif	
+#endif
 }
 
 static int
@@ -2398,10 +2399,11 @@ _dispatch_operation_debug_attr(dispatch_operation_t op, char* buf,
 			"write", op->fd_entry ? op->fd_entry->fd : -1, op->fd_entry,
 			op->channel, op->op_q, oqtarget && oqtarget->dq_label ?
 			oqtarget->dq_label : "", oqtarget, target && target->dq_label ?
-			target->dq_label : "", target, (long long)op->offset, op->length, op->total,
-			op->undelivered + op->buf_len, op->flags, op->err, op->params.low,
-			op->params.high, op->params.interval_flags &
-			DISPATCH_IO_STRICT_INTERVAL ? "(strict)" : "", (unsigned long long)op->params.interval);
+			target->dq_label : "", target, (long long)op->offset, op->length,
+			op->total, op->undelivered + op->buf_len, op->flags, op->err,
+			op->params.low, op->params.high, op->params.interval_flags &
+			DISPATCH_IO_STRICT_INTERVAL ? "(strict)" : "",
+			(unsigned long long)op->params.interval);
 }
 
 size_t

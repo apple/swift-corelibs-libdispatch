@@ -268,6 +268,14 @@ extern struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent
 	__attribute__((__alias__("_dispatch_queue_attrs")));
 #endif
 
+// _dispatch_queue_attr_concurrent is aliased using libdispatch.aliases
+// and the -alias_list linker option on Darwin but needs to be done manually
+// for other platforms.
+#ifndef __APPLE__
+extern struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent
+	__attribute__((__alias__("_dispatch_queue_attrs")));
+#endif
+
 #pragma mark -
 #pragma mark dispatch_vtables
 
@@ -359,7 +367,7 @@ DISPATCH_VTABLE_INSTANCE(mach_msg,
 	.do_invoke = _dispatch_mach_msg_invoke,
 	.do_debug = _dispatch_mach_msg_debug,
 );
-#endif
+#endif // HAVE_MACH
 
 #if !USE_OBJC
 DISPATCH_VTABLE_INSTANCE(data,
@@ -817,7 +825,7 @@ _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 	_dispatch_free_unwind_tsd();
 	_dispatch_set_unwind_tsd(u);
 }
-#endif
+#endif // HAVE_MACH
 
 #endif // DISPATCH_USE_CLIENT_CALLOUT
 
@@ -1172,7 +1180,7 @@ const struct dispatch_source_type_s _dispatch_source_type_vnode = {
 	.mask = NOTE_DELETE|NOTE_WRITE|NOTE_EXTEND|NOTE_ATTRIB|NOTE_LINK|
 			NOTE_RENAME
 #if HAVE_DECL_NOTE_REVOKE
-	                |NOTE_REVOKE
+			|NOTE_REVOKE
 #endif
 #if HAVE_DECL_NOTE_NONE
 			|NOTE_NONE
