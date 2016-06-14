@@ -1,0 +1,28 @@
+//
+// Copyright (c) 2016 Apple Inc. All rights reserved.
+//
+// @APPLE_APACHE_LICENSE_HEADER_START@
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// @APPLE_APACHE_LICENSE_HEADER_END@
+//
+
+OTHER_LDFLAGS =
+BUILD_VARIANTS = normal
+GCC_PREPROCESSOR_DEFINITIONS = $(inherited) DISPATCH_VARIANT_STATIC=1 DISPATCH_VARIANT_DYLD_STUB=1 USE_OBJC=0 DISPATCH_USE_DTRACE=0
+PRODUCT_NAME = libdispatch_dyld_stub
+INSTALL_PATH = /usr/local/lib/dyld_stub
+EXCLUDED_SOURCE_FILE_NAMES = *
+INCLUDED_SOURCE_FILE_NAMES = voucher.c // it's minimal with DISPATCH_VARIANT_DYLD_STUB
+VERSIONING_SYSTEM =

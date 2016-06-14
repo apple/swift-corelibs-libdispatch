@@ -11,7 +11,5 @@ noinst_HEADERS=			\
 	mach_private.h		\
 	private.h			\
 	queue_private.h		\
-	source_private.h	\
-	voucher_activity_private.h \
-	voucher_private.h
+	source_private.h
 

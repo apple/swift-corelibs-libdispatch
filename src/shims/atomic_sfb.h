@@ -32,11 +32,11 @@
 #endif
 
 // Returns UINT_MAX if all the bits in p were already set.
-#define dispatch_atomic_set_first_bit(p,m) _dispatch_atomic_set_first_bit(p,m)
+#define os_atomic_set_first_bit(p,m) _os_atomic_set_first_bit(p,m)
 
 DISPATCH_ALWAYS_INLINE
 static inline unsigned int
-_dispatch_atomic_set_first_bit(volatile unsigned long *p,
+_os_atomic_set_first_bit(volatile unsigned long *p,
 		unsigned int max_index)
 {
 	unsigned int index;
@@ -63,10 +63,10 @@ _dispatch_atomic_set_first_bit(volatile unsigned long *p,
 
 #if defined(__x86_64__) || defined(__i386__)
 
-#undef dispatch_atomic_set_first_bit
+#undef os_atomic_set_first_bit
 DISPATCH_ALWAYS_INLINE
 static inline unsigned int
-dispatch_atomic_set_first_bit(volatile unsigned long *p, unsigned int max)
+os_atomic_set_first_bit(volatile unsigned long *p, unsigned int max)
 {
 	unsigned long val, bit;
 	if (max > (sizeof(val) * 8)) {

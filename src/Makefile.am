@@ -46,6 +46,8 @@ libdispatch_la_SOURCES=		\
 	shims/hw_config.h		\
 	shims/linux_stubs.c		\
 	shims/linux_stubs.h		\
+	shims/lock.c			\
+	shims/lock.h			\
 	shims/perfmon.h			\
 	shims/time.h			\
 	shims/tsd.h				\
@@ -54,8 +56,7 @@ libdispatch_la_SOURCES=		\
 EXTRA_libdispatch_la_SOURCES=
 EXTRA_libdispatch_la_DEPENDENCIES=
 
-AM_CPPFLAGS=-I$(top_builddir) -I$(top_srcdir) \
-	-I$(top_srcdir)/private -I$(top_srcdir)/os
+AM_CPPFLAGS=-I$(top_builddir) -I$(top_srcdir) -I$(top_srcdir)/private
 
 DISPATCH_CFLAGS=-Wall $(VISIBILITY_FLAGS) $(OMIT_LEAF_FP_FLAGS) \
 	$(MARCH_FLAGS) $(KQUEUE_CFLAGS) $(BSD_OVERLAY_CFLAGS)
@@ -87,9 +88,7 @@ libdispatch_la_SOURCES+=block.cpp data.m object.m
 libdispatch_la_OBJCFLAGS=$(AM_OBJCFLAGS) -Wno-switch -fobjc-gc
 libdispatch_la_CXXFLAGS=$(AM_CXXFLAGS) -std=gnu++11 -fno-exceptions
 libdispatch_la_LDFLAGS+=-Wl,-upward-lobjc -Wl,-upward-lauto \
-	-Wl,-order_file,$(top_srcdir)/xcodeconfig/libdispatch.order \
-	-Wl,-alias_list,$(top_srcdir)/xcodeconfig/libdispatch_objc.aliases \
-	-Wl,-unexported_symbols_list,$(top_srcdir)/xcodeconfig/libdispatch.unexport
+	-Wl,-order_file,$(top_srcdir)/xcodeconfig/libdispatch.order
 else
 libdispatch_la_SOURCES+=block.cpp
 libdispatch_la_CXXFLAGS=$(AM_CXXFLAGS) -std=gnu++11 -fno-exceptions

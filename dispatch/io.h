@@ -26,9 +26,7 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
-#ifdef __DISPATCH_BUILDING_SWIFT_MODULE__
-#include <stdio.h>
-#endif
+DISPATCH_ASSUME_NONNULL_BEGIN
 
 __BEGIN_DECLS
 
@@ -149,7 +147,7 @@ void
 dispatch_write(dispatch_fd_t fd,
 	dispatch_data_t data,
 	dispatch_queue_t queue,
-	void (^handler)(dispatch_data_t data, int error));
+	void (^handler)(dispatch_data_t _Nullable data, int error));
 #endif /* __BLOCKS__ */
 
 /*!
@@ -306,7 +304,7 @@ dispatch_io_create_with_io(dispatch_io_type_t type,
  * @param data		The data object to be handled.
  * @param error		An errno condition for the operation.
  */
-typedef void (^dispatch_io_handler_t)(bool done, dispatch_data_t data,
+typedef void (^dispatch_io_handler_t)(bool done, dispatch_data_t _Nullable data,
 		int error);
 
 /*!
@@ -589,5 +587,7 @@ dispatch_io_set_interval(dispatch_io_t channel,
 	dispatch_io_interval_flags_t flags);
 
 __END_DECLS
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif /* __DISPATCH_IO__ */

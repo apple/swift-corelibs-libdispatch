@@ -66,8 +66,8 @@ typedef unsigned int dispatch_op_flags_t;
 #define DIO_CLOSED		1u // channel has been closed
 #define DIO_STOPPED		2u // channel has been stopped (implies closed)
 
-DISPATCH_DECL_INTERNAL(dispatch_operation);
-DISPATCH_DECL_INTERNAL(dispatch_disk);
+DISPATCH_INTERNAL_CLASS_DECL(operation);
+DISPATCH_INTERNAL_CLASS_DECL(disk);
 
 struct dispatch_stream_s {
 	dispatch_queue_t dq;
@@ -94,9 +94,8 @@ struct dispatch_stat_s {
 	mode_t mode;
 };
 
-DISPATCH_CLASS_DECL(disk);
 struct dispatch_disk_s {
-	DISPATCH_STRUCT_HEADER(disk);
+	DISPATCH_OBJECT_HEADER(disk);
 	TAILQ_HEAD(dispatch_disk_operations_s, dispatch_operation_s) operations;
 	dispatch_operation_t cur_rq;
 	dispatch_queue_t pick_queue;
@@ -141,9 +140,8 @@ typedef struct dispatch_io_param_s {
 	unsigned long interval_flags;
 } dispatch_io_param_s;
 
-DISPATCH_CLASS_DECL(operation);
 struct dispatch_operation_s {
-	DISPATCH_STRUCT_HEADER(operation);
+	DISPATCH_OBJECT_HEADER(operation);
 	dispatch_queue_t op_q;
 	dispatch_op_direction_t direction; // READ OR WRITE
 	dispatch_io_param_s params;
@@ -167,7 +165,7 @@ struct dispatch_operation_s {
 
 DISPATCH_CLASS_DECL(io);
 struct dispatch_io_s {
-	DISPATCH_STRUCT_HEADER(io);
+	DISPATCH_OBJECT_HEADER(io);
 	dispatch_queue_t queue, barrier_queue;
 	dispatch_group_t barrier_group;
 	dispatch_io_param_s params;

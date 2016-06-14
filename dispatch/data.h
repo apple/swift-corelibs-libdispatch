@@ -26,6 +26,8 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+DISPATCH_ASSUME_NONNULL_BEGIN
+
 __BEGIN_DECLS
 
 /*! @header
@@ -39,7 +41,7 @@ __BEGIN_DECLS
  * @typedef dispatch_data_t
  * A dispatch object representing memory regions.
  */
-DISPATCH_DECL(dispatch_data);
+DISPATCH_DATA_DECL(dispatch_data);
 
 /*!
  * @var dispatch_data_empty
@@ -120,8 +122,8 @@ DISPATCH_EXPORT DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
 dispatch_data_create(const void *buffer,
 	size_t size,
-	dispatch_queue_t queue,
-	dispatch_block_t destructor);
+	dispatch_queue_t _Nullable queue,
+	dispatch_block_t _Nullable destructor);
 #endif /* __BLOCKS__ */
 
 /*!
@@ -161,8 +163,8 @@ DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
 dispatch_data_create_map(dispatch_data_t data,
-	const void **buffer_ptr,
-	size_t *size_ptr);
+	const void *_Nullable *_Nullable buffer_ptr,
+	size_t *_Nullable size_ptr);
 
 /*!
  * @function dispatch_data_create_concat
@@ -274,5 +276,7 @@ dispatch_data_copy_region(dispatch_data_t data,
 	size_t *offset_ptr);
 
 __END_DECLS
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif /* __DISPATCH_DATA__ */

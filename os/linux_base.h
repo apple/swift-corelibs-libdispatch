@@ -64,11 +64,6 @@ typedef void (*dispatch_mach_handler_function_t)(void*, dispatch_mach_reason_t,
 
 typedef void (*dispatch_mach_msg_destructor_t)(void*);
 
-struct voucher_offsets_s {
-  uint32_t vo_version;
-};
-
-
 // Print a warning when an unported code path executes.
 #define LINUX_PORT_ERROR()  do { printf("LINUX_PORT_ERROR_CALLED %s:%d: %s\n",__FILE__,__LINE__,__FUNCTION__); } while (0)
 
@@ -93,15 +88,15 @@ struct voucher_offsets_s {
 #define IGNORE_KEVENT64_EXT   /* will force the kevent64_s.ext[] to not be used -> leeway ignored */
 
 #define NOTE_SECONDS	0x01
-#define NOTE_USECONDS 	0x02
+#define NOTE_USECONDS	0x02
 #define NOTE_NSECONDS	0x04
 #define NOTE_ABSOLUTE	0x08
 #define NOTE_CRITICAL	0x10
 #define NOTE_BACKGROUND	0x20
 #define NOTE_LEEWAY	0x40
 
-// need to catch the following usage if it happens .. 
-// we simply return '0' as a value probably not correct 
+// need to catch the following usage if it happens ..
+// we simply return '0' as a value probably not correct
 
 #define NOTE_VM_PRESSURE ({LINUX_PORT_ERROR(); 0;})
 

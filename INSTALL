@@ -56,11 +56,6 @@ OS X as a replacement for /usr/lib/system/libdispatch.dylib:
 	Specify the path to Apple's objc4 package, so that appropriate headers can
 	be found and used.
 
---with-apple-libauto-source
-
-	Specify the path to Apple's libauto package, so that appropriate headers
-	can be found and used.
-
 --disable-libdispatch-init-constructor
 
 	Do not tag libdispatch's init routine as __constructor, in which case it
@@ -90,8 +85,7 @@ libdispatch for /usr/lib/system on OS X El Capitan:
 		--with-apple-libplatform-source=/path/to/10.11.0/libplatform-73.1.1 \
 		--with-apple-libclosure-source=/path/to/10.11.0/libclosure-65 \
 		--with-apple-xnu-source=/path/to/10.11.0/xnu-3247.1.106 \
-		--with-apple-objc4-source=/path/to/10.11.0/objc4-680 \
-		--with-apple-libauto-source=/path/to/10.11.0/libauto-186
+		--with-apple-objc4-source=/path/to/10.11.0/objc4-680
 	make check
 
 Typical configuration line for FreeBSD 8.x and 9.x to build libdispatch with
