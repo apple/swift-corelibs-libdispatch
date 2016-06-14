@@ -31,7 +31,7 @@
 #define _dispatch_fd_debug(msg, fd, args...)
 #endif
 
-#if USE_OBJC
+#if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 #define _dispatch_io_data_retain(x) _dispatch_objc_retain(x)
 #define _dispatch_io_data_release(x) _dispatch_objc_release(x)
 #else
@@ -132,6 +132,8 @@ static TAILQ_HEAD(, dispatch_fd_entry_s) _dispatch_io_fds[DIO_HASH_SIZE];
 static dispatch_once_t  _dispatch_io_devs_lockq_pred;
 static dispatch_queue_t _dispatch_io_devs_lockq;
 static dispatch_queue_t _dispatch_io_fds_lockq;
+
+static char const * const _dispatch_io_key = "io";
 
 static void
 _dispatch_io_fds_lockq_init(void *context DISPATCH_UNUSED)
@@ -314,7 +316,7 @@ dispatch_io_create(dispatch_io_type_t type, dispatch_fd_t fd,
 		dispatch_queue_t queue, void (^cleanup_handler)(int))
 {
 	if (type != DISPATCH_IO_STREAM && type != DISPATCH_IO_RANDOM) {
-		return NULL;
+		return DISPATCH_BAD_INPUT;
 	}
 	_dispatch_fd_debug("io create", fd);
 	dispatch_io_t channel = _dispatch_io_create(type);
@@ -365,12 +367,12 @@ dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 {
 	if ((type != DISPATCH_IO_STREAM && type != DISPATCH_IO_RANDOM) ||
 			!(*path == '/')) {
-		return NULL;
+		return DISPATCH_BAD_INPUT;
 	}
 	size_t pathlen = strlen(path);
 	dispatch_io_path_data_t path_data = malloc(sizeof(*path_data) + pathlen+1);
 	if (!path_data) {
-		return NULL;
+		return DISPATCH_OUT_OF_MEMORY;
 	}
 	_dispatch_fd_debug("io create with path %s", -1, path);
 	dispatch_io_t channel = _dispatch_io_create(type);
@@ -457,7 +459,7 @@ dispatch_io_create_with_io(dispatch_io_type_t type, dispatch_io_t in_channel,
 		dispatch_queue_t queue, void (^cleanup_handler)(int error))
 {
 	if (type != DISPATCH_IO_STREAM && type != DISPATCH_IO_RANDOM) {
-		return NULL;
+		return DISPATCH_BAD_INPUT;
 	}
 	_dispatch_fd_debug("io create with io %p", -1, in_channel);
 	dispatch_io_t channel = _dispatch_io_create(type);
@@ -624,10 +626,12 @@ dispatch_io_get_descriptor(dispatch_io_t channel)
 		return -1;
 	}
 	dispatch_fd_t fd = channel->fd_actual;
-	if (fd == -1 && _dispatch_thread_getspecific(dispatch_io_key) == channel &&
-			!_dispatch_io_get_error(NULL, channel, false)) {
-		dispatch_fd_entry_t fd_entry = channel->fd_entry;
-		(void)_dispatch_fd_entry_open(fd_entry, channel);
+	if (fd == -1 && !_dispatch_io_get_error(NULL, channel, false)) {
+		dispatch_thread_context_t ctxt =
+				_dispatch_thread_context_find(_dispatch_io_key);
+		if (ctxt && ctxt->dtc_io_in_barrier == channel) {
+			(void)_dispatch_fd_entry_open(channel->fd_entry, channel);
+		}
 	}
 	return channel->fd_actual;
 }
@@ -639,7 +643,7 @@ static void
 _dispatch_io_stop(dispatch_io_t channel)
 {
 	_dispatch_fd_debug("io stop", channel->fd);
-	(void)dispatch_atomic_or2o(channel, atomic_flags, DIO_STOPPED, relaxed);
+	(void)os_atomic_or2o(channel, atomic_flags, DIO_STOPPED, relaxed);
 	_dispatch_retain(channel);
 	dispatch_async(channel->queue, ^{
 		dispatch_async(channel->barrier_queue, ^{
@@ -695,7 +699,7 @@ dispatch_io_close(dispatch_io_t channel, unsigned long flags)
 			_dispatch_object_debug(channel, "%s", __func__);
 			_dispatch_fd_debug("io close", channel->fd);
 			if (!(channel->atomic_flags & (DIO_CLOSED|DIO_STOPPED))) {
-				(void)dispatch_atomic_or2o(channel, atomic_flags, DIO_CLOSED,
+				(void)os_atomic_or2o(channel, atomic_flags, DIO_CLOSED,
 						relaxed);
 				dispatch_fd_entry_t fd_entry = channel->fd_entry;
 				if (fd_entry) {
@@ -721,10 +725,15 @@ dispatch_io_barrier(dispatch_io_t channel, dispatch_block_t barrier)
 		dispatch_async(barrier_queue, ^{
 			dispatch_suspend(barrier_queue);
 			dispatch_group_notify(barrier_group, io_q, ^{
+				dispatch_thread_context_s io_ctxt = {
+					.dtc_key = _dispatch_io_key,
+					.dtc_io_in_barrier = channel,
+				};
+
 				_dispatch_object_debug(channel, "%s", __func__);
-				_dispatch_thread_setspecific(dispatch_io_key, channel);
+				_dispatch_thread_context_push(&io_ctxt);
 				barrier();
-				_dispatch_thread_setspecific(dispatch_io_key, NULL);
+				_dispatch_thread_context_pop(&io_ctxt);
 				dispatch_resume(barrier_queue);
 				_dispatch_release(channel);
 			});
@@ -1479,10 +1488,10 @@ open:
 		if (err == EINTR) {
 			goto open;
 		}
-		(void)dispatch_atomic_cmpxchg2o(fd_entry, err, 0, err, relaxed);
+		(void)os_atomic_cmpxchg2o(fd_entry, err, 0, err, relaxed);
 		return err;
 	}
-	if (!dispatch_atomic_cmpxchg2o(fd_entry, fd, -1, fd, relaxed)) {
+	if (!os_atomic_cmpxchg2o(fd_entry, fd, -1, fd, relaxed)) {
 		// Lost the race with another open
 		_dispatch_fd_entry_guarded_close(fd_entry, fd);
 	} else {
@@ -2234,7 +2243,7 @@ error:
 	case ECANCELED:
 		return DISPATCH_OP_ERR;
 	case EBADF:
-		(void)dispatch_atomic_cmpxchg2o(op->fd_entry, err, 0, err, relaxed);
+		(void)os_atomic_cmpxchg2o(op->fd_entry, err, 0, err, relaxed);
 		return DISPATCH_OP_FD_ERR;
 	default:
 		return DISPATCH_OP_COMPLETE;

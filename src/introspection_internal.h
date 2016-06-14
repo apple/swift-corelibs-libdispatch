@@ -29,10 +29,28 @@
 
 #if DISPATCH_INTROSPECTION
 
-#define DISPATCH_INTROSPECTION_QUEUE_LIST \
-		TAILQ_ENTRY(dispatch_queue_s) diq_list
-#define DISPATCH_INTROSPECTION_QUEUE_LIST_SIZE \
-		sizeof(TAILQ_ENTRY(dispatch_queue_s))
+#define DISPATCH_INTROSPECTION_QUEUE_HEADER \
+		TAILQ_ENTRY(dispatch_queue_s) diq_list; \
+		dispatch_unfair_lock_s diq_order_top_head_lock; \
+		dispatch_unfair_lock_s diq_order_bottom_head_lock; \
+		TAILQ_HEAD(, dispatch_queue_order_entry_s) diq_order_top_head; \
+		TAILQ_HEAD(, dispatch_queue_order_entry_s) diq_order_bottom_head
+#define DISPATCH_INTROSPECTION_QUEUE_HEADER_SIZE \
+		sizeof(struct { DISPATCH_INTROSPECTION_QUEUE_HEADER; })
+
+struct dispatch_introspection_state_s {
+	TAILQ_HEAD(, dispatch_introspection_thread_s) threads;
+	TAILQ_HEAD(, dispatch_queue_s) queues;
+	dispatch_unfair_lock_s threads_lock;
+	dispatch_unfair_lock_s queues_lock;
+
+	ptrdiff_t thread_queue_offset;
+
+	// dispatch introspection features
+	bool debug_queue_inversions; // DISPATCH_DEBUG_QUEUE_INVERSIONS
+};
+
+extern struct dispatch_introspection_state_s _dispatch_introspection;
 
 void _dispatch_introspection_init(void);
 void _dispatch_introspection_thread_add(void);
@@ -46,7 +64,10 @@ void _dispatch_introspection_queue_item_complete(dispatch_object_t dou);
 void _dispatch_introspection_callout_entry(void *ctxt, dispatch_function_t f);
 void _dispatch_introspection_callout_return(void *ctxt, dispatch_function_t f);
 
-#if !__OBJC2__ && !defined(__cplusplus)
+#if DISPATCH_PURE_C
+
+void _dispatch_sync_recurse_invoke(void *ctxt);
+static dispatch_queue_t _dispatch_queue_get_current(void);
 
 DISPATCH_ALWAYS_INLINE
 static inline void
@@ -70,12 +91,41 @@ _dispatch_introspection_queue_pop(dispatch_queue_t dq, dispatch_object_t dou) {
 	_dispatch_introspection_queue_item_dequeue(dq, dou);
 };
 
-#endif // !__OBJC2__ && !defined(__cplusplus)
+void
+_dispatch_introspection_order_record(dispatch_queue_t top_q,
+		dispatch_queue_t bottom_q);
+
+void
+_dispatch_introspection_target_queue_changed(dispatch_queue_t dq);
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_introspection_barrier_sync_begin(dispatch_queue_t dq,
+	dispatch_function_t func)
+{
+	if (!_dispatch_introspection.debug_queue_inversions) return;
+	if (func != _dispatch_sync_recurse_invoke) {
+		_dispatch_introspection_order_record(dq, _dispatch_queue_get_current());
+	}
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_introspection_non_barrier_sync_begin(dispatch_queue_t dq,
+	dispatch_function_t func)
+{
+	if (!_dispatch_introspection.debug_queue_inversions) return;
+	if (func != _dispatch_sync_recurse_invoke) {
+		_dispatch_introspection_order_record(dq, _dispatch_queue_get_current());
+	}
+}
+
+#endif // DISPATCH_PURE_C
 
 #else // DISPATCH_INTROSPECTION
 
-#define DISPATCH_INTROSPECTION_QUEUE_LIST
-#define DISPATCH_INTROSPECTION_QUEUE_LIST_SIZE 0
+#define DISPATCH_INTROSPECTION_QUEUE_HEADER
+#define DISPATCH_INTROSPECTION_QUEUE_HEADER_SIZE 0
 
 #define _dispatch_introspection_init()
 #define _dispatch_introspection_thread_add()
@@ -119,6 +169,21 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_introspection_callout_return(void *ctxt DISPATCH_UNUSED,
 		dispatch_function_t f DISPATCH_UNUSED) {}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_introspection_target_queue_changed(
+		dispatch_queue_t dq DISPATCH_UNUSED) {}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_introspection_barrier_sync_begin(dispatch_queue_t dq DISPATCH_UNUSED,
+	dispatch_function_t func DISPATCH_UNUSED) {}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_introspection_non_barrier_sync_begin(dispatch_queue_t dq DISPATCH_UNUSED,
+	dispatch_function_t func DISPATCH_UNUSED) {}
 
 #endif // DISPATCH_INTROSPECTION
 

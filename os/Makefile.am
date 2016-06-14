@@ -13,4 +13,6 @@ os_HEADERS=	\
 	linux_base.h
 
 noinst_HEADERS=	\
-	object_private.h
+	object_private.h \
+	voucher_activity_private.h \
+	voucher_private.h

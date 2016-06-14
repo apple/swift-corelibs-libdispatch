@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Apple Inc. All rights reserved.
+ * Copyright (c) 2013-2016 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -20,90 +20,50 @@
 
 #include "internal.h"
 
+#if !defined(VOUCHER_EXPORT_PERSONA_SPI)
+#if TARGET_OS_IPHONE
+#define VOUCHER_EXPORT_PERSONA_SPI 1
+#else
+#define VOUCHER_EXPORT_PERSONA_SPI 0
+#endif
+#endif
+
+#ifndef PERSONA_ID_NONE
+#define PERSONA_ID_NONE ((uid_t)-1)
+#endif
+
+#if !DISPATCH_VARIANT_DYLD_STUB
+
 #if VOUCHER_USE_MACH_VOUCHER
-
+#if !HAVE_PTHREAD_WORKQUEUE_QOS
+#error Unsupported configuration, workqueue QoS support is required
+#endif
 #include <mach/mach_voucher.h>
+#include <sys/proc_info.h>
 
-// <rdar://16363550>
-#ifndef VM_MEMORY_GENEALOGY
-#define VM_MEMORY_GENEALOGY 78
-#endif
+#define MACH_ACTIVITY_ID_RANGE_SIZE 16
+#define MACH_ACTIVITY_ID_MASK ((1ULL << FIREHOSE_ACTIVITY_ID_FLAGS_SHIFT) - 1)
+#define FIREHOSE_ACTIVITY_ID_MAKE(aid, flags) \
+		FIREHOSE_ACTIVITY_ID_MERGE_FLAGS((aid) & MACH_ACTIVITY_ID_MASK, flags)
 
-#ifndef VOUCHER_ATM_COLLECT_THRESHOLD
-#define VOUCHER_ATM_COLLECT_THRESHOLD 1
-#endif
-#define VATM_COLLECT_THRESHOLD_VALUE(t) (((t) - 1) * 2)
-static uint64_t volatile _voucher_atm_generation;
-
-typedef struct _voucher_atm_s *_voucher_atm_t;
-
-static void _voucher_activity_atfork_child(void);
-static _voucher_activity_t _voucher_activity_copy_from_mach_voucher(
-		mach_voucher_t kv, voucher_activity_id_t va_id);
-static inline _voucher_activity_t _voucher_activity_retain(
-		_voucher_activity_t act);
-static inline void _voucher_activity_release(_voucher_activity_t act);
-static void _voucher_activity_remove(_voucher_activity_t act);
-static inline _voucher_atm_t _voucher_atm_retain(_voucher_atm_t vatm);
-static inline void _voucher_atm_release(_voucher_atm_t vatm);
+static volatile uint64_t _voucher_aid_next;
 
 #pragma mark -
 #pragma mark voucher_t
 
-#if USE_OBJC
-OS_OBJECT_OBJC_CLASS_DECL(voucher);
-#define VOUCHER_CLASS OS_OBJECT_OBJC_CLASS(voucher)
-#else
-const _os_object_class_s _voucher_class = {
-	._os_obj_xref_dispose = (void(*)(_os_object_t))_voucher_xref_dispose,
-	._os_obj_dispose = (void(*)(_os_object_t))_voucher_dispose,
-};
-#define VOUCHER_CLASS &_voucher_class
+OS_OBJECT_CLASS_DECL(voucher, object);
+#if !USE_OBJC
+OS_OBJECT_VTABLE_INSTANCE(voucher,
+		(void (*)(_os_object_t))_voucher_xref_dispose,
+		(void (*)(_os_object_t))_voucher_dispose);
 #endif // USE_OBJC
-
-static const voucher_activity_trace_id_t _voucher_activity_trace_id_release =
-		(voucher_activity_trace_id_t)voucher_activity_tracepoint_type_release <<
-		_voucher_activity_trace_id_type_shift;
-static const unsigned int _voucher_max_activities = 16;
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_voucher_recipes_init(mach_voucher_attr_recipe_data_t *recipes,
-		mach_voucher_attr_content_size_t bits_size)
-{
-	static const mach_voucher_attr_recipe_data_t base_recipe = {
-		.key = MACH_VOUCHER_ATTR_KEY_ALL,
-		.command = MACH_VOUCHER_ATTR_COPY,
-	};
-	_voucher_recipes_base(recipes) = base_recipe;
-	static const mach_voucher_attr_recipe_data_t atm_recipe = {
-		.key = MACH_VOUCHER_ATTR_KEY_ATM,
-		.command = MACH_VOUCHER_ATTR_COPY,
-	};
-	_voucher_recipes_atm(recipes) = atm_recipe;
-	static const mach_voucher_attr_recipe_data_t bits_recipe = {
-		.key = MACH_VOUCHER_ATTR_KEY_USER_DATA,
-		.command = MACH_VOUCHER_ATTR_USER_DATA_STORE,
-	};
-	_voucher_recipes_bits(recipes) = bits_recipe;
-	if (!bits_size) return;
-	_voucher_recipes_bits(recipes).content_size = bits_size;
-	*_voucher_recipes_magic(recipes) = _voucher_magic_v1;
-}
+#define VOUCHER_CLASS OS_OBJECT_VTABLE(voucher)
 
 static inline voucher_t
-_voucher_alloc(unsigned int activities, pthread_priority_t priority,
-		mach_voucher_attr_recipe_size_t extra)
+_voucher_alloc(mach_voucher_attr_recipe_size_t extra)
 {
-	if (activities > _voucher_max_activities) {
-		activities = _voucher_max_activities;
-	}
 	voucher_t voucher;
-	size_t voucher_size, recipes_size;
-	mach_voucher_attr_content_size_t bits_size;
-	recipes_size = (priority||activities||extra) ? _voucher_recipes_size() : 0;
-	bits_size = recipes_size ? _voucher_bits_size(activities) : 0;
-	voucher_size = sizeof(voucher_s) + recipes_size + bits_size + extra;
+	size_t voucher_size = sizeof(voucher_s) + extra;
 	voucher = (voucher_t)_os_object_alloc_realized(VOUCHER_CLASS, voucher_size);
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
 	voucher->v_recipe_extra_size = extra;
@@ -111,11 +71,6 @@ _voucher_alloc(unsigned int activities, pthread_priority_t priority,
 #else
 	dispatch_assert(!extra);
 #endif
-	voucher->v_has_priority = priority ? 1 : 0;
-	voucher->v_activities = activities;
-	if (!recipes_size) return voucher;
-	_voucher_recipes_init(voucher->v_recipes, bits_size);
-	*_voucher_priority(voucher) = (_voucher_priority_t)priority;
 	_dispatch_voucher_debug("alloc", voucher);
 	return voucher;
 }
@@ -126,7 +81,7 @@ voucher_create(voucher_recipe_t recipe)
 {
 	// TODO: capture current activities or current kvoucher ?
 	mach_voucher_attr_recipe_size_t extra = recipe ? recipe->vr_size : 0;
-	voucher_t voucher = _voucher_alloc(0, 0, extra);
+	voucher_t voucher = _voucher_alloc(extra);
 	if (extra) {
 		memcpy(_voucher_extra_recipes(voucher), recipe->vr_data, extra);
 	}
@@ -134,9 +89,46 @@ voucher_create(voucher_recipe_t recipe)
 }
 #endif
 
+DISPATCH_ALWAYS_INLINE
+static inline voucher_t
+_voucher_clone(const voucher_t ov, voucher_fields_t ignore_fields)
+{
+	mach_voucher_attr_recipe_size_t extra = 0;
+	voucher_t v;
+
+	if (ov && !(ignore_fields & VOUCHER_FIELD_EXTRA)) {
+		extra = _voucher_extra_size(ov);
+	}
+	v = _voucher_alloc(extra);
+	if (ov) {
+		voucher_fields_t fields = ~ignore_fields;
+		if ((fields & VOUCHER_FIELD_KVOUCHER) && ov->v_kvoucher) {
+			voucher_t kvb = ov->v_kvbase ? ov->v_kvbase : ov;
+			v->v_kvbase = _voucher_retain(kvb);
+			v->v_kvoucher = kvb->v_kvoucher;
+			v->v_kv_has_importance = kvb->v_kv_has_importance;
+		}
+		if (fields & VOUCHER_FIELD_PRIORITY) {
+			v->v_priority = ov->v_priority;
+		}
+		if (fields & VOUCHER_FIELD_ACTIVITY) {
+			v->v_activity = ov->v_activity;
+			v->v_activity_creator = ov->v_activity_creator;
+			v->v_parent_activity = ov->v_parent_activity;
+		}
+		if ((fields & VOUCHER_FIELD_EXTRA) && extra) {
+			memcpy(_voucher_extra_recipes(v), _voucher_extra_recipes(ov),extra);
+		}
+	}
+	return v;
+}
+
 voucher_t
 voucher_adopt(voucher_t voucher)
 {
+	if (voucher == VOUCHER_CURRENT) {
+		return _voucher_copy();
+	}
 	return _voucher_adopt(voucher);
 }
 
@@ -167,15 +159,18 @@ voucher_release(voucher_t voucher)
 void
 _voucher_thread_cleanup(void *voucher)
 {
-	_voucher_swap(voucher, NULL);
+	// when a thread exits and has a voucher left, the kernel
+	// will get rid of the voucher kernel object that is set on the thread,
+	// we only need to release the voucher_t object.
+	_voucher_release(voucher);
 }
 
 DISPATCH_CACHELINE_ALIGN
 static TAILQ_HEAD(, voucher_s) _vouchers[VL_HASH_SIZE];
 #define _vouchers_head(kv) (&_vouchers[VL_HASH((kv))])
-static os_lock_handoff_s _vouchers_lock = OS_LOCK_HANDOFF_INIT;
-#define _vouchers_lock_lock() os_lock_lock(&_vouchers_lock)
-#define _vouchers_lock_unlock() os_lock_unlock(&_vouchers_lock)
+static dispatch_unfair_lock_s _vouchers_lock;
+#define _vouchers_lock_lock() _dispatch_unfair_lock_lock(&_vouchers_lock)
+#define _vouchers_lock_unlock() _dispatch_unfair_lock_unlock(&_vouchers_lock)
 
 static voucher_t
 _voucher_find_and_retain(mach_voucher_t kv)
@@ -185,15 +180,15 @@ _voucher_find_and_retain(mach_voucher_t kv)
 	_vouchers_lock_lock();
 	TAILQ_FOREACH(v, _vouchers_head(kv), v_list) {
 		if (v->v_ipc_kvoucher == kv) {
-			int xref_cnt = dispatch_atomic_inc2o(v, os_obj_xref_cnt, relaxed);
+			int xref_cnt = os_atomic_inc2o(v, os_obj_xref_cnt, relaxed);
 			_dispatch_voucher_debug("retain  -> %d", v, xref_cnt + 1);
 			if (slowpath(xref_cnt < 0)) {
 				_dispatch_voucher_debug("over-release", v);
-				DISPATCH_CRASH("Voucher over-release");
+				_OS_OBJECT_CLIENT_CRASH("Voucher over-release");
 			}
 			if (xref_cnt == 0) {
 				// resurrection: raced with _voucher_remove
-				(void)dispatch_atomic_inc2o(v, os_obj_ref_cnt, relaxed);
+				(void)os_atomic_inc2o(v, os_obj_ref_cnt, relaxed);
 			}
 			break;
 		}
@@ -210,7 +205,7 @@ _voucher_insert(voucher_t v)
 	_vouchers_lock_lock();
 	if (slowpath(_TAILQ_IS_ENQUEUED(v, v_list))) {
 		_dispatch_voucher_debug("corruption", v);
-		DISPATCH_CRASH("Voucher corruption");
+		DISPATCH_CLIENT_CRASH(v->v_list.tqe_prev, "Voucher corruption");
 	}
 	TAILQ_INSERT_TAIL(_vouchers_head(kv), v, v_list);
 	_vouchers_lock_unlock();
@@ -224,10 +219,10 @@ _voucher_remove(voucher_t v)
 	_vouchers_lock_lock();
 	if (slowpath(!kv)) {
 		_dispatch_voucher_debug("corruption", v);
-		DISPATCH_CRASH("Voucher corruption");
+		DISPATCH_CLIENT_CRASH(0, "Voucher corruption");
 	}
 	// check for resurrection race with _voucher_find_and_retain
-	if (dispatch_atomic_load2o(v, os_obj_xref_cnt, seq_cst) < 0 &&
+	if (os_atomic_load2o(v, os_obj_xref_cnt, ordered) < 0 &&
 			_TAILQ_IS_ENQUEUED(v, v_list)) {
 		TAILQ_REMOVE(_vouchers_head(kv), v, v_list);
 		_TAILQ_MARK_NOT_ENQUEUED(v, v_list);
@@ -267,36 +262,29 @@ _voucher_create_mach_voucher(const mach_voucher_attr_recipe_data_t *recipes,
 	return kr;
 }
 
-#if __has_include(<bank/bank_types.h>) && !defined(VOUCHER_USE_ATTR_BANK)
-#include <bank/bank_types.h>
-#define VOUCHER_USE_ATTR_BANK 1
-mach_voucher_t _voucher_default_task_mach_voucher;
-#endif
-
 void
 _voucher_task_mach_voucher_init(void* ctxt DISPATCH_UNUSED)
 {
-#if VOUCHER_USE_ATTR_BANK
 	kern_return_t kr;
-	mach_voucher_t kv;
+	mach_voucher_t kv = MACH_VOUCHER_NULL;
+#if !VOUCHER_USE_EMPTY_MACH_BASE_VOUCHER
 	static const mach_voucher_attr_recipe_data_t task_create_recipe = {
 		.key = MACH_VOUCHER_ATTR_KEY_BANK,
 		.command = MACH_VOUCHER_ATTR_BANK_CREATE,
 	};
 	kr = _voucher_create_mach_voucher(&task_create_recipe,
 			sizeof(task_create_recipe), &kv);
-	if (dispatch_assume_zero(kr)) {
-		DISPATCH_CLIENT_CRASH("Could not create task mach voucher");
+	if (slowpath(kr)) {
+		DISPATCH_CLIENT_CRASH(kr, "Could not create task mach voucher");
 	}
 	_voucher_default_task_mach_voucher = kv;
-	_voucher_task_mach_voucher = kv;
 #endif
+	_voucher_task_mach_voucher = kv;
 }
 
 void
 voucher_replace_default_voucher(void)
 {
-#if VOUCHER_USE_ATTR_BANK
 	(void)_voucher_get_task_mach_voucher(); // initalize task mach voucher
 	mach_voucher_t kv, tkv = MACH_VOUCHER_NULL;
 	voucher_t v = _voucher_get();
@@ -315,28 +303,101 @@ voucher_replace_default_voucher(void)
 		}
 	}
 	if (!tkv) tkv = _voucher_default_task_mach_voucher;
-	kv = dispatch_atomic_xchg(&_voucher_task_mach_voucher, tkv, relaxed);
+	kv = os_atomic_xchg(&_voucher_task_mach_voucher, tkv, relaxed);
 	if (kv && kv != _voucher_default_task_mach_voucher) {
 		_voucher_dealloc_mach_voucher(kv);
 	}
 	_dispatch_voucher_debug("kvoucher[0x%08x] replace default voucher", v, tkv);
+}
+
+#define _voucher_mach_recipe_size(payload_size) \
+	(sizeof(mach_voucher_attr_recipe_data_t) + (payload_size))
+
+#if VOUCHER_USE_MACH_VOUCHER_PRIORITY
+#define _voucher_mach_recipe_alloca(v) ((mach_voucher_attr_recipe_t)alloca(\
+		_voucher_mach_recipe_size(0) + \
+		_voucher_mach_recipe_size(sizeof(ipc_pthread_priority_value_t)) + \
+		_voucher_mach_recipe_size(sizeof(_voucher_mach_udata_s)) + \
+		_voucher_extra_size(v)))
+#else
+#define _voucher_mach_recipe_alloca(v) ((mach_voucher_attr_recipe_t)alloca(\
+		_voucher_mach_recipe_size(0) + \
+		_voucher_mach_recipe_size(sizeof(_voucher_mach_udata_s)) + \
+		_voucher_extra_size(v)))
 #endif
-}
 
-static inline _voucher_atm_t
-_voucher_get_atm(voucher_t voucher)
+DISPATCH_ALWAYS_INLINE
+static inline mach_voucher_attr_recipe_size_t
+_voucher_mach_recipe_init(mach_voucher_attr_recipe_t mvar_buf, voucher_s *v,
+		mach_voucher_t kvb, pthread_priority_t pp)
 {
-	_voucher_atm_t vatm;
-	vatm = voucher && voucher->v_atm ? voucher->v_atm : _voucher_task_atm;
-	return vatm;
-}
+	mach_voucher_attr_recipe_size_t extra = _voucher_extra_size(v);
+	mach_voucher_attr_recipe_size_t size = 0;
 
-static inline mach_voucher_t
-_voucher_get_atm_mach_voucher(voucher_t voucher)
-{
-	_voucher_atm_t vatm = _voucher_get_atm(voucher);
-	mach_voucher_t kv = vatm ? vatm->vatm_kvoucher : MACH_VOUCHER_NULL;
-	return kv;
+	// normalize to just the QoS class and 0 relative priority
+	pp &= _PTHREAD_PRIORITY_QOS_CLASS_MASK;
+	if (pp) pp |= _PTHREAD_PRIORITY_PRIORITY_MASK;
+
+	*mvar_buf++ = (mach_voucher_attr_recipe_data_t){
+		.key = MACH_VOUCHER_ATTR_KEY_ALL,
+		.command = MACH_VOUCHER_ATTR_COPY,
+		.previous_voucher = kvb,
+	};
+	size += _voucher_mach_recipe_size(0);
+
+#if VOUCHER_USE_MACH_VOUCHER_PRIORITY
+	if (pp) {
+		ipc_pthread_priority_value_t value = (ipc_pthread_priority_value_t)pp;
+		*mvar_buf++ = (mach_voucher_attr_recipe_data_t){
+			.key = MACH_VOUCHER_ATTR_KEY_PTHPRIORITY,
+			.command = MACH_VOUCHER_ATTR_PTHPRIORITY_CREATE,
+			.content_size = sizeof(value),
+		};
+		mvar_buf = _dispatch_memappend(mvar_buf, &value);
+		size += _voucher_mach_recipe_size(sizeof(value));
+	}
+#endif // VOUCHER_USE_MACH_VOUCHER_PRIORITY
+
+	if ((v && v->v_activity) || pp) {
+		_voucher_mach_udata_s *udata_buf;
+		unsigned udata_size = 0;
+
+		if (v && v->v_activity) {
+			udata_size = offsetof(_voucher_mach_udata_s, _vmu_after_activity);
+		} else {
+			udata_size = offsetof(_voucher_mach_udata_s, _vmu_after_priority);
+		}
+		*mvar_buf = (mach_voucher_attr_recipe_data_t){
+			.key = MACH_VOUCHER_ATTR_KEY_USER_DATA,
+			.command = MACH_VOUCHER_ATTR_USER_DATA_STORE,
+			.content_size = udata_size,
+		};
+		udata_buf = (_voucher_mach_udata_s *)(mvar_buf->content);
+
+		if (v && v->v_activity) {
+			*udata_buf = (_voucher_mach_udata_s){
+				.vmu_magic = VOUCHER_MAGIC_V3,
+				.vmu_priority = (_voucher_priority_t)pp,
+				.vmu_activity = v->v_activity,
+				.vmu_activity_pid = v->v_activity_creator,
+				.vmu_parent_activity = v->v_parent_activity,
+			};
+		} else {
+			*udata_buf = (_voucher_mach_udata_s){
+				.vmu_magic = VOUCHER_MAGIC_V3,
+				.vmu_priority = (_voucher_priority_t)pp,
+			};
+		}
+
+		mvar_buf = (mach_voucher_attr_recipe_t)(mvar_buf->content + udata_size);
+		size += _voucher_mach_recipe_size(udata_size);
+	}
+
+	if (extra) {
+		memcpy(mvar_buf, _voucher_extra_recipes(v), extra);
+		size += extra;
+	}
+	return size;
 }
 
 mach_voucher_t
@@ -346,22 +407,22 @@ _voucher_get_mach_voucher(voucher_t voucher)
 	if (voucher->v_ipc_kvoucher) return voucher->v_ipc_kvoucher;
 	mach_voucher_t kvb = voucher->v_kvoucher;
 	if (!kvb) kvb = _voucher_get_task_mach_voucher();
-	if (!voucher->v_has_priority && !voucher->v_activities &&
+	if (!voucher->v_activity && !voucher->v_priority &&
 			!_voucher_extra_size(voucher)) {
 		return kvb;
 	}
-	kern_return_t kr;
+
+	mach_voucher_attr_recipe_t mvar = _voucher_mach_recipe_alloca(voucher);
+	mach_voucher_attr_recipe_size_t size;
 	mach_voucher_t kv, kvo;
-	_voucher_base_recipe(voucher).previous_voucher = kvb;
-	_voucher_atm_recipe(voucher).previous_voucher =
-			_voucher_get_atm_mach_voucher(voucher);
-	kr = _voucher_create_mach_voucher(voucher->v_recipes,
-			_voucher_recipes_size() + _voucher_extra_size(voucher) +
-			_voucher_bits_recipe(voucher).content_size, &kv);
+	kern_return_t kr;
+
+	size = _voucher_mach_recipe_init(mvar, voucher, kvb, voucher->v_priority);
+	kr = _voucher_create_mach_voucher(mvar, size, &kv);
 	if (dispatch_assume_zero(kr) || !kv){
 		return MACH_VOUCHER_NULL;
 	}
-	if (!dispatch_atomic_cmpxchgv2o(voucher, v_ipc_kvoucher, MACH_VOUCHER_NULL,
+	if (!os_atomic_cmpxchgv2o(voucher, v_ipc_kvoucher, MACH_VOUCHER_NULL,
 			kv, &kvo, relaxed)) {
 		_voucher_dealloc_mach_voucher(kv);
 		kv = kvo;
@@ -386,25 +447,12 @@ _voucher_create_mach_voucher_with_priority(voucher_t voucher,
 	kern_return_t kr;
 	mach_voucher_t kv, kvb = voucher ? voucher->v_kvoucher : MACH_VOUCHER_NULL;
 	if (!kvb) kvb = _voucher_get_task_mach_voucher();
-	mach_voucher_attr_recipe_data_t *recipes;
-	size_t recipes_size = _voucher_recipes_size();
-	if (voucher && (voucher->v_has_priority || voucher->v_activities ||
-			_voucher_extra_size(voucher))) {
-		recipes_size += _voucher_bits_recipe(voucher).content_size +
-				_voucher_extra_size(voucher);
-		recipes = alloca(recipes_size);
-		memcpy(recipes, voucher->v_recipes, recipes_size);
-		_voucher_recipes_atm(recipes).previous_voucher =
-				_voucher_get_atm_mach_voucher(voucher);
-	} else {
-		mach_voucher_attr_content_size_t bits_size = _voucher_bits_size(0);
-		recipes_size += bits_size;
-		recipes = alloca(recipes_size);
-		_voucher_recipes_init(recipes, bits_size);
-	}
-	_voucher_recipes_base(recipes).previous_voucher = kvb;
-	*_voucher_recipes_priority(recipes) = (_voucher_priority_t)priority;
-	kr = _voucher_create_mach_voucher(recipes, recipes_size, &kv);
+
+	mach_voucher_attr_recipe_t mvar = _voucher_mach_recipe_alloca(voucher);
+	mach_voucher_attr_recipe_size_t size;
+
+	size = _voucher_mach_recipe_init(mvar, voucher, kvb, priority);
+	kr = _voucher_create_mach_voucher(mvar, size, &kv);
 	if (dispatch_assume_zero(kr) || !kv){
 		return MACH_VOUCHER_NULL;
 	}
@@ -414,102 +462,120 @@ _voucher_create_mach_voucher_with_priority(voucher_t voucher,
 }
 
 static voucher_t
-_voucher_create_with_mach_voucher(mach_voucher_t kv)
+_voucher_create_with_mach_voucher(mach_voucher_t kv, mach_msg_bits_t msgh_bits)
 {
 	if (!kv) return NULL;
 	kern_return_t kr;
-	mach_voucher_t rkv;
 	mach_voucher_attr_recipe_t vr;
 	size_t vr_size;
 	mach_voucher_attr_recipe_size_t kvr_size = 0;
+	mach_voucher_attr_content_size_t udata_sz = 0;
+	_voucher_mach_udata_s *udata = NULL;
+#if !VOUCHER_USE_BANK_AUTOREDEEM
+	mach_voucher_t rkv;
 	const mach_voucher_attr_recipe_data_t redeem_recipe[] = {
 		[0] = {
 			.key = MACH_VOUCHER_ATTR_KEY_ALL,
 			.command = MACH_VOUCHER_ATTR_COPY,
 			.previous_voucher = kv,
 		},
-#if VOUCHER_USE_ATTR_BANK
 		[1] = {
 			.key = MACH_VOUCHER_ATTR_KEY_BANK,
 			.command = MACH_VOUCHER_ATTR_REDEEM,
 		},
-#endif
 	};
 	kr = _voucher_create_mach_voucher(redeem_recipe, sizeof(redeem_recipe),
 			&rkv);
 	if (!dispatch_assume_zero(kr)) {
 		_voucher_dealloc_mach_voucher(kv);
+		_dispatch_kvoucher_debug("redeemed from 0x%08x", rkv, kv);
+		kv = rkv;
 	} else {
 		_dispatch_voucher_debug_machport(kv);
-		rkv = kv;
 	}
-	voucher_t v = _voucher_find_and_retain(rkv);
+#endif
+	voucher_t v = _voucher_find_and_retain(kv);
 	if (v) {
-		_dispatch_voucher_debug("kvoucher[0x%08x] find with 0x%08x", v, rkv,kv);
-		_voucher_dealloc_mach_voucher(rkv);
+		_dispatch_voucher_debug("kvoucher[0x%08x] found", v, kv);
+		_voucher_dealloc_mach_voucher(kv);
 		return v;
 	}
-	vr_size = sizeof(*vr) + _voucher_bits_size(_voucher_max_activities);
+	vr_size = sizeof(*vr) + sizeof(_voucher_mach_udata_s);
 	vr = alloca(vr_size);
-	if (rkv) {
+	if (kv) {
 		kvr_size = (mach_voucher_attr_recipe_size_t)vr_size;
-		kr = mach_voucher_extract_attr_recipe(rkv,
+		kr = mach_voucher_extract_attr_recipe(kv,
 				MACH_VOUCHER_ATTR_KEY_USER_DATA, (void*)vr, &kvr_size);
 		DISPATCH_VERIFY_MIG(kr);
-		if (dispatch_assume_zero(kr)) kvr_size = 0;
-	}
-	mach_voucher_attr_content_size_t content_size = vr->content_size;
-	uint8_t *content = vr->content;
-	bool valid = false, has_priority = false;
-	unsigned int activities = 0;
-	if (kvr_size >= sizeof(*vr) + sizeof(_voucher_magic_t)) {
-		valid = (*(_voucher_magic_t*)content == _voucher_magic_v1);
-		content += sizeof(_voucher_magic_t);
-		content_size -= sizeof(_voucher_magic_t);
-	}
-	if (valid) {
-		has_priority = (content_size >= sizeof(_voucher_priority_t));
-		activities = has_priority ? (content_size - sizeof(_voucher_priority_t))
-				/ sizeof(voucher_activity_id_t) : 0;
-	}
-	pthread_priority_t priority = 0;
-	if (has_priority) {
-		priority = (pthread_priority_t)*(_voucher_priority_t*)content;
-		content += sizeof(_voucher_priority_t);
-		content_size -= sizeof(_voucher_priority_t);
-	}
-	voucher_activity_id_t va_id = 0, va_base_id = 0;
-	_voucher_activity_t act = NULL;
-	_voucher_atm_t vatm = NULL;
-	if (activities) {
-		va_id = *(voucher_activity_id_t*)content;
-		act = _voucher_activity_copy_from_mach_voucher(rkv, va_id);
-		if (!act && _voucher_activity_default) {
-			activities++;
-			// default to _voucher_activity_default base activity
-			va_base_id = _voucher_activity_default->va_id;
-		} else if (act && act->va_id != va_id) {
-			activities++;
-			va_base_id = act->va_id;
-		}
-		if (act) {
-			vatm = _voucher_atm_retain(act->va_atm);
+		if (!dispatch_assume_zero(kr) && kvr_size >= sizeof(*vr)) {
+			udata_sz = vr->content_size;
+			udata = (_voucher_mach_udata_s*)vr->content;
+			dispatch_assume(udata_sz >= sizeof(_voucher_magic_t));
 		}
 	}
-	v = _voucher_alloc(activities, priority, 0);
-	v->v_atm = vatm;
-	v->v_activity = act;
-	voucher_activity_id_t *activity_ids = _voucher_activity_ids(v);
-	if (activities && va_base_id) {
-		*activity_ids++ = va_base_id;
-		activities--;
+	vr = NULL;
+
+	v = _voucher_alloc(0);
+	v->v_ipc_kvoucher = v->v_kvoucher = kv;
+	v->v_kv_has_importance = !!(msgh_bits & MACH_MSGH_BITS_RAISEIMP);
+
+	if (udata_sz >= offsetof(_voucher_mach_udata_s,_vmu_after_priority)){
+		if (udata->vmu_magic == VOUCHER_MAGIC_V3) {
+			v->v_priority = udata->vmu_priority;
+		}
 	}
-	if (activities) {
-		memcpy(activity_ids, content, content_size);
+	bool remove_kv_userdata = false;
+	if (udata_sz >= offsetof(_voucher_mach_udata_s, _vmu_after_activity)) {
+#if !RDAR_25050791
+		remove_kv_userdata = true;
+#endif
+		if (udata->vmu_magic == VOUCHER_MAGIC_V3 && udata->vmu_activity) {
+			v->v_activity = udata->vmu_activity;
+			v->v_activity_creator = udata->vmu_activity_pid;
+			v->v_parent_activity = udata->vmu_parent_activity;
+		}
 	}
-	v->v_ipc_kvoucher = v->v_kvoucher = rkv;
+
+	if (remove_kv_userdata) {
+		mach_voucher_t nkv = MACH_VOUCHER_NULL;
+		const mach_voucher_attr_recipe_data_t remove_userdata_recipe[] = {
+			[0] = {
+				.key = MACH_VOUCHER_ATTR_KEY_ALL,
+				.command = MACH_VOUCHER_ATTR_COPY,
+				.previous_voucher = kv,
+			},
+			[1] = {
+				.key = MACH_VOUCHER_ATTR_KEY_USER_DATA,
+				.command = MACH_VOUCHER_ATTR_REMOVE,
+			},
+#if VOUCHER_USE_MACH_VOUCHER_PRIORITY
+			[2] = {
+				.key = MACH_VOUCHER_ATTR_KEY_PTHPRIORITY,
+				.command = MACH_VOUCHER_ATTR_REMOVE,
+			},
+#endif
+		};
+		mach_voucher_attr_recipe_size_t size = sizeof(remove_userdata_recipe);
+
+		kr = _voucher_create_mach_voucher(remove_userdata_recipe, size, &nkv);
+		if (!dispatch_assume_zero(kr)) {
+			_dispatch_voucher_debug("kvoucher[0x%08x] udata removal "
+					"(created 0x%08x)", v, kv, nkv);
+			v->v_ipc_kvoucher = MACH_VOUCHER_NULL;
+			v->v_kvoucher = nkv;
+			v->v_kvbase = _voucher_find_and_retain(nkv);
+			if (v->v_kvbase) {
+				_voucher_dealloc_mach_voucher(nkv); // borrow base reference
+			}
+			_voucher_dealloc_mach_voucher(kv);
+			kv = nkv;
+		} else {
+			_dispatch_voucher_debug_machport(kv);
+		}
+	}
+
 	_voucher_insert(v);
-	_dispatch_voucher_debug("kvoucher[0x%08x] create with 0x%08x", v, rkv, kv);
+	_dispatch_voucher_debug("kvoucher[0x%08x] create", v, kv);
 	return v;
 }
 
@@ -522,24 +588,18 @@ _voucher_create_with_priority_and_mach_voucher(voucher_t ov,
 		return ov ? _voucher_retain(ov) : NULL;
 	}
 	voucher_t v = _voucher_find_and_retain(kv);
+	voucher_fields_t ignore_fields = VOUCHER_FIELD_PRIORITY;
+
 	if (v) {
 		_dispatch_voucher_debug("kvoucher[0x%08x] find", v, kv);
 		_voucher_dealloc_mach_voucher(kv);
 		return v;
 	}
-	unsigned int activities = ov ? ov->v_activities : 0;
-	mach_voucher_attr_recipe_size_t extra = ov ? _voucher_extra_size(ov) : 0;
-	v = _voucher_alloc(activities, priority, extra);
-	if (extra) {
-		memcpy(_voucher_extra_recipes(v), _voucher_extra_recipes(ov), extra);
-	}
-	if (activities) {
-		if (ov->v_activity) {
-			v->v_activity = _voucher_activity_retain(ov->v_activity);
-			v->v_atm = _voucher_atm_retain(ov->v_atm);
-		}
-		memcpy(_voucher_activity_ids(v), _voucher_activity_ids(ov),
-				activities * sizeof(voucher_activity_id_t));
+
+	if (kv) ignore_fields |= VOUCHER_FIELD_KVOUCHER;
+	v = _voucher_clone(ov, ignore_fields);
+	if (priority) {
+		v->v_priority = (_voucher_priority_t)priority;
 	}
 	if (kv) {
 		v->v_ipc_kvoucher = v->v_kvoucher = kv;
@@ -547,10 +607,6 @@ _voucher_create_with_priority_and_mach_voucher(voucher_t ov,
 		_dispatch_voucher_debug("kvoucher[0x%08x] create with priority from "
 				"voucher[%p]", v, kv, ov);
 		_dispatch_voucher_debug_machport(kv);
-	} else if (ov && ov->v_kvoucher) {
-		voucher_t kvb = ov->v_kvbase ? ov->v_kvbase : ov;
-		v->v_kvbase = _voucher_retain(kvb);
-		v->v_kvoucher = kvb->v_kvoucher;
 	}
 	return v;
 }
@@ -561,8 +617,7 @@ _voucher_create_without_importance(voucher_t ov)
 	// Nothing to do unless the old voucher has a kernel voucher. If it
 	// doesn't, it can't have any importance, now or in the future.
 	if (!ov) return NULL;
-	// TODO: 17487167: track presence of importance attribute
-	if (!ov->v_kvoucher) return _voucher_retain(ov);
+	if (!ov->v_kvoucher || !ov->v_kv_has_importance) return _voucher_retain(ov);
 	kern_return_t kr;
 	mach_voucher_t kv, okv;
 	// Copy kernel voucher, removing importance.
@@ -596,22 +651,8 @@ _voucher_create_without_importance(voucher_t ov)
 		return v;
 	}
 	voucher_t kvbase = v;
-	// Copy userspace contents
-	unsigned int activities = ov->v_activities;
-	pthread_priority_t priority = _voucher_get_priority(ov);
-	mach_voucher_attr_recipe_size_t extra = _voucher_extra_size(ov);
-	v = _voucher_alloc(activities, priority, extra);
-	if (extra) {
-		memcpy(_voucher_extra_recipes(v), _voucher_extra_recipes(ov), extra);
-	}
-	if (activities) {
-		if (ov->v_activity) {
-			v->v_activity = _voucher_activity_retain(ov->v_activity);
-			v->v_atm = _voucher_atm_retain(ov->v_atm);
-		}
-		memcpy(_voucher_activity_ids(v), _voucher_activity_ids(ov),
-				activities * sizeof(voucher_activity_id_t));
-	}
+	voucher_fields_t ignore_fields = VOUCHER_FIELD_KVOUCHER;
+	v = _voucher_clone(ov, ignore_fields);
 	v->v_kvoucher = kv;
 	if (ov->v_ipc_kvoucher) {
 		v->v_ipc_kvoucher = kv;
@@ -636,7 +677,6 @@ _voucher_create_accounting_voucher(voucher_t ov)
 	kern_return_t kr = KERN_SUCCESS;
 	mach_voucher_t okv, kv = MACH_VOUCHER_NULL;
 	okv = ov->v_ipc_kvoucher ? ov->v_ipc_kvoucher : ov->v_kvoucher;
-#if VOUCHER_USE_ATTR_BANK
 	const mach_voucher_attr_recipe_data_t accounting_copy_recipe = {
 		.key = MACH_VOUCHER_ATTR_KEY_BANK,
 		.command = MACH_VOUCHER_ATTR_COPY,
@@ -644,7 +684,6 @@ _voucher_create_accounting_voucher(voucher_t ov)
 	};
 	kr = _voucher_create_mach_voucher(&accounting_copy_recipe,
 			sizeof(accounting_copy_recipe), &kv);
-#endif
 	if (dispatch_assume_zero(kr) || !kv){
 		return NULL;
 	}
@@ -655,7 +694,7 @@ _voucher_create_accounting_voucher(voucher_t ov)
 		_voucher_dealloc_mach_voucher(kv);
 		return v;
 	}
-	v = _voucher_alloc(0, 0, 0);
+	v = _voucher_alloc(0);
 	v->v_ipc_kvoucher = v->v_kvoucher = kv;
 	if (kv == okv) {
 		v->v_kvbase = _voucher_retain(ov);
@@ -670,20 +709,15 @@ _voucher_create_accounting_voucher(voucher_t ov)
 voucher_t
 voucher_create_with_mach_msg(mach_msg_header_t *msg)
 {
-	voucher_t v = _voucher_create_with_mach_voucher(_voucher_mach_msg_get(msg));
-	_voucher_activity_trace_msg(v, msg, receive);
-	return v;
+	mach_msg_bits_t msgh_bits;
+	mach_voucher_t kv = _voucher_mach_msg_get(msg, &msgh_bits);
+	return _voucher_create_with_mach_voucher(kv, msgh_bits);
 }
-
-#ifndef MACH_VOUCHER_IMPORTANCE_ATTR_DROP_EXTERNAL
-#define MACH_VOUCHER_IMPORTANCE_ATTR_DROP_EXTERNAL 2
-#endif
 
 void
 voucher_decrement_importance_count4CF(voucher_t v)
 {
-	if (!v || !v->v_kvoucher) return;
-	// TODO: 17487167: track presence of importance attribute
+	if (!v || !v->v_kvoucher || !v->v_kv_has_importance) return;
 	kern_return_t kr;
 	mach_voucher_t kv = v->v_ipc_kvoucher ? v->v_ipc_kvoucher : v->v_kvoucher;
 	uint32_t dec = 1;
@@ -700,14 +734,13 @@ voucher_decrement_importance_count4CF(voucher_t v)
 			MACH_VOUCHER_IMPORTANCE_ATTR_DROP_EXTERNAL, kvc_in, kvc_in_size,
 			kvc_out, &kvc_out_size);
 	DISPATCH_VERIFY_MIG(kr);
+	if (kr == KERN_INVALID_TASK) return; // non-denap receiver rdar://25643185
 #if DISPATCH_DEBUG
 	_dispatch_voucher_debug("kvoucher[0x%08x] decrement importance count to %u:"
 			" %s - 0x%x", v, kv, count, mach_error_string(kr), kr);
 #endif
-	if (kr != KERN_INVALID_ARGUMENT &&
-			dispatch_assume_zero(kr) == KERN_FAILURE) {
-		// TODO: 17487167: skip KERN_INVALID_ARGUMENT check
-		DISPATCH_CLIENT_CRASH("Voucher importance count underflow");
+	if (slowpath(dispatch_assume_zero(kr) == KERN_FAILURE)) {
+		DISPATCH_CLIENT_CRASH(kr, "Voucher importance count underflow");
 	}
 }
 
@@ -733,7 +766,7 @@ _voucher_dispose(voucher_t voucher)
 	_dispatch_voucher_debug("dispose", voucher);
 	if (slowpath(_TAILQ_IS_ENQUEUED(voucher, v_list))) {
 		_dispatch_voucher_debug("corruption", voucher);
-		DISPATCH_CRASH("Voucher corruption");
+		DISPATCH_CLIENT_CRASH(voucher->v_list.tqe_prev, "Voucher corruption");
 	}
 	voucher->v_list.tqe_next = DISPATCH_OBJECT_LISTLESS;
 	if (voucher->v_ipc_kvoucher) {
@@ -752,16 +785,10 @@ _voucher_dispose(voucher_t voucher)
 		_voucher_release(voucher->v_kvbase);
 		voucher->v_kvbase = NULL;
 	}
-	if (voucher->v_activity) {
-		_voucher_activity_release(voucher->v_activity);
-		voucher->v_activity = NULL;
-	}
-	if (voucher->v_atm) {
-		_voucher_atm_release(voucher->v_atm);
-		voucher->v_atm = NULL;
-	}
-	voucher->v_has_priority = 0;
-	voucher->v_activities = 0;
+	voucher->v_activity = 0;
+	voucher->v_activity_creator = 0;
+	voucher->v_parent_activity = 0;
+	voucher->v_priority = 0;
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
 	voucher->v_recipe_extra_size = 0;
 	voucher->v_recipe_extra_offset = 0;
@@ -769,16 +796,141 @@ _voucher_dispose(voucher_t voucher)
 	return _os_object_dealloc((_os_object_t)voucher);
 }
 
+static void
+_voucher_activity_debug_channel_barrier_nop(void *ctxt DISPATCH_UNUSED)
+{
+}
+
+void
+_voucher_activity_debug_channel_init(void)
+{
+	dispatch_mach_handler_function_t handler = NULL;
+
+	if (_voucher_libtrace_hooks && _voucher_libtrace_hooks->vah_version >= 2) {
+		handler = _voucher_libtrace_hooks->vah_debug_channel_handler;
+	}
+
+	if (!handler) return;
+
+	dispatch_mach_t dm;
+	mach_port_t dbgp;
+	kern_return_t kr;
+
+	kr = task_get_debug_control_port(mach_task_self(), &dbgp);
+	DISPATCH_VERIFY_MIG(kr);
+	if (kr) {
+		DISPATCH_CLIENT_CRASH(kr, "Couldn't get debug control port");
+	}
+	if (dbgp) {
+		dm = dispatch_mach_create_f("com.apple.debug-channel",
+				DISPATCH_TARGET_QUEUE_DEFAULT, NULL, handler);
+		dispatch_mach_connect(dm, dbgp, MACH_PORT_NULL, NULL);
+		// will force the DISPATCH_MACH_CONNECTED event
+		dispatch_mach_send_barrier_f(dm, NULL,
+				_voucher_activity_debug_channel_barrier_nop);
+		_voucher_activity_debug_channel = dm;
+	}
+}
+
 void
 _voucher_atfork_child(void)
 {
-	_voucher_activity_atfork_child();
 	_dispatch_thread_setspecific(dispatch_voucher_key, NULL);
 	_voucher_task_mach_voucher_pred = 0;
 	_voucher_task_mach_voucher = MACH_VOUCHER_NULL;
-
-	// TODO: voucher/activity inheritance on fork ?
+#if !VOUCHER_USE_EMPTY_MACH_BASE_VOUCHER
+	_voucher_default_task_mach_voucher = MACH_PORT_NULL;
+#endif
+	_voucher_aid_next = 0;
+	_firehose_task_buffer_pred = 0;
+	_firehose_task_buffer = NULL; // firehose buffer is VM_INHERIT_NONE
 }
+
+#if VOUCHER_EXPORT_PERSONA_SPI
+#if VOUCHER_USE_PERSONA
+static kern_return_t
+_voucher_get_current_persona_token(struct persona_token *token)
+{
+	kern_return_t kr = KERN_FAILURE;
+	voucher_t v = _voucher_get();
+
+	if (v && v->v_kvoucher) {
+		mach_voucher_t kv = v->v_ipc_kvoucher ?: v->v_kvoucher;
+		mach_voucher_attr_content_t kvc_in = NULL;
+		mach_voucher_attr_content_size_t kvc_in_size = 0;
+		mach_voucher_attr_content_t kvc_out =
+			(mach_voucher_attr_content_t)token;
+		mach_voucher_attr_content_size_t kvc_out_size = sizeof(*token);
+
+		kr = mach_voucher_attr_command(kv, MACH_VOUCHER_ATTR_KEY_BANK,
+				BANK_PERSONA_TOKEN, kvc_in, kvc_in_size,
+				kvc_out, &kvc_out_size);
+		if (kr != KERN_NOT_SUPPORTED
+				// Voucher doesn't have a PERSONA_TOKEN
+				&& kr != KERN_INVALID_VALUE
+				// Kernel doesn't understand BANK_PERSONA_TOKEN
+				&& kr != KERN_INVALID_ARGUMENT) {
+			(void)dispatch_assume_zero(kr);
+		}
+	}
+	return kr;
+}
+#endif
+
+uid_t
+voucher_get_current_persona(void)
+{
+	uid_t persona_id = PERSONA_ID_NONE;
+
+#if VOUCHER_USE_PERSONA
+	struct persona_token token;
+	int err;
+
+	if (_voucher_get_current_persona_token(&token) == KERN_SUCCESS) {
+		return token.originator.persona_id;
+	}
+
+	// falling back to the process persona if there is no adopted voucher
+	if (kpersona_get(&persona_id) < 0) {
+		err = errno;
+		if (err != ESRCH) {
+			(void)dispatch_assume_zero(err);
+		}
+	}
+#endif
+	return persona_id;
+}
+
+int
+voucher_get_current_persona_originator_info(struct proc_persona_info *persona_info)
+{
+#if VOUCHER_USE_PERSONA
+	struct persona_token token;
+	if (_voucher_get_current_persona_token(&token) == KERN_SUCCESS) {
+		*persona_info = token.originator;
+		return 0;
+	}
+#else
+	(void)persona_info;
+#endif
+	return -1;
+}
+
+int
+voucher_get_current_persona_proximate_info(struct proc_persona_info *persona_info)
+{
+#if VOUCHER_USE_PERSONA
+	struct persona_token token;
+	if (_voucher_get_current_persona_token(&token) == KERN_SUCCESS) {
+		*persona_info = token.proximate;
+		return 0;
+	}
+#else
+	(void)persona_info;
+#endif
+	return -1;
+}
+#endif
 
 #pragma mark -
 #pragma mark _voucher_init
@@ -786,10 +938,7 @@ _voucher_atfork_child(void)
 boolean_t
 voucher_mach_msg_set(mach_msg_header_t *msg)
 {
-	voucher_t v = _voucher_get();
-	bool clear_voucher = _voucher_mach_msg_set(msg, v);
-	if (clear_voucher) _voucher_activity_trace_msg(v, msg, send);
-	return clear_voucher;
+	return _voucher_mach_msg_set(msg, _voucher_get());
 }
 
 void
@@ -801,10 +950,10 @@ voucher_mach_msg_clear(mach_msg_header_t *msg)
 voucher_mach_msg_state_t
 voucher_mach_msg_adopt(mach_msg_header_t *msg)
 {
-	mach_voucher_t kv = _voucher_mach_msg_get(msg);
+	mach_msg_bits_t msgh_bits;
+	mach_voucher_t kv = _voucher_mach_msg_get(msg, &msgh_bits);
 	if (!kv) return VOUCHER_MACH_MSG_STATE_UNCHANGED;
-	voucher_t v = _voucher_create_with_mach_voucher(kv);
-	_voucher_activity_trace_msg(v, msg, receive);
+	voucher_t v = _voucher_create_with_mach_voucher(kv, msgh_bits);
 	return (voucher_mach_msg_state_t)_voucher_adopt(v);
 }
 
@@ -838,1468 +987,382 @@ _voucher_libkernel_init(void)
 #endif
 
 void
+voucher_activity_initialize_4libtrace(voucher_activity_hooks_t hooks)
+{
+	if (!os_atomic_cmpxchg(&_voucher_libtrace_hooks, NULL,
+			hooks, relaxed)) {
+		DISPATCH_CLIENT_CRASH(_voucher_libtrace_hooks,
+				"voucher_activity_initialize_4libtrace called twice");
+	}
+}
+
+void
 _voucher_init(void)
 {
 	_voucher_libkernel_init();
-	char *e;
 	unsigned int i;
 	for (i = 0; i < VL_HASH_SIZE; i++) {
 		TAILQ_INIT(&_vouchers[i]);
 	}
-	voucher_activity_mode_t mode;
-	mode = DISPATCH_DEBUG ? voucher_activity_mode_debug
-			: voucher_activity_mode_release;
-	e = getenv("OS_ACTIVITY_MODE");
-	if (e) {
-		if (strcmp(e, "release") == 0) {
-			mode = voucher_activity_mode_release;
-		} else if (strcmp(e, "debug") == 0) {
-			mode = voucher_activity_mode_debug;
-		} else if (strcmp(e, "stream") == 0) {
-			mode = voucher_activity_mode_stream;
-		} else if (strcmp(e, "disable") == 0) {
-			mode = voucher_activity_mode_disable;
-		}
-	}
-	_voucher_activity_mode = mode;
-	if (_voucher_activity_disabled()) return;
-
-	// default task activity
-	bool default_task_activity = DISPATCH_DEBUG;
-	e = getenv("LIBDISPATCH_DEFAULT_TASK_ACTIVITY");
-	if (e) default_task_activity = atoi(e);
-	if (default_task_activity) {
-		(void)voucher_activity_start(_voucher_activity_trace_id_release, 0);
-	}
 }
 
 #pragma mark -
-#pragma mark _voucher_activity_lock_s
+#pragma mark voucher_activity_t
 
-DISPATCH_ALWAYS_INLINE
-static inline void
-_voucher_activity_lock_init(_voucher_activity_lock_s *lock) {
-    static const os_lock_handoff_s _os_lock_handoff_init = OS_LOCK_HANDOFF_INIT;
-    *lock = _os_lock_handoff_init;
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_voucher_activity_lock_lock(_voucher_activity_lock_s *lock) {
-    return os_lock_lock(lock);
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_voucher_activity_lock_unlock(_voucher_activity_lock_s *lock) {
-    return os_lock_unlock(lock);
-}
-
-#pragma mark -
-#pragma mark _voucher_activity_heap
-
-#if __has_extension(c_static_assert)
-_Static_assert(sizeof(struct _voucher_activity_tracepoint_s) == 64,
-		"Tracepoint too large");
-_Static_assert(sizeof(struct _voucher_activity_buffer_header_s) <=
-		sizeof(struct _voucher_activity_tracepoint_s),
-		"Buffer header too large");
-#if __LP64__
-_Static_assert(offsetof(struct _voucher_activity_s, va_buffers_lock) % 64 == 0,
-		"Bad activity padding");
-_Static_assert(sizeof(struct _voucher_atm_s) <= 128,
-		"ATM too large");
-#else
-_Static_assert(sizeof(struct _voucher_atm_s) <= 64,
-		"ATM too large");
-#endif
-_Static_assert(sizeof(_voucher_activity_buffer_t) ==
-		sizeof(struct {char x[_voucher_activity_buffer_size];}),
-		"Buffer too large");
-_Static_assert(sizeof(struct _voucher_activity_metadata_s) <=
-		sizeof(struct _voucher_activity_metadata_opaque_s),
-		"Metadata too large");
-_Static_assert(sizeof(_voucher_activity_bitmap_t) % 64 == 0,
-		"Bad metadata bitmap size");
-#endif
-
-#define va_buffers_lock(va) (&(va)->va_buffers_lock)
-#define vatm_activities(vatm) (&(vatm)->vatm_activities)
-#define vam_atms_lock() (&_voucher_activity_heap->vam_atms_lock)
-#define vam_activities_lock() (&_voucher_activity_heap->vam_activities_lock)
-#define vam_atms(hash) (&_voucher_activity_heap->vam_atms[hash])
-#define vam_activities(hash) (&_voucher_activity_heap->vam_activities[hash])
-#define vam_buffer_bitmap() (_voucher_activity_heap->vam_buffer_bitmap)
-#define vam_pressure_locked_bitmap() \
-		(_voucher_activity_heap->vam_pressure_locked_bitmap)
-#define vam_buffer(i) ((void*)((char*)_voucher_activity_heap + \
-		(i) * _voucher_activity_buffer_size))
-
-static _voucher_activity_t _voucher_activity_create_with_atm(
-		_voucher_atm_t vatm, voucher_activity_id_t va_id,
-		voucher_activity_trace_id_t trace_id, uint64_t location,
-		_voucher_activity_buffer_header_t buffer);
-static _voucher_atm_t _voucher_atm_create(mach_voucher_t kv, atm_aid_t atm_id);
-static void _voucher_activity_firehose_wait(_voucher_activity_t act,
-		_voucher_activity_buffer_header_t buffer);
-
-DISPATCH_ALWAYS_INLINE
-static inline uint32_t
-_voucher_default_activity_buffer_limit()
+DISPATCH_NOINLINE
+static uint64_t
+_voucher_activity_id_allocate_slow(uint64_t aid)
 {
-#if 0 // FIXME: tune buffer chain sizes
-	switch (_voucher_activity_mode) {
-	case voucher_activity_mode_debug:
-	case voucher_activity_mode_stream:
-		// High-profile modes: Default activity can use 1/32nd of the heap
-		// (twice as much as non-default activities)
-		return MAX(_voucher_activity_buffers_per_heap / 32, 3) - 1;
-	}
-#endif
-	// Low-profile modes: Default activity can use a total of 4 buffers.
-	return 3;
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline uint32_t
-_voucher_activity_buffer_limit()
-{
-#if 0 // FIXME: tune buffer chain sizes
-	switch (_voucher_activity_mode) {
-	case voucher_activity_mode_debug:
-	case voucher_activity_mode_stream:
-		// High-profile modes: 64 activities, each of which can use 1/64th
-		// of the entire heap.
-		return MAX(_voucher_activity_buffers_per_heap / 64, 2) - 1;
-	}
-#endif
-	// Low-profile modes: Each activity can use a total of 2 buffers.
-	return 1;
-}
-
-// The two functions above return the number of *additional* buffers activities
-// may allocate, hence the gymnastics with - 1.
-
-DISPATCH_ALWAYS_INLINE
-static inline uint32_t
-_voucher_heap_buffer_limit()
-{
-	switch (_voucher_activity_mode) {
-	case voucher_activity_mode_debug:
-	case voucher_activity_mode_stream:
-		// High-profile modes: Use it all.
-		return _voucher_activity_buffers_per_heap;
-	}
-#if TARGET_OS_EMBEDDED
-	// Low-profile modes: 3 activities, each of which can use 2 buffers;
-	// plus the default activity, which can use 3; plus 3 buffers of overhead.
-	return 12;
-#else
-	// Low-profile modes: 13 activities, each of which can use 4 buffers;
-	// plus the default activity, which can use 8; plus 3 buffers of overhead.
-	return 64;
-#endif
-}
-
-#define NO_BITS_WERE_UNSET (UINT_MAX)
-
-DISPATCH_ALWAYS_INLINE
-static inline size_t
-_voucher_activity_bitmap_set_first_unset_bit_upto(
-		_voucher_activity_bitmap_t volatile bitmap,
-		unsigned int max_index)
-{
-	dispatch_assert(max_index != 0);
-	unsigned int index = NO_BITS_WERE_UNSET, max_map, max_bit, i;
-	max_map = max_index / _voucher_activity_bits_per_bitmap_base_t;
-	max_map = MIN(max_map, _voucher_activity_bitmaps_per_heap - 1);
-	max_bit = max_index % _voucher_activity_bits_per_bitmap_base_t;
-	for (i = 0; i < max_map; i++) {
-		index = dispatch_atomic_set_first_bit(&bitmap[i], UINT_MAX);
-		if (fastpath(index < NO_BITS_WERE_UNSET)) {
-			return index + i * _voucher_activity_bits_per_bitmap_base_t;
-		}
-	}
-	index = dispatch_atomic_set_first_bit(&bitmap[i], max_bit);
-	if (fastpath(index < NO_BITS_WERE_UNSET)) {
-		return index + i * _voucher_activity_bits_per_bitmap_base_t;
-	}
-	return index;
-}
-
-DISPATCH_ALWAYS_INLINE DISPATCH_UNUSED
-static inline size_t
-_voucher_activity_bitmap_set_first_unset_bit(
-		_voucher_activity_bitmap_t volatile bitmap)
-{
-	return _voucher_activity_bitmap_set_first_unset_bit_upto(bitmap, UINT_MAX);
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_voucher_activity_bitmap_clear_bit(
-		_voucher_activity_bitmap_t volatile bitmap, size_t index)
-{
-	size_t i = index / _voucher_activity_bits_per_bitmap_base_t;
-	_voucher_activity_bitmap_base_t mask = ((typeof(mask))1) <<
-			(index % _voucher_activity_bits_per_bitmap_base_t);
-	if (slowpath((bitmap[i] & mask) == 0)) {
-		DISPATCH_CRASH("Corruption: failed to clear bit exclusively");
-	}
-	(void)dispatch_atomic_and(&bitmap[i], ~mask, release);
-}
-
-_voucher_activity_metadata_t _voucher_activity_heap;
-static dispatch_once_t _voucher_activity_heap_pred;
-
-static void
-_voucher_activity_heap_init(void *ctxt DISPATCH_UNUSED)
-{
-	if (_voucher_activity_disabled()) return;
 	kern_return_t kr;
-	mach_vm_size_t vm_size = _voucher_activity_buffer_size *
-			_voucher_activity_buffers_per_heap;
-	mach_vm_address_t vm_addr = vm_page_size;
-	while (slowpath(kr = mach_vm_map(mach_task_self(), &vm_addr, vm_size,
-			0, VM_FLAGS_ANYWHERE | VM_MAKE_TAG(VM_MEMORY_GENEALOGY),
-			MEMORY_OBJECT_NULL, 0, FALSE, VM_PROT_DEFAULT, VM_PROT_ALL,
-			VM_INHERIT_NONE))) {
-		if (kr != KERN_NO_SPACE) {
-			(void)dispatch_assume_zero(kr);
-			_voucher_activity_mode = voucher_activity_mode_disable;
-			return;
-		}
-		_dispatch_temporary_resource_shortage();
-		vm_addr = vm_page_size;
+	uint64_t next;
+
+	kr = mach_generate_activity_id(mach_task_self(), 1, &next);
+	if (unlikely(kr)) {
+		DISPATCH_CLIENT_CRASH(kr, "Could not generate an activity ID");
 	}
-	_voucher_activity_metadata_t heap;
-	task_trace_memory_info_data_t trace_memory_info = {
-		.user_memory_address = vm_addr,
-		.buffer_size = vm_size,
-	};
-	kr = task_set_info(mach_task_self(), TASK_TRACE_MEMORY_INFO,
-			(task_info_t)&trace_memory_info, TASK_TRACE_MEMORY_INFO_COUNT);
-	DISPATCH_VERIFY_MIG(kr);
-	if (kr) {
-		if (kr != KERN_NOT_SUPPORTED) (void)dispatch_assume_zero(kr);
-		kr = mach_vm_deallocate(mach_task_self(), vm_addr, vm_size);
-		(void)dispatch_assume_zero(kr);
-		_voucher_activity_mode = voucher_activity_mode_disable;
+	next *= MACH_ACTIVITY_ID_RANGE_SIZE;
+	next &= MACH_ACTIVITY_ID_MASK;
+	if (unlikely(next == 0)) {
+		next++;
+	}
+
+	if (unlikely(aid == 0)) {
+		if (os_atomic_cmpxchg(&_voucher_aid_next, 0, next + 1, relaxed)) {
+			return next;
+		}
+	}
+	return os_atomic_xchg(&_voucher_aid_next, next, relaxed);
+}
+
+DISPATCH_ALWAYS_INLINE
+static firehose_activity_id_t
+_voucher_activity_id_allocate(firehose_activity_flags_t flags)
+{
+	uint64_t aid, next;
+	os_atomic_rmw_loop(&_voucher_aid_next, aid, next, relaxed, {
+		next = aid + 1;
+		if (aid == 0 || next % MACH_ACTIVITY_ID_RANGE_SIZE == 0) {
+			os_atomic_rmw_loop_give_up({
+				aid = _voucher_activity_id_allocate_slow(aid);
+				break;
+			});
+		}
+	});
+	return FIREHOSE_ACTIVITY_ID_MAKE(aid, flags);
+}
+
+#define _voucher_activity_tracepoint_reserve(stamp, stream, pub, priv, privbuf) \
+		firehose_buffer_tracepoint_reserve(_firehose_task_buffer, stamp, \
+				stream, pub, priv, privbuf)
+
+#define _voucher_activity_tracepoint_flush(ft, ftid) \
+		firehose_buffer_tracepoint_flush(_firehose_task_buffer, ft, ftid)
+
+DISPATCH_NOINLINE
+static void
+_firehose_task_buffer_init(void *ctx OS_UNUSED)
+{
+	mach_port_t logd_port;
+
+	/* Query the uniquepid of the current process */
+	struct proc_uniqidentifierinfo p_uniqinfo = { };
+	int info_size = 0;
+
+	info_size = proc_pidinfo(getpid(), PROC_PIDUNIQIDENTIFIERINFO, 1,
+			&p_uniqinfo, PROC_PIDUNIQIDENTIFIERINFO_SIZE);
+	if (slowpath(info_size != PROC_PIDUNIQIDENTIFIERINFO_SIZE)) {
+		DISPATCH_INTERNAL_CRASH(info_size, "Unable to get the unique pid");
+	}
+	_voucher_unique_pid = p_uniqinfo.p_uniqueid;
+
+
+	if (!fastpath(_voucher_libtrace_hooks)) {
+		if (0) { // <rdar://problem/23393959>
+			DISPATCH_CLIENT_CRASH(0,
+					"Activity subsystem isn't initialized yet");
+		}
 		return;
 	}
-	heap = (void*)vm_addr;
-	heap->vasm_baseaddr = (void*)vm_addr;
-	heap->vam_buffer_bitmap[0] = 0x7; // first three buffers are reserved
-	uint32_t i;
-	for (i = 0; i < _voucher_activity_hash_size; i++) {
-		TAILQ_INIT(&heap->vam_activities[i]);
-		TAILQ_INIT(&heap->vam_atms[i]);
+	logd_port = _voucher_libtrace_hooks->vah_get_logd_port();
+	if (logd_port) {
+		unsigned long flags = 0;
+#if DISPATCH_USE_MEMORYPRESSURE_SOURCE
+		if (_dispatch_memory_warn) {
+			flags |= FIREHOSE_BUFFER_BANK_FLAG_LOW_MEMORY;
+		}
+#endif
+		// firehose_buffer_create always consumes the send-right
+		_firehose_task_buffer = firehose_buffer_create(logd_port,
+				_voucher_unique_pid, flags);
 	}
-	_voucher_activity_lock_init(&heap->vam_atms_lock);
-	_voucher_activity_lock_init(&heap->vam_activities_lock);
-	_voucher_activity_heap = heap;
-
-	_voucher_atm_t vatm = _voucher_atm_create(0, 0);
-	dispatch_assert(vatm->vatm_kvoucher);
-	_voucher_atm_retain(vatm);
-
-	_voucher_activity_buffer_header_t buffer = vam_buffer(2); // reserved index
-	// consumes vatm reference:
-	_voucher_activity_t va = _voucher_activity_create_with_atm(vatm, 0, 0, 0,
-			buffer);
-	dispatch_assert(va);
-	va->va_buffer_limit = _voucher_default_activity_buffer_limit();
-	_voucher_activity_default = va;
-	_voucher_task_atm = vatm;
 }
 
-static void
-_voucher_activity_atfork_child(void)
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_voucher_activity_disabled(void)
 {
-	_voucher_activity_heap_pred = 0;
-	_voucher_activity_heap = NULL; // activity heap is VM_INHERIT_NONE
-	_voucher_activity_default = NULL;
+	dispatch_once_f(&_firehose_task_buffer_pred,
+			NULL, _firehose_task_buffer_init);
+
+	firehose_buffer_t fb = _firehose_task_buffer;
+	if (fastpath(fb)) {
+		return slowpath(fb->fb_header.fbh_sendp == MACH_PORT_DEAD);
+	}
+	return true;
 }
 
 void*
 voucher_activity_get_metadata_buffer(size_t *length)
 {
-	dispatch_once_f(&_voucher_activity_heap_pred, NULL,
-			_voucher_activity_heap_init);
 	if (_voucher_activity_disabled()) {
 		*length = 0;
 		return NULL;
 	}
-	*length = sizeof(_voucher_activity_heap->vam_client_metadata);
-	return _voucher_activity_heap->vam_client_metadata;
+
+	firehose_buffer_header_t fbh = &_firehose_task_buffer->fb_header;
+
+	*length = FIREHOSE_BUFFER_LIBTRACE_HEADER_SIZE;
+	return (void *)((uintptr_t)(fbh + 1) - *length);
 }
 
-static _voucher_activity_buffer_hook_t _voucher_activity_buffer_hook;
-
-void
-voucher_activity_buffer_hook_install_4libtrace(
-		_voucher_activity_buffer_hook_t hook)
+voucher_t
+voucher_activity_create(firehose_tracepoint_id_t trace_id,
+		voucher_t base, firehose_activity_flags_t flags, uint64_t location)
 {
-	if (dispatch_atomic_cmpxchg(&_voucher_activity_buffer_hook, NULL,
-			(void*)hook, release)) return;
-	DISPATCH_CLIENT_CRASH("_voucher_activity_buffer_hook_install_4libtrace " \
-		"called more than once");
+	return voucher_activity_create_with_location(&trace_id, base, flags, location);
 }
 
-#if DISPATCH_DEBUG && DISPATCH_VOUCHER_ACTIVITY_DEBUG
-#define VOUCHER_ACTIVITY_BUFFER_DEBUG(reason, buffer) \
-		_dispatch_debug("activity buffer %s (%p)", #reason, buffer)
-#else
-#define VOUCHER_ACTIVITY_BUFFER_DEBUG(reason, buffer)
-#endif
-
-#define VOUCHER_ACTIVITY_BUFFER_HOOK_CALLOUT(reason, buffer) \
-		if (buffer) { VOUCHER_ACTIVITY_BUFFER_DEBUG(reason, buffer); \
-		if (slowpath(_voucher_activity_buffer_hook)) { \
-			_voucher_activity_buffer_hook( \
-					_voucher_activity_buffer_hook_reason_##reason, (buffer)); \
-		} }
-
-DISPATCH_ALWAYS_INLINE
-static inline _voucher_activity_buffer_header_t
-_voucher_activity_heap_buffer_alloc(void)
+voucher_t
+voucher_activity_create_with_location(firehose_tracepoint_id_t *trace_id,
+		voucher_t base, firehose_activity_flags_t flags, uint64_t location)
 {
-	_voucher_activity_buffer_header_t buffer = NULL;
-	size_t index;
-	index = _voucher_activity_bitmap_set_first_unset_bit_upto(
-			vam_buffer_bitmap(), _voucher_heap_buffer_limit() - 1);
-	if (index < NO_BITS_WERE_UNSET) {
-		buffer = vam_buffer(index);
-	}
-#if DISPATCH_DEBUG && DISPATCH_VOUCHER_ACTIVITY_DEBUG
-	_dispatch_debug("activity heap alloc %zd (%p)", index, buffer);
-#endif
-	return buffer;
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_voucher_activity_heap_buffer_free(_voucher_activity_buffer_header_t buffer)
-{
-	buffer->vabh_flags = _voucher_activity_trace_flag_buffer_empty;
-	size_t index = (size_t)((char*)buffer - (char*)_voucher_activity_heap) /
-			_voucher_activity_buffer_size;
-#if DISPATCH_DEBUG && DISPATCH_VOUCHER_ACTIVITY_DEBUG
-	_dispatch_debug("activity heap free %zd (%p)", index, buffer);
-#endif
-	_voucher_activity_bitmap_clear_bit(vam_buffer_bitmap(), index);
-}
-
-#define _voucher_activity_heap_can_madvise() \
-		(PAGE_SIZE == _voucher_activity_buffer_size) // <rdar://17445544>
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_voucher_activity_heap_madvise(size_t bitmap_num, unsigned int start,
-		unsigned int len)
-{
-	size_t base = bitmap_num * _voucher_activity_bits_per_bitmap_base_t;
-#if DISPATCH_DEBUG
-#if DISPATCH_VOUCHER_ACTIVITY_DEBUG
-	_dispatch_debug("activity heap madvise %zd (%p) -> %zd (%p)", base + start,
-			vam_buffer(base + start), base + start + len,
-			vam_buffer(base + start + len));
-#endif
-	dispatch_assert(!(len * _voucher_activity_buffer_size % vm_page_size));
-	const uint64_t pattern = 0xFACEFACEFACEFACE;
-	_voucher_activity_buffer_header_t buffer = vam_buffer(base + start);
-	for (unsigned int i = 0; i < len; i++, buffer++) {
-		memset_pattern8((char*)buffer + sizeof(buffer->vabh_flags), &pattern,
-				_voucher_activity_buffer_size - sizeof(buffer->vabh_flags));
-	}
-#endif
-	(void)dispatch_assume_zero(madvise(vam_buffer(base + start),
-			len * _voucher_activity_buffer_size, MADV_FREE));
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_voucher_activity_heap_madvise_contiguous(size_t bitmap_num,
-		_voucher_activity_bitmap_base_t bits)
-{
-	// TODO: x86 has fast ctz; arm has fast clz; haswell has fast ctz
-	dispatch_assert(_voucher_activity_heap_can_madvise());
-	if (bits == 0) {
-		return;
-	} else if (~bits == 0) {
-		_voucher_activity_heap_madvise(bitmap_num, 0,
-				_voucher_activity_bits_per_bitmap_base_t);
-	} else while (bits != 0) {
-		unsigned int start = (typeof(start))__builtin_ctzl(bits), len;
-		typeof(bits) inverse = ~bits >> start;
-		if (inverse) {
-			len = (typeof(len))__builtin_ctzl(inverse);
-		} else {
-			len = _voucher_activity_bits_per_bitmap_base_t - start;
-		}
-		typeof(bits) mask = ((((typeof(bits))1) << len) - 1) << start;
-		bits &= ~mask;
-		_voucher_activity_heap_madvise(bitmap_num, start, len);
-	}
-}
-
-void
-_voucher_activity_heap_pressure_warn(void)
-{
-	if (!_voucher_activity_heap_can_madvise() || !_voucher_activity_heap) {
-		return;
-	}
-	volatile _voucher_activity_bitmap_base_t *bitmap, *pressure_locked_bitmap;
-	bitmap = vam_buffer_bitmap();
-	pressure_locked_bitmap = vam_pressure_locked_bitmap();
-
-	// number of bitmaps needed to map the current buffer limit =
-	// ceil(buffer limit / bits per bitmap)
-	size_t nbuffers = _voucher_heap_buffer_limit();
-	size_t nbitmaps_quot = nbuffers / _voucher_activity_bits_per_bitmap_base_t;
-	size_t nbitmaps_rem = nbuffers % _voucher_activity_bits_per_bitmap_base_t;
-	size_t nbitmaps = nbitmaps_quot + ((nbitmaps_rem == 0) ? 0 : 1);
-
-	for (size_t i = 0; i < nbitmaps; i++) {
-		_voucher_activity_bitmap_base_t got_bits;
-		got_bits = dispatch_atomic_or_orig(&bitmap[i], ~((typeof(bitmap[i]))0),
-				relaxed);
-		got_bits = ~got_bits; // Now 1 means 'acquired this one, madvise it'
-		_voucher_activity_heap_madvise_contiguous(i, got_bits);
-		pressure_locked_bitmap[i] |= got_bits;
-	}
-}
-
-void
-_voucher_activity_heap_pressure_normal(void)
-{
-	if (!_voucher_activity_heap_can_madvise() || !_voucher_activity_heap) {
-		return;
-	}
-	volatile _voucher_activity_bitmap_base_t *bitmap, *pressure_locked_bitmap;
-	bitmap = vam_buffer_bitmap();
-	pressure_locked_bitmap = vam_pressure_locked_bitmap();
-	for (size_t i = 0; i < _voucher_activity_bitmaps_per_heap; i++) {
-		_voucher_activity_bitmap_base_t free_bits = pressure_locked_bitmap[i];
-		pressure_locked_bitmap[i] = 0;
-		if (free_bits != 0) {
-			(void)dispatch_atomic_and(&bitmap[i], ~free_bits, release);
-		}
-	}
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_voucher_activity_buffer_init(_voucher_activity_t act,
-		_voucher_activity_buffer_header_t buffer, bool initial)
-{
-	_voucher_activity_tracepoint_t vat = (_voucher_activity_tracepoint_t)buffer;
-	_voucher_activity_tracepoint_init_with_id(vat, act->va_trace_id,
-			act->va_location, !initial);
-	buffer->vabh_flags = _voucher_activity_trace_flag_buffer_header |
-		_voucher_activity_trace_flag_activity |
-		(initial ? _voucher_activity_trace_flag_start : 0);
-	buffer->vabh_activity_id = act->va_id;
-	buffer->vabh_pos.vabp_atomic_pos = 0;
-	buffer->vabh_pos.vabp_pos.vabp_next_tracepoint_idx = 1;
-}
-
-static _voucher_activity_buffer_header_t
-_voucher_activity_buffer_alloc_slow(_voucher_activity_t act,
-		_voucher_activity_buffer_header_t current)
-{
-	_voucher_activity_buffer_header_t buffer;
-	_voucher_activity_lock_lock(va_buffers_lock(act)); // TODO: revisit locking
-	buffer = act->va_current_buffer;
-	if (buffer != current) {
-		_voucher_activity_lock_unlock(va_buffers_lock(act));
-		return buffer;
-	}
-	buffer = TAILQ_FIRST(&act->va_buffers);
-	if (buffer != TAILQ_LAST(&act->va_buffers,
-				_voucher_activity_buffer_list_s)) {
-		TAILQ_REMOVE(&act->va_buffers, buffer, vabh_list);
-		TAILQ_INSERT_TAIL(&act->va_buffers, buffer, vabh_list);
-	}
-	_voucher_activity_lock_unlock(va_buffers_lock(act));
-	if (_voucher_activity_buffer_is_full(buffer)) {
-		_voucher_activity_firehose_wait(act, buffer);
-	}
-	if (dispatch_atomic_cmpxchgv2o(act, va_current_buffer, current, buffer,
-			&current, release)) {
-		if (_voucher_activity_buffer_mark_full(current)) {
-			_voucher_activity_firehose_push(act, current);
-		}
-		_dispatch_voucher_activity_debug("buffer reuse %p", act, buffer);
-	} else {
-		buffer = current;
-	}
-	return buffer;
-}
-
-static _voucher_activity_buffer_header_t
-_voucher_activity_buffer_alloc(_voucher_activity_t act,
-		_voucher_activity_buffer_header_t current)
-{
-	_voucher_activity_buffer_header_t buffer = NULL;
-	if (act->va_buffer_count < act->va_buffer_limit) {
-		buffer = _voucher_activity_heap_buffer_alloc();
-		if (buffer && dispatch_atomic_inc2o(act, va_buffer_count, relaxed) >
-				act->va_buffer_limit) {
-			dispatch_atomic_dec2o(act, va_buffer_count, relaxed);
-			_voucher_activity_heap_buffer_free(buffer);
-			buffer = NULL;
-		}
-	}
-	if (!buffer) return _voucher_activity_buffer_alloc_slow(act, current);
-	_voucher_activity_buffer_init(act, buffer, false);
-	if (dispatch_atomic_cmpxchgv2o(act, va_current_buffer, current, buffer,
-			&current, release)) {
-		_voucher_activity_lock_lock(va_buffers_lock(act));
-		TAILQ_INSERT_TAIL(&act->va_buffers, buffer, vabh_list);
-		_voucher_activity_lock_unlock(va_buffers_lock(act));
-		if (_voucher_activity_buffer_mark_full(current)) {
-			_voucher_activity_firehose_push(act, current);
-		}
-		_dispatch_voucher_activity_debug("buffer alloc %p", act, buffer);
-	} else {
-		dispatch_atomic_dec2o(act, va_buffer_count, relaxed);
-		_voucher_activity_heap_buffer_free(buffer);
-		buffer = current;
-	}
-	return buffer;
-}
-
-#pragma mark -
-#pragma mark _voucher_activity_t
-
-#define _voucher_activity_ordered_insert(_act, head, field) do { \
-		typeof(_act) _vai; \
-		TAILQ_FOREACH(_vai, (head), field) { \
-			if (_act->va_id < _vai->va_id) break; \
-		} \
-		if (_vai) { \
-			TAILQ_INSERT_BEFORE(_vai, _act, field); \
-		} else { \
-			TAILQ_INSERT_TAIL((head), _act, field); \
-		} } while (0);
-
-static void _voucher_activity_dispose(_voucher_activity_t act);
-static _voucher_atm_t _voucher_atm_copy(atm_aid_t atm_id);
-static inline void _voucher_atm_release(_voucher_atm_t vatm);
-static atm_aid_t _voucher_mach_voucher_get_atm_id(mach_voucher_t kv);
-
-DISPATCH_ALWAYS_INLINE
-static inline bool
-_voucher_activity_try_retain(_voucher_activity_t act)
-{
-	// not using _os_object_refcnt* because we don't need barriers:
-	// activities are immutable and are in a hash table with a lock
-	int use_cnt = dispatch_atomic_inc2o(act, va_refcnt, relaxed);
-	_dispatch_voucher_activity_debug("retain  -> %d", act, use_cnt + 1);
-	if (slowpath(use_cnt < 0)) {
-		_dispatch_voucher_activity_debug("over-release", act);
-		DISPATCH_CRASH("Activity over-release");
-	}
-	return use_cnt > 0;
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline _voucher_activity_t
-_voucher_activity_retain(_voucher_activity_t act)
-{
-	if (slowpath(!_voucher_activity_try_retain(act))) {
-		_dispatch_voucher_activity_debug("resurrection", act);
-		DISPATCH_CRASH("Activity resurrection");
-	}
-	return act;
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_voucher_activity_release(_voucher_activity_t act)
-{
-	// not using _os_object_refcnt* because we don't need barriers:
-	// activities are immutable and are in a hash table with a lock
-	int use_cnt = dispatch_atomic_dec2o(act, va_refcnt, relaxed);
-	_dispatch_voucher_activity_debug("release -> %d", act, use_cnt + 1);
-	if (fastpath(use_cnt >= 0)) {
-		return;
-	}
-	if (slowpath(use_cnt < -1)) {
-		_dispatch_voucher_activity_debug("over-release", act);
-		DISPATCH_CRASH("Activity over-release");
-	}
-	_voucher_activity_remove(act);
-	_voucher_activity_dispose(act);
-}
-
-static _voucher_activity_t
-_voucher_activity_find_and_retain(voucher_activity_id_t va_id, uint32_t hash)
-{
-	// not using _os_object_refcnt* because we don't need barriers:
-	// activities are immutable and are in a hash table with a lock
-	//
-	// assumes vam_activities_lock held
-	_voucher_activity_t act;
-	TAILQ_FOREACH(act, vam_activities(hash), va_list) {
-		if (act->va_id == va_id) {
-			if (fastpath(_voucher_activity_try_retain(act))) {
-				return act;
-			}
-
-			// <rdar://problem/20468375> disallow resurrection
-			dispatch_atomic_dec2o(act, va_refcnt, relaxed);
-			_dispatch_voucher_activity_debug("undo resurrection", act);
-		}
-	}
-	return NULL;
-}
-
-static _voucher_activity_t
-_voucher_activity_copy_from_id(voucher_activity_id_t va_id)
-{
-	uint32_t hash = VACTID_HASH(va_id);
-	_voucher_activity_lock_lock(vam_activities_lock());
-	_voucher_activity_t act = _voucher_activity_find_and_retain(va_id, hash);
-	if (act) {
-		_dispatch_voucher_activity_debug("copy from id 0x%llx", act, va_id);
-	}
-	_voucher_activity_lock_unlock(vam_activities_lock());
-	return act;
-}
-
-static _voucher_activity_t
-_voucher_activity_try_insert(_voucher_activity_t act_new)
-{
-	voucher_activity_id_t va_id = act_new->va_id;
-	uint32_t hash = VACTID_HASH(va_id);
-	_voucher_activity_lock_lock(vam_activities_lock());
-	_voucher_activity_t act = _voucher_activity_find_and_retain(va_id, hash);
-	if (act) {
-		_dispatch_voucher_activity_debug("try insert: failed (%p)", act,act_new);
-	} else {
-		if (slowpath(_TAILQ_IS_ENQUEUED(act_new, va_list))) {
-			_dispatch_voucher_activity_debug("corruption", act_new);
-			DISPATCH_CRASH("Activity corruption");
-		}
-		TAILQ_INSERT_TAIL(vam_activities(hash), act_new, va_list);
-		_dispatch_voucher_activity_debug("try insert: succeeded", act_new);
-	}
-	_voucher_activity_lock_unlock(vam_activities_lock());
-	return act;
-}
-
-static void
-_voucher_activity_remove(_voucher_activity_t act)
-{
-	voucher_activity_id_t va_id = act->va_id;
-	uint32_t hash = VACTID_HASH(va_id);
-
-	_voucher_activity_lock_lock(vam_activities_lock());
-	if (slowpath(!va_id || !_TAILQ_IS_ENQUEUED(act, va_list))) {
-		_dispatch_voucher_activity_debug("corruption", act);
-		DISPATCH_CRASH("Activity corruption");
-	}
-	TAILQ_REMOVE(vam_activities(hash), act, va_list);
-	_TAILQ_MARK_NOT_ENQUEUED(act, va_list);
-	act->va_list.tqe_next = (void*)~0ull;
-	_dispatch_voucher_activity_debug("remove", act);
-	_voucher_activity_lock_unlock(vam_activities_lock());
-}
-
-static _voucher_activity_t
-_voucher_activity_create_with_atm(_voucher_atm_t vatm,
-		voucher_activity_id_t va_id, voucher_activity_trace_id_t trace_id,
-		uint64_t location, _voucher_activity_buffer_header_t buffer)
-{
-	if (!buffer) buffer = _voucher_activity_heap_buffer_alloc();
-	if (!buffer) {
-		_dispatch_voucher_atm_debug("no buffer", vatm);
-		_voucher_atm_release(vatm); // consume vatm reference
-		return NULL;
-	}
-	_voucher_activity_t act = _dispatch_calloc(1ul,
-			sizeof(struct _voucher_activity_s));
-	act->va_id = va_id;
-	act->va_trace_id = trace_id ? trace_id : _voucher_activity_trace_id_release;
-	act->va_location = location;
-	act->va_buffer_limit = _voucher_activity_buffer_limit();
-	TAILQ_INIT(&act->va_buffers);
-	act->va_current_buffer = buffer;
-	act->va_atm = vatm; // transfer vatm reference
-	_voucher_activity_lock_init(va_buffers_lock(act));
-	if (dispatch_assume_zero(pthread_mutex_init(&act->va_mutex, NULL)) ||
-			dispatch_assume_zero(pthread_cond_init(&act->va_cond, NULL))) {
-		DISPATCH_CLIENT_CRASH("Could not initialize activity");
-	}
-	_TAILQ_MARK_NOT_ENQUEUED(act, va_list);
-	_TAILQ_MARK_NOT_ENQUEUED(act, va_atm_list);
-	_TAILQ_MARK_NOT_ENQUEUED(act, va_atm_used_list);
-
-	_voucher_activity_buffer_init(act, buffer, true);
-	TAILQ_INSERT_TAIL(&act->va_buffers, buffer, vabh_list);
-	_voucher_activity_t actx = _voucher_activity_try_insert(act);
-	if (actx) {
-		_voucher_activity_dispose(act);
-		act = actx;
-	}
-	_dispatch_voucher_activity_debug("create", act);
-	return act;
-}
-
-static void
-_voucher_activity_dispose(_voucher_activity_t act)
-{
-	_dispatch_voucher_activity_debug("dispose", act);
-	_voucher_atm_release(act->va_atm);
-	if (slowpath(_TAILQ_IS_ENQUEUED(act, va_list))) {
-		_dispatch_voucher_activity_debug("corruption", act);
-		DISPATCH_CRASH("Activity corruption");
-	}
-	act->va_list.tqe_next = DISPATCH_OBJECT_LISTLESS;
-	dispatch_assert(!_TAILQ_IS_ENQUEUED(act, va_atm_list));
-	dispatch_assert(!_TAILQ_IS_ENQUEUED(act, va_atm_used_list));
-	_voucher_activity_buffer_header_t buffer, tmp;
-	TAILQ_FOREACH_SAFE(buffer, &act->va_buffers, vabh_list, tmp) {
-		if (buffer->vabh_pos.vabp_pos.vabp_next_tracepoint_idx > 1) {
-			dispatch_assert(_voucher_activity_buffer_mark_full(buffer));
-			_voucher_activity_firehose_push(act, buffer);
-		}
-		TAILQ_REMOVE(&act->va_buffers, buffer, vabh_list);
-		_dispatch_voucher_activity_debug("buffer free %p", act, buffer);
-		_voucher_activity_heap_buffer_free(buffer);
-	}
-	(void)dispatch_assume_zero(pthread_mutex_destroy(&act->va_mutex));
-	(void)dispatch_assume_zero(pthread_cond_destroy(&act->va_cond));
-	free(act);
-}
-
-DISPATCH_NOINLINE
-void
-_voucher_activity_firehose_push(_voucher_activity_t act,
-		_voucher_activity_buffer_header_t buffer)
-{
-	if (dispatch_assume_zero(pthread_mutex_lock(&act->va_mutex))) {
-		DISPATCH_CLIENT_CRASH("Activity corruption: mutex_lock");
-	}
-	_dispatch_voucher_activity_debug("firehose push %p", act, buffer);
-	// TODO: call firehose_push
-	VOUCHER_ACTIVITY_BUFFER_HOOK_CALLOUT(full, buffer);
-	_voucher_activity_buffer_init(act, buffer, false);
-	if (dispatch_assume_zero(pthread_cond_broadcast(&act->va_cond))) {
-		DISPATCH_CLIENT_CRASH("Activity corruption: cond_broadcast");
-	}
-	if (dispatch_assume_zero(pthread_mutex_unlock(&act->va_mutex))) {
-		DISPATCH_CLIENT_CRASH("Activity corruption: mutex_unlock");
-	}
-}
-
-DISPATCH_NOINLINE
-static void
-_voucher_activity_firehose_wait(_voucher_activity_t act,
-		_voucher_activity_buffer_header_t buffer)
-{
-	if (dispatch_assume_zero(pthread_mutex_lock(&act->va_mutex))) {
-		DISPATCH_CLIENT_CRASH("Activity corruption: mutex_lock");
-	}
-	while (_voucher_activity_buffer_is_full(buffer)) {
-		_dispatch_voucher_activity_debug("firehose wait %p", act, buffer);
-		if (dispatch_assume_zero(pthread_cond_wait(&act->va_cond,
-				&act->va_mutex))){
-			DISPATCH_CLIENT_CRASH("Activity corruption: cond_wait");
-		}
-	}
-	if (dispatch_assume_zero(pthread_mutex_unlock(&act->va_mutex))) {
-		DISPATCH_CLIENT_CRASH("Activity corruption: mutex_unlock");
-	}
-}
-
-static _voucher_activity_t
-_voucher_activity_copy_from_mach_voucher(mach_voucher_t kv,
-		voucher_activity_id_t va_id)
-{
-	dispatch_once_f(&_voucher_activity_heap_pred, NULL,
-			_voucher_activity_heap_init);
-	if (_voucher_activity_disabled()) return NULL;
-	_voucher_activity_t act = NULL;
-	if (dispatch_assume(va_id)) {
-		if ((act = _voucher_activity_copy_from_id(va_id))) return act;
-	}
-	atm_aid_t atm_id = _voucher_mach_voucher_get_atm_id(kv);
-	if (!dispatch_assume(atm_id)) return NULL;
-	_voucher_activity_buffer_header_t buffer;
-	buffer = _voucher_activity_heap_buffer_alloc();
-	if (!buffer) return NULL;
-	_dispatch_kvoucher_debug("atm copy/create from <%lld>", kv, atm_id);
-	_voucher_atm_t vatm = _voucher_atm_copy(atm_id);
-	if (!vatm) vatm = _voucher_atm_create(kv, atm_id);
-	if (!vatm) {
-		_voucher_activity_heap_buffer_free(buffer);
-		return NULL;
-	}
-	// consumes vatm reference:
-	act = _voucher_activity_create_with_atm(vatm, va_id, 0, 0, buffer);
-	_dispatch_voucher_activity_debug("copy from kvoucher[0x%08x]", act, kv);
-	return act;
-}
-
-#pragma mark -
-#pragma mark _voucher_atm_t
-
-static void _voucher_atm_remove(_voucher_atm_t vatm);
-static void _voucher_atm_dispose(_voucher_atm_t vatm, bool unregister);
-
-DISPATCH_ALWAYS_INLINE
-static inline bool
-_voucher_atm_try_retain(_voucher_atm_t vatm)
-{
-	// not using _os_object_refcnt* because we don't need barriers:
-	// vouchers atm are immutable and are in a hash table with a lock
-	//
-	// assumes vam_atms_lock held
-	int refcnt = dispatch_atomic_inc2o(vatm, vatm_refcnt, relaxed);
-	_dispatch_voucher_atm_debug("retain  -> %d", vatm, refcnt + 1);
-	if (slowpath(refcnt < 0)) {
-		_dispatch_voucher_atm_debug("over-release", vatm);
-		DISPATCH_CRASH("ATM over-release");
-	}
-	return refcnt > 0;
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline _voucher_atm_t
-_voucher_atm_retain(_voucher_atm_t vatm)
-{
-	if (slowpath(!_voucher_atm_try_retain(vatm))) {
-		_dispatch_voucher_atm_debug("resurrection", vatm);
-		DISPATCH_CRASH("ATM resurrection");
-	}
-	return vatm;
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_voucher_atm_release(_voucher_atm_t vatm)
-{
-	// not using _os_object_refcnt* because we don't need barriers:
-	// vouchers atm are immutable are into a hash table with a lock
-	int refcnt = dispatch_atomic_dec2o(vatm, vatm_refcnt, relaxed);
-	_dispatch_voucher_atm_debug("release -> %d", vatm, refcnt + 1);
-	if (fastpath(refcnt >= 0)) {
-		return;
-	}
-	if (slowpath(refcnt < -1)) {
-		_dispatch_voucher_atm_debug("over-release", vatm);
-		DISPATCH_CRASH("ATM over-release");
-	}
-	_voucher_atm_remove(vatm);
-	_voucher_atm_dispose(vatm, true);
-}
-
-static _voucher_atm_t
-_voucher_atm_find_and_retain(atm_aid_t atm_id, uint32_t hash)
-{
-	// not using _os_object_refcnt* because we don't need barriers:
-	// vouchers atm are immutable are into a hash table with a lock
-	//
-	// assumes vam_atms_lock held
-	_voucher_atm_t vatm;
-	TAILQ_FOREACH(vatm, vam_atms(hash), vatm_list){
-		if (vatm->vatm_id == atm_id) {
-			if (fastpath(_voucher_atm_try_retain(vatm))) {
-				return vatm;
-			}
-
-			// <rdar://problem/20468375> disallow resurrection
-			dispatch_atomic_dec2o(vatm, vatm_refcnt, relaxed);
-			_dispatch_voucher_atm_debug("undo resurrection", vatm);
-		}
-	}
-	return NULL;
-}
-
-static _voucher_atm_t
-_voucher_atm_copy(atm_aid_t atm_id)
-{
-	uint32_t hash = VATMID_HASH(atm_id);
-	_voucher_activity_lock_lock(vam_atms_lock());
-	_voucher_atm_t vatm = _voucher_atm_find_and_retain(atm_id, hash);
-	if (vatm) {
-		_dispatch_voucher_atm_debug("copy", vatm);
-	}
-	_voucher_activity_lock_unlock(vam_atms_lock());
-	return vatm;
-}
-
-static _voucher_atm_t
-_voucher_atm_try_insert(_voucher_atm_t vatm_new)
-{
-	atm_aid_t atm_id = vatm_new->vatm_id;
-	uint32_t hash = VATMID_HASH(atm_id);
-	_voucher_activity_lock_lock(vam_atms_lock());
-	_voucher_atm_t vatm = _voucher_atm_find_and_retain(atm_id, hash);
-	if (vatm) {
-		_dispatch_voucher_atm_debug("try insert: failed (%p)", vatm, vatm_new);
-	} else {
-		if (slowpath(_TAILQ_IS_ENQUEUED(vatm_new, vatm_list))) {
-			_dispatch_voucher_atm_debug("corruption", vatm_new);
-			DISPATCH_CRASH("ATM corruption");
-		}
-		TAILQ_INSERT_TAIL(vam_atms(hash), vatm_new, vatm_list);
-		_dispatch_voucher_atm_debug("try insert: succeeded", vatm_new);
-	}
-	_voucher_activity_lock_unlock(vam_atms_lock());
-	return vatm;
-}
-
-static void
-_voucher_atm_remove(_voucher_atm_t vatm)
-{
-	atm_aid_t atm_id = vatm->vatm_id;
-	uint32_t hash = VATMID_HASH(atm_id);
-
-	_voucher_activity_lock_lock(vam_atms_lock());
-	if (slowpath(!atm_id || !_TAILQ_IS_ENQUEUED(vatm, vatm_list))) {
-		_dispatch_voucher_atm_debug("corruption", vatm);
-		DISPATCH_CRASH("ATM corruption");
-	}
-	TAILQ_REMOVE(vam_atms(hash), vatm, vatm_list);
-	_TAILQ_MARK_NOT_ENQUEUED(vatm, vatm_list);
-	vatm->vatm_list.tqe_next = (void*)~0ull;
-	_dispatch_voucher_atm_debug("remove", vatm);
-	_voucher_activity_lock_unlock(vam_atms_lock());
-}
-
-DISPATCH_NOINLINE
-static void
-_voucher_atm_fault(mach_voucher_attr_command_t kvc_cmd)
-{
-	mach_voucher_t kv = _voucher_get_atm_mach_voucher(_voucher_get());
-	if (!kv) return;
-
-	mach_atm_subaid_t subaid = 0;
-	voucher_t v = _voucher_get();
-	if (v) {
-		unsigned int activities = v->v_activities;
-		voucher_activity_id_t *activity_ids = _voucher_activity_ids(v);
-		if (activities) {
-			subaid = activity_ids[0];
-		}
-	}
-
-	kern_return_t kr;
-	mach_voucher_attr_content_t kvc_in = (mach_voucher_attr_content_t)&subaid;
-	mach_voucher_attr_content_size_t kvc_in_size = sizeof(mach_atm_subaid_t);
-	mach_voucher_attr_content_t kvc_out = (mach_voucher_attr_content_t)&subaid;
-	mach_voucher_attr_content_size_t kvc_out_size = sizeof(mach_atm_subaid_t);
-	kr = mach_voucher_attr_command(kv, MACH_VOUCHER_ATTR_KEY_ATM,
-			kvc_cmd, kvc_in, kvc_in_size, kvc_out, &kvc_out_size);
-	DISPATCH_VERIFY_MIG(kr);
-	(void)dispatch_assume_zero(kr);
-}
-
-static atm_aid_t
-_voucher_mach_voucher_get_atm_id(mach_voucher_t kv)
-{
-	kern_return_t kr;
-	atm_aid_t atm_id = 0;
-	mach_voucher_attr_content_t kvc = (mach_voucher_attr_content_t)&atm_id;
-    mach_voucher_attr_content_size_t kvc_size = sizeof(atm_id);
-	kr = mach_voucher_extract_attr_content(kv, MACH_VOUCHER_ATTR_KEY_ATM, kvc,
-			&kvc_size);
-	DISPATCH_VERIFY_MIG(kr);
-	(void)dispatch_assume_zero(kr);
-    return atm_id;
-}
-
-static mach_voucher_t
-_voucher_atm_mach_voucher_create(atm_aid_t *atm_id_ptr)
-{
-	kern_return_t kr;
-	mach_voucher_t kv;
-	static const mach_voucher_attr_recipe_data_t atm_create_recipe = {
-		.key = MACH_VOUCHER_ATTR_KEY_ATM,
-		.command = MACH_VOUCHER_ATTR_ATM_CREATE,
-	};
-	kr = _voucher_create_mach_voucher(&atm_create_recipe,
-			sizeof(atm_create_recipe), &kv);
-	if (dispatch_assume_zero(kr)) {
-		DISPATCH_CLIENT_CRASH("Could not create ATM mach voucher");
-	}
-	atm_aid_t atm_id = _voucher_mach_voucher_get_atm_id(kv);
-	if (!dispatch_assume(atm_id)) {
-		DISPATCH_CLIENT_CRASH("Could not extract ATM ID");
-	}
-	_dispatch_kvoucher_debug("atm create <%lld>", kv, atm_id);
-	*atm_id_ptr = atm_id;
-	return kv;
-}
-
-static mach_voucher_t
-_voucher_atm_mach_voucher_copy(mach_voucher_t akv)
-{
-	kern_return_t kr;
-	mach_voucher_t kv;
-	const mach_voucher_attr_recipe_data_t atm_copy_recipe = {
-		.key = MACH_VOUCHER_ATTR_KEY_ATM,
-		.command = MACH_VOUCHER_ATTR_COPY,
-		.previous_voucher = akv,
-	};
-	kr = _voucher_create_mach_voucher(&atm_copy_recipe,
-			sizeof(atm_copy_recipe), &kv);
-	if (dispatch_assume_zero(kr)) {
-		DISPATCH_CLIENT_CRASH("Could not copy ATM mach voucher");
-	}
-	_dispatch_kvoucher_debug("copy atm voucher from [0x%08x]", kv, akv);
-	return kv;
-}
-
-static void
-_voucher_atm_register(_voucher_atm_t vatm)
-{
-	mach_voucher_t kv = vatm->vatm_kvoucher;
-	if (!kv) return;
-	kern_return_t kr;
-	atm_guard_t gen =
-			dispatch_atomic_inc(&_voucher_atm_generation, relaxed);
-	_dispatch_voucher_atm_debug("atm register %lld", vatm, gen);
-	mach_voucher_attr_content_t kvc_in = (mach_voucher_attr_content_t)&gen;
-	mach_voucher_attr_content_size_t kvc_in_size = sizeof(gen);
-	mach_voucher_attr_content_t kvc_out = NULL;
-	mach_voucher_attr_content_size_t kvc_out_size = 0;
-	kr = mach_voucher_attr_command(kv, MACH_VOUCHER_ATTR_KEY_ATM,
-			ATM_ACTION_REGISTER, kvc_in, kvc_in_size, kvc_out,
-			&kvc_out_size);
-	DISPATCH_VERIFY_MIG(kr);
-	if (kr) {
-		DISPATCH_CLIENT_CRASH("Could not register ATM ID");
-	}
-	vatm->vatm_generation = gen;
-	_dispatch_voucher_atm_debug("atm registered %lld", vatm,
-			vatm->vatm_generation);
-}
-
-static void
-_voucher_atm_unregister(_voucher_atm_t vatm)
-{
-	_dispatch_voucher_atm_debug("atm unregister %lld", vatm,
-			vatm->vatm_generation);
-	mach_voucher_t kv = vatm->vatm_kvoucher;
-	dispatch_assert(kv);
-	kern_return_t kr;
-	atm_guard_t gen = vatm->vatm_generation;
-	mach_voucher_attr_content_t kvc_in = (mach_voucher_attr_content_t)&gen;
-	mach_voucher_attr_content_size_t kvc_in_size = sizeof(gen);
-	mach_voucher_attr_content_t kvc_out = NULL;
-	mach_voucher_attr_content_size_t kvc_out_size = 0;
-	kr = mach_voucher_attr_command(kv, MACH_VOUCHER_ATTR_KEY_ATM,
-			ATM_ACTION_UNREGISTER, kvc_in, kvc_in_size, kvc_out, &kvc_out_size);
-	DISPATCH_VERIFY_MIG(kr);
-	if (kr && kr != KERN_INVALID_VALUE) {
-		(void)dispatch_assume_zero(kr);
-	}
-	_dispatch_voucher_atm_debug("atm unregistered %lld", vatm,
-			vatm->vatm_generation);
-}
-
-static _voucher_atm_t
-_voucher_atm_create(mach_voucher_t kv, atm_aid_t atm_id)
-{
-	_voucher_atm_t vatm = _dispatch_calloc(1ul, sizeof(struct _voucher_atm_s));
-	kv = kv ? _voucher_atm_mach_voucher_copy(kv) :
-			_voucher_atm_mach_voucher_create(&atm_id);
-	vatm->vatm_kvoucher = kv;
-	vatm->vatm_id = atm_id;
-	_voucher_atm_t vatmx = _voucher_atm_try_insert(vatm);
-	if (vatmx) {
-		_voucher_atm_dispose(vatm, false);
-		vatm = vatmx;
-	} else {
-		_voucher_atm_register(vatm);
-	}
-	_dispatch_voucher_atm_debug("create with kvoucher[0x%08x]", vatm, kv);
-	return vatm;
-}
-
-static void
-_voucher_atm_dispose(_voucher_atm_t vatm, bool unregister)
-{
-	_dispatch_voucher_atm_debug("dispose", vatm);
-	if (slowpath(_TAILQ_IS_ENQUEUED(vatm, vatm_list))) {
-		_dispatch_voucher_atm_debug("corruption", vatm);
-		DISPATCH_CRASH("ATM corruption");
-	}
-	vatm->vatm_list.tqe_next = DISPATCH_OBJECT_LISTLESS;
-	if (vatm->vatm_kvoucher) {
-		if (unregister) _voucher_atm_unregister(vatm);
-		_voucher_dealloc_mach_voucher(vatm->vatm_kvoucher);
-		vatm->vatm_kvoucher = MACH_VOUCHER_NULL;
-	}
-	free(vatm);
-}
-
-DISPATCH_NOINLINE
-static voucher_activity_id_t
-_voucher_atm_subid_make(_voucher_atm_t vatm, voucher_activity_flag_t flags)
-{
-	mach_voucher_t kv = vatm->vatm_kvoucher;
-	_dispatch_voucher_atm_debug("create subid from atm", vatm);
-	kern_return_t kr;
-	mach_atm_subaid_t naid;
-	mach_voucher_attr_content_t kvc_in = NULL;
-	mach_voucher_attr_content_size_t kvc_in_size = 0;
-	mach_voucher_attr_content_t kvc_out = (mach_voucher_attr_content_t)&naid;
-	mach_voucher_attr_content_size_t kvc_out_size = sizeof(naid);
-	kr = mach_voucher_attr_command(kv, MACH_VOUCHER_ATTR_KEY_ATM,
-			ATM_ACTION_GETSUBAID, kvc_in, kvc_in_size, kvc_out, &kvc_out_size);
-	DISPATCH_VERIFY_MIG(kr);
-	if (dispatch_assume_zero(kr)) {
-		DISPATCH_CLIENT_CRASH("Could not get next ATM ID");
-	}
-	_dispatch_voucher_atm_debug("created subid from atm %lld", vatm, naid);
-	return VATMID2ACTID(naid, flags);
-}
-
-#pragma mark -
-#pragma mark voucher_activity_id_t
-
-static const size_t _voucher_activity_maxsize =
-		_voucher_activity_buffer_size - _voucher_activity_buffer_header_size -
-		_voucher_activity_strings_header_size;
-
-voucher_activity_id_t
-voucher_activity_start_with_location(voucher_activity_trace_id_t trace_id,
-		uint64_t location, voucher_activity_flag_t flags)
-{
-	dispatch_once_f(&_voucher_activity_heap_pred, NULL,
-			_voucher_activity_heap_init);
-	if (!_voucher_activity_trace_id_enabled(trace_id)) return 0;
-	voucher_activity_id_t va_id = 0;
-	_voucher_atm_t vatm = NULL;
-	_voucher_activity_t act = NULL;
-	_voucher_activity_tracepoint_t vat = NULL;
-	unsigned int activities = 1, oactivities = 0;
+	firehose_activity_id_t va_id = 0, current_id = 0, parent_id = 0;
+	firehose_tracepoint_id_u ftid = { .ftid_value = *trace_id };
+	uint16_t pubsize = sizeof(va_id) + sizeof(location);
+	uint64_t creator_id = 0;
 	voucher_t ov = _voucher_get();
-	vatm = _voucher_get_atm(ov);
-	if (!(flags & voucher_activity_flag_force) && ov && ov->v_activities) {
-		oactivities = ov->v_activities;
-		activities += oactivities;
-		if (activities > _voucher_max_activities) {
-			va_id = _voucher_atm_subid_make(vatm, flags);
-			goto out;
+	voucher_t v;
+
+	if (base == VOUCHER_CURRENT) {
+		base = ov;
+	}
+	if (_voucher_activity_disabled()) {
+		*trace_id = 0;
+		return base ? _voucher_retain(base) : VOUCHER_NULL;
+	}
+
+	FIREHOSE_TRACE_ID_CLEAR_FLAG(ftid, base, has_unique_pid);
+	if (ov && (current_id = ov->v_activity)) {
+		FIREHOSE_TRACE_ID_SET_FLAG(ftid, base, has_current_aid);
+		pubsize += sizeof(firehose_activity_id_t);
+		if ((creator_id = ov->v_activity_creator)) {
+			FIREHOSE_TRACE_ID_SET_FLAG(ftid, base, has_unique_pid);
+			pubsize += sizeof(uint64_t);
 		}
 	}
-	_voucher_atm_retain(vatm);
-	// required for v->v_atm = vatm below
-	_voucher_atm_retain(vatm);
-	va_id = _voucher_atm_subid_make(vatm, flags);
-	// consumes vatm reference:
-	act = _voucher_activity_create_with_atm(vatm, va_id, trace_id, location,
-			NULL);
-	vat = (_voucher_activity_tracepoint_t)act;
-	pthread_priority_t priority = _voucher_get_priority(ov);
-	mach_voucher_attr_recipe_size_t extra = ov ? _voucher_extra_size(ov) : 0;
-	voucher_t v = _voucher_alloc(activities, priority, extra);
-	if (extra) {
-		memcpy(_voucher_extra_recipes(v), _voucher_extra_recipes(ov), extra);
+	if (base != VOUCHER_NULL) {
+		parent_id = base->v_activity;
 	}
-	if (ov && ov->v_kvoucher) {
-		voucher_t kvb = ov->v_kvbase ? ov->v_kvbase : ov;
-		v->v_kvbase = _voucher_retain(kvb);
-		v->v_kvoucher = kvb->v_kvoucher;
-	}
-	voucher_activity_id_t *activity_ids = _voucher_activity_ids(v);
-	if (oactivities) {
-		memcpy(activity_ids, _voucher_activity_ids(ov),
-				oactivities * sizeof(voucher_activity_id_t));
-	}
-	activity_ids[activities-1] = va_id;
-	v->v_atm = vatm;
-	v->v_activity = act;
-	_voucher_swap(ov, v);
-	return va_id; // new activity buffer contains trace info
-out:
-	_voucher_activity_trace_activity_event(trace_id, va_id, start);
-	return va_id;
-}
 
-voucher_activity_id_t
-voucher_activity_start(voucher_activity_trace_id_t trace_id,
-		voucher_activity_flag_t flags)
-{
-	return voucher_activity_start_with_location(trace_id, 0, flags);
+	if (parent_id) {
+		FIREHOSE_TRACE_ID_SET_FLAG(ftid, activity, has_other_aid);
+		pubsize += sizeof(firehose_activity_id_t);
+		flags |= FIREHOSE_ACTIVITY_ID_FLAGS(parent_id);
+	}
+
+	if (firehose_precise_timestamps_enabled()) {
+		flags |= firehose_activity_flags_precise_timestamp;
+	}
+	voucher_fields_t ignore_fields = VOUCHER_FIELD_ACTIVITY;
+	v = _voucher_clone(base, ignore_fields);
+	v->v_activity = va_id = _voucher_activity_id_allocate(flags);
+	v->v_activity_creator = _voucher_unique_pid;
+	v->v_parent_activity = parent_id;
+
+	static const firehose_stream_t streams[2] = {
+		firehose_stream_metadata,
+		firehose_stream_persist,
+	};
+	firehose_tracepoint_t ft;
+	uint64_t stamp = firehose_tracepoint_time(flags);
+
+	for (size_t i = 0; i < countof(streams); i++) {
+		ft = _voucher_activity_tracepoint_reserve(stamp, streams[i], pubsize,
+				0, NULL);
+		if (!fastpath(ft)) continue;
+
+		uint8_t *pubptr = ft->ft_data;
+		if (current_id) {
+			pubptr = _dispatch_memappend(pubptr, &current_id);
+		}
+		if (creator_id) {
+			pubptr = _dispatch_memappend(pubptr, &creator_id);
+		}
+		if (parent_id) {
+			pubptr = _dispatch_memappend(pubptr, &parent_id);
+		}
+		pubptr = _dispatch_memappend(pubptr, &va_id);
+		pubptr = _dispatch_memappend(pubptr, &location);
+		_voucher_activity_tracepoint_flush(ft, ftid);
+	}
+	*trace_id = ftid.ftid_value;
+	return v;
 }
 
 void
-voucher_activity_end(voucher_activity_id_t va_id)
+_voucher_activity_swap(firehose_activity_id_t old_id,
+		firehose_activity_id_t new_id)
 {
-	if (!va_id) return;
-	_voucher_activity_trace_activity_event(_voucher_activity_trace_id_release,
-			va_id, end);
-	voucher_t v = _voucher_get();
-	if (!v) return;
-	unsigned int activities =  v->v_activities, act_idx = activities;
-	voucher_activity_id_t *activity_ids = _voucher_activity_ids(v);
-	while (act_idx) {
-		if (activity_ids[act_idx-1] == va_id) break;
-		act_idx--;
+	if (_voucher_activity_disabled()) return;
+
+	firehose_tracepoint_id_u ftid = { .ftid = {
+		._namespace = firehose_tracepoint_namespace_activity,
+		._type = _firehose_tracepoint_type_activity_swap,
+	} };
+	uint16_t pubsize = 0;
+
+	if (old_id) {
+		FIREHOSE_TRACE_ID_SET_FLAG(ftid, base, has_current_aid);
+		pubsize += sizeof(firehose_activity_id_t);
 	}
-	if (!act_idx) return; // activity_id not found
-	pthread_priority_t priority = _voucher_get_priority(v);
-	mach_voucher_attr_recipe_size_t extra = _voucher_extra_size(v);
-	voucher_t nv = NULL;
-	if (act_idx > 1 || activities == 1) --activities;
-	if (priority || activities || extra || v->v_kvoucher) {
-		nv = _voucher_alloc(activities, priority, extra);
-		if (extra) {
-			memcpy(_voucher_extra_recipes(nv), _voucher_extra_recipes(v),extra);
-		}
+	if (new_id) {
+		FIREHOSE_TRACE_ID_SET_FLAG(ftid, activity, has_other_aid);
+		pubsize += sizeof(firehose_activity_id_t);
 	}
-	if (v->v_kvoucher) {
-		voucher_t kvb = v->v_kvbase ? v->v_kvbase : v;
-		nv->v_kvbase = _voucher_retain(kvb);
-		nv->v_kvoucher = kvb->v_kvoucher;
+
+	firehose_stream_t stream = firehose_stream_metadata;
+	firehose_tracepoint_t ft;
+	firehose_activity_flags_t flags = FIREHOSE_ACTIVITY_ID_FLAGS(old_id) |
+			FIREHOSE_ACTIVITY_ID_FLAGS(new_id);
+	uint64_t stamp = firehose_tracepoint_time(flags);
+
+	_dispatch_voucher_ktrace_activity_adopt(new_id);
+
+	ft = _voucher_activity_tracepoint_reserve(stamp, stream, pubsize, 0, NULL);
+	if (!fastpath(ft)) return;
+	uint8_t *pubptr = ft->ft_data;
+	if (old_id) pubptr = _dispatch_memappend(pubptr, &old_id);
+	if (new_id) pubptr = _dispatch_memappend(pubptr, &new_id);
+	_voucher_activity_tracepoint_flush(ft, ftid);
+}
+
+firehose_activity_id_t
+voucher_get_activity_id_and_creator(voucher_t v, uint64_t *creator_pid,
+		firehose_activity_id_t *parent_id)
+{
+	if (v == VOUCHER_CURRENT) {
+		v = _voucher_get();
 	}
-	bool atm_collect = !activities;
-	if (activities) {
-		voucher_activity_id_t *new_activity_ids = _voucher_activity_ids(nv);
-		if (act_idx == 1 && _voucher_activity_default) {
-			atm_collect = true;
-			// default to _voucher_activity_default base activity
-			new_activity_ids[0] = _voucher_activity_default->va_id;
-			memcpy(&new_activity_ids[1], &activity_ids[1],
-					(activities - 1) * sizeof(voucher_activity_id_t));
+	if (v == VOUCHER_NULL) {
+		if (creator_pid) *creator_pid = 0;
+		if (parent_id) *parent_id = FIREHOSE_ACTIVITY_ID_NULL;
+		return FIREHOSE_ACTIVITY_ID_NULL;
+	}
+	if (creator_pid) *creator_pid = v->v_activity_creator;
+	if (parent_id) *parent_id = v->v_parent_activity;
+	return v->v_activity;
+}
+
+firehose_activity_id_t
+voucher_get_activity_id(voucher_t v, firehose_activity_id_t *parent_id)
+{
+	return voucher_get_activity_id_and_creator(v, NULL, parent_id);
+}
+
+void
+voucher_activity_flush(firehose_stream_t stream)
+{
+	if (_voucher_activity_disabled()) return;
+	firehose_buffer_stream_flush(_firehose_task_buffer, stream);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline firehose_tracepoint_id_t
+_voucher_activity_trace(firehose_stream_t stream,
+		firehose_tracepoint_id_u ftid, uint64_t stamp,
+		const void *pubdata, size_t publen,
+		const void *privdata, size_t privlen)
+{
+	const uint16_t ft_size = offsetof(struct firehose_tracepoint_s, ft_data);
+	const size_t _firehose_chunk_payload_size =
+			sizeof(((struct firehose_buffer_chunk_s *)0)->fbc_data);
+
+	if (_voucher_activity_disabled()) return 0;
+
+	firehose_tracepoint_t ft;
+	firehose_activity_id_t va_id = 0;
+	firehose_buffer_chunk_t fbc;
+	uint8_t *privptr, *pubptr;
+	size_t pubsize = publen;
+	voucher_t ov = _voucher_get();
+	uint64_t creator_pid;
+
+	if ((va_id = _voucher_get_activity_id(ov, &creator_pid))) {
+		FIREHOSE_TRACE_ID_SET_FLAG(ftid, base, has_current_aid);
+		pubsize += sizeof(va_id);
+	}
+	if (FIREHOSE_TRACE_ID_HAS_FLAG(ftid, base, has_unique_pid)) {
+		if (creator_pid) {
+			pubsize += sizeof(creator_pid);
 		} else {
-			if (v->v_activity) {
-				nv->v_activity = _voucher_activity_retain(v->v_activity);
-				nv->v_atm = _voucher_atm_retain(v->v_atm);
-			}
-			memcpy(new_activity_ids, activity_ids,
-					--act_idx * sizeof(voucher_activity_id_t));
-			if (act_idx < activities) {
-				memcpy(&new_activity_ids[act_idx], &activity_ids[act_idx+1],
-						(activities - act_idx) * sizeof(voucher_activity_id_t));
-			}
+			FIREHOSE_TRACE_ID_CLEAR_FLAG(ftid, base, has_unique_pid);
 		}
-	}
-	_voucher_swap(v, nv);
-}
-
-unsigned int
-voucher_get_activities(voucher_activity_id_t *entries, unsigned int *count)
-{
-	voucher_t v = _voucher_get();
-	if (!v || !count) return 0;
-	unsigned int activities = v->v_activities;
-	if (*count < activities) activities = *count;
-	*count = v->v_activities;
-	voucher_activity_id_t *activity_ids = _voucher_activity_ids(v);
-	if (activities && entries) {
-		memcpy(entries, activity_ids, activities *
-				sizeof(voucher_activity_id_t));
-	}
-	return activities;
-}
-
-uint8_t
-voucher_activity_get_namespace(void)
-{
-	voucher_t v = _voucher_get();
-	if (!v || !v->v_activity) return 0;
-	voucher_activity_trace_id_t trace_id = v->v_activity->va_trace_id;
-	uint8_t cns = (uint8_t)(trace_id >>
-			_voucher_activity_trace_id_code_namespace_shift);
-	return cns;
-}
-
-DISPATCH_NOINLINE
-_voucher_activity_tracepoint_t
-_voucher_activity_buffer_tracepoint_acquire_slow(_voucher_activity_t *vap,
-		_voucher_activity_buffer_header_t *vabp, unsigned int slots,
-		size_t strsize, uint16_t *stroffsetp)
-{
-	_voucher_activity_t act;
-	_voucher_activity_buffer_header_t vab;
-	_voucher_activity_tracepoint_t vat = NULL;
-	voucher_t v = _voucher_get();
-	if (v && v->v_activity) {
-		act = v->v_activity;
 	} else {
-		dispatch_once_f(&_voucher_activity_heap_pred, NULL,
-				_voucher_activity_heap_init);
-		if (_voucher_activity_disabled()) return NULL;
-		act = _voucher_activity_default;
+		creator_pid = 0;
 	}
-	vab = act->va_current_buffer;
-	if (act == *vap && vab != *vabp) {
-		goto retry; // another slowpath raced us
+
+	if (privlen) {
+		FIREHOSE_TRACE_ID_SET_FLAG(ftid, log, has_private_data);
+		pubsize += sizeof(struct firehose_buffer_range_s);
 	}
-	do {
-		vab = _voucher_activity_buffer_alloc(act, vab);
-		if (!vab) break;
-retry:
-		vat = _voucher_activity_buffer_tracepoint_acquire(vab, slots, strsize,
-				stroffsetp);
-	} while (!vat);
-	*vap = act;
-	*vabp = vab;
-	return vat;
+
+	if (slowpath(ft_size + pubsize + privlen > _firehose_chunk_payload_size)) {
+		DISPATCH_CLIENT_CRASH(ft_size + pubsize + privlen, "Log is too large");
+	}
+
+	ft = _voucher_activity_tracepoint_reserve(stamp, stream, (uint16_t)pubsize,
+				(uint16_t)privlen, &privptr);
+	if (!fastpath(ft)) return 0;
+	pubptr = ft->ft_data;
+	if (va_id) {
+		pubptr = _dispatch_memappend(pubptr, &va_id);
+	}
+	if (creator_pid) {
+		pubptr = _dispatch_memappend(pubptr, &creator_pid);
+	}
+	if (privlen) {
+		fbc = firehose_buffer_chunk_for_address(ft);
+		struct firehose_buffer_range_s range = {
+			.fbr_offset = (uint16_t)(privptr - fbc->fbc_start),
+			.fbr_length = (uint16_t)privlen,
+		};
+		pubptr = _dispatch_memappend(pubptr, &range);
+		_dispatch_mempcpy(privptr, privdata, privlen);
+	}
+	_dispatch_mempcpy(pubptr, pubdata, publen);
+	_voucher_activity_tracepoint_flush(ft, ftid);
+	return ftid.ftid_value;
 }
 
-static inline void
-_voucher_activity_trace_fault(voucher_activity_trace_id_t trace_id)
+firehose_tracepoint_id_t
+voucher_activity_trace(firehose_stream_t stream,
+		firehose_tracepoint_id_t trace_id, uint64_t timestamp,
+		const void *pubdata, size_t publen)
 {
-	if (!slowpath(_voucher_activity_trace_id_is_subtype(trace_id, error))) {
-		return;
-	}
-	mach_voucher_attr_command_t atm_cmd = ATM_ACTION_COLLECT;
-	if (_voucher_activity_trace_id_is_subtype(trace_id, fault)) {
-		atm_cmd = ATM_ACTION_LOGFAIL;
-	}
-	return _voucher_atm_fault(atm_cmd);
+	firehose_tracepoint_id_u ftid = { .ftid_value = trace_id };
+	return _voucher_activity_trace(stream, ftid, timestamp, pubdata, publen,
+			NULL, 0);
 }
 
-uint64_t
-voucher_activity_trace(voucher_activity_trace_id_t trace_id, uint64_t location,
-		void *buffer, size_t length)
+firehose_tracepoint_id_t
+voucher_activity_trace_with_private_strings(firehose_stream_t stream,
+		firehose_tracepoint_id_t trace_id, uint64_t timestamp,
+		const void *pubdata, size_t publen,
+		const void *privdata, size_t privlen)
 {
-	if (!_voucher_activity_trace_id_enabled(trace_id)) return 0;
-	_voucher_activity_t act;
-	_voucher_activity_buffer_header_t vab;
-	_voucher_activity_tracepoint_t vat;
-	const unsigned int slots = length <= sizeof(vat->vat_data) ? 1 : 2;
-	act = _voucher_activity_get();
-	vab = _voucher_activity_buffer_get_from_activity(act);
-	vat = _voucher_activity_buffer_tracepoint_acquire(vab, slots, 0, NULL);
-	if (!vat) {
-		vat = _voucher_activity_buffer_tracepoint_acquire_slow(&act, &vab,
-				slots, 0, NULL);
-	}
-	if (!vat) return 0;
-	uint64_t timestamp = _voucher_activity_tracepoint_init_with_id(vat,
-			trace_id, location, true);
-	void *tbuf = vat->vat_data;
-	size_t tlen = sizeof(vat->vat_data);
-	if (length < tlen) {
-		memcpy(tbuf, buffer, length);
-	} else {
-		memcpy(tbuf, buffer, tlen);
-	}
-	if (length > tlen) {
-		vat->vat_flags |= _voucher_activity_trace_flag_wide_first;
-		buffer += tlen;
-		length -= tlen;
-		(++vat)->vat_flags = _voucher_activity_trace_flag_tracepoint |
-				_voucher_activity_trace_flag_wide_second;
-		vat->vat_type = 0; vat->vat_namespace = 0;
-		tbuf = (void*)vat + offsetof(typeof(*vat), vat_code);
-		tlen = sizeof(*vat) - offsetof(typeof(*vat), vat_code);
-		if (length < tlen) {
-			memcpy(tbuf, buffer, length);
-		} else {
-			memcpy(tbuf, buffer, tlen);
-		}
-	}
-	_voucher_activity_trace_fault(trace_id);
-	if (_voucher_activity_buffer_tracepoint_release(vab)) {
-		_voucher_activity_firehose_push(act, vab);
-	}
-	return timestamp;
-}
-
-uint64_t
-voucher_activity_trace_strings(voucher_activity_trace_id_t trace_id,
-		uint64_t location, void *buffer, size_t length, const char *strings[],
-		size_t string_lengths[], size_t strings_size)
-{
-	if (!_voucher_activity_trace_id_enabled(trace_id)) return 0;
-	_voucher_activity_t act;
-	_voucher_activity_buffer_header_t vab;
-	_voucher_activity_tracepoint_t vat;
-	uint16_t offset;
-	const unsigned int slots = length <= sizeof(vat->vat_data) ? 1 : 2;
-	strings_size = MIN(strings_size, _voucher_activity_maxsize -
-			slots * sizeof(struct _voucher_activity_tracepoint_s));
-	act = _voucher_activity_get();
-	vab = _voucher_activity_buffer_get_from_activity(act);
-	vat = _voucher_activity_buffer_tracepoint_acquire(vab, slots, strings_size,
-			&offset);
-	if (!vat) {
-		vat = _voucher_activity_buffer_tracepoint_acquire_slow(&act, &vab,
-				slots, strings_size, &offset);
-	}
-	if (!vat) return 0;
-	uint64_t timestamp = _voucher_activity_tracepoint_init_with_id(vat,
-			trace_id, location, false);
-	vat->vat_flags |= _voucher_activity_trace_flag_tracepoint_strings;
-	vat->vat_stroff.vats_offset = offset;
-	void *tbuf = vat->vat_stroff.vats_data;
-	size_t tlen = sizeof(vat->vat_stroff.vats_data);
-	if (length < tlen) {
-		memcpy(tbuf, buffer, length);
-	} else {
-		memcpy(tbuf, buffer, tlen);
-	}
-	if (length > tlen) {
-		vat->vat_flags |= _voucher_activity_trace_flag_wide_first;
-		buffer += tlen;
-		length -= tlen;
-		(++vat)->vat_flags = _voucher_activity_trace_flag_tracepoint |
-				_voucher_activity_trace_flag_wide_second;
-		vat->vat_type = 0; vat->vat_namespace = 0;
-		tbuf = (void*)vat + offsetof(typeof(*vat), vat_code);
-		tlen = sizeof(*vat) - offsetof(typeof(*vat), vat_code);
-		if (length < tlen) {
-			memcpy(tbuf, buffer, length);
-		} else {
-			memcpy(tbuf, buffer, tlen);
-		}
-	}
-	const uint16_t offsetend = offset - (uint16_t)strings_size;
-	char *b = (char*)vab + _voucher_activity_buffer_size;
-	int i = 0;
-	while (offset > offsetend && strings[i]) {
-		size_t maxsize = MIN(string_lengths[i] + 1, offset - offsetend);
-		size_t len = strlcpy(b - offset, strings[i++], maxsize);
-		offset -= MIN(len + 1, maxsize);
-	}
-	_voucher_activity_trace_fault(trace_id);
-	if (_voucher_activity_buffer_tracepoint_release(vab)) {
-		_voucher_activity_firehose_push(act, vab);
-	}
-	return timestamp;
-}
-
-uint64_t
-voucher_activity_trace_args(voucher_activity_trace_id_t trace_id,
-		uint64_t location, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3,
-		uintptr_t arg4)
-{
-	if (!_voucher_activity_trace_id_enabled(trace_id)) return 0;
-	_voucher_activity_t act;
-	_voucher_activity_buffer_header_t vab;
-	_voucher_activity_tracepoint_t vat;
-	act = _voucher_activity_get();
-	vab = _voucher_activity_buffer_get_from_activity(act);
-	vat = _voucher_activity_buffer_tracepoint_acquire(vab, 1, 0, NULL);
-	if (!vat) {
-		vat = _voucher_activity_buffer_tracepoint_acquire_slow(&act, &vab, 1,
-				0, NULL);
-	}
-	if (!vat) return 0;
-	uint64_t timestamp = _voucher_activity_tracepoint_init_with_id(vat,
-			trace_id, location, true);
-	vat->vat_flags |= _voucher_activity_trace_flag_tracepoint_args;
-	vat->vat_data[0] = arg1;
-	vat->vat_data[1] = arg2;
-	vat->vat_data[2] = arg3;
-	vat->vat_data[3] = arg4;
-	_voucher_activity_trace_fault(trace_id);
-	if (_voucher_activity_buffer_tracepoint_release(vab)) {
-		_voucher_activity_firehose_push(act, vab);
-	}
-	return timestamp;
+	firehose_tracepoint_id_u ftid = { .ftid_value = trace_id };
+	return _voucher_activity_trace(stream, ftid, timestamp,
+			pubdata, publen, privdata, privlen);
 }
 
 #pragma mark -
@@ -2311,40 +1374,27 @@ _voucher_debug(voucher_t v, char* buf, size_t bufsiz)
 	size_t offset = 0;
 	#define bufprintf(...) \
 			offset += dsnprintf(&buf[offset], bufsiz - offset, ##__VA_ARGS__)
-	bufprintf("voucher[%p] = { xrefcnt = 0x%x, refcnt = 0x%x, ", v,
+	bufprintf("voucher[%p] = { xrefcnt = 0x%x, refcnt = 0x%x", v,
 			v->os_obj_xref_cnt + 1, v->os_obj_ref_cnt + 1);
 
 	if (v->v_kvbase) {
-		bufprintf("base voucher %p, ", v->v_kvbase);
+		bufprintf(", base voucher %p", v->v_kvbase);
 	}
 	if (v->v_kvoucher) {
-		bufprintf("kvoucher%s 0x%x, ", v->v_kvoucher == v->v_ipc_kvoucher ?
+		bufprintf(", kvoucher%s 0x%x", v->v_kvoucher == v->v_ipc_kvoucher ?
 				" & ipc kvoucher" : "", v->v_kvoucher);
 	}
 	if (v->v_ipc_kvoucher && v->v_ipc_kvoucher != v->v_kvoucher) {
-		bufprintf("ipc kvoucher 0x%x, ", v->v_ipc_kvoucher);
+		bufprintf(", ipc kvoucher 0x%x", v->v_ipc_kvoucher);
 	}
-	if (v->v_has_priority) {
-		bufprintf("QOS 0x%x, ", *_voucher_priority(v));
-	}
-	if (v->v_activities) {
-		voucher_activity_id_t *activity_ids = _voucher_activity_ids(v);
-		bufprintf("activity IDs = { ");
-		unsigned int i;
-		for (i = 0; i < v->v_activities; i++) {
-			bufprintf("0x%llx, ", *activity_ids++);
-		}
-		bufprintf("}, ");
+	if (v->v_priority) {
+		bufprintf(", QOS 0x%x", v->v_priority);
 	}
 	if (v->v_activity) {
-		_voucher_activity_t va = v->v_activity;
-		_voucher_atm_t vatm = va->va_atm;
-		bufprintf("activity[%p] = { ID 0x%llx, ref %d, atm[%p] = { "
-				"AID 0x%llx, ref %d, kvoucher 0x%x } }, ", va, va->va_id,
-				va->va_refcnt + 1, va->va_atm, vatm->vatm_id,
-				vatm->vatm_refcnt + 1, vatm->vatm_kvoucher);
+		bufprintf(", activity 0x%llx (pid: 0x%16llx, parent 0x%llx)",
+				v->v_activity, v->v_activity_creator, v->v_parent_activity);
 	}
-	bufprintf("}");
+	bufprintf(" }");
 	return offset;
 }
 
@@ -2416,6 +1466,13 @@ _voucher_dealloc_mach_voucher(mach_voucher_t kv)
 }
 
 mach_voucher_t
+_voucher_get_mach_voucher(voucher_t voucher)
+{
+	(void)voucher;
+	return MACH_VOUCHER_NULL;
+}
+
+mach_voucher_t
 _voucher_create_mach_voucher_with_priority(voucher_t voucher,
 		pthread_priority_t priority)
 {
@@ -2466,6 +1523,33 @@ _voucher_dispose(voucher_t voucher)
 	(void)voucher;
 }
 
+#if VOUCHER_EXPORT_PERSONA_SPI
+uid_t
+voucher_get_current_persona(void)
+{
+	return PERSONA_ID_NONE;
+}
+
+int
+voucher_get_current_persona_originator_info(struct proc_persona_info *persona_info)
+{
+	(void)persona_info;
+	return -1;
+}
+
+int
+voucher_get_current_persona_proximate_info(struct proc_persona_info *persona_info)
+{
+	(void)persona_info;
+	return -1;
+}
+#endif
+
+void
+_voucher_activity_debug_channel_init(void)
+{
+}
+
 void
 _voucher_atfork_child(void)
 {
@@ -2479,88 +1563,73 @@ _voucher_init(void)
 void*
 voucher_activity_get_metadata_buffer(size_t *length)
 {
-	*length = 0;
+    *length = 0;
+    return NULL;
+}
+
+voucher_t
+voucher_activity_create(firehose_tracepoint_id_t trace_id,
+		voucher_t base, firehose_activity_flags_t flags, uint64_t location)
+{
+	(void)trace_id; (void)base; (void)flags; (void)location;
 	return NULL;
 }
 
+voucher_t
+voucher_activity_create_with_location(firehose_tracepoint_id_t *trace_id,
+		voucher_t base, firehose_activity_flags_t flags, uint64_t location)
+{
+	(void)trace_id; (void)base; (void)flags; (void)location;
+	return NULL;
+}
+
+firehose_activity_id_t
+voucher_get_activity_id(voucher_t voucher, firehose_activity_id_t *parent_id)
+{
+	(void)voucher; (void)parent_id;
+	return 0;
+}
+
+firehose_activity_id_t
+voucher_get_activity_id_and_creator(voucher_t voucher, uint64_t *creator_pid,
+		firehose_activity_id_t *parent_id)
+{
+	if (creator_pid) *creator_pid = 0;
+	(void)voucher; (void)parent_id;
+	return 0;
+}
+
+firehose_tracepoint_id_t
+voucher_activity_trace(firehose_stream_t stream,
+		firehose_tracepoint_id_t trace_id, uint64_t timestamp,
+		const void *pubdata, size_t publen)
+{
+	(void)stream; (void)trace_id; (void)timestamp;
+	(void)pubdata; (void)publen;
+	return 0;
+}
+
+firehose_tracepoint_id_t
+voucher_activity_trace_with_private_strings(firehose_stream_t stream,
+		firehose_tracepoint_id_t trace_id, uint64_t timestamp,
+		const void *pubdata, size_t publen,
+		const void *privdata, size_t privlen)
+{
+	(void)stream; (void)trace_id; (void)timestamp;
+	(void)pubdata; (void)publen; (void)privdata; (void)privlen;
+	return 0;
+}
+
 void
-voucher_activity_buffer_hook_install_4libtrace(
-		_voucher_activity_buffer_hook_t hook)
+voucher_activity_flush(firehose_stream_t stream)
 {
-	(void)hook;
+	(void)stream;
 }
 
 void
-_voucher_activity_heap_pressure_normal(void)
+voucher_activity_initialize_4libtrace(voucher_activity_hooks_t hooks)
 {
-}
-
-void
-_voucher_activity_heap_pressure_warn(void)
-{
-}
-
-voucher_activity_id_t
-voucher_activity_start_with_location(voucher_activity_trace_id_t trace_id,
-		uint64_t location, voucher_activity_flag_t flags)
-{
-	(void)trace_id; (void)location; (void)flags;
-	return 0;
-}
-
-voucher_activity_id_t
-voucher_activity_start(voucher_activity_trace_id_t trace_id,
-		voucher_activity_flag_t flags)
-{
-	(void)trace_id; (void)flags;
-	return 0;
-}
-
-void
-voucher_activity_end(voucher_activity_id_t activity_id)
-{
-	(void)activity_id;
-}
-
-unsigned int
-voucher_get_activities(voucher_activity_id_t *entries, unsigned int *count)
-{
-	(void)entries; (void)count;
-	return 0;
-}
-
-uint8_t
-voucher_activity_get_namespace(void)
-{
-	return 0;
-}
-
-uint64_t
-voucher_activity_trace(voucher_activity_trace_id_t trace_id, uint64_t location,
-		void *buffer, size_t length)
-{
-	(void)trace_id; (void)location; (void)buffer; (void)length;
-	return 0;
-}
-
-uint64_t
-voucher_activity_trace_strings(voucher_activity_trace_id_t trace_id,
-		uint64_t location, void *buffer, size_t length, const char *strings[],
-		size_t string_lengths[], size_t strings_size)
-{
-	(void)trace_id; (void)location; (void)buffer; (void)length; (void)strings;
-	(void)string_lengths; (void)strings_size;
-	return 0;
-}
-
-uint64_t
-voucher_activity_trace_args(voucher_activity_trace_id_t trace_id,
-		uint64_t location, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3,
-		uintptr_t arg4)
-{
-	(void)trace_id; (void)location;
-	(void)arg1; (void)arg2; (void)arg3; (void)arg4;
-	return 0;
+	(void)hooks;
 }
 
 size_t
@@ -2571,3 +1640,17 @@ _voucher_debug(voucher_t v, char* buf, size_t bufsiz)
 }
 
 #endif // VOUCHER_USE_MACH_VOUCHER
+
+#else // DISPATCH_VARIANT_DYLD_STUB
+
+firehose_activity_id_t
+voucher_get_activity_id_4dyld(void)
+{
+#if VOUCHER_USE_MACH_VOUCHER
+	return _voucher_get_activity_id(_voucher_get(), NULL);
+#else
+	return 0;
+#endif
+}
+
+#endif // DISPATCH_VARIANT_DYLD_STUB

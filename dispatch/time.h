@@ -33,6 +33,8 @@
 #include <mach/clock_types.h>
 #endif
 
+DISPATCH_ASSUME_NONNULL_BEGIN
+
 #ifdef NSEC_PER_SEC
 #undef NSEC_PER_SEC
 #endif
@@ -114,8 +116,10 @@ dispatch_time(dispatch_time_t when, int64_t delta);
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_time_t
-dispatch_walltime(const struct timespec *when, int64_t delta);
+dispatch_walltime(const struct timespec *_Nullable when, int64_t delta);
 
 __END_DECLS
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif

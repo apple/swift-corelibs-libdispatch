@@ -1,5 +1,6 @@
+#!/bin/bash -e
 #
-# Copyright (c) 2013 Apple Inc. All rights reserved.
+# Copyright (c) 2016 Apple Inc. All rights reserved.
 #
 # @APPLE_APACHE_LICENSE_HEADER_START@
 #
@@ -17,3 +18,9 @@
 #
 # @APPLE_APACHE_LICENSE_HEADER_END@
 #
+
+if [[ "x${ACTION}" == "xinstall" && "x${SKIP_INSTALL}" == "xNO" ]]; then
+	$@
+else
+	exit 0
+fi

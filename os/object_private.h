@@ -53,12 +53,8 @@
 #define OS_OBJECT_EXPORT extern
 #endif
 
-#if OS_OBJECT_USE_OBJC && defined(__has_feature)
-#if __has_feature(objc_arc)
+#if OS_OBJECT_USE_OBJC && __has_feature(objc_arc)
 #define _OS_OBJECT_OBJC_ARC 1
-#else
-#define _OS_OBJECT_OBJC_ARC 0
-#endif
 #else
 #define _OS_OBJECT_OBJC_ARC 0
 #endif
@@ -71,10 +67,28 @@
         int volatile xref_cnt
 
 #if OS_OBJECT_HAVE_OBJC_SUPPORT
+#define OS_OBJECT_CLASS_SYMBOL(name) OS_##name##_class
+#if TARGET_OS_MAC && !TARGET_OS_SIMULATOR && defined(__i386__)
+#define OS_OBJECT_HAVE_OBJC1 1
+#define OS_OBJECT_HAVE_OBJC2 0
+#define OS_OBJC_CLASS_RAW_SYMBOL_NAME(name) \
+		".objc_class_name_" OS_STRINGIFY(name)
+#define _OS_OBJECT_CLASS_HEADER() \
+		const void *_os_obj_objc_isa
+#else
+#define OS_OBJECT_HAVE_OBJC1 0
+#define OS_OBJECT_HAVE_OBJC2 1
+#define OS_OBJC_CLASS_RAW_SYMBOL_NAME(name) "_OBJC_CLASS_$_" OS_STRINGIFY(name)
 // Must match size of compiler-generated OBJC_CLASS structure rdar://10640168
 #define _OS_OBJECT_CLASS_HEADER() \
 		void *_os_obj_objc_class_t[5]
+#endif
+#define OS_OBJECT_OBJC_CLASS_DECL(name) \
+		extern void *OS_OBJECT_CLASS_SYMBOL(name) \
+				asm(OS_OBJC_CLASS_RAW_SYMBOL_NAME(OS_OBJECT_CLASS(name)))
 #else
+#define OS_OBJECT_HAVE_OBJC1 0
+#define OS_OBJECT_HAVE_OBJC2 0
 #define _OS_OBJECT_CLASS_HEADER() \
 		void (*_os_obj_xref_dispose)(_os_object_t); \
 		void (*_os_obj_dispose)(_os_object_t)
@@ -82,7 +96,22 @@
 
 #define OS_OBJECT_CLASS(name) OS_##name
 
-#if OS_OBJECT_USE_OBJC
+#if OS_OBJECT_USE_OBJC && OS_OBJECT_SWIFT3
+@interface OS_OBJECT_CLASS(object) (OSObjectPrivate)
+- (void)_xref_dispose;
+- (void)_dispose;
+@end
+OS_OBJECT_DECL_PROTOCOL(object, <NSObject>);
+typedef OS_OBJECT_CLASS(object) *_os_object_t;
+#define _OS_OBJECT_DECL_SUBCLASS_INTERFACE(name, super) \
+		@interface OS_OBJECT_CLASS(name) : OS_OBJECT_CLASS(super) \
+		<OS_OBJECT_CLASS(name)> \
+		@end
+#define _OS_OBJECT_DECL_PROTOCOL(name, super) \
+		OS_OBJECT_DECL_PROTOCOL(name, <OS_OBJECT_CLASS(super)>)
+#define _OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL(name, super) \
+		OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL(name, super)
+#elif OS_OBJECT_USE_OBJC
 __OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
 OS_OBJECT_EXPORT
 @interface OS_OBJECT_CLASS(object) : NSObject
@@ -95,8 +124,13 @@ typedef OS_OBJECT_CLASS(object) *_os_object_t;
 		<OS_OBJECT_CLASS(name)> \
 		@end
 #else
+#define _OS_OBJECT_DECL_SUBCLASS_INTERFACE(name, super)
+#define _OS_OBJECT_DECL_PROTOCOL(name, super)
+#define _OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL(name, super)
 typedef struct _os_object_s *_os_object_t;
 #endif
+
+OS_ASSUME_NONNULL_BEGIN
 
 __BEGIN_DECLS
 
@@ -104,45 +138,55 @@ __BEGIN_DECLS
 
 __OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
 OS_OBJECT_EXPORT OS_OBJECT_MALLOC OS_OBJECT_WARN_RESULT OS_OBJECT_NOTHROW
+OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 _os_object_t
 _os_object_alloc(const void *cls, size_t size);
 
 __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
 OS_OBJECT_EXPORT OS_OBJECT_MALLOC OS_OBJECT_WARN_RESULT OS_OBJECT_NOTHROW
+OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 _os_object_t
 _os_object_alloc_realized(const void *cls, size_t size);
 
 __OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
 OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
+OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 void _os_object_dealloc(_os_object_t object);
 
 __OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
 OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
+OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 _os_object_t
 _os_object_retain(_os_object_t object);
 
 __OSX_AVAILABLE_STARTING(__MAC_10_11,__IPHONE_9_0)
 OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
+OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 _os_object_t
 _os_object_retain_with_resurrect(_os_object_t obj);
 
 __OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
 OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
+OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 void
 _os_object_release(_os_object_t object);
 
 __OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
 OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
+OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 _os_object_t
 _os_object_retain_internal(_os_object_t object);
 
 __OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
 OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
+OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 void
 _os_object_release_internal(_os_object_t object);
 
 #endif // !_OS_OBJECT_OBJC_ARC
 
 __END_DECLS
+
+OS_ASSUME_NONNULL_END
 
 #endif

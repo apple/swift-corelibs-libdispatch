@@ -525,19 +525,24 @@ may be one or more of the following:
 The referenced node was removed from the filesystem namespace via
 .Xr unlink 2 .
 .It \(bu DISPATCH_VNODE_WRITE
-A write to the referenced file occurred
+A write to the referenced file occurred.
 .It \(bu DISPATCH_VNODE_EXTEND
-The referenced file was extended
+The referenced file was extended.
 .It \(bu DISPATCH_VNODE_ATTRIB
-The metadata attributes of the referenced node have changed
+The metadata attributes of the referenced node have changed.
 .It \(bu DISPATCH_VNODE_LINK
-The link count on the referenced node has changed
+The link count on the referenced node has changed.
 .It \(bu DISPATCH_VNODE_RENAME
-The referenced node was renamed
+The referenced node was renamed.
 .It \(bu DISPATCH_VNODE_REVOKE
 Access to the referenced node was revoked via
 .Xr revoke 2
 or the underlying fileystem was unmounted.
+.It \(bu DISPATCH_VNODE_FUNLOCK
+The referenced file was unlocked by
+.Xr flock 2
+or
+.Xr close 2 .
 .El
 .Pp
 The data returned by

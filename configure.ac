@@ -58,13 +58,6 @@ AC_ARG_WITH([apple-objc4-source],
   apple_objc4_source_runtime_path=${withval}/runtime
 ])
 
-AC_ARG_WITH([apple-libauto-source],
-  [AS_HELP_STRING([--with-apple-libauto-source],
-    [Specify path to Apple libauto source])], [
-  apple_libauto_source_path=${withval}
-  CPPFLAGS="$CPPFLAGS -isystem $apple_libauto_source_path"
-])
-
 AC_CACHE_CHECK([for System.framework/PrivateHeaders], dispatch_cv_system_privateheaders,
   [AS_IF([test -d /System/Library/Frameworks/System.framework/PrivateHeaders],
     [dispatch_cv_system_privateheaders=yes], [dispatch_cv_system_privateheaders=no])]
@@ -267,6 +260,7 @@ AC_CHECK_HEADER([mach/mach.h], [
   have_mach=true], [have_mach=false]
 )
 AM_CONDITIONAL(USE_MIG, $have_mach)
+AC_CHECK_FUNCS([mach_port_construct])
 
 #
 # Find functions and declarations we care about.
@@ -277,7 +271,7 @@ AC_CHECK_DECLS([NOTE_NONE, NOTE_REAP, NOTE_REVOKE, NOTE_SIGNAL], [], [],
   [[#include <sys/event.h>]])
 AC_CHECK_DECLS([FD_COPY], [], [], [[#include <sys/select.h>]])
 AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])
-AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK], [], [], [[#include <sys/mount.h>]])
+AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK, VQ_QUOTA], [], [], [[#include <sys/mount.h>]])
 AC_CHECK_DECLS([program_invocation_short_name], [], [], [[#include <errno.h>]])
 AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sysconf])
 

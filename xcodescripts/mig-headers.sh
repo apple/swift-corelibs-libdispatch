@@ -26,4 +26,10 @@ for a in ${ARCHS}; do
 	xcrun mig ${OTHER_MIGFLAGS} -arch $a -header "${SCRIPT_OUTPUT_FILE_0}" \
 			-sheader "${SCRIPT_OUTPUT_FILE_1}" -user /dev/null \
 			-server /dev/null "${SCRIPT_INPUT_FILE_0}"
+	xcrun mig ${OTHER_MIGFLAGS} -arch $a -header "${SCRIPT_OUTPUT_FILE_2}" \
+			-sheader "${SCRIPT_OUTPUT_FILE_3}" -user /dev/null \
+			-server /dev/null "${SCRIPT_INPUT_FILE_1}"
+	xcrun mig ${OTHER_MIGFLAGS} -arch $a -header "${SCRIPT_OUTPUT_FILE_4}" \
+			-sheader "${SCRIPT_OUTPUT_FILE_5}" -user /dev/null \
+			-server /dev/null "${SCRIPT_INPUT_FILE_2}"
 done

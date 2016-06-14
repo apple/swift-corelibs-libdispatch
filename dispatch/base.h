@@ -25,6 +25,22 @@
 #error "Please #include <dispatch/dispatch.h> instead of this file directly."
 #endif
 
+#ifndef __has_builtin
+#define __has_builtin(x) 0
+#endif
+#ifndef __has_include
+#define __has_include(x) 0
+#endif
+#ifndef __has_feature
+#define __has_feature(x) 0
+#endif
+#ifndef __has_attribute
+#define __has_attribute(x) 0
+#endif
+#ifndef __has_extension
+#define __has_extension(x) 0
+#endif
+
 #if __GNUC__
 #define DISPATCH_NORETURN __attribute__((__noreturn__))
 #define DISPATCH_NOTHROW __attribute__((__nothrow__))
@@ -85,6 +101,14 @@
 #define DISPATCH_UNAVAILABLE
 #endif
 
+#ifndef DISPATCH_ALIAS_V2
+#if TARGET_OS_MAC
+#define DISPATCH_ALIAS_V2(sym)	 __asm__("_" #sym "$V2")
+#else
+#define DISPATCH_ALIAS_V2(sym)
+#endif
+#endif
+
 #if TARGET_OS_WIN32 && defined(__DISPATCH_BUILDING_DISPATCH__) && \
 		defined(__cplusplus)
 #define DISPATCH_EXPORT extern "C" extern __declspec(dllexport)
@@ -108,23 +132,58 @@
 
 #if __GNUC__
 #define DISPATCH_EXPECT(x, v) __builtin_expect((x), (v))
+#define dispatch_compiler_barrier()  __asm__ __volatile__("" ::: "memory")
 #else
 #define DISPATCH_EXPECT(x, v) (x)
+#define dispatch_compiler_barrier()  do { } while (0)
+#endif
+
+#if __has_attribute(not_tail_called)
+#define DISPATCH_NOT_TAIL_CALLED __attribute__((__not_tail_called__))
+#else
+#define DISPATCH_NOT_TAIL_CALLED
+#endif
+
+#if __has_builtin(__builtin_assume)
+#define DISPATCH_COMPILER_CAN_ASSUME(expr) __builtin_assume(expr)
+#else
+#define DISPATCH_COMPILER_CAN_ASSUME(expr) ((void)(expr))
+#endif
+
+#if __has_attribute(noescape)
+#define DISPATCH_NOESCAPE __attribute__((__noescape__))
+#else
+#define DISPATCH_NOESCAPE
+#endif
+
+#if __has_feature(assume_nonnull)
+#define DISPATCH_ASSUME_NONNULL_BEGIN _Pragma("clang assume_nonnull begin")
+#define DISPATCH_ASSUME_NONNULL_END   _Pragma("clang assume_nonnull end")
+#else
+#define DISPATCH_ASSUME_NONNULL_BEGIN
+#define DISPATCH_ASSUME_NONNULL_END
+#endif
+
+#if !__has_feature(nullability)
+#ifndef _Nullable
+#define _Nullable
+#endif
+#ifndef _Nonnull
+#define _Nonnull
+#endif
+#ifndef _Null_unspecified
+#define _Null_unspecified
+#endif
 #endif
 
 #ifndef DISPATCH_RETURNS_RETAINED_BLOCK
-#if defined(__has_attribute)
 #if __has_attribute(ns_returns_retained)
 #define DISPATCH_RETURNS_RETAINED_BLOCK __attribute__((__ns_returns_retained__))
 #else
 #define DISPATCH_RETURNS_RETAINED_BLOCK
 #endif
-#else
-#define DISPATCH_RETURNS_RETAINED_BLOCK
-#endif
 #endif
 
-#if defined(__has_feature) && defined(__has_extension)
 #if __has_feature(objc_fixed_enum) || __has_extension(cxx_strong_enums)
 #define DISPATCH_ENUM(name, type, ...) \
 		typedef enum : type { __VA_ARGS__ } name##_t
@@ -132,17 +191,47 @@
 #define DISPATCH_ENUM(name, type, ...) \
 		enum { __VA_ARGS__ }; typedef type name##_t
 #endif
+
 #if __has_feature(enumerator_attributes)
 #define DISPATCH_ENUM_AVAILABLE_STARTING __OSX_AVAILABLE_STARTING
+#define DISPATCH_ENUM_AVAILABLE(os, version) __##os##_AVAILABLE(version)
 #else
 #define DISPATCH_ENUM_AVAILABLE_STARTING(...)
-#endif
-#else
-#define DISPATCH_ENUM(name, type, ...) \
-		enum { __VA_ARGS__ }; typedef type name##_t
-#define DISPATCH_ENUM_AVAILABLE_STARTING(...)
+#define DISPATCH_ENUM_AVAILABLE(...)
 #endif
 
-typedef void (*dispatch_function_t)(void *);
+#if defined(SWIFT_SDK_OVERLAY_DISPATCH_EPOCH) && \
+		SWIFT_SDK_OVERLAY_DISPATCH_EPOCH >= 2
+#define DISPATCH_SWIFT3_OVERLAY 1
+#else
+#define DISPATCH_SWIFT3_OVERLAY 0
+#endif // SWIFT_SDK_OVERLAY_DISPATCH_EPOCH >= 2
+
+#if __has_feature(attribute_availability_swift)
+#define DISPATCH_SWIFT_UNAVAILABLE(_msg) \
+		__attribute__((__availability__(swift, unavailable, message=_msg)))
+#else
+#define DISPATCH_SWIFT_UNAVAILABLE(_msg)
+#endif
+
+#if DISPATCH_SWIFT3_OVERLAY
+#define DISPATCH_SWIFT3_UNAVAILABLE(_msg) DISPATCH_SWIFT_UNAVAILABLE(_msg)
+#else
+#define DISPATCH_SWIFT3_UNAVAILABLE(_msg)
+#endif
+
+#if __has_attribute(swift_private)
+#define DISPATCH_REFINED_FOR_SWIFT __attribute__((__swift_private__))
+#else
+#define DISPATCH_REFINED_FOR_SWIFT
+#endif
+
+#if __has_attribute(swift_name)
+#define DISPATCH_SWIFT_NAME(_name) __attribute__((__swift_name__(#_name)))
+#else
+#define DISPATCH_SWIFT_NAME(_name)
+#endif
+
+typedef void (*dispatch_function_t)(void *_Nullable);
 
 #endif

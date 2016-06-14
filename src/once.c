@@ -26,7 +26,7 @@
 
 typedef struct _dispatch_once_waiter_s {
 	volatile struct _dispatch_once_waiter_s *volatile dow_next;
-	_dispatch_thread_semaphore_t dow_sema;
+	dispatch_thread_event_s dow_event;
 	mach_port_t dow_thread;
 } *_dispatch_once_waiter_t;
 
@@ -44,12 +44,22 @@ DISPATCH_NOINLINE
 void
 dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 {
-	_dispatch_once_waiter_t volatile *vval = (_dispatch_once_waiter_t*)val;
-	struct _dispatch_once_waiter_s dow = { NULL, 0, MACH_PORT_NULL };
-	_dispatch_once_waiter_t tail = &dow, next, tmp;
-	_dispatch_thread_semaphore_t sema;
+#if DISPATCH_GATE_USE_FOR_DISPATCH_ONCE
+	dispatch_once_gate_t l = (dispatch_once_gate_t)val;
 
-	if (dispatch_atomic_cmpxchg(vval, NULL, tail, acquire)) {
+	if (_dispatch_once_gate_tryenter(l)) {
+		_dispatch_client_callout(ctxt, func);
+		_dispatch_once_gate_broadcast(l);
+	} else {
+		_dispatch_once_gate_wait(l);
+	}
+#else
+	_dispatch_once_waiter_t volatile *vval = (_dispatch_once_waiter_t*)val;
+	struct _dispatch_once_waiter_s dow = { };
+	_dispatch_once_waiter_t tail = &dow, next, tmp;
+	dispatch_thread_event_t event;
+
+	if (os_atomic_cmpxchg(vval, NULL, tail, acquire)) {
 		dow.dow_thread = _dispatch_thread_port();
 		_dispatch_client_callout(ctxt, func);
 
@@ -103,36 +113,37 @@ dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 		// On some CPUs, the most fully synchronizing instruction might
 		// need to be issued.
 
-		dispatch_atomic_maximally_synchronizing_barrier();
+		os_atomic_maximally_synchronizing_barrier();
 		// above assumed to contain release barrier
-		next = dispatch_atomic_xchg(vval, DISPATCH_ONCE_DONE, relaxed);
+		next = os_atomic_xchg(vval, DISPATCH_ONCE_DONE, relaxed);
 		while (next != tail) {
 			_dispatch_wait_until(tmp = (_dispatch_once_waiter_t)next->dow_next);
-			sema = next->dow_sema;
+			event = &next->dow_event;
 			next = tmp;
-			_dispatch_thread_semaphore_signal(sema);
+			_dispatch_thread_event_signal(event);
 		}
 	} else {
-		dow.dow_sema = _dispatch_get_thread_semaphore();
+		_dispatch_thread_event_init(&dow.dow_event);
 		next = *vval;
 		for (;;) {
 			if (next == DISPATCH_ONCE_DONE) {
 				break;
 			}
-			if (dispatch_atomic_cmpxchgvw(vval, next, tail, &next, release)) {
+			if (os_atomic_cmpxchgvw(vval, next, tail, &next, release)) {
 				dow.dow_thread = next->dow_thread;
 				dow.dow_next = next;
 				if (dow.dow_thread) {
 					pthread_priority_t pp = _dispatch_get_priority();
-					_dispatch_thread_override_start(dow.dow_thread, pp);
+					_dispatch_thread_override_start(dow.dow_thread, pp, val);
 				}
-				_dispatch_thread_semaphore_wait(dow.dow_sema);
+				_dispatch_thread_event_wait(&dow.dow_event);
 				if (dow.dow_thread) {
-					_dispatch_thread_override_end(dow.dow_thread);
+					_dispatch_thread_override_end(dow.dow_thread, val);
 				}
 				break;
 			}
 		}
-		_dispatch_put_thread_semaphore(dow.dow_sema);
+		_dispatch_thread_event_destroy(&dow.dow_event);
 	}
+#endif
 }

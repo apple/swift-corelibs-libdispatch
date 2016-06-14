@@ -132,5 +132,10 @@ _dispatch_absolute_time(void)
 #endif // HAVE_MACH_ABSOLUTE_TIME
 }
 
+static inline uint64_t
+_dispatch_approximate_time(void)
+{
+	return _dispatch_absolute_time();
+}
 
 #endif // __DISPATCH_SHIMS_TIME__

@@ -49,6 +49,10 @@
    you don't. */
 #define HAVE_DECL_VQ_VERYLOWDISK 1
 
+/* Define to 1 if you have the declaration of `VQ_QUOTA', and to 0 if
+ you don't. */
+#define HAVE_DECL_VQ_QUOTA 1
+
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #define HAVE_DLFCN_H 1
 
@@ -78,6 +82,9 @@
 
 /* Define to 1 if you have the `mach_absolute_time' function. */
 #define HAVE_MACH_ABSOLUTE_TIME 1
+
+/* Define to 1 if you have the `mach_port_construct' function. */
+#define HAVE_MACH_PORT_CONSTRUCT 1
 
 /* Define to 1 if you have the `malloc_create_zone' function. */
 #define HAVE_MALLOC_CREATE_ZONE 1

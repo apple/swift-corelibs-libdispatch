@@ -26,6 +26,8 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+DISPATCH_ASSUME_NONNULL_BEGIN
+
 /*!
  * @typedef dispatch_semaphore_t
  *
@@ -109,5 +111,7 @@ long
 dispatch_semaphore_signal(dispatch_semaphore_t dsema);
 
 __END_DECLS
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif /* __DISPATCH_SEMAPHORE__ */

@@ -32,6 +32,8 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+DISPATCH_ASSUME_NONNULL_BEGIN
+
 __BEGIN_DECLS
 
 /*!
@@ -71,14 +73,17 @@ __BEGIN_DECLS
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW
 uint64_t
-dispatch_benchmark(size_t count, void (^block)(void));
+dispatch_benchmark(size_t count, dispatch_block_t block);
 #endif
 
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_NOTHROW
 uint64_t
-dispatch_benchmark_f(size_t count, void *ctxt, void (*func)(void *));
+dispatch_benchmark_f(size_t count, void *_Nullable ctxt,
+		dispatch_function_t func);
 
 __END_DECLS
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif

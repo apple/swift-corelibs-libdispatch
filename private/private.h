@@ -54,7 +54,9 @@
 #include <dispatch/benchmark.h>
 #include <dispatch/queue_private.h>
 #include <dispatch/source_private.h>
+#if DISPATCH_MACH_SPI
 #include <dispatch/mach_private.h>
+#endif // DISPATCH_MACH_SPI
 #include <dispatch/data_private.h>
 #include <dispatch/io_private.h>
 #include <dispatch/layout_private.h>
@@ -64,9 +66,11 @@
 #endif /* !__DISPATCH_BUILDING_DISPATCH__ */
 
 // <rdar://problem/9627726> Check that public and private dispatch headers match
-#if DISPATCH_API_VERSION != 20141121 // Keep in sync with <dispatch/dispatch.h>
+#if DISPATCH_API_VERSION != 20160612 // Keep in sync with <dispatch/dispatch.h>
 #error "Dispatch header mismatch between /usr/include and /usr/local/include"
 #endif
+
+DISPATCH_ASSUME_NONNULL_BEGIN
 
 __BEGIN_DECLS
 
@@ -117,6 +121,34 @@ __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
 DISPATCH_EXPORT DISPATCH_NOTHROW
 bool _dispatch_is_fork_of_multithreaded_parent(void);
 
+/*!
+ * @function _dispatch_prohibit_transition_to_multithreaded
+ *
+ * @abstract
+ * Sets a mode that aborts if a program tries to use dispatch.
+ *
+ * @discussion
+ * This SPI is intended for use by programs that know they will use fork() and
+ * want their children to be able to use dispatch before exec(). Such programs
+ * should call _dispatch_prohibit_transition_to_multithreaded(true) as early as
+ * possible, which will cause any use of dispatch API that would make the
+ * process multithreaded to abort immediately.
+ *
+ * Once the program no longer intends to call fork() it can call
+ * _dispatch_prohibit_transition_to_multithreaded(false).
+ *
+ * This status is not inherited by the child process, so if the behavior
+ * is required after fork, _dispatch_prohibit_transition_to_multithreaded(true)
+ * should be called manually in the child after fork.
+ *
+ * If the program already used dispatch before the guard is enabled, then
+ * this function will abort immediately.
+ */
+__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
+__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+DISPATCH_EXPORT DISPATCH_NOTHROW
+void _dispatch_prohibit_transition_to_multithreaded(bool prohibit);
+
 /*
  * dispatch_time convenience macros
  */
@@ -131,7 +163,7 @@ bool _dispatch_is_fork_of_multithreaded_parent(void);
 		dispatch_time(DISPATCH_TIME_NOW, (t) * NSEC_PER_SEC)
 
 /*
- * SPI for CoreFoundation/Foundation/libauto ONLY
+ * SPI for CoreFoundation/Foundation ONLY
  */
 
 #define DISPATCH_COCOA_COMPAT (TARGET_OS_MAC || TARGET_OS_WIN32)
@@ -147,7 +179,7 @@ _dispatch_get_main_queue_port_4CF(void);
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
-_dispatch_main_queue_callback_4CF(mach_msg_header_t *msg);
+_dispatch_main_queue_callback_4CF(mach_msg_header_t *_Null_unspecified msg);
 #elif TARGET_OS_WIN32
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NOTHROW
@@ -164,7 +196,8 @@ __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
-_dispatch_runloop_root_queue_create_4CF(const char *label, unsigned long flags);
+_dispatch_runloop_root_queue_create_4CF(const char *_Nullable label,
+		unsigned long flags);
 
 #if TARGET_OS_MAC
 __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
@@ -191,21 +224,16 @@ _dispatch_source_set_runloop_timer_4CF(dispatch_source_t source,
 
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT
-void (*dispatch_begin_thread_4GC)(void);
+void *_Nonnull (*_Nullable _dispatch_begin_NSAutoReleasePool)(void);
 
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT
-void (*dispatch_end_thread_4GC)(void);
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-void *(*_dispatch_begin_NSAutoReleasePool)(void);
-
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT
-void (*_dispatch_end_NSAutoReleasePool)(void *);
+void (*_Nullable _dispatch_end_NSAutoReleasePool)(void *);
 
 #endif /* DISPATCH_COCOA_COMPAT */
 
 __END_DECLS
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif // __DISPATCH_PRIVATE__

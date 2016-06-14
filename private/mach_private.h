@@ -36,7 +36,11 @@ __BEGIN_DECLS
 
 #if DISPATCH_MACH_SPI
 
+#define DISPATCH_MACH_SPI_VERSION 20160505
+
 #include <mach/mach.h>
+
+DISPATCH_ASSUME_NONNULL_BEGIN
 
 /*!
  * @functiongroup Dispatch Mach Channel SPI
@@ -53,7 +57,8 @@ DISPATCH_DECL(dispatch_mach);
 
 /*!
  * @typedef dispatch_mach_reason_t
- * Reasons for a mach channel handler to be invoked.
+ * Reasons for a mach channel handler to be invoked, or the result of an
+ * immediate send attempt.
  *
  * @const DISPATCH_MACH_CONNECTED
  * The channel has been connected. The first handler invocation on a channel
@@ -91,6 +96,19 @@ DISPATCH_DECL(dispatch_mach);
  *
  * @const DISPATCH_MACH_CANCELED
  * The channel has been canceled.
+ *
+ * @const DISPATCH_MACH_REPLY_RECEIVED
+ * A synchronous reply to a call to dispatch_mach_send_and_wait_for_reply() has
+ * been received on another thread, an empty message is passed in the message
+ * parameter (so that associated port rights can be disposed of).
+ * The message header will contain a local port with a receive right associated
+ * with the reply to the message that was synchronously sent to the channel.
+ *
+ * @const DISPATCH_MACH_NEEDS_DEFERRED_SEND
+ * The message could not be sent synchronously. Only returned from a send with
+ * result operation and never passed to a channel handler. Indicates that the
+ * message passed to the send operation must not be disposed of until it is
+ * returned via the channel handler.
  */
 DISPATCH_ENUM(dispatch_mach_reason, unsigned long,
 	DISPATCH_MACH_CONNECTED = 1,
@@ -101,7 +119,17 @@ DISPATCH_ENUM(dispatch_mach_reason, unsigned long,
 	DISPATCH_MACH_BARRIER_COMPLETED,
 	DISPATCH_MACH_DISCONNECTED,
 	DISPATCH_MACH_CANCELED,
+	DISPATCH_MACH_REPLY_RECEIVED,
+	DISPATCH_MACH_NEEDS_DEFERRED_SEND,
 	DISPATCH_MACH_REASON_LAST, /* unused */
+);
+
+/*!
+ * @typedef dispatch_mach_send_flags_t
+ * Flags that can be passed to the *with_flags send functions.
+ */
+DISPATCH_ENUM(dispatch_mach_send_flags, unsigned long,
+	DISPATCH_MACH_SEND_DEFAULT = 0,
 );
 
 /*!
@@ -178,8 +206,9 @@ __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_mach_msg_t
-dispatch_mach_msg_create(mach_msg_header_t *msg, size_t size,
-		dispatch_mach_msg_destructor_t destructor, mach_msg_header_t **msg_ptr);
+dispatch_mach_msg_create(mach_msg_header_t *_Nullable msg, size_t size,
+		dispatch_mach_msg_destructor_t destructor,
+		mach_msg_header_t *_Nonnull *_Nullable msg_ptr);
 
 /*!
  * @function dispatch_mach_msg_get_msg
@@ -193,7 +222,8 @@ dispatch_mach_msg_create(mach_msg_header_t *msg, size_t size,
 __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 mach_msg_header_t*
-dispatch_mach_msg_get_msg(dispatch_mach_msg_t message, size_t *size_ptr);
+dispatch_mach_msg_get_msg(dispatch_mach_msg_t message,
+		size_t *_Nullable size_ptr);
 
 #ifdef __BLOCKS__
 /*!
@@ -205,7 +235,7 @@ dispatch_mach_msg_get_msg(dispatch_mach_msg_t message, size_t *size_ptr);
  * @param error		Mach error code for the send operation.
  */
 typedef void (^dispatch_mach_handler_t)(dispatch_mach_reason_t reason,
-		dispatch_mach_msg_t message, mach_error_t error);
+		dispatch_mach_msg_t _Nullable message, mach_error_t error);
 
 /*!
  * @function dispatch_mach_create
@@ -241,8 +271,8 @@ __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 dispatch_mach_t
-dispatch_mach_create(const char *label, dispatch_queue_t queue,
-		dispatch_mach_handler_t handler);
+dispatch_mach_create(const char *_Nullable label,
+		dispatch_queue_t _Nullable queue, dispatch_mach_handler_t handler);
 #endif
 
 /*!
@@ -254,8 +284,8 @@ dispatch_mach_create(const char *label, dispatch_queue_t queue,
  * @param message	Message object that was sent or received.
  * @param error		Mach error code for the send operation.
  */
-typedef void (*dispatch_mach_handler_function_t)(void *context,
-		dispatch_mach_reason_t reason, dispatch_mach_msg_t message,
+typedef void (*dispatch_mach_handler_function_t)(void *_Nullable context,
+		dispatch_mach_reason_t reason, dispatch_mach_msg_t _Nullable message,
 		mach_error_t error);
 
 /*!
@@ -295,7 +325,8 @@ __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NONNULL4 DISPATCH_NOTHROW
 dispatch_mach_t
-dispatch_mach_create_f(const char *label, dispatch_queue_t queue, void *context,
+dispatch_mach_create_f(const char *_Nullable label,
+		dispatch_queue_t _Nullable queue, void *_Nullable context,
 		dispatch_mach_handler_function_t handler);
 
 /*!
@@ -327,7 +358,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_mach_connect(dispatch_mach_t channel, mach_port_t receive,
-		mach_port_t send, dispatch_mach_msg_t checkin);
+		mach_port_t send, dispatch_mach_msg_t _Nullable checkin);
 
 /*!
  * @function dispatch_mach_reconnect
@@ -358,7 +389,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_mach_reconnect(dispatch_mach_t channel, mach_port_t send,
-		dispatch_mach_msg_t checkin);
+		dispatch_mach_msg_t _Nullable checkin);
 
 /*!
  * @function dispatch_mach_cancel
@@ -426,6 +457,222 @@ void
 dispatch_mach_send(dispatch_mach_t channel, dispatch_mach_msg_t message,
 		mach_msg_option_t options);
 
+/*!
+ * @function dispatch_mach_send_with_result
+ * Asynchronously send a message encapsulated in a dispatch mach message object
+ * to the specified mach channel. If an immediate send can be performed, return
+ * its result via out parameters.
+ *
+ * Unless the message is being sent to a send-once right (as determined by the
+ * presence of MACH_MSG_TYPE_MOVE_SEND_ONCE in the message header remote bits),
+ * the message header remote port is set to the channel send right before the
+ * send operation is performed.
+ *
+ * If the message expects a direct reply (as determined by the presence of
+ * MACH_MSG_TYPE_MAKE_SEND_ONCE in the message header local bits) the receive
+ * right specified in the message header local port will be monitored until a
+ * reply message (or a send-once notification) is received, or the channel is
+ * canceled. Hence the application must wait for the channel handler to be
+ * invoked with a DISPATCH_MACH_DISCONNECTED message before releasing that
+ * receive right.
+ *
+ * If the message send operation is attempted but the channel is canceled
+ * before the send operation succesfully completes, the message returned to the
+ * channel handler with DISPATCH_MACH_MESSAGE_NOT_SENT may be the result of a
+ * pseudo-receive operation. If the message expected a direct reply, the
+ * receive right originally specified in the message header local port will
+ * returned in a DISPATCH_MACH_DISCONNECTED message.
+ *
+ * If an immediate send could be performed, returns the resulting reason
+ * (e.g. DISPATCH_MACH_MESSAGE_SENT) and possible error to the caller in the
+ * send_result and send_error out parameters (instead of via the channel
+ * handler), in which case the passed-in message and associated resources
+ * can be disposed of synchronously.
+ *
+ * If a deferred send is required, returns DISPATCH_MACH_NEEDS_DEFERRED_SEND
+ * in the send_result out parameter to indicate that the passed-in message has
+ * been retained and associated resources must not be disposed of until the
+ * message is returned asynchronusly via the channel handler.
+ *
+ * @param channel
+ * The mach channel to which to send the message.
+ *
+ * @param message
+ * The message object encapsulating the message to send. Unless an immediate
+ * send could be performed, the object will be retained until the asynchronous
+ * send operation is complete and the channel handler has returned. The storage
+ * underlying the message object may be modified by the send operation.
+ *
+ * @param options
+ * Additional send options to pass to mach_msg() when performing the send
+ * operation.
+ *
+ * @param send_flags
+ * Flags to configure the send operation. Must be 0 for now.
+ *
+ * @param send_result
+ * Out parameter to return the result of the immediate send attempt.
+ * If a deferred send is required, returns DISPATCH_MACH_NEEDS_DEFERRED_SEND.
+ * Must not be NULL.
+ *
+ * @param send_error
+ * Out parameter to return the error from the immediate send attempt.
+ * If a deferred send is required, returns 0. Must not be NULL.
+ */
+__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
+__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL2 DISPATCH_NONNULL5
+DISPATCH_NONNULL6 DISPATCH_NOTHROW
+void
+dispatch_mach_send_with_result(dispatch_mach_t channel,
+		dispatch_mach_msg_t message, mach_msg_option_t options,
+		dispatch_mach_send_flags_t send_flags,
+		dispatch_mach_reason_t *send_result, mach_error_t *send_error);
+
+/*!
+ * @function dispatch_mach_send_and_wait_for_reply
+ * Synchronously send a message encapsulated in a dispatch mach message object
+ * to the specified mach channel and wait for a reply.
+ *
+ * Unless the message is being sent to a send-once right (as determined by the
+ * presence of MACH_MSG_TYPE_MOVE_SEND_ONCE in the message header remote bits),
+ * the message header remote port is set to the channel send right before the
+ * send operation is performed.
+ *
+ * The message is required to expect a direct reply (as determined by the
+ * presence of MACH_MSG_TYPE_MAKE_SEND_ONCE in the message header local bits)
+ * and this function will not complete until the receive right specified in the
+ * message header local port receives a reply message (or a send-once
+ * notification) which will be returned, or until that receive right is
+ * destroyed in response to the channel being canceled, in which case NULL will
+ * be returned.
+ * In all these cases the application must wait for the channel handler to
+ * be invoked with a DISPATCH_MACH_REPLY_RECEIVED or DISPATCH_MACH_DISCONNECTED
+ * message before releasing that receive right.
+ *
+ * Alternatively, the application may specify MACH_PORT_NULL in the header local
+ * port to indicate that the channel should create and manage the reply receive
+ * right internally, including destroying it upon channel cancellation.
+ * This is a more efficient mode of operation as no asynchronous operations are
+ * required to return the receive right (i.e. the channel handler will not be
+ * called as described above).
+ *
+ * If the message send operation is attempted but the channel is canceled
+ * before the send operation succesfully completes, the message returned to the
+ * channel handler with DISPATCH_MACH_MESSAGE_NOT_SENT may be the result of a
+ * pseudo-receive operation. The receive right originally specified in the
+ * message header local port will returned in a DISPATCH_MACH_DISCONNECTED
+ * message (unless it was MACH_PORT_NULL).
+ *
+ * @param channel
+ * The mach channel to which to send the message.
+ *
+ * @param message
+ * The message object encapsulating the message to send. The object will be
+ * retained until the send operation is complete and the channel handler has
+ * returned. The storage underlying the message object may be modified by the
+ * send operation.
+ *
+ * @param options
+ * Additional send options to pass to mach_msg() when performing the send
+ * operation.
+ *
+ * @result
+ * The received reply message object, or NULL if the channel was canceled.
+ */
+__OSX_AVAILABLE_STARTING(__MAC_10_11,__IPHONE_9_0)
+DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
+DISPATCH_NONNULL1 DISPATCH_NONNULL2 DISPATCH_NOTHROW
+dispatch_mach_msg_t _Nullable
+dispatch_mach_send_and_wait_for_reply(dispatch_mach_t channel,
+		dispatch_mach_msg_t message, mach_msg_option_t options);
+
+/*!
+ * @function dispatch_mach_send_with_result_and_wait_for_reply
+ * Synchronously send a message encapsulated in a dispatch mach message object
+ * to the specified mach channel and wait for a reply. If an immediate send can
+ * be performed, return its result via out parameters.
+ *
+ * Unless the message is being sent to a send-once right (as determined by the
+ * presence of MACH_MSG_TYPE_MOVE_SEND_ONCE in the message header remote bits),
+ * the message header remote port is set to the channel send right before the
+ * send operation is performed.
+ *
+ * The message is required to expect a direct reply (as determined by the
+ * presence of MACH_MSG_TYPE_MAKE_SEND_ONCE in the message header local bits)
+ * and this function will not complete until the receive right specified in the
+ * message header local port receives a reply message (or a send-once
+ * notification) which will be returned, or until that receive right is
+ * destroyed in response to the channel being canceled, in which case NULL will
+ * be returned.
+ * In all these cases the application must wait for the channel handler to
+ * be invoked with a DISPATCH_MACH_REPLY_RECEIVED or DISPATCH_MACH_DISCONNECTED
+ * message before releasing that receive right.
+ *
+ * Alternatively, the application may specify MACH_PORT_NULL in the header local
+ * port to indicate that the channel should create and manage the reply receive
+ * right internally, including destroying it upon channel cancellation.
+ * This is a more efficient mode of operation as no asynchronous operations are
+ * required to return the receive right (i.e. the channel handler will not be
+ * called as described above).
+ *
+ * If the message send operation is attempted but the channel is canceled
+ * before the send operation succesfully completes, the message returned to the
+ * channel handler with DISPATCH_MACH_MESSAGE_NOT_SENT may be the result of a
+ * pseudo-receive operation. The receive right originally specified in the
+ * message header local port will returned in a DISPATCH_MACH_DISCONNECTED
+ * message (unless it was MACH_PORT_NULL).
+ *
+ * If an immediate send could be performed, returns the resulting reason
+ * (e.g. DISPATCH_MACH_MESSAGE_SENT) and possible error to the caller in the
+ * send_result and send_error out parameters (instead of via the channel
+ * handler), in which case the passed-in message and associated resources
+ * can be disposed of synchronously.
+ *
+ * If a deferred send is required, returns DISPATCH_MACH_NEEDS_DEFERRED_SEND
+ * in the send_result out parameter to indicate that the passed-in message has
+ * been retained and associated resources must not be disposed of until the
+ * message is returned asynchronusly via the channel handler.
+ *
+ * @param channel
+ * The mach channel to which to send the message.
+ *
+ * @param message
+ * The message object encapsulating the message to send. Unless an immediate
+ * send could be performed, the object will be retained until the asynchronous
+ * send operation is complete and the channel handler has returned. The storage
+ * underlying the message object may be modified by the send operation.
+ *
+ * @param options
+ * Additional send options to pass to mach_msg() when performing the send
+ * operation.
+ *
+ * @param send_flags
+ * Flags to configure the send operation. Must be 0 for now.
+ *
+ * @param send_result
+ * Out parameter to return the result of the immediate send attempt.
+ * If a deferred send is required, returns DISPATCH_MACH_NEEDS_DEFERRED_SEND.
+ * Must not be NULL.
+ *
+ * @param send_error
+ * Out parameter to return the error from the immediate send attempt.
+ * If a deferred send is required, returns 0. Must not be NULL.
+ *
+ * @result
+ * The received reply message object, or NULL if the channel was canceled.
+ */
+__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
+__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
+DISPATCH_NONNULL1 DISPATCH_NONNULL2 DISPATCH_NONNULL5 DISPATCH_NONNULL6
+DISPATCH_NOTHROW
+dispatch_mach_msg_t _Nullable
+dispatch_mach_send_with_result_and_wait_for_reply(dispatch_mach_t channel,
+		dispatch_mach_msg_t message, mach_msg_option_t options,
+		dispatch_mach_send_flags_t send_flags,
+		dispatch_mach_reason_t *send_result, mach_error_t *send_error);
+
 #ifdef __BLOCKS__
 /*!
  * @function dispatch_mach_send_barrier
@@ -467,7 +714,7 @@ dispatch_mach_send_barrier(dispatch_mach_t channel, dispatch_block_t barrier);
 __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
-dispatch_mach_send_barrier_f(dispatch_mach_t channel, void *context,
+dispatch_mach_send_barrier_f(dispatch_mach_t channel, void *_Nullable context,
 		dispatch_function_t barrier);
 
 #ifdef __BLOCKS__
@@ -510,7 +757,7 @@ dispatch_mach_receive_barrier(dispatch_mach_t channel,
 __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
-dispatch_mach_receive_barrier_f(dispatch_mach_t channel, void *context,
+dispatch_mach_receive_barrier_f(dispatch_mach_t channel, void *_Nullable context,
 		dispatch_function_t barrier);
 
 /*!
@@ -538,6 +785,8 @@ __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 mach_port_t
 dispatch_mach_get_checkin_port(dispatch_mach_t channel);
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif // DISPATCH_MACH_SPI
 

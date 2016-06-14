@@ -69,16 +69,6 @@ DISPATCH_EXPORT const struct dispatch_tsd_indexes_s {
 	const uint16_t dti_qos_class_index;
 } dispatch_tsd_indexes;
 
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
-DISPATCH_EXPORT const struct voucher_offsets_s {
-	// always add new fields at the end
-	const uint16_t vo_version;
-	const uint16_t vo_activity_ids_count;
-	const uint16_t vo_activity_ids_count_size;
-	const uint16_t vo_activity_ids_array;
-	const uint16_t vo_activity_ids_array_entry_size;
-} voucher_offsets;
-
 #endif // DISPATCH_LAYOUT_SPI
 
 __END_DECLS

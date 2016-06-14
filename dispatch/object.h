@@ -26,6 +26,8 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+DISPATCH_ASSUME_NONNULL_BEGIN
+
 /*!
  * @typedef dispatch_object_t
  *
@@ -46,16 +48,23 @@
  * analyzer, and enables them to be added to Cocoa collections.
  * See <os/object.h> for details.
  */
-OS_OBJECT_DECL(dispatch_object);
+OS_OBJECT_DECL_CLASS(dispatch_object);
+
+#if OS_OBJECT_SWIFT3
+#define DISPATCH_DECL(name) OS_OBJECT_DECL_SUBCLASS_SWIFT(name, dispatch_object)
+#else // OS_OBJECT_SWIFT3
 #define DISPATCH_DECL(name) OS_OBJECT_DECL_SUBCLASS(name, dispatch_object)
-#define DISPATCH_GLOBAL_OBJECT(type, object) ((OS_OBJECT_BRIDGE type)&(object))
-#define DISPATCH_RETURNS_RETAINED OS_OBJECT_RETURNS_RETAINED
+
 DISPATCH_INLINE DISPATCH_ALWAYS_INLINE DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 _dispatch_object_validate(dispatch_object_t object) {
 	void *isa = *(void* volatile*)(OS_OBJECT_BRIDGE void*)object;
 	(void)isa;
 }
+#endif // OS_OBJECT_SWIFT3
+
+#define DISPATCH_GLOBAL_OBJECT(type, object) ((OS_OBJECT_BRIDGE type)&(object))
+#define DISPATCH_RETURNS_RETAINED OS_OBJECT_RETURNS_RETAINED
 #elif defined(__cplusplus) && !defined(__DISPATCH_BUILDING_DISPATCH__)
 /*
  * Dispatch objects are NOT C++ objects. Nevertheless, we can at least keep C++
@@ -97,6 +106,38 @@ typedef union {
 #define DISPATCH_GLOBAL_OBJECT(t, x) (&(x))
 /*! @parseOnly */
 #define DISPATCH_RETURNS_RETAINED
+#endif
+
+#if OS_OBJECT_SWIFT3
+#define DISPATCH_SOURCE_TYPE_DECL(name) \
+		DISPATCH_EXPORT struct dispatch_source_type_s \
+				_dispatch_source_type_##name; \
+		OS_OBJECT_DECL_PROTOCOL(dispatch_source_##name, <OS_dispatch_source>); \
+		OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL( \
+				dispatch_source, dispatch_source_##name)
+#define DISPATCH_SOURCE_DECL(name) \
+		DISPATCH_DECL(name); \
+		OS_OBJECT_DECL_PROTOCOL(name, <NSObject>); \
+		OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL(name, name)
+#ifndef DISPATCH_DATA_DECL
+#define DISPATCH_DATA_DECL(name) OS_OBJECT_DECL_SWIFT(name)
+#endif // DISPATCH_DATA_DECL
+#elif !TARGET_OS_WIN32
+/*! @parseOnly */
+#define DISPATCH_SOURCE_DECL(name) \
+		DISPATCH_DECL(name);
+/*! @parseOnly */
+#define DISPATCH_DATA_DECL(name) DISPATCH_DECL(name)
+/*! @parseOnly */
+#define DISPATCH_SOURCE_TYPE_DECL(name) \
+		DISPATCH_EXPORT const struct dispatch_source_type_s \
+		_dispatch_source_type_##name
+#else
+#define DISPATCH_SOURCE_DECL(name) \
+		DISPATCH_DECL(name);
+#define DISPATCH_SOURCE_TYPE_DECL(name) \
+		DISPATCH_EXPORT struct dispatch_source_type_s _dispatch_source_type_##name
+#define DISPATCH_DATA_DECL(name) DISPATCH_DECL(name)
 #endif
 
 #ifdef __BLOCKS__
@@ -162,11 +203,13 @@ __BEGIN_DECLS
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Can't be used with ARC")
 void
 dispatch_retain(dispatch_object_t object);
 #if OS_OBJECT_USE_OBJC_RETAIN_RELEASE
 #undef dispatch_retain
-#define dispatch_retain(object) ({ dispatch_object_t _o = (object); \
+#define dispatch_retain(object) \
+		__extension__({ dispatch_object_t _o = (object); \
 		_dispatch_object_validate(_o); (void)[_o retain]; })
 #endif
 
@@ -188,11 +231,13 @@ dispatch_retain(dispatch_object_t object);
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Can't be used with ARC")
 void
 dispatch_release(dispatch_object_t object);
 #if OS_OBJECT_USE_OBJC_RETAIN_RELEASE
 #undef dispatch_release
-#define dispatch_release(object) ({ dispatch_object_t _o = (object); \
+#define dispatch_release(object) \
+		__extension__({ dispatch_object_t _o = (object); \
 		_dispatch_object_validate(_o); [_o release]; })
 #endif
 
@@ -211,7 +256,7 @@ dispatch_release(dispatch_object_t object);
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_PURE DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
-void *
+void *_Nullable
 dispatch_get_context(dispatch_object_t object);
 
 /*!
@@ -228,9 +273,9 @@ dispatch_get_context(dispatch_object_t object);
  *
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NOTHROW //DISPATCH_NONNULL1
+DISPATCH_EXPORT DISPATCH_NOTHROW
 void
-dispatch_set_context(dispatch_object_t object, void *context);
+dispatch_set_context(dispatch_object_t object, void *_Nullable context);
 
 /*!
  * @function dispatch_set_finalizer_f
@@ -254,10 +299,38 @@ dispatch_set_context(dispatch_object_t object, void *context);
  * context of the dispatch object at the time the finalizer call is made.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NOTHROW //DISPATCH_NONNULL1
+DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 dispatch_set_finalizer_f(dispatch_object_t object,
-		dispatch_function_t finalizer);
+		dispatch_function_t _Nullable finalizer);
+
+/*!
+ * @function dispatch_activate
+ *
+ * @abstract
+ * Activates the specified dispatch object.
+ *
+ * @discussion
+ * Dispatch objects such as queues and sources may be created in an inactive
+ * state. Objects in this state have to be activated before any blocks
+ * associated with them will be invoked.
+ *
+ * The target queue of inactive objects can be changed using
+ * dispatch_set_target_queue(). Change of target queue is no longer permitted
+ * once an initially inactive object has been activated.
+ *
+ * Calling dispatch_activate() on an active object has no effect.
+ * Releasing the last reference count on an inactive object is undefined.
+ *
+ * @param object
+ * The object to be activated.
+ * The result of passing NULL in this parameter is undefined.
+ */
+__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
+__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+void
+dispatch_activate(dispatch_object_t object);
 
 /*!
  * @function dispatch_suspend
@@ -287,6 +360,20 @@ dispatch_suspend(dispatch_object_t object);
  *
  * @abstract
  * Resumes the invocation of blocks on a dispatch object.
+ *
+ * @discussion
+ * Dispatch objects can be suspended with dispatch_suspend(), which increments
+ * an internal suspension count. dispatch_resume() is the inverse operation,
+ * and consumes suspension counts. When the last suspension count is consumed,
+ * blocks associated with the object will be invoked again.
+ *
+ * For backward compatibility reasons, dispatch_resume() on an inactive and not
+ * otherwise suspended dispatch source object has the same effect as calling
+ * dispatch_activate(). For new code, using dispatch_activate() is preferred.
+ *
+ * If the specified object has zero suspension count and is not an inactive
+ * source, this function will result in an assertion and the process being
+ * terminated.
  *
  * @param object
  * The object to be resumed.
@@ -467,5 +554,7 @@ void
 dispatch_debugv(dispatch_object_t object, const char *message, va_list ap);
 
 __END_DECLS
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif

@@ -38,30 +38,32 @@ typedef struct range_record_s {
 	size_t length;
 } range_record;
 
-#if USE_OBJC
-#if OS_OBJECT_USE_OBJC
-@interface DISPATCH_CLASS(data) : NSObject <DISPATCH_CLASS(data)>
-@end
+#if OS_OBJECT_HAVE_OBJC2
+#define DISPATCH_DATA_IS_BRIDGED_TO_NSDATA 1
+#else
+#define DISPATCH_DATA_IS_BRIDGED_TO_NSDATA 0
 #endif
+
+#if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 DISPATCH_OBJC_CLASS_DECL(data);
 DISPATCH_OBJC_CLASS_DECL(data_empty);
-#define DISPATCH_DATA_CLASS DISPATCH_OBJC_CLASS(data)
-#define DISPATCH_DATA_EMPTY_CLASS DISPATCH_OBJC_CLASS(data_empty)
-#else // USE_OBJC
+_OS_OBJECT_DECL_PROTOCOL(dispatch_data, dispatch_object);
+#define DISPATCH_DATA_CLASS DISPATCH_VTABLE(data)
+#define DISPATCH_DATA_EMPTY_CLASS DISPATCH_VTABLE(data_empty)
+#else
 DISPATCH_CLASS_DECL(data);
 #define DISPATCH_DATA_CLASS DISPATCH_VTABLE(data)
-#define DISPATCH_DATA_EMPTY_CLASS DISPATCH_VTABLE(data)
-#endif // USE_OBJC
+#endif // DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 
 struct dispatch_data_s {
-#if USE_OBJC
+#if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 	const void *do_vtable;
 	dispatch_queue_t do_targetq;
 	void *ctxt;
 	void *finalizer;
-#else // USE_OBJC
-	DISPATCH_STRUCT_HEADER(data);
-#endif // USE_OBJC
+#else
+	DISPATCH_OBJECT_HEADER(data);
+#endif // DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 	const void *buf;
 	dispatch_block_t destructor;
 	size_t size, num_records;
@@ -106,10 +108,8 @@ const void*
 _dispatch_data_get_flattened_bytes(struct dispatch_data_s *dd);
 
 #if !defined(__cplusplus)
-#if !__OBJC2__
-const dispatch_block_t _dispatch_data_destructor_inline;
+extern const dispatch_block_t _dispatch_data_destructor_inline;
 #define DISPATCH_DATA_DESTRUCTOR_INLINE (_dispatch_data_destructor_inline)
-#endif // !__OBJC2__
 
 /*
  * the out parameters are about seeing "through" trivial subranges
@@ -135,7 +135,7 @@ _dispatch_data_map_direct(struct dispatch_data_s *dd, size_t offset,
 	if (fastpath(_dispatch_data_leaf(dd))) {
 		buffer = dd->buf + offset;
 	} else {
-		buffer = dispatch_atomic_load((void **)&dd->buf, relaxed);
+		buffer = os_atomic_load((void **)&dd->buf, relaxed);
 		if (buffer) {
 			buffer += offset;
 		}

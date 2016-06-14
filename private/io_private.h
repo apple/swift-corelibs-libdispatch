@@ -32,6 +32,8 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+DISPATCH_ASSUME_NONNULL_BEGIN
+
 __BEGIN_DECLS
 
 /*!
@@ -83,8 +85,8 @@ void
 dispatch_read_f(dispatch_fd_t fd,
 	size_t length,
 	dispatch_queue_t queue,
-	void *context,
-	void (*handler)(void *context, dispatch_data_t data, int error));
+	void *_Nullable context,
+	void (*handler)(void *_Nullable context, dispatch_data_t data, int error));
 
 /*!
  * @function dispatch_write_f
@@ -126,8 +128,9 @@ void
 dispatch_write_f(dispatch_fd_t fd,
 	dispatch_data_t data,
 	dispatch_queue_t queue,
-	void *context,
-	void (*handler)(void *context, dispatch_data_t data, int error));
+	void *_Nullable context,
+	void (*handler)(void *_Nullable context, dispatch_data_t _Nullable data,
+			int error));
 
 /*!
  * @function dispatch_io_create_f
@@ -164,8 +167,8 @@ dispatch_io_t
 dispatch_io_create_f(dispatch_io_type_t type,
 	dispatch_fd_t fd,
 	dispatch_queue_t queue,
-	void *context,
-	void (*cleanup_handler)(void *context, int error));
+	void *_Nullable context,
+	void (*cleanup_handler)(void *_Nullable context, int error));
 
 /*!
  * @function dispatch_io_create_with_path_f
@@ -204,8 +207,8 @@ dispatch_io_t
 dispatch_io_create_with_path_f(dispatch_io_type_t type,
 	const char *path, int oflag, mode_t mode,
 	dispatch_queue_t queue,
-	void *context,
-	void (*cleanup_handler)(void *context, int error));
+	void *_Nullable context,
+	void (*cleanup_handler)(void *_Nullable context, int error));
 
 /*!
  * @function dispatch_io_create_with_io_f
@@ -248,8 +251,8 @@ dispatch_io_t
 dispatch_io_create_with_io_f(dispatch_io_type_t type,
 	dispatch_io_t io,
 	dispatch_queue_t queue,
-	void *context,
-	void (*cleanup_handler)(void *context, int error));
+	void *_Nullable context,
+	void (*cleanup_handler)(void *_Nullable context, int error));
 
 /*!
  * @typedef dispatch_io_handler_function_t
@@ -260,8 +263,8 @@ dispatch_io_create_with_io_f(dispatch_io_type_t type,
  * @param data		The data object to be handled.
  * @param error		An errno condition for the operation.
  */
-typedef void (*dispatch_io_handler_function_t)(void *context, bool done,
-		dispatch_data_t data, int error);
+typedef void (*dispatch_io_handler_function_t)(void *_Nullable context,
+	bool done, dispatch_data_t _Nullable data, int error);
 
 /*!
  * @function dispatch_io_read_f
@@ -316,7 +319,7 @@ dispatch_io_read_f(dispatch_io_t channel,
 	off_t offset,
 	size_t length,
 	dispatch_queue_t queue,
-	void *context,
+	void *_Nullable context,
 	dispatch_io_handler_function_t io_handler);
 
 /*!
@@ -373,7 +376,7 @@ dispatch_io_write_f(dispatch_io_t channel,
 	off_t offset,
 	dispatch_data_t data,
 	dispatch_queue_t queue,
-	void *context,
+	void *_Nullable context,
 	dispatch_io_handler_function_t io_handler);
 
 /*!
@@ -403,9 +406,11 @@ __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_io_barrier_f(dispatch_io_t channel,
-	void *context,
+	void *_Nullable context,
 	dispatch_function_t barrier);
 
 __END_DECLS
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif /* __DISPATCH_IO_PRIVATE__ */
