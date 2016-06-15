@@ -117,7 +117,6 @@ _dispatch_unfair_lock_wake(uint32_t *uaddr, uint32_t flags)
 #pragma mark - futex wrappers
 #if HAVE_FUTEX
 #include <sys/time.h>
-#include <linux/futex.h>
 #include <syscall.h>
 
 DISPATCH_ALWAYS_INLINE
@@ -140,7 +139,7 @@ _dispatch_futex_wait(uint32_t *uaddr, uint32_t val,
 	);
 }
 
-static int
+static void
 _dispatch_futex_wake(uint32_t *uaddr, int wake, int opflags)
 {
 	int rc;
@@ -157,7 +156,7 @@ _dispatch_futex_lock_pi(uint32_t *uaddr, struct timespec *timeout, int detect,
 {
 	_dlock_syscall_switch(err,
 		_dispatch_futex(uaddr, FUTEX_LOCK_PI, detect, timeout,
-				NULL, 0, opflags);
+				NULL, 0, opflags),
 		case 0: return;
 		default: DISPATCH_CLIENT_CRASH(errno, "futex_lock_pi() failed");
 	);
@@ -167,7 +166,7 @@ static void
 _dispatch_futex_unlock_pi(uint32_t *uaddr, int opflags)
 {
 	_dlock_syscall_switch(err,
-		_dispatch_futex(uaddr, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0, opflags);
+		_dispatch_futex(uaddr, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0, opflags),
 		case 0: return;
 		default: DISPATCH_CLIENT_CRASH(errno, "futex_unlock_pi() failed");
 	);
@@ -183,7 +182,7 @@ _dispatch_wait_on_address(uint32_t volatile *address, uint32_t value,
 #if HAVE_UL_COMPARE_AND_WAIT
 	_dispatch_ulock_wait((uint32_t *)address, value, 0, flags);
 #elif HAVE_FUTEX
-	_dispatch_futex_wait((uint32_t *)address, value, NULL, FUTEX_FLAG_PRIVATE);
+	_dispatch_futex_wait((uint32_t *)address, value, NULL, FUTEX_PRIVATE_FLAG);
 #else
 	mach_msg_timeout_t timeout = 1;
 	while (os_atomic_load(address, relaxed) == value) {
@@ -199,7 +198,7 @@ _dispatch_wake_by_address(uint32_t volatile *address)
 #if HAVE_UL_COMPARE_AND_WAIT
 	_dispatch_ulock_wake((uint32_t *)address, ULF_WAKE_ALL);
 #elif HAVE_FUTEX
-	_dispatch_futex_wake((uint32_t *)address, INT_MAX, FUTEX_FLAG_PRIVATE);
+	_dispatch_futex_wake((uint32_t *)address, INT_MAX, FUTEX_PRIVATE_FLAG);
 #else
 	(void)address;
 #endif
@@ -207,6 +206,7 @@ _dispatch_wake_by_address(uint32_t volatile *address)
 
 #pragma mark - thread event
 
+#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
 semaphore_t
 _dispatch_thread_semaphore_create(void)
 {
@@ -228,19 +228,22 @@ _dispatch_thread_semaphore_dispose(void *ctxt)
 	DISPATCH_VERIFY_MIG(kr);
 	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 }
+#endif
 
 void
 _dispatch_thread_event_signal_slow(dispatch_thread_event_t dte)
 {
+#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
 	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
 		kern_return_t kr = semaphore_signal(dte->dte_semaphore);
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 		return;
 	}
+#endif
 #if HAVE_UL_COMPARE_AND_WAIT
 	_dispatch_ulock_wake(&dte->dte_value, 0);
 #elif HAVE_FUTEX
-	_dispatch_futex_wake(&dte->dte_value, 1, FUTEX_FLAG_PRIVATE);
+	_dispatch_futex_wake(&dte->dte_value, 1, FUTEX_PRIVATE_FLAG);
 #elif USE_POSIX_SEM
 	int rc = sem_post(&dte->dte_sem);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
@@ -250,6 +253,7 @@ _dispatch_thread_event_signal_slow(dispatch_thread_event_t dte)
 void
 _dispatch_thread_event_wait_slow(dispatch_thread_event_t dte)
 {
+#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
 	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
 		kern_return_t kr;
 		do {
@@ -258,6 +262,7 @@ _dispatch_thread_event_wait_slow(dispatch_thread_event_t dte)
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 		return;
 	}
+#endif
 #if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
 	for (;;) {
 		uint32_t value = os_atomic_load(&dte->dte_value, acquire);
@@ -269,8 +274,8 @@ _dispatch_thread_event_wait_slow(dispatch_thread_event_t dte)
 		int rc = _dispatch_ulock_wait(&dte->dte_value, UINT32_MAX, 0, 0);
 		dispatch_assert(rc == 0 || rc == EFAULT);
 #elif HAVE_FUTEX
-		_dispatch_futex_wait(&dgl->dte_value, UINT32_MAX,
-				NULL, FUTEX_FLAG_PRIVATE);
+		_dispatch_futex_wait(&dte->dte_value, UINT32_MAX,
+				NULL, FUTEX_PRIVATE_FLAG);
 #endif
 	}
 #elif USE_POSIX_SEM
@@ -318,9 +323,11 @@ _dispatch_unfair_lock_lock_slow(dispatch_unfair_lock_t dul,
 }
 #elif HAVE_FUTEX
 void
-_dispatch_unfair_lock_lock_slow(dispatch_unfair_lock_t dul)
+_dispatch_unfair_lock_lock_slow(dispatch_unfair_lock_t dul,
+		dispatch_lock_options_t flags)
 {
-	_dispatch_futex_lock_pi(&dul->dul_lock, 1, NULL, FUTEX_FLAG_PRIVATE);
+	(void)flags;
+	_dispatch_futex_lock_pi(&dul->dul_lock, NULL, 1, FUTEX_PRIVATE_FLAG);
 }
 #else
 void
@@ -355,7 +362,7 @@ _dispatch_unfair_lock_unlock_slow(dispatch_unfair_lock_t dul,
 	}
 #elif HAVE_FUTEX
 	// futex_unlock_pi() handles both OWNER_DIED which we abuse & WAITERS
-	_dispatch_futex_unlock_pi(&dul->dul_lock, FUTEX_FLAG_PRIVATE);
+	_dispatch_futex_unlock_pi(&dul->dul_lock, FUTEX_PRIVATE_FLAG);
 #else
 	(void)dul;
 #endif
@@ -388,7 +395,7 @@ _dispatch_gate_wait_slow(dispatch_gate_t dgl, dispatch_lock value,
 #if HAVE_UL_UNFAIR_LOCK
 		_dispatch_unfair_lock_wait(&dgl->dgl_lock, tid_new, 0, flags);
 #elif HAVE_FUTEX
-		_dispatch_futex_wait(&dgl->dgl_lock, tid_new, NULL, FUTEX_FLAG_PRIVATE);
+		_dispatch_futex_wait(&dgl->dgl_lock, tid_new, NULL, FUTEX_PRIVATE_FLAG);
 #else
 		_dispatch_thread_switch(tid_new, flags, timeout++);
 #endif
@@ -407,7 +414,7 @@ _dispatch_gate_broadcast_slow(dispatch_gate_t dgl, dispatch_lock tid_cur)
 #if HAVE_UL_UNFAIR_LOCK
 	_dispatch_unfair_lock_wake(&dgl->dgl_lock, ULF_WAKE_ALL);
 #elif HAVE_FUTEX
-	_dispatch_futex_wake(&dgl->dgl_lock, INT_MAX, FUTEX_FLAG_PRIVATE);
+	_dispatch_futex_wake(&dgl->dgl_lock, INT_MAX, FUTEX_PRIVATE_FLAG);
 #else
 	(void)dgl;
 #endif
