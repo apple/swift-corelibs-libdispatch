@@ -21,6 +21,8 @@
 #ifndef __FIREHOSE_INTERNAL__
 #define __FIREHOSE_INTERNAL__
 
+#if OS_FIREHOSE_SPI
+
 // make sure this is defined so that we get MIG_SERVER_DIED when a send once
 // notification is sent back because of a crashed server
 #ifndef __MigTypeCheck
@@ -43,5 +45,7 @@
 #include "firehose_server_internal.h"
 #endif
 #include "firehose_inline_internal.h"
+
+#endif // OS_FIREHOSE_SPI
 
 #endif // __FIREHOSE_INTERNAL__

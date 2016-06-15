@@ -93,6 +93,10 @@ typedef unsigned long pthread_priority_t;
 #define _PTHREAD_PRIORITY_SCHED_PRI_FLAG 0x20000000
 #endif // HAVE_PTHREAD_QOS_H
 
+#ifdef __linux__
+#include "shims/linux_stubs.h"
+#endif
+
 typedef uint32_t dispatch_priority_t;
 #define DISPATCH_SATURATED_OVERRIDE ((dispatch_priority_t)UINT32_MAX)
 
@@ -219,10 +223,6 @@ void __builtin_trap(void);
 #define OS_ATOMIC_UP 0
 #endif
 
-
-#ifdef __linux__
-#include "shims/linux_stubs.h"
-#endif
 
 #ifndef __OS_INTERNAL_ATOMIC__
 #include "shims/atomic.h"

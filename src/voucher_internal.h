@@ -692,9 +692,10 @@ _dispatch_continuation_voucher_set(dispatch_continuation_t dc,
 
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_continuation_voucher_adopt(dispatch_continuation_t dc, long dc_vtable)
+_dispatch_continuation_voucher_adopt(dispatch_continuation_t dc, voucher_t ov,
+		uintptr_t dc_flags)
 {
-	(void)dc; (void)dc_vtable;
+	(void)dc; (void)ov; (void)dc_flags;
 }
 
 #endif // VOUCHER_USE_MACH_VOUCHER

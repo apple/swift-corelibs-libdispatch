@@ -490,7 +490,7 @@ void _dispatch_last_resort_autorelease_pool_pop(void *context);
 	})
 #else
 #define dispatch_invoke_with_autoreleasepool(flags, ...) \
-	do { __VA_ARGS__; } while (0)
+	do { (void)flags; __VA_ARGS__; } while (0)
 #endif
 
 

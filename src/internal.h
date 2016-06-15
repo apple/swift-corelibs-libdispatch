@@ -144,7 +144,11 @@
 #include <dispatch/io.h>
 #endif
 
-#define DISPATCH_PURE_C  (!defined(__OBJC__) && !defined(__cplusplus))
+#if defined(__OBJC__) || defined(__cplusplus)
+#define DISPATCH_PURE_C 0
+#else
+#define DISPATCH_PURE_C 1
+#endif
 
 /* private.h must be included last to avoid picking up installed headers. */
 #include "os/object_private.h"
@@ -932,6 +936,16 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 #define VOUCHER_USE_BANK_AUTOREDEEM 0
 #elif !defined(VOUCHER_USE_BANK_AUTOREDEEM)
 #define VOUCHER_USE_BANK_AUTOREDEEM 1
+#endif
+
+#if OS_FIREHOSE_SPI
+#include <firehose/private.h>
+#else
+typedef uint64_t firehose_activity_id_t;
+typedef uint64_t firehose_tracepoint_id_t;
+typedef unsigned long firehose_activity_flags_t;
+typedef uint8_t firehose_stream_t;
+typedef void * voucher_activity_hooks_t;
 #endif
 
 #if !VOUCHER_USE_MACH_VOUCHER || \

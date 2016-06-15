@@ -486,6 +486,7 @@ const struct dispatch_continuation_vtable_s _dispatch_continuation_vtables[] = {
 	DC_VTABLE_ENTRY(ASYNC_REDIRECT,
 		.do_kind = "dc-redirect",
 		.do_invoke = _dispatch_async_redirect_invoke),
+#if HAVE_MACH
 	DC_VTABLE_ENTRY(MACH_SEND_BARRRIER_DRAIN,
 		.do_kind = "dc-mach-send-drain",
 		.do_invoke = _dispatch_mach_send_barrier_drain_invoke),
@@ -495,6 +496,7 @@ const struct dispatch_continuation_vtable_s _dispatch_continuation_vtables[] = {
 	DC_VTABLE_ENTRY(MACH_RECV_BARRIER,
 		.do_kind = "dc-mach-recv-barrier",
 		.do_invoke = _dispatch_mach_barrier_invoke),
+#endif
 #if HAVE_PTHREAD_WORKQUEUE_QOS
 	DC_VTABLE_ENTRY(OVERRIDE_STEALING,
 		.do_kind = "dc-override-stealing",
@@ -1195,7 +1197,9 @@ dispatch_source_type_readwrite_init(dispatch_source_t ds,
 {
 	ds->ds_is_level = true;
 	// bypass kernel check for device kqueue support rdar://19004921
+#ifdef NOTE_LOWAT
 	ds->ds_dkev->dk_kevent.fflags = NOTE_LOWAT;
+#endif
 	ds->ds_dkev->dk_kevent.data = 1;
 }
 
