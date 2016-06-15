@@ -622,7 +622,7 @@ _dispatch_source_kevent_unregister(dispatch_source_t ds)
 		}
 	} else if (!ds->ds_is_direct_kevent) {
 		ds->ds_dkev = NULL;
-		dispatch_assert(ds->ds_is_installed);
+		dispatch_assert((bool)ds->ds_is_installed);
 		TAILQ_REMOVE(&dk->dk_sources, ds->ds_refs, dr_list);
 		_dispatch_kevent_unregister(dk, flags, 0);
 	} else {
@@ -1031,8 +1031,10 @@ _dispatch_source_wakeup(dispatch_source_t ds, pthread_priority_t pp,
 
 	if (tq) {
 		return _dispatch_queue_class_wakeup(ds->_as_dq, pp, flags, tq);
+#if HAVE_PTHREAD_WORKQUEUE_QOS
 	} else if (pp) {
 		return _dispatch_queue_class_override_drainer(ds->_as_dq, pp, flags);
+#endif
 	} else if (flags & DISPATCH_WAKEUP_CONSUME) {
 		return _dispatch_release_tailcall(ds);
 	}
@@ -1204,10 +1206,12 @@ _dispatch_source_merge_kevent(dispatch_source_t ds,
 	if (dqf & (DSF_CANCELED | DQF_RELEASED)) {
 		goto done; // rdar://20204025
 	}
+#if HAVE_MACH
 	if (ke->filter == EVFILT_MACHPORT &&
 			dx_type(ds) == DISPATCH_MACH_CHANNEL_TYPE) {
 		DISPATCH_INTERNAL_CRASH(ke->flags,"Unexpected kevent for mach channel");
 	}
+#endif
 
 	unsigned long data;
 	if ((ke->flags & EV_UDATA_SPECIFIC) && (ke->flags & EV_ONESHOT) &&
@@ -1220,9 +1224,11 @@ _dispatch_source_merge_kevent(dispatch_source_t ds,
 		// Since we never ask for both EV_ONESHOT and EV_VANISHED for sources,
 		// if we get both bits it was a real EV_VANISHED delivery
 		os_atomic_store2o(ds, ds_pending_data, 0, relaxed);
+#if HAVE_MACH
 	} else if (ke->filter == EVFILT_MACHPORT) {
 		data = DISPATCH_MACH_RECV_MESSAGE;
 		os_atomic_store2o(ds, ds_pending_data, data, relaxed);
+#endif
 	} else if (ds->ds_is_level) {
 		// ke->data is signed and "negative available data" makes no sense
 		// zero bytes happens when EV_EOF is set
@@ -1571,12 +1577,14 @@ _dispatch_kevent_error(_dispatch_kevent_qos_s *ke)
 		ke->flags |= kev->flags;
 	}
 
+#if HAVE_MACH
 	if (ke->filter == EVFILT_MACHPORT && ke->data == ENOTSUP &&
 			(ke->flags & EV_ADD) && _dispatch_evfilt_machport_direct_enabled &&
 			kev && (kev->fflags & MACH_RCV_MSG)) {
 		DISPATCH_INTERNAL_CRASH(ke->ident,
 				"Missing EVFILT_MACHPORT support for ports");
 	}
+#endif
 
 	if (ke->data) {
 		// log the unexpected error
@@ -6078,8 +6086,10 @@ _dispatch_mach_wakeup(dispatch_mach_t dm, pthread_priority_t pp,
 done:
 	if (tq) {
 		return _dispatch_queue_class_wakeup(dm->_as_dq, pp, flags, tq);
+#if HAVE_PTHREAD_WORKQUEUE_QOS
 	} else if (pp) {
 		return _dispatch_queue_class_override_drainer(dm->_as_dq, pp, flags);
+#endif
 	} else if (flags & DISPATCH_WAKEUP_CONSUME) {
 		return _dispatch_release_tailcall(dm);
 	}

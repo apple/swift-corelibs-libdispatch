@@ -85,8 +85,6 @@ _dispatch_semaphore_class_init(long value, dispatch_semaphore_class_t dsemau)
 #if USE_POSIX_SEM
 	int ret = sem_init(&dsema->dsema_sem, 0, 0);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_FUTEX_SEM
-    dsema->dsema_futex = DISPATCH_FUTEX_INIT;
 #endif
 }
 
@@ -230,9 +228,6 @@ _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 #elif USE_POSIX_SEM
 	int ret = sem_post(&dsema->dsema_sem);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_FUTEX_SEM
-    bool ret = _dispatch_futex_signal(&dsema->dsema_futex);
-    DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #elif USE_WIN32_SEM
 	_dispatch_semaphore_create_handle(&dsema->dsema_handle);
 	int ret = ReleaseSemaphore(dsema->dsema_handle, 1, NULL);
@@ -268,9 +263,6 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 #elif USE_POSIX_SEM 
 	struct timespec _timeout;
 	int ret;
-#elif USE_FUTEX_SEM
-	struct timespec _timeout;
-	bool ret;
 #elif USE_WIN32_SEM
 	uint64_t nsec;
 	DWORD msec;
@@ -329,7 +321,7 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 					&orig, relaxed)) {
 #if USE_MACH_SEM
 				return KERN_OPERATION_TIMED_OUT;
-#elif USE_POSIX_SEM || USE_FUTEX_SEM || USE_WIN32_SEM
+#elif USE_POSIX_SEM || USE_WIN32_SEM
 				errno = ETIMEDOUT;
 				return -1;
 #endif
@@ -347,12 +339,6 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 		do {
 			ret = sem_wait(&dsema->dsema_sem);
 		} while (ret != 0);
-		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_FUTEX_SEM
-		do {
-			pthread_workqueue_signal_np();
-			ret = _dispatch_futex_wait(&dsema->dsema_futex, NULL);
-		} while (ret == false && errno == EINTR);
 		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #elif USE_WIN32_SEM
 		WaitForSingleObject(dsema->dsema_handle, INFINITE);
@@ -441,11 +427,6 @@ _dispatch_group_wake(dispatch_group_t dg, bool needs_release)
 			int ret = sem_post(&dg->dg_sem);
 			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 		} while (--rval);
-#elif USE_FUTEX_SEM
-		do {
-			bool ret = _dispatch_futex_signal(&dsema->dsema_futex);
-			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-		} while (--rval);
 #elif USE_WIN32_SEM
 		_dispatch_semaphore_create_handle(&dg->dg_handle);
 		int ret;
@@ -528,9 +509,6 @@ _dispatch_group_wait_slow(dispatch_group_t dg, dispatch_time_t timeout)
 #elif USE_POSIX_SEM // KVV
 	struct timespec _timeout;
 	int ret;
-#elif USE_FUTEX_SEM 
-	struct timespec _timeout;
-	bool ret;
 #elif USE_WIN32_SEM // KVV
 	uint64_t nsec;
 	DWORD msec;
@@ -587,19 +565,6 @@ _dispatch_group_wait_slow(dispatch_group_t dg, dispatch_time_t timeout)
 			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 			break;
 		}
-#elif USE_FUTEX_SEM
-		do {
-			uint64_t nsec = _dispatch_timeout(timeout);
-			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
-			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
-			pthread_workqueue_signal_np();
-			ret = slowpath(_dispatch_futex_wait(&dsema->dsema_futex, &_timeout));
-		} while (ret == false && errno == EINTR);
-
-		if (!(ret == false && errno == ETIMEDOUT)) {
-			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-			break;
-		}
 #elif USE_WIN32_SEM
 		nsec = _dispatch_timeout(timeout);
 		msec = (DWORD)(nsec / (uint64_t)1000000);
@@ -619,7 +584,7 @@ _dispatch_group_wait_slow(dispatch_group_t dg, dispatch_time_t timeout)
 					orig_waiters - 1, &orig_waiters, relaxed)) {
 #if USE_MACH_SEM
 				return KERN_OPERATION_TIMED_OUT;
-#elif USE_POSIX_SEM || USE_FUTEX_SEM || USE_WIN32_SEM
+#elif USE_POSIX_SEM || USE_WIN32_SEM
 				errno = ETIMEDOUT;
 				return -1;
 #endif
@@ -638,12 +603,6 @@ _dispatch_group_wait_slow(dispatch_group_t dg, dispatch_time_t timeout)
 			ret = sem_wait(&dg->dg_sem);
 		} while (ret == -1 && errno == EINTR);
 		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_FUTEX_SEM
-		do {
-			pthread_workqueue_signal_np();
-			ret = _dispatch_futex_wait(&dsema->dsema_futex, NULL);
-		} while (ret == false && errno == EINTR);
-		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 #elif USE_WIN32_SEM
 		WaitForSingleObject(dg->dg_handle, INFINITE);
 #endif
@@ -661,7 +620,7 @@ dispatch_group_wait(dispatch_group_t dg, dispatch_time_t timeout)
 	if (timeout == 0) {
 #if USE_MACH_SEM
 		return KERN_OPERATION_TIMED_OUT;
-#elif USE_POSIX_SEM || USE_FUTEX_SEM || USE_WIN32_SEM
+#elif USE_POSIX_SEM || USE_WIN32_SEM
 		errno = ETIMEDOUT;
 		return (-1);
 #endif

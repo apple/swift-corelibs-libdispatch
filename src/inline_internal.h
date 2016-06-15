@@ -977,7 +977,7 @@ _dispatch_queue_drain_try_lock(dispatch_queue_t dq,
 	uint64_t pending_barrier_width =
 			(dq->dq_width - 1) * DISPATCH_QUEUE_WIDTH_INTERVAL;
 	uint64_t xor_owner_and_set_full_width =
-			_dispatch_thread_port() | DISPATCH_QUEUE_WIDTH_FULL_BIT;
+			_dispatch_tid_self() | DISPATCH_QUEUE_WIDTH_FULL_BIT;
 	uint64_t clear_enqueued_bit, old_state, new_state;
 
 	if (flags & DISPATCH_INVOKE_STEALING) {
@@ -1041,7 +1041,7 @@ static inline bool
 _dispatch_queue_try_acquire_barrier_sync(dispatch_queue_t dq)
 {
 	uint64_t value = DISPATCH_QUEUE_WIDTH_FULL_BIT | DISPATCH_QUEUE_IN_BARRIER;
-	value |= _dispatch_thread_port();
+	value |= _dispatch_tid_self();
 
 	return os_atomic_cmpxchg2o(dq, dq_state,
 			DISPATCH_QUEUE_STATE_INIT_VALUE(dq->dq_width), value, acquire);
@@ -1577,7 +1577,7 @@ _dispatch_root_queue_identity_assume(struct _dispatch_identity_s *di,
 	if (!pp) pp = di->old_pri;
 	if ((pp & _PTHREAD_PRIORITY_QOS_CLASS_MASK) >
 			(assumed_rq->dq_priority & _PTHREAD_PRIORITY_QOS_CLASS_MASK)) {
-		_dispatch_wqthread_override_start(_dispatch_thread_port(), pp);
+		_dispatch_wqthread_override_start(_dispatch_tid_self(), pp);
 		// Ensure that the root queue sees that this thread was overridden.
 		_dispatch_set_defaultpriority_override();
 	}
@@ -1630,7 +1630,7 @@ _dispatch_queue_class_invoke(dispatch_object_t dou,
 drain_pending_barrier:
 		if (overriding) {
 			_dispatch_object_debug(dq, "stolen onto thread 0x%x, 0x%lx",
-					_dispatch_thread_port(), _dispatch_get_defaultpriority());
+					_dispatch_tid_self(), _dispatch_get_defaultpriority());
 			_dispatch_root_queue_identity_assume(&di, 0, 0);
 		}
 
@@ -1640,7 +1640,7 @@ drain_pending_barrier:
 			old_dp = _dispatch_set_defaultpriority(dq->dq_priority, &dp);
 			op = dq->dq_override;
 			if (op > (dp & _PTHREAD_PRIORITY_QOS_CLASS_MASK)) {
-				_dispatch_wqthread_override_start(_dispatch_thread_port(), op);
+				_dispatch_wqthread_override_start(_dispatch_tid_self(), op);
 				// Ensure that the root queue sees that this thread was overridden.
 				_dispatch_set_defaultpriority_override();
 			}
@@ -1825,7 +1825,7 @@ _dispatch_queue_set_bound_thread(dispatch_queue_t dq)
 {
 	// Tag thread-bound queues with the owning thread
 	dispatch_assert(_dispatch_queue_is_thread_bound(dq));
-	mach_port_t old_owner, self = _dispatch_thread_port();
+	mach_port_t old_owner, self = _dispatch_tid_self();
 	uint64_t dq_state = os_atomic_or_orig2o(dq, dq_state, self, relaxed);
 	if (unlikely(old_owner = _dq_state_drain_owner(dq_state))) {
 		DISPATCH_INTERNAL_CRASH(old_owner, "Queue bound twice");
@@ -1888,7 +1888,7 @@ _dispatch_reset_defaultpriority(pthread_priority_t pp)
 	pp |= old_pp & _PTHREAD_PRIORITY_OVERRIDE_FLAG;
 	_dispatch_thread_setspecific(dispatch_defaultpriority_key, (void*)pp);
 #else
-	(void)priority;
+	(void)pp;
 #endif
 }
 
@@ -1994,7 +1994,7 @@ _dispatch_priority_adopt(pthread_priority_t pp, unsigned long flags)
 		return defaultpri;
 	}
 #else
-	(void)priority; (void)flags;
+	(void)pp; (void)flags;
 	return 0;
 #endif
 }
@@ -2037,6 +2037,7 @@ static inline pthread_priority_t
 _dispatch_priority_compute_update(pthread_priority_t pp,
 		_dispatch_thread_set_self_t flags)
 {
+#if HAVE_PTHREAD_WORKQUEUE_QOS
 	dispatch_assert(pp != DISPATCH_NO_PRIORITY);
 	if (!_dispatch_set_qos_class_enabled) return 0;
 	// the priority in _dispatch_get_priority() only tracks manager-ness
@@ -2047,7 +2048,6 @@ _dispatch_priority_compute_update(pthread_priority_t pp,
 	// the manager bit is invalid input, but we keep it to get meaningful
 	// assertions in _dispatch_set_priority_and_voucher_slow()
 	pp &= _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG | ~_PTHREAD_PRIORITY_FLAGS_MASK;
-#if HAVE_PTHREAD_WORKQUEUE_QOS
 	pthread_priority_t cur_priority = _dispatch_get_priority();
 	pthread_priority_t unbind = _PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG;
 	pthread_priority_t overcommit = _PTHREAD_PRIORITY_OVERCOMMIT_FLAG;
@@ -2064,6 +2064,8 @@ _dispatch_priority_compute_update(pthread_priority_t pp,
 		cur_priority &= ~overcommit;
 	}
 	if (unlikely(pp != cur_priority)) return pp;
+#else
+	(void)pp; (void)flags;
 #endif
 	return 0;
 }

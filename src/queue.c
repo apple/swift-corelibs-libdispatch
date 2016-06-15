@@ -794,8 +794,6 @@ _dispatch_root_queue_init_pthread_pool(dispatch_root_queue_context_t qc,
 	/* XXXRW: POSIX semaphores don't support LIFO? */
 	int ret = sem_init(&(pqc->dpq_thread_mediator.dsema_sem), 0, 0);
 	(void)dispatch_assume_zero(ret);
-#elif USE_FUTEX_SEM
-	pqc->dpq_thread_mediator.dsema_futex = DISPATCH_FUTEX_INIT;
 #endif
 }
 #endif // DISPATCH_USE_PTHREAD_POOL
@@ -909,10 +907,12 @@ libdispatch_init(void)
 #if DISPATCH_PERF_MON && !DISPATCH_INTROSPECTION
 	_dispatch_thread_key_create(&dispatch_bcounter_key, NULL);
 #endif
+#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
 	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
 		_dispatch_thread_key_create(&dispatch_sema4_key,
 				_dispatch_thread_semaphore_dispose);
 	}
+#endif
 
 #if DISPATCH_USE_RESOLVERS // rdar://problem/8541707
 	_dispatch_main_q.do_targetq = &_dispatch_root_queues[
@@ -1076,7 +1076,7 @@ _dispatch_get_queue_attr(qos_class_t qos, int prio,
 dispatch_queue_attr_t
 _dispatch_get_default_queue_attr(void)
 {
-	return _dispatch_get_queue_attr(QOS_CLASS_UNSPECIFIED, 0,
+	return _dispatch_get_queue_attr(_DISPATCH_QOS_CLASS_UNSPECIFIED, 0,
 				_dispatch_queue_attr_overcommit_unspecified,
 				DISPATCH_AUTORELEASE_FREQUENCY_INHERIT, false, false);
 }
@@ -1238,10 +1238,15 @@ _dispatch_queue_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 			}
 		}
 		if (qos == _DISPATCH_QOS_CLASS_UNSPECIFIED) {
-			qos = _pthread_qos_class_decode(tq->dq_priority, NULL, NULL);
-			// force going through _dispatch_queue_priority_inherit_from_target
-			tq = _dispatch_get_root_queue(qos, overcommit ==
-					_dispatch_queue_attr_overcommit_enabled);
+			if (overcommit == _dispatch_queue_attr_overcommit_enabled) {
+				if (!(tq->dq_priority & _PTHREAD_PRIORITY_OVERCOMMIT_FLAG)) {
+					tq++;
+				}
+			} else {
+				if (tq->dq_priority & _PTHREAD_PRIORITY_OVERCOMMIT_FLAG) {
+					tq--;
+				}
+			}
 		} else {
 			tq = NULL;
 		}
@@ -2346,7 +2351,7 @@ _dispatch_queue_debug_attr(dispatch_queue_t dq, char* buf, size_t bufsiz)
 	offset += dsnprintf(&buf[offset], bufsiz - offset,
 			"target = %s[%p], width = 0x%x, state = 0x%016llx",
 			target && target->dq_label ? target->dq_label : "", target,
-			dq->dq_width, dq_state);
+			dq->dq_width, (unsigned long long)dq_state);
 	if (_dq_state_is_suspended(dq_state)) {
 		offset += dsnprintf(&buf[offset], bufsiz - offset, ", suspended = %d",
 			_dq_state_suspend_cnt(dq_state));
@@ -2653,6 +2658,7 @@ _dispatch_block_create_with_voucher_and_priority(dispatch_block_flags_t flags,
 		voucher_t voucher, pthread_priority_t pri, dispatch_block_t block)
 {
 	flags = _dispatch_block_normalize_flags(flags);
+#if HAVE_PTHREAD_WORKQUEUE_QOS
 	bool assign = (flags & DISPATCH_BLOCK_ASSIGN_CURRENT);
 
 	if (assign && !(flags & DISPATCH_BLOCK_HAS_VOUCHER)) {
@@ -2666,6 +2672,7 @@ _dispatch_block_create_with_voucher_and_priority(dispatch_block_flags_t flags,
 		pri = _dispatch_priority_propagate();
 		flags |= DISPATCH_BLOCK_HAS_PRIORITY;
 	}
+#endif
 	dispatch_block_t db = _dispatch_block_create(flags, voucher, pri, block);
 #if DISPATCH_DEBUG
 	dispatch_assert(_dispatch_block_get_data(db));
@@ -3988,8 +3995,10 @@ _dispatch_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
 	}
 	if (target) {
 		return _dispatch_queue_class_wakeup(dq, pp, flags, target);
+#if HAVE_PTHREAD_WORKQUEUE_QOS
 	} else if (pp) {
 		return _dispatch_queue_class_override_drainer(dq, pp, flags);
+#endif
 	} else if (flags & DISPATCH_WAKEUP_CONSUME) {
 		return _dispatch_release_tailcall(dq);
 	}
@@ -4022,6 +4031,13 @@ _dispatch_runloop_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
 	if (flags & DISPATCH_WAKEUP_CONSUME) {
 		return _dispatch_release_tailcall(dq);
 	}
+}
+#else
+void
+_dispatch_runloop_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
+		dispatch_wakeup_flags_t flags)
+{
+	LINUX_PORT_ERROR();
 }
 #endif
 

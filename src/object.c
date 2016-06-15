@@ -240,7 +240,7 @@ dispatch_set_target_queue(dispatch_object_t dou, dispatch_queue_t tq)
 	} else if (dou._do->do_ref_cnt != DISPATCH_OBJECT_GLOBAL_REFCNT &&
 			!slowpath(dx_hastypeflag(dou._do, QUEUE_ROOT))) {
 		if (slowpath(!tq)) {
-			tq = _dispatch_get_root_queue(QOS_CLASS_DEFAULT, false);
+			tq = _dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT, false);
 		}
 		_dispatch_object_set_target_queue_inline(dou._do, tq);
 	}

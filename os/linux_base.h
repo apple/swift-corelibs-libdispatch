@@ -13,92 +13,60 @@
 #ifndef __OS_LINUX_BASE__
 #define __OS_LINUX_BASE__
 
-// #include <sys/event.h>
 #include <sys/user.h>
+#include <sys/param.h>
 
-// marker for hacks we have made to make progress
-#define __LINUX_PORT_HDD__ 1
-
-/*
- * Stub out defines for some mach types and related macros
- */
-
-typedef uint32_t mach_port_t;
-
-#define  MACH_PORT_NULL (0)
-#define  MACH_PORT_DEAD (-1)
-
-#define EVFILT_MACHPORT (-8)
-
-typedef uint32_t mach_error_t;
-
-typedef uint32_t mach_vm_size_t;
-
-typedef uint32_t mach_msg_return_t;
-
-typedef uintptr_t mach_vm_address_t;
-
-typedef uint32_t dispatch_mach_msg_t;
-
-typedef uint32_t dispatch_mach_t;
-
-typedef uint32_t dispatch_mach_reason_t;
-
-typedef uint32_t voucher_activity_mode_t;
-
-typedef uint32_t voucher_activity_trace_id_t;
-
-typedef uint32_t voucher_activity_id_t;
-
-typedef uint32_t _voucher_activity_buffer_hook_t;;
-
-typedef uint32_t voucher_activity_flag_t;
-
-typedef struct
-{
-} mach_msg_header_t;
-
-
-typedef void (*dispatch_mach_handler_function_t)(void*, dispatch_mach_reason_t,
-						 dispatch_mach_msg_t, mach_error_t);
-
-typedef void (*dispatch_mach_msg_destructor_t)(void*);
-
-// Print a warning when an unported code path executes.
-#define LINUX_PORT_ERROR()  do { printf("LINUX_PORT_ERROR_CALLED %s:%d: %s\n",__FILE__,__LINE__,__FUNCTION__); } while (0)
-
-/*
- * Stub out defines for other missing types
- */
-
-#if __linux__
-// we fall back to use kevent
-#define kevent64_s kevent
-#define kevent64(kq,cl,nc,el,ne,f,to)  kevent(kq,cl,nc,el,ne,to)
+#if __GNUC__
+#define OS_EXPECT(x, v) __builtin_expect((x), (v))
+#else
+#define OS_EXPECT(x, v) (x)
 #endif
 
-// SIZE_T_MAX should not be hardcoded like this here.
-#define SIZE_T_MAX (0x7fffffff)
+#ifndef os_likely
+#define os_likely(x) OS_EXPECT(!!(x), 1)
+#endif
+#ifndef os_unlikely
+#define os_unlikely(x) OS_EXPECT(!!(x), 0)
+#endif
 
-// Define to 0 the NOTE_ values that are not present on Linux.
-// Revisit this...would it be better to ifdef out the uses instead??
+#if __has_feature(assume_nonnull)
+#define OS_ASSUME_NONNULL_BEGIN _Pragma("clang assume_nonnull begin")
+#define OS_ASSUME_NONNULL_END   _Pragma("clang assume_nonnull end")
+#else
+#define OS_ASSUME_NONNULL_BEGIN
+#define OS_ASSUME_NONNULL_END
+#endif
 
-// The following values are passed as part of the EVFILT_TIMER requests
+#if __has_builtin(__builtin_assume)
+#define OS_COMPILER_CAN_ASSUME(expr) __builtin_assume(expr)
+#else
+#define OS_COMPILER_CAN_ASSUME(expr) ((void)(expr))
+#endif
 
-#define IGNORE_KEVENT64_EXT   /* will force the kevent64_s.ext[] to not be used -> leeway ignored */
+#if __has_feature(attribute_availability_swift)
+// equivalent to __SWIFT_UNAVAILABLE from Availability.h
+#define OS_SWIFT_UNAVAILABLE(_msg) \
+		__attribute__((__availability__(swift, unavailable, message=_msg)))
+#else
+#define OS_SWIFT_UNAVAILABLE(_msg)
+#endif
 
-#define NOTE_SECONDS	0x01
-#define NOTE_USECONDS	0x02
-#define NOTE_NSECONDS	0x04
-#define NOTE_ABSOLUTE	0x08
-#define NOTE_CRITICAL	0x10
-#define NOTE_BACKGROUND	0x20
-#define NOTE_LEEWAY	0x40
+#if __has_attribute(swift_private)
+# define OS_REFINED_FOR_SWIFT __attribute__((__swift_private__))
+#else
+# define OS_REFINED_FOR_SWIFT
+#endif
 
-// need to catch the following usage if it happens ..
-// we simply return '0' as a value probably not correct
+#if __has_attribute(swift_name)
+# define OS_SWIFT_NAME(_name) __attribute__((__swift_name__(#_name)))
+#else
+# define OS_SWIFT_NAME(_name)
+#endif
 
-#define NOTE_VM_PRESSURE ({LINUX_PORT_ERROR(); 0;})
+#define __OS_STRINGIFY(s) #s
+#define OS_STRINGIFY(s) __OS_STRINGIFY(s)
+#define __OS_CONCAT(x, y) x ## y
+#define OS_CONCAT(x, y) __OS_CONCAT(x, y)
 
 /*
  * Stub out misc linking and compilation attributes
@@ -122,13 +90,5 @@ typedef void (*dispatch_mach_msg_destructor_t)(void*);
 #undef OS_NOTHROW
 #endif
 #define OS_NOTHROW
-
-
-// These and similar macros come from Availabilty.h on OS X
-// Need a better way to do this long term.
-#define __OSX_AVAILABLE_BUT_DEPRECATED(a,b,c,d) //
-#define __OSX_AVAILABLE_BUT_DEPRECATED_MSG(a,b,c,d,msg) //
-
-
 
 #endif /* __OS_LINUX_BASE__ */

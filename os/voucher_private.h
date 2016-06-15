@@ -416,6 +416,7 @@ dispatch_queue_create_with_accounting_override_voucher(
 		dispatch_queue_attr_t _Nullable attr,
 		voucher_t _Nullable voucher);
 
+#ifdef __APPLE__
 /*!
  * @group Voucher Mach SPI
  * SPI intended for clients that need to interact with mach messages or mach
@@ -444,7 +445,6 @@ OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t _Nullable
 voucher_create_with_mach_msg(mach_msg_header_t *msg);
 
-#ifdef __APPLE__
 /*!
  * @group Voucher Persona SPI
  * SPI intended for clients that need to interact with personas.
