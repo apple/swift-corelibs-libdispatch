@@ -448,7 +448,7 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 
 static int
 test_read_dirs(char **paths, dispatch_queue_t queue, dispatch_group_t g,
-		dispatch_semaphore_t s, volatile int32_t *bytes, int option)
+		dispatch_semaphore_t s, volatile uint32_t *bytes, int option)
 {
 	FTS *tree = fts_open(paths, FTS_PHYSICAL|FTS_XDEV, NULL);
 	if (!tree) {
@@ -505,7 +505,7 @@ test_read_many_files(void)
 	dispatch_group_t g = dispatch_group_create();
 	dispatch_semaphore_t s = dispatch_semaphore_create(maxopenfiles);
 	uint64_t start;
-	volatile int32_t bytes;
+	volatile uint32_t bytes;
 	unsigned int files_read, i;
 
 	const dispatch_queue_t queues[] = {
