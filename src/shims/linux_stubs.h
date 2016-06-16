@@ -62,8 +62,6 @@ typedef void (*dispatch_mach_handler_function_t)(void*, dispatch_mach_reason_t,
 
 typedef void (*dispatch_mach_msg_destructor_t)(void*);
 
-mach_port_t mach_task_self();
-
 // Print a warning when an unported code path executes.
 #define LINUX_PORT_ERROR()  do { printf("LINUX_PORT_ERROR_CALLED %s:%d: %s\n",__FILE__,__LINE__,__FUNCTION__); } while (0)
 

@@ -553,7 +553,7 @@ dispatch_assert_queue(dispatch_queue_t dq)
 	if (unlikely(_dq_state_drain_pended(dq_state))) {
 		goto fail;
 	}
-	if (likely(_dq_state_drain_owner(dq_state) == _dispatch_thread_port())) {
+	if (likely(_dq_state_drain_owner(dq_state) == _dispatch_tid_self())) {
 		return;
 	}
 	if (likely(dq->dq_width > 1)) {
@@ -580,7 +580,7 @@ dispatch_assert_queue_not(dispatch_queue_t dq)
 	if (_dq_state_drain_pended(dq_state)) {
 		return;
 	}
-	if (likely(_dq_state_drain_owner(dq_state) != _dispatch_thread_port())) {
+	if (likely(_dq_state_drain_owner(dq_state) != _dispatch_tid_self())) {
 		if (likely(dq->dq_width == 1)) {
 			// we can look at the width: if it is changing while we read it,
 			// it means that a barrier is running on `dq` concurrently, which
@@ -1602,7 +1602,7 @@ _dispatch_queue_resume(dispatch_queue_t dq, bool activate)
 							DISPATCH_QUEUE_WIDTH_FULL_BIT) {
 						value = full_width;
 						value &= ~DISPATCH_QUEUE_DIRTY;
-						value |= _dispatch_thread_port();
+						value |= _dispatch_tid_self();
 					}
 				}
 			}
@@ -2334,7 +2334,7 @@ _dispatch_queue_is_exclusively_owned_by_current_thread_4IOHID(
 		DISPATCH_CLIENT_CRASH(dq->dq_width, "Invalid queue type");
 	}
 	uint64_t dq_state = os_atomic_load2o(dq, dq_state, relaxed);
-	return _dq_state_drain_locked_by(dq_state, _dispatch_thread_port());
+	return _dq_state_drain_locked_by(dq_state, _dispatch_tid_self());
 }
 #endif
 
@@ -2471,7 +2471,7 @@ _dispatch_set_priority_and_mach_voucher_slow(pthread_priority_t pp,
 				pflags |= _PTHREAD_SET_SELF_QOS_FLAG;
 			}
 			if (unlikely(DISPATCH_QUEUE_DRAIN_OWNER(&_dispatch_mgr_q) ==
-					_dispatch_thread_port())) {
+					_dispatch_tid_self())) {
 				DISPATCH_INTERNAL_CRASH(pp,
 						"Changing the QoS while on the manager queue");
 			}
@@ -2773,7 +2773,7 @@ _dispatch_block_invoke_direct(const struct dispatch_block_private_data_s *dbcpd)
 		v = dbpd->dbpd_voucher;
 	}
 	ov = _dispatch_adopt_priority_and_set_voucher(p, v, adopt_flags);
-	dbpd->dbpd_thread = _dispatch_thread_port();
+	dbpd->dbpd_thread = _dispatch_tid_self();
 	_dispatch_client_callout(dbpd->dbpd_block,
 			_dispatch_Block_invoke(dbpd->dbpd_block));
 	_dispatch_reset_priority_and_voucher(op, ov);
@@ -3123,7 +3123,7 @@ _dispatch_async_redirect_invoke(dispatch_continuation_t dc,
 	old_dp = _dispatch_set_defaultpriority(dq->dq_priority, &dp);
 	op = dq->dq_override;
 	if (op > (dp & _PTHREAD_PRIORITY_QOS_CLASS_MASK)) {
-		_dispatch_wqthread_override_start(_dispatch_thread_port(), op);
+		_dispatch_wqthread_override_start(_dispatch_tid_self(), op);
 		// Ensure that the root queue sees that this thread was overridden.
 		_dispatch_set_defaultpriority_override();
 	}
@@ -3543,7 +3543,7 @@ _dispatch_barrier_sync_f_slow(dispatch_queue_t dq, void *ctxt,
 		_dispatch_introspection_barrier_sync_begin(dq, func);
 	}
 #endif
-	uint32_t th_self = _dispatch_thread_port();
+	uint32_t th_self = _dispatch_tid_self();
 	struct dispatch_continuation_s dbss = {
 		.dc_flags = DISPATCH_OBJ_BARRIER_BIT | DISPATCH_OBJ_SYNC_SLOW_BIT,
 		.dc_func = _dispatch_barrier_sync_f_slow_invoke,
@@ -3709,7 +3709,7 @@ _dispatch_non_barrier_complete(dispatch_queue_t dq)
 						DISPATCH_QUEUE_WIDTH_FULL_BIT) {
 					new_state = full_width;
 					new_state &= ~DISPATCH_QUEUE_DIRTY;
-					new_state |= _dispatch_thread_port();
+					new_state |= _dispatch_tid_self();
 				}
 			}
 		}
@@ -3736,7 +3736,7 @@ _dispatch_sync_f_slow(dispatch_queue_t dq, void *ctxt, dispatch_function_t func,
 	}
 	dispatch_thread_event_s event;
 	_dispatch_thread_event_init(&event);
-	uint32_t th_self = _dispatch_thread_port();
+	uint32_t th_self = _dispatch_tid_self();
 	struct dispatch_continuation_s dc = {
 		.dc_flags = DISPATCH_OBJ_SYNC_SLOW_BIT,
 #if DISPATCH_INTROSPECTION
@@ -4430,7 +4430,7 @@ _dispatch_main_queue_drain(void)
 				" after dispatch_main()");
 	}
 	mach_port_t owner = DISPATCH_QUEUE_DRAIN_OWNER(dq);
-	if (slowpath(owner != _dispatch_thread_port())) {
+	if (slowpath(owner != _dispatch_tid_self())) {
 		DISPATCH_CLIENT_CRASH(owner, "_dispatch_main_queue_callback_4CF called"
 				" from the wrong thread");
 	}
@@ -4655,7 +4655,7 @@ _dispatch_queue_drain_deferred_invoke(dispatch_queue_t dq,
 	}
 
 	if (dq) {
-		uint32_t self = _dispatch_thread_port();
+		uint32_t self = _dispatch_tid_self();
 		os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, release,{
 			new_state = old_state;
 			if (!_dq_state_drain_pended(old_state) ||
@@ -5091,7 +5091,7 @@ _dispatch_queue_class_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
 		uint64_t pending_barrier_width =
 				(dq->dq_width - 1) * DISPATCH_QUEUE_WIDTH_INTERVAL;
 		uint64_t xor_owner_and_set_full_width_and_in_barrier =
-				_dispatch_thread_port() | DISPATCH_QUEUE_WIDTH_FULL_BIT |
+				_dispatch_tid_self() | DISPATCH_QUEUE_WIDTH_FULL_BIT |
 				DISPATCH_QUEUE_IN_BARRIER;
 
 #ifdef DLOCK_NOWAITERS_BIT
