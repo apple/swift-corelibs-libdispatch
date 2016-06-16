@@ -67,7 +67,10 @@ void *(*_dispatch_begin_NSAutoReleasePool)(void);
 void (*_dispatch_end_NSAutoReleasePool)(void *);
 #endif
 
-#if !DISPATCH_USE_DIRECT_TSD
+#if DISPATCH_USE_THREAD_LOCAL_STORAGE
+__thread struct dispatch_tsd __dispatch_tsd;
+pthread_key_t __dispatch_tsd_key;
+#elif !DISPATCH_USE_DIRECT_TSD
 pthread_key_t dispatch_queue_key;
 pthread_key_t dispatch_frame_key;
 pthread_key_t dispatch_cache_key;
@@ -82,7 +85,7 @@ pthread_key_t dispatch_bcounter_key;
 pthread_key_t dispatch_sema4_key;
 pthread_key_t dispatch_voucher_key;
 pthread_key_t dispatch_deferred_items_key;
-#endif // !DISPATCH_USE_DIRECT_TSD
+#endif // !DISPATCH_USE_DIRECT_TSD && !DISPATCH_USE_THREAD_LOCAL_STORAGE
 
 #if VOUCHER_USE_MACH_VOUCHER
 dispatch_once_t _voucher_task_mach_voucher_pred;
@@ -184,10 +187,6 @@ const struct dispatch_tsd_indexes_s dispatch_tsd_indexes = {
 	.dti_voucher_index = dispatch_voucher_key,
 	.dti_qos_class_index = dispatch_priority_key,
 };
-#else // DISPATCH_USE_DIRECT_TSD
-#ifndef __LINUX_PORT_HDD__
-#error Not implemented on this platform
-#endif
 #endif // DISPATCH_USE_DIRECT_TSD
 
 // 6618342 Contact the team that owns the Instrument DTrace probe before
