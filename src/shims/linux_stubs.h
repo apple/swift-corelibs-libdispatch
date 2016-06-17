@@ -64,6 +64,10 @@ typedef void (*dispatch_mach_msg_destructor_t)(void*);
 
 mach_port_t mach_task_self();
 
+mach_port_t pthread_mach_thread_np(uintptr_t unused);
+char* mach_error_string(mach_msg_return_t x);
+void mach_vm_deallocate(mach_port_t, mach_vm_address_t, mach_vm_size_t);
+
 // Print a warning when an unported code path executes.
 #define LINUX_PORT_ERROR()  do { printf("LINUX_PORT_ERROR_CALLED %s:%d: %s\n",__FILE__,__LINE__,__FUNCTION__); } while (0)
 

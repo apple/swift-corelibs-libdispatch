@@ -661,7 +661,7 @@ _dispatch_root_queues_init_qos(int supported)
 static inline bool
 _dispatch_root_queues_init_workq(int *wq_supported)
 {
-	int r;
+	int r DISPATCH_UNUSED;
 	bool result = false;
 	*wq_supported = 0;
 #if HAVE_PTHREAD_WORKQUEUES
