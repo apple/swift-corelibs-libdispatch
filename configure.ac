@@ -6,7 +6,7 @@ AC_PREREQ(2.69)
 AC_INIT([libdispatch], [1.3], [libdispatch@macosforge.org], [libdispatch], [http://libdispatch.macosforge.org])
 AC_REVISION([$$])
 AC_CONFIG_AUX_DIR(config)
-AC_CONFIG_HEADER([config/config.h])
+AC_CONFIG_HEADER([config/config_ac.h])
 AC_CONFIG_MACRO_DIR([m4])
 ac_clean_files=a.out.dSYM
 AM_MAINTAINER_MODE
