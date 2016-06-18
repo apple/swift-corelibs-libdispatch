@@ -18,7 +18,12 @@
 
 #include <stdint.h>
 #include <syscall.h>
+
+#if __has_include(<config/config_ac.h>)
+#include <config/config_ac.h>
+#else
 #include <config/config.h>
+#endif
 
 #include "pthread.h"
 #include "os/linux_base.h"

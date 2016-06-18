@@ -27,7 +27,11 @@
 #ifndef __DISPATCH_INTERNAL__
 #define __DISPATCH_INTERNAL__
 
+#if __has_include(<config/config_ac.h>)
+#include <config/config_ac.h>
+#else
 #include <config/config.h>
+#endif
 
 #define __DISPATCH_BUILDING_DISPATCH__
 #define __DISPATCH_INDIRECT__
