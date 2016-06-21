@@ -98,7 +98,8 @@ typedef pid_t dispatch_lock_owner;
 #define DLOCK_OWNER_MASK			((dispatch_lock)FUTEX_TID_MASK)
 #define DLOCK_WAITERS_BIT			((dispatch_lock)FUTEX_WAITERS)
 #define DLOCK_FAILED_TRYLOCK_BIT	((dispatch_lock)FUTEX_OWNER_DIED)
-#define _dispatch_tid_self()		syscall(SYS_gettid) /* FIXME: should be cached in TSD instead of doing syscall each time */
+#define _dispatch_tid_self() \
+		((dispatch_lock_owner)(_dispatch_get_tsd_base()->tid))
 
 DISPATCH_ALWAYS_INLINE
 static inline bool

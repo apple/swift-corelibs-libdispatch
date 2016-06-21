@@ -894,6 +894,9 @@ libdispatch_init(void)
 #endif
 #endif
 
+#if DISPATCH_USE_THREAD_LOCAL_STORAGE
+	_dispatch_thread_key_create(&__dispatch_tsd_key, _libdispatch_tsd_cleanup);
+#else
 	_dispatch_thread_key_create(&dispatch_queue_key, _dispatch_queue_cleanup);
 	_dispatch_thread_key_create(&dispatch_deferred_items_key,
 			_dispatch_deferred_items_cleanup);
@@ -912,6 +915,7 @@ libdispatch_init(void)
 		_dispatch_thread_key_create(&dispatch_sema4_key,
 				_dispatch_thread_semaphore_dispose);
 	}
+#endif
 #endif
 
 #if DISPATCH_USE_RESOLVERS // rdar://problem/8541707
@@ -964,6 +968,59 @@ _dispatch_get_mach_host_port(void)
 	dispatch_once_f(&_dispatch_mach_host_port_pred, NULL,
 			_dispatch_mach_host_port_init);
 	return _dispatch_mach_host_port;
+}
+#endif
+
+#if DISPATCH_USE_THREAD_LOCAL_STORAGE
+#include <unistd.h>
+#include <sys/syscall.h>
+
+#ifdef SYS_gettid
+DISPATCH_ALWAYS_INLINE
+static inline pid_t
+gettid(void)
+{
+	return (pid_t) syscall(SYS_gettid);
+}
+#else
+#error "SYS_gettid unavailable on this system"
+#endif
+
+#define _tsd_call_cleanup(k, f)  do { \
+		if ((f) && tsd->k) ((void(*)(void*))(f))(tsd->k); \
+    } while (0)
+
+void
+_libdispatch_tsd_cleanup(void *ctx)
+{
+	struct dispatch_tsd *tsd = (struct dispatch_tsd*) ctx;
+
+	_tsd_call_cleanup(dispatch_queue_key, _dispatch_queue_cleanup);
+	_tsd_call_cleanup(dispatch_frame_key, _dispatch_frame_cleanup);
+	_tsd_call_cleanup(dispatch_cache_key, _dispatch_cache_cleanup);
+	_tsd_call_cleanup(dispatch_context_key, _dispatch_context_cleanup);
+	_tsd_call_cleanup(dispatch_pthread_root_queue_observer_hooks_key,
+			NULL);
+	_tsd_call_cleanup(dispatch_defaultpriority_key, NULL);
+#if DISPATCH_PERF_MON && !DISPATCH_INTROSPECTION
+	_tsd_call_cleanup(dispatch_bcounter_key, NULL);
+#endif
+#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
+	_tsd_call_cleanup(dispatch_sema4_key, _dispatch_thread_semaphore_dispose);
+#endif
+	_tsd_call_cleanup(dispatch_priority_key, NULL);
+	_tsd_call_cleanup(dispatch_voucher_key, _voucher_thread_cleanup);
+	_tsd_call_cleanup(dispatch_deferred_items_key,
+			_dispatch_deferred_items_cleanup);
+	tsd->tid = 0;
+}
+
+DISPATCH_NOINLINE
+void
+libdispatch_tsd_init(void)
+{
+	pthread_setspecific(__dispatch_tsd_key, &__dispatch_tsd);
+	__dispatch_tsd.tid = gettid();
 }
 #endif
 
