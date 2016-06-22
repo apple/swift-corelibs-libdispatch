@@ -53,7 +53,6 @@ TESTS=							\
 	dispatch_timer_set_time		\
 	dispatch_starfish			\
 	dispatch_cascade			\
-	dispatch_readsync			\
 	dispatch_data				\
 	dispatch_io					\
 	dispatch_io_net				\
@@ -67,6 +66,7 @@ FAILING_TESTS = 				\
 	dispatch_concur				\
 	dispatch_timer_short		\
 	dispatch_sema				\
+	dispatch_readsync			\
 	dispatch_drift
 
 # List tests that are expected to fail here.
