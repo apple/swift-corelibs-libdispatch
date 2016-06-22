@@ -32,38 +32,42 @@ UNPORTED_TESTS=					\
 	dispatch_vnode
 
 TESTS=							\
-	dispatch_apply				\
 	dispatch_api				\
 	dispatch_c99				\
 	dispatch_debug				\
 	dispatch_queue_finalizer	\
-	dispatch_group				\
 	dispatch_overcommit			\
 	dispatch_pingpong			\
 	dispatch_plusplus			\
 	dispatch_priority			\
 	dispatch_priority2			\
-	dispatch_concur				\
 	dispatch_context_for_key	\
 	dispatch_read				\
 	dispatch_read2				\
 	dispatch_after				\
 	dispatch_timer				\
-	dispatch_timer_short		\
 	dispatch_timer_timeout		\
-	dispatch_sema				\
 	dispatch_suspend_timer		\
 	dispatch_timer_bit31		\
 	dispatch_timer_bit63		\
 	dispatch_timer_set_time		\
 	dispatch_starfish			\
 	dispatch_cascade			\
-	dispatch_drift				\
 	dispatch_readsync			\
 	dispatch_data				\
 	dispatch_io					\
 	dispatch_io_net				\
 	dispatch_select
+
+# Tests that are currently failing intermittently, sometimes as hangs and therefore
+# can't be run
+FAILING_TESTS = 				\
+	dispatch_apply				\
+	dispatch_group				\
+	dispatch_concur				\
+	dispatch_timer_short		\
+	dispatch_sema				\
+	dispatch_drift
 
 # List tests that are expected to fail here.
 # Currently dispatch_concur fails occasionally, but passes more often than fails. 
