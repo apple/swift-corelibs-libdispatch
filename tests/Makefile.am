@@ -140,6 +140,10 @@ bsdtestsummarize_LDADD=-lm $(BSD_OVERLAY_LIBS)
 dispatch_timer_short_LDADD=-lm $(LDADD)
 dispatch_group_LDADD=-lm $(LDADD)
 
+if HAVE_SWIFT
+AM_LDFLAGS=-rpath $(SWIFT_RUNTIME_LIBS)
+endif
+
 if HAVE_LEAKS
 AM_TESTS_ENVIRONMENT=
 else
