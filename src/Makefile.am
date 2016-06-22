@@ -114,8 +114,18 @@ DTRACE_SOURCES=provider.h
 endif
 
 if HAVE_SWIFT
-libdispatch_la_SOURCES+=swift/swift_wrappers.c
-EXTRA_libdispatch_la_SOURCES+=swift/Dispatch.swift
+libdispatch_la_SOURCES+=swift/Dispatch.mm
+EXTRA_libdispatch_la_SOURCES+= \
+	swift/Dispatch.swift \
+	swift/Block.swift \
+	swift/Data.swift \
+	swift/Dispatch.swift \
+	swift/IO.swift \
+	swift/Private.swift \
+	swift/Queue.swift \
+	swift/Source.swift \
+	swift/Time.swift
+
 EXTRA_libdispatch_la_DEPENDENCIES+=$(abs_builddir)/Dispatch.o $(abs_builddir)/Dispatch.swiftmodule
 libdispatch_la_LIBADD+=$(abs_builddir)/Dispatch.o
 
