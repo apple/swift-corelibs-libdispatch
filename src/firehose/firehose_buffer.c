@@ -83,6 +83,8 @@ static void _dispatch_gate_wait(dispatch_gate_t l, uint32_t flags);
 #include "firehose_replyServer.h" // MiG
 #endif
 
+#if OS_FIREHOSE_SPI
+
 #if __has_feature(c_static_assert)
 _Static_assert(sizeof(((firehose_stream_state_u *)NULL)->fss_gate) ==
 		sizeof(((firehose_stream_state_u *)NULL)->fss_allocator),
@@ -1141,3 +1143,5 @@ __firehose_merge_updates(firehose_push_reply_t update)
 	}
 }
 #endif // KERNEL
+
+#endif // OS_FIREHOSE_SPI

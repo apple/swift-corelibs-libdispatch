@@ -1963,7 +1963,7 @@ _dispatch_set_defaultpriority(pthread_priority_t pp, pthread_priority_t *new_pp)
 	if (new_pp) *new_pp = pp;
 	return old_pp;
 #else
-	(void)pp;
+	(void)pp; (void)new_pp;
 	return 0;
 #endif
 }

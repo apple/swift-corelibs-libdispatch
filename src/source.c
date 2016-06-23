@@ -1031,10 +1031,8 @@ _dispatch_source_wakeup(dispatch_source_t ds, pthread_priority_t pp,
 
 	if (tq) {
 		return _dispatch_queue_class_wakeup(ds->_as_dq, pp, flags, tq);
-#if HAVE_PTHREAD_WORKQUEUE_QOS
 	} else if (pp) {
 		return _dispatch_queue_class_override_drainer(ds->_as_dq, pp, flags);
-#endif
 	} else if (flags & DISPATCH_WAKEUP_CONSUME) {
 		return _dispatch_release_tailcall(ds);
 	}
@@ -3192,19 +3190,23 @@ _dispatch_memorypressure_handler(void *context DISPATCH_UNUSED)
 	if (memorypressure & DISPATCH_MEMORYPRESSURE_NORMAL) {
 		_dispatch_memory_warn = false;
 		_dispatch_continuation_cache_limit = DISPATCH_CONTINUATION_CACHE_LIMIT;
+#if VOUCHER_USE_MACH_VOUCHER
 		if (_firehose_task_buffer) {
 			firehose_buffer_clear_bank_flags(_firehose_task_buffer,
 					FIREHOSE_BUFFER_BANK_FLAG_LOW_MEMORY);
 		}
+#endif
 	}
 	if (memorypressure & DISPATCH_MEMORYPRESSURE_WARN) {
 		_dispatch_memory_warn = true;
 		_dispatch_continuation_cache_limit =
 				DISPATCH_CONTINUATION_CACHE_LIMIT_MEMORYPRESSURE_PRESSURE_WARN;
+#if VOUCHER_USE_MACH_VOUCHER
 		if (_firehose_task_buffer) {
 			firehose_buffer_set_bank_flags(_firehose_task_buffer,
 					FIREHOSE_BUFFER_BANK_FLAG_LOW_MEMORY);
 		}
+#endif
 	}
 	if (memorypressure & DISPATCH_MEMORYPRESSURE_MALLOC_MASK) {
 		malloc_memory_event_handler(memorypressure & DISPATCH_MEMORYPRESSURE_MALLOC_MASK);
@@ -6086,10 +6088,8 @@ _dispatch_mach_wakeup(dispatch_mach_t dm, pthread_priority_t pp,
 done:
 	if (tq) {
 		return _dispatch_queue_class_wakeup(dm->_as_dq, pp, flags, tq);
-#if HAVE_PTHREAD_WORKQUEUE_QOS
 	} else if (pp) {
 		return _dispatch_queue_class_override_drainer(dm->_as_dq, pp, flags);
-#endif
 	} else if (flags & DISPATCH_WAKEUP_CONSUME) {
 		return _dispatch_release_tailcall(dm);
 	}
@@ -6585,7 +6585,7 @@ dispatch_kevent_debug(const char *verb, const _dispatch_kevent_qos_s *kev,
 #else
 			0ull, 0ull,
 #endif
-			str, function, line);
+			function, line);
 #endif
 }
 

@@ -2658,7 +2658,6 @@ _dispatch_block_create_with_voucher_and_priority(dispatch_block_flags_t flags,
 		voucher_t voucher, pthread_priority_t pri, dispatch_block_t block)
 {
 	flags = _dispatch_block_normalize_flags(flags);
-#if HAVE_PTHREAD_WORKQUEUE_QOS
 	bool assign = (flags & DISPATCH_BLOCK_ASSIGN_CURRENT);
 
 	if (assign && !(flags & DISPATCH_BLOCK_HAS_VOUCHER)) {
@@ -2672,7 +2671,6 @@ _dispatch_block_create_with_voucher_and_priority(dispatch_block_flags_t flags,
 		pri = _dispatch_priority_propagate();
 		flags |= DISPATCH_BLOCK_HAS_PRIORITY;
 	}
-#endif
 	dispatch_block_t db = _dispatch_block_create(flags, voucher, pri, block);
 #if DISPATCH_DEBUG
 	dispatch_assert(_dispatch_block_get_data(db));
@@ -3995,20 +3993,18 @@ _dispatch_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
 	}
 	if (target) {
 		return _dispatch_queue_class_wakeup(dq, pp, flags, target);
-#if HAVE_PTHREAD_WORKQUEUE_QOS
 	} else if (pp) {
 		return _dispatch_queue_class_override_drainer(dq, pp, flags);
-#endif
 	} else if (flags & DISPATCH_WAKEUP_CONSUME) {
 		return _dispatch_release_tailcall(dq);
 	}
 }
 
-#if DISPATCH_COCOA_COMPAT
 void
 _dispatch_runloop_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
 		dispatch_wakeup_flags_t flags)
 {
+#if DISPATCH_COCOA_COMPAT
 	if (slowpath(_dispatch_queue_atomic_flags(dq) & DQF_RELEASED)) {
 		// <rdar://problem/14026816>
 		return _dispatch_queue_wakeup(dq, pp, flags);
@@ -4027,19 +4023,15 @@ _dispatch_runloop_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
 		_dispatch_thread_override_end(owner, dq);
 		return;
 	}
-
 	if (flags & DISPATCH_WAKEUP_CONSUME) {
 		return _dispatch_release_tailcall(dq);
 	}
-}
-#else
-void
-_dispatch_runloop_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
-		dispatch_wakeup_flags_t flags)
-{
+#elif defined(__linux__)
 	LINUX_PORT_ERROR();
-}
+#else
+	return _dispatch_queue_wakeup(dq, pp, flags);
 #endif
+}
 
 void
 _dispatch_main_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
@@ -4930,12 +4922,14 @@ out:
 		return _dispatch_release_tailcall(dq);
 	}
 }
+#endif // HAVE_PTHREAD_WORKQUEUE_QOS
 
 DISPATCH_NOINLINE
 void
 _dispatch_queue_class_override_drainer(dispatch_queue_t dq,
 		pthread_priority_t pp, dispatch_wakeup_flags_t flags)
 {
+#if HAVE_PTHREAD_WORKQUEUE_QOS
 	uint64_t dq_state, value;
 
 	//
@@ -4957,10 +4951,14 @@ _dispatch_queue_class_override_drainer(dispatch_queue_t dq,
 		return _dispatch_queue_class_wakeup_with_override(dq, pp,
 				flags, dq_state);
 	}
+#else
+	(void)pp;
+#endif // HAVE_PTHREAD_WORKQUEUE_QOS
 	if (flags & DISPATCH_WAKEUP_CONSUME) {
 		return _dispatch_release_tailcall(dq);
 	}
 }
+
 #if DISPATCH_USE_KEVENT_WORKQUEUE
 DISPATCH_NOINLINE
 static void
@@ -4997,7 +4995,6 @@ _dispatch_trystash_to_deferred_items(dispatch_queue_t dq, dispatch_object_t dou,
 	_dispatch_queue_push_inline(dq, dou, 0, 0);
 }
 #endif
-#endif // HAVE_PTHREAD_WORKQUEUE_QOS
 
 DISPATCH_NOINLINE
 void

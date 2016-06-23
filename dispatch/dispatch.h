@@ -24,7 +24,20 @@
 #ifdef __APPLE__
 #include <Availability.h>
 #include <TargetConditionals.h>
-#endif
+#else
+#define __OSX_AVAILABLE_STARTING(x, y)
+#define __OSX_AVAILABLE_BUT_DEPRECATED(...)
+#define __OSX_AVAILABLE_BUT_DEPRECATED_MSG(...)
+#define __OSX_AVAILABLE(...)
+#define __IOS_AVAILABLE(...)
+#define __TVOS_AVAILABLE(...)
+#define __WATCHOS_AVAILABLE(...)
+#define __OSX_DEPRECATED(...)
+#define __IOS_DEPRECATED(...)
+#define __TVOS_DEPRECATED(...)
+#define __WATCHOS_DEPRECATED(...)
+#endif // __APPLE__
+
 #include <sys/cdefs.h>
 #include <sys/types.h>
 #include <stddef.h>
@@ -36,41 +49,6 @@
 
 #if defined(__linux__) && defined(__DISPATCH_BUILDING_SWIFT_MODULE__)
 #include <stdio.h> // for off_t
-#endif
-
-#ifndef __OSX_AVAILABLE_STARTING
-#define __OSX_AVAILABLE_STARTING(x, y)
-#endif
-#ifndef __OSX_AVAILABLE_BUT_DEPRECATED
-#define __OSX_AVAILABLE_BUT_DEPRECATED(...)
-#endif
-#ifndef __OSX_AVAILABLE_BUT_DEPRECATED_MSG
-#define __OSX_AVAILABLE_BUT_DEPRECATED_MSG(...)
-#endif
-
-#ifndef __OSX_AVAILABLE
-#define __OSX_AVAILABLE(...)
-#endif
-#ifndef __IOS_AVAILABLE
-#define __IOS_AVAILABLE(...)
-#endif
-#ifndef __TVOS_AVAILABLE
-#define __TVOS_AVAILABLE(...)
-#endif
-#ifndef __WATCHOS_AVAILABLE
-#define __WATCHOS_AVAILABLE(...)
-#endif
-#ifndef __OSX_DEPRECATED
-#define __OSX_DEPRECATED(...)
-#endif
-#ifndef __IOS_DEPRECATED
-#define __IOS_DEPRECATED(...)
-#endif
-#ifndef __TVOS_DEPRECATED
-#define __TVOS_DEPRECATED(...)
-#endif
-#ifndef __WATCHOS_DEPRECATED
-#define __WATCHOS_DEPRECATED(...)
 #endif
 
 #define DISPATCH_API_VERSION 20160612

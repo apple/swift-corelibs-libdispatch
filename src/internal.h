@@ -938,16 +938,6 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 #define VOUCHER_USE_BANK_AUTOREDEEM 1
 #endif
 
-#if OS_FIREHOSE_SPI
-#include <firehose/private.h>
-#else
-typedef uint64_t firehose_activity_id_t;
-typedef uint64_t firehose_tracepoint_id_t;
-typedef unsigned long firehose_activity_flags_t;
-typedef uint8_t firehose_stream_t;
-typedef void * voucher_activity_hooks_t;
-#endif
-
 #if !VOUCHER_USE_MACH_VOUCHER || \
 		!__has_include(<voucher/ipc_pthread_priority_types.h>) || \
 		!DISPATCH_HOST_SUPPORTS_OSX(101200)
