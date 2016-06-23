@@ -278,7 +278,7 @@ _dispatch_thread_setspecific_packed_pair(pthread_key_t k1, pthread_key_t k2,
 	_dispatch_thread_setspecific(k1, p[0]);
 	_dispatch_thread_setspecific(k2, p[1]);
 }
-#endif 
+#endif
 
 #if TARGET_OS_WIN32
 #define _dispatch_thread_self() ((uintptr_t)GetCurrentThreadId())
@@ -293,12 +293,10 @@ _dispatch_thread_setspecific_packed_pair(pthread_key_t k1, pthread_key_t k2,
 
 #if TARGET_OS_WIN32
 #define _dispatch_thread_port() ((mach_port_t)0)
-#else
+#elif !DISPATCH_USE_THREAD_LOCAL_STORAGE
 #if DISPATCH_USE_DIRECT_TSD
 #define _dispatch_thread_port() ((mach_port_t)(uintptr_t)\
 		_dispatch_thread_getspecific(_PTHREAD_TSD_SLOT_MACH_THREAD_SELF))
-#elif DISPATCH_USE_THREAD_LOCAL_STORAGE
-#define _dispatch_thread_port() ((mach_port_t)(_dispatch_get_tsd_base()->tid))
 #else
 #define _dispatch_thread_port() pthread_mach_thread_np(_dispatch_thread_self())
 #endif
