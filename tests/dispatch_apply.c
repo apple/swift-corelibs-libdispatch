@@ -37,15 +37,7 @@ static volatile int32_t busy_threads_started, busy_threads_finished;
 /*
  * Keep a thread busy, spinning on the CPU.
  */
-#if TARGET_OS_EMBEDDED
-// iPhone 4
-#define ITERS_PER_SECOND 50000000UL
-#elif __s390x__
-#define ITERS_PER_SECOND 15000000000UL
-#else
-// On a 2.7 4-core i5 iMac12,2, one thread of this loop runs at ROUGHLY:
-#define ITERS_PER_SECOND 1000000000UL
-#endif
+static volatile int all_done = 0;
 
 /* Fiddling with j in the middle and hitting this global will hopefully keep
  * the optimizer from cutting the whole thing out as dead code.
@@ -54,14 +46,16 @@ static volatile unsigned int busythread_useless;
 void busythread(void *ignored)
 {
 	(void)ignored;
-	uint64_t i = 0, j = 0;
+	/* prevent i and j been optimized out */
+	volatile uint64_t i = 0, j = 0;
 
 	OSAtomicIncrement32(&busy_threads_started);
 
-	for(i = 0; i < 2*ITERS_PER_SECOND; i++)
+	while(!all_done)
 	{
 		if(i == 500000) { j -= busythread_useless; }
 		j += i;
+		i += 1;
 	}
 
 	OSAtomicIncrement32(&busy_threads_finished);
@@ -108,6 +102,9 @@ void test_apply_contended(dispatch_queue_t dq)
 	test_long("contended: threads started before apply", before, n_threads);
 	test_long("contended: count", count, final);
 	test_long("contended: threads finished before apply", after, 0);
+
+	/* Release busy threads by setting all_done to 1 */
+        all_done = 1;
 
 	dispatch_group_wait(grp, DISPATCH_TIME_FOREVER);
 	dispatch_release(grp);
