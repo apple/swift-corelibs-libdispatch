@@ -10,6 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+import CDispatch
+
 public extension DispatchIO {
 
 	public enum StreamType : UInt  {
@@ -33,13 +35,13 @@ public extension DispatchIO {
 	}
 
 	public class func read(fromFileDescriptor: Int32, maxLength: Int, runningHandlerOn queue: DispatchQueue, handler: (data: DispatchData, error: Int32) -> Void) {
-		__dispatch_read(fromFileDescriptor, maxLength, queue) { (data: __DispatchData, error: Int32) in
+		dispatch_read(fromFileDescriptor, maxLength, queue.__wrapped) { (data: dispatch_data_t, error: Int32) in
 			handler(data: DispatchData(data: data), error: error)
 		}
 	}
 
 	public class func write(fromFileDescriptor: Int32, data: DispatchData, runningHandlerOn queue: DispatchQueue, handler: (data: DispatchData?, error: Int32) -> Void) {
-		__dispatch_write(fromFileDescriptor, data as __DispatchData, queue) { (data: __DispatchData?, error: Int32) in
+		dispatch_write(fromFileDescriptor, data.__wrapped, queue.__wrapped) { (data: dispatch_data_t?, error: Int32) in
 			handler(data: data.flatMap { DispatchData(data: $0) }, error: error)
 		}
 	}
@@ -74,23 +76,23 @@ public extension DispatchIO {
 	}
 
 	public func read(offset: off_t, length: Int, queue: DispatchQueue, ioHandler: (done: Bool, data: DispatchData?, error: Int32) -> Void) {
-		__dispatch_io_read(self, offset, length, queue) { (done: Bool, data: __DispatchData?, error: Int32) in
+		dispatch_io_read(self.__wrapped, offset, length, queue.__wrapped) { (done: Bool, data: dispatch_data_t?, error: Int32) in
 			ioHandler(done: done, data: data.flatMap { DispatchData(data: $0) }, error: error)
 		}
 	}
 
 	public func write(offset: off_t, data: DispatchData, queue: DispatchQueue, ioHandler: (done: Bool, data: DispatchData?, error: Int32) -> Void) {
-		__dispatch_io_write(self, offset, data as __DispatchData, queue) { (done: Bool, data: __DispatchData?, error: Int32) in
+		dispatch_io_write(self.__wrapped, offset, data.__wrapped, queue.__wrapped) { (done: Bool, data: dispatch_data_t?, error: Int32) in
 			ioHandler(done: done, data: data.flatMap { DispatchData(data: $0) }, error: error)
 		}
 	}
 
 	public func setInterval(interval: DispatchTimeInterval, flags: IntervalFlags = []) {
-		__dispatch_io_set_interval(self, interval.rawValue, flags.rawValue)
+		dispatch_io_set_interval(self.__wrapped, interval.rawValue, flags.rawValue)
 	}
 
 	public func close(flags: CloseFlags = []) {
-		__dispatch_io_close(self, flags.rawValue)
+		dispatch_io_close(self.__wrapped, flags.rawValue)
 	}
 }
 
