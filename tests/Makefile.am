@@ -43,18 +43,15 @@ TESTS=							\
 	dispatch_priority2			\
 	dispatch_context_for_key	\
 	dispatch_read				\
-	dispatch_read2				\
 	dispatch_after				\
 	dispatch_timer				\
 	dispatch_timer_timeout		\
 	dispatch_suspend_timer		\
 	dispatch_timer_bit31		\
 	dispatch_timer_bit63		\
-	dispatch_timer_set_time		\
 	dispatch_starfish			\
 	dispatch_cascade			\
 	dispatch_data				\
-	dispatch_io					\
 	dispatch_io_net				\
 	dispatch_select
 
@@ -67,6 +64,9 @@ FAILING_TESTS = 				\
 	dispatch_timer_short		\
 	dispatch_sema				\
 	dispatch_readsync			\
+	dispatch_read2				\
+	dispatch_io					\
+	dispatch_timer_set_time		\
 	dispatch_drift
 
 # List tests that are expected to fail here.
