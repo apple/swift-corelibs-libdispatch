@@ -34,8 +34,23 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#if defined(__linux__) && defined(__DISPATCH_BUILDING_SWIFT_MODULE__)
+#ifdef __has_attribute
+#if __has_attribute(unavailable)
+#define __DISPATCH_UNAVAILABLE(msg) __attribute__((__unavailable__(msg)))
+#endif
+#endif
+#ifndef __DISPATCH_UNAVAILABLE
+#define __DISPATCH_UNAVAILABLE(msg)
+#endif
+
+#ifdef __linux__
+#ifdef __DISPATCH_BUILDING_SWIFT_MODULE__
 #include <stdio.h> // for off_t
+#endif
+#define DISPATCH_LINUX_UNAVAILABLE() \
+		__DISPATCH_UNAVAILABLE("This interface is unavailable on linux systems")
+#else
+#define DISPATCH_LINUX_UNAVAILABLE()
 #endif
 
 #ifndef __OSX_AVAILABLE_STARTING

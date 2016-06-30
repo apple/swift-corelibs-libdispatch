@@ -79,7 +79,7 @@ DISPATCH_SOURCE_TYPE_DECL(interval);
  * The handle is a process identifier (pid_t).
  */
 #define DISPATCH_SOURCE_TYPE_VFS (&_dispatch_source_type_vfs)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vfs;
 
 /*!
@@ -91,6 +91,7 @@ DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vfs;
 #define DISPATCH_SOURCE_TYPE_VM (&_dispatch_source_type_vm)
 __OSX_AVAILABLE_BUT_DEPRECATED_MSG(__MAC_10_7, __MAC_10_10, __IPHONE_4_3,
 		__IPHONE_8_0, "Use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead")
+DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vm;
 
 /*!
@@ -104,6 +105,7 @@ __OSX_DEPRECATED(10.9, 10.12, "Use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead")
 __IOS_DEPRECATED(6.0, 10.0, "Use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead")
 __TVOS_DEPRECATED(6.0, 10.0, "Use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead")
 __WATCHOS_DEPRECATED(1.0, 3.0, "Use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead")
+DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT const struct dispatch_source_type_s
 		_dispatch_source_type_memorystatus;
 
@@ -112,7 +114,7 @@ DISPATCH_EXPORT const struct dispatch_source_type_s
  * @discussion A dispatch source that monitors events on socket state changes.
  */
 #define DISPATCH_SOURCE_TYPE_SOCK (&_dispatch_source_type_sock)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_sock;
 
 __END_DECLS
@@ -456,7 +458,7 @@ uint64_t
 dispatch_timer_aggregate_get_delay(dispatch_timer_aggregate_t aggregate,
 		uint64_t *_Nullable leeway_ptr);
 
-#if TARGET_OS_MAC
+#if __has_include(<mach/mach.h>)
 /*!
  * @typedef dispatch_mig_callback_t
  *
@@ -466,7 +468,7 @@ dispatch_timer_aggregate_get_delay(dispatch_timer_aggregate_t aggregate,
 typedef boolean_t (*dispatch_mig_callback_t)(mach_msg_header_t *message,
 		mach_msg_header_t *reply);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 mach_msg_return_t
 dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
@@ -478,7 +480,7 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
  * @abstract
  * Extract the context pointer from a mach message trailer.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NONNULL_ALL
 DISPATCH_NOTHROW
 void *_Nullable
