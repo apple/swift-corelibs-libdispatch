@@ -24,7 +24,7 @@
 #ifndef __linux__
 #include <os/base.h>
 #endif
-#ifdef __APPLE__
+#if __has_include(<mach/mach.h>)
 #include <os/object.h>
 #include <mach/mach.h>
 #endif
@@ -416,7 +416,7 @@ dispatch_queue_create_with_accounting_override_voucher(
 		dispatch_queue_attr_t _Nullable attr,
 		voucher_t _Nullable voucher);
 
-#ifdef __APPLE__
+#if __has_include(<mach/mach.h>)
 /*!
  * @group Voucher Mach SPI
  * SPI intended for clients that need to interact with mach messages or mach
@@ -528,7 +528,7 @@ int
 voucher_get_current_persona_proximate_info(
 	struct proc_persona_info *persona_info);
 
-#endif // __APPLE__
+#endif // __has_include(<mach/mach.h>)
 
 __END_DECLS
 

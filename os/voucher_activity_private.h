@@ -22,7 +22,7 @@
 #define __OS_VOUCHER_ACTIVITY_PRIVATE__
 
 #if OS_VOUCHER_ACTIVITY_SPI
-#ifdef __APPLE__
+#if __has_include(<mach/mach_time.h>)
 #include <mach/mach_time.h>
 #include <firehose/tracepoint_private.h>
 #endif
