@@ -1313,6 +1313,14 @@ const struct dispatch_source_type_s _dispatch_source_type_vm = {
 
 #endif // DISPATCH_USE_VM_PRESSURE
 
+const struct dispatch_source_type_s _dispatch_source_type_signal = {
+	.ke = {
+		.filter = EVFILT_SIGNAL,
+		.flags = EV_UDATA_SPECIFIC,
+	},
+};
+
+#if !defined(__linux__)
 static void
 dispatch_source_type_proc_init(dispatch_source_t ds,
 	dispatch_source_type_t type DISPATCH_UNUSED,
@@ -1337,13 +1345,6 @@ const struct dispatch_source_type_s _dispatch_source_type_proc = {
 #endif
 			,
 	.init = dispatch_source_type_proc_init,
-};
-
-const struct dispatch_source_type_s _dispatch_source_type_signal = {
-	.ke = {
-		.filter = EVFILT_SIGNAL,
-		.flags = EV_UDATA_SPECIFIC,
-	},
 };
 
 const struct dispatch_source_type_s _dispatch_source_type_vnode = {
@@ -1402,6 +1403,7 @@ const struct dispatch_source_type_s _dispatch_source_type_sock = {
 		,
 #endif // EVFILT_SOCK
 };
+#endif // !defined(__linux__)
 
 static void
 dispatch_source_type_data_init(dispatch_source_t ds,

@@ -101,7 +101,7 @@ DISPATCH_SOURCE_TYPE_DECL(data_or);
  * The mask is a mask of desired events from dispatch_source_mach_send_flags_t.
  */
 #define DISPATCH_SOURCE_TYPE_MACH_SEND (&_dispatch_source_type_mach_send)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(mach_send);
 
 /*!
@@ -111,7 +111,7 @@ DISPATCH_SOURCE_TYPE_DECL(mach_send);
  * The mask is unused (pass zero for now).
  */
 #define DISPATCH_SOURCE_TYPE_MACH_RECV (&_dispatch_source_type_mach_recv)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(mach_recv);
 
 /*!
@@ -124,7 +124,7 @@ DISPATCH_SOURCE_TYPE_DECL(mach_recv);
  */
 #define DISPATCH_SOURCE_TYPE_MEMORYPRESSURE \
 		(&_dispatch_source_type_memorypressure)
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_8_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_8_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(memorypressure);
 
 /*!
@@ -135,7 +135,7 @@ DISPATCH_SOURCE_TYPE_DECL(memorypressure);
  * The mask is a mask of desired events from dispatch_source_proc_flags_t.
  */
 #define DISPATCH_SOURCE_TYPE_PROC (&_dispatch_source_type_proc)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(proc);
 
 /*!
@@ -178,7 +178,7 @@ DISPATCH_SOURCE_TYPE_DECL(timer);
  * The mask is a mask of desired events from dispatch_source_vnode_flags_t.
  */
 #define DISPATCH_SOURCE_TYPE_VNODE (&_dispatch_source_type_vnode)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(vnode);
 
 /*!
