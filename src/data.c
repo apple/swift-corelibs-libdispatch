@@ -108,6 +108,10 @@ const dispatch_block_t _dispatch_data_destructor_none = ^{
 	DISPATCH_INTERNAL_CRASH(0, "none destructor called");
 };
 
+const dispatch_block_t _dispatch_data_destructor_munmap = ^{
+	DISPATCH_INTERNAL_CRASH(0, "munmap destructor called");
+};
+
 #ifndef __linux__
 const dispatch_block_t _dispatch_data_destructor_vm_deallocate = ^{
 	DISPATCH_INTERNAL_CRASH(0, "vmdeallocate destructor called");

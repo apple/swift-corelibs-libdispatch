@@ -40,6 +40,7 @@ libdispatch_la_SOURCES=		\
 	source_internal.h		\
 	trace.h					\
 	voucher_internal.h		\
+	firehose/firehose_internal.h \
 	shims/atomic.h			\
 	shims/atomic_sfb.h		\
 	shims/getprogname.h		\
@@ -83,6 +84,10 @@ libdispatch_la_LDFLAGS+=-Wl,-compatibility_version,1 \
 	-Wl,-alias_list,$(top_srcdir)/xcodeconfig/libdispatch.aliases
 endif
 
+if USE_GOLD_LINKER
+libdispatch_la_LDFLAGS+=-Xcompiler -fuse-ld=gold
+endif
+
 if USE_OBJC
 libdispatch_la_SOURCES+=block.cpp data.m object.m
 libdispatch_la_OBJCFLAGS=$(AM_OBJCFLAGS) -Wno-switch -fobjc-gc
@@ -114,9 +119,7 @@ DTRACE_SOURCES=provider.h
 endif
 
 if HAVE_SWIFT
-libdispatch_la_SOURCES+=swift/Dispatch.mm
-EXTRA_libdispatch_la_SOURCES+= \
-	swift/Dispatch.swift \
+SWIFT_SRC_FILES=\
 	swift/Block.swift \
 	swift/Data.swift \
 	swift/Dispatch.swift \
@@ -124,33 +127,52 @@ EXTRA_libdispatch_la_SOURCES+= \
 	swift/Private.swift \
 	swift/Queue.swift \
 	swift/Source.swift \
-	swift/Time.swift
+	swift/Time.swift \
+	swift/Wrapper.swift
 
-EXTRA_libdispatch_la_DEPENDENCIES+=$(abs_builddir)/Dispatch.o $(abs_builddir)/Dispatch.swiftmodule
-libdispatch_la_LIBADD+=$(abs_builddir)/Dispatch.o
+SWIFT_ABS_SRC_FILES = $(SWIFT_SRC_FILES:%=$(abs_srcdir)/%)
+SWIFT_OBJ_FILES = $(SWIFT_SRC_FILES:%.swift=$(abs_builddir)/%.o)
 
-SWIFT_OBJECTS=	\
-	$(abs_builddir)/Dispatch.swiftmodule \
-	$(abs_builddir)/Dispatch.swiftdoc \
-	$(abs_builddir)/Dispatch.o
+libdispatch_la_SOURCES+=swift/DispatchStubs.cc
+EXTRA_libdispatch_la_SOURCES+=$(SWIFT_SRC_FILES)
 
-SWIFTC_FLAGS = -Xcc -D__DISPATCH_BUILDING_SWIFT_MODULE__=1 -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.map -I$(abs_top_srcdir) -parse-as-library -Xcc -fblocks
+EXTRA_libdispatch_la_DEPENDENCIES+=$(SWIFT_OBJ_FILES) $(abs_builddir)/swift/Dispatch.swiftmodule
+libdispatch_la_LIBADD+=$(SWIFT_OBJ_FILES)
 
-$(abs_builddir)/Dispatch.o: $(abs_srcdir)/swift/Dispatch.swift
-	$(SWIFTC) $(SWIFTC_FLAGS) -c -o $@ $<
+SWIFT_GEN_FILES=	\
+	$(abs_builddir)/swift/Dispatch.swiftmodule \
+	$(abs_builddir)/swift/Dispatch.swiftdoc \
+	$(SWIFT_OBJ_FILES) \
+	$(SWIFT_OBJ_FILES:%=%.d) \
+	$(SWIFT_OBJ_FILES:%=%.swiftdeps) \
+	$(SWIFT_OBJ_FILES:%=%.~partial.swiftmodule) \
+	$(SWIFT_OBJ_FILES:%=%.~partial.swiftdoc) \
+	$(SWIFT_OBJ_FILES:%=%.~partial.swiftdeps)
 
-$(abs_builddir)/Dispatch.swiftmodule: $(abs_srcdir)/swift/Dispatch.swift
-	$(SWIFTC) $(SWIFTC_FLAGS) -emit-module -emit-module-path $@ $<
+SWIFTC_FLAGS = -Xcc -D__DISPATCH_BUILDING_SWIFT_MODULE__=1 -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.modulemap -I$(abs_top_srcdir) -Xcc -fblocks
 
-if HAVE_SWIFT
+$(abs_builddir)/swift/%.o:	$(abs_srcdir)/swift/%.swift
+	$(SWIFTC) -frontend -c $(SWIFT_ABS_SRC_FILES) -primary-file $< \
+	$(SWIFTC_FLAGS) -module-name Dispatch -module-link-name dispatch \
+	-o $@ -emit-module-path $@.~partial.swiftmodule \
+	-emit-module-doc-path $@.~partial.swiftdoc -emit-dependencies-path $@.d \
+	-emit-reference-dependencies-path $@.swiftdeps \
+	-module-cache-path $(top_builddir)
+
+$(abs_builddir)/swift/Dispatch.swiftmodule: $(SWIFT_ABS_SRC_FILES)
+	$(SWIFTC) -frontend -emit-module $(SWIFT_OBJ_FILES:%=%.~partial.swiftmodule) \
+	$(SWIFTC_FLAGS) -module-cache-path $(top_builddir) -module-link-name dispatch \
+	-o $@ -emit-module-doc-path $(@:%.swiftmodule=%.swiftdoc)
+
 swiftmoddir=${prefix}/lib/swift/linux/${build_cpu}
-swiftmod_HEADERS=$(abs_builddir)/Dispatch.swiftmodule $(abs_builddir)/Dispatch.swiftdoc
-endif
+swiftmod_HEADERS=\
+	$(abs_builddir)/swift/Dispatch.swiftmodule \
+	$(abs_builddir)/swift/Dispatch.swiftdoc
 
 endif
 
 BUILT_SOURCES=$(MIG_SOURCES) $(DTRACE_SOURCES)
 nodist_libdispatch_la_SOURCES=$(BUILT_SOURCES)
-CLEANFILES=$(BUILT_SOURCES) $(SWIFT_OBJECTS)
+CLEANFILES=$(BUILT_SOURCES) $(SWIFT_GEN_FILES)
 DISTCLEANFILES=pthread_machdep.h pthread System mach objc
 

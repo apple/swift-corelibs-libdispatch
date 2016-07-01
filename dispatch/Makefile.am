@@ -24,5 +24,5 @@ dispatch_HEADERS=	\
 	time.h
 
 if HAVE_SWIFT
-dispatch_HEADERS+=module.map
+dispatch_HEADERS+=module.modulemap
 endif

@@ -11,11 +11,11 @@
 //===----------------------------------------------------------------------===//
 
 #include <dispatch/dispatch.h>
-#include <objc/runtime.h>
 #include <stdio.h>
 
 #define DISPATCH_RUNTIME_STDLIB_INTERFACE __attribute__((__visibility__("default")))
 
+#if USE_OBJC
 @protocol OS_dispatch_source;
 @protocol OS_dispatch_source_mach_send;
 @protocol OS_dispatch_source_mach_recv;
@@ -49,9 +49,15 @@ static void _dispatch_overlay_constructor() {
   }
 }
 
-#include "swift/Runtime/Config.h"
+#endif /* USE_OBJC */
 
-SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE 
+#if 0 /* FIXME -- adding directory to include path may need build-script plumbing to do properly... */
+#include "swift/Runtime/Config.h"
+#else
+#define SWIFT_CC(x) /* FIXME!! */
+#endif
+
+SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
 extern "C" dispatch_queue_attr_t
 _swift_dispatch_queue_concurrent(void) {
   return DISPATCH_QUEUE_CONCURRENT;
@@ -95,7 +101,7 @@ _swift_dispatch_data_destructor_munmap(void) {
 
 SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
 extern "C" dispatch_block_t
-_swift_dispatch_block_create_with_qos_class(dispatch_block_flags_t flags, qos_class_t qos, int relative_priority, dispatch_block_t block) {
+_swift_dispatch_block_create_with_qos_class(dispatch_block_flags_t flags, dispatch_qos_class_t qos, int relative_priority, dispatch_block_t block) {
   return dispatch_block_create_with_qos_class(flags, qos, relative_priority, block);
 }
 
@@ -168,12 +174,28 @@ _swift_dispatch_sync(dispatch_queue_t queue, dispatch_block_t block) {
 
 SOURCE(DATA_ADD)
 SOURCE(DATA_OR)
+#if HAVE_MACH
 SOURCE(MACH_SEND)
 SOURCE(MACH_RECV)
 SOURCE(MEMORYPRESSURE)
+#endif
+#ifndef __linux__
 SOURCE(PROC)
+#endif
 SOURCE(READ)
 SOURCE(SIGNAL)
 SOURCE(TIMER)
+#ifndef __linux__
 SOURCE(VNODE)
+#endif
 SOURCE(WRITE)
+
+// See comment in CFFuntime.c explaining why objc_retainAutoreleasedReturnValue is needed.
+extern "C" void swift_release(void *);
+extern "C" void * objc_retainAutoreleasedReturnValue(void *obj) {
+    if (obj) {
+        swift_release(obj);
+        return obj;
+    }
+    else return NULL;
+}

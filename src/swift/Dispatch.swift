@@ -12,6 +12,8 @@
 
 @_exported import Dispatch
 
+import CDispatch
+
 /// dispatch_assert
 
 @available(OSX 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
@@ -25,11 +27,11 @@ public enum DispatchPredicate {
 public func _dispatchPreconditionTest(_ condition: DispatchPredicate) -> Bool {
 	switch condition {
 	case .onQueue(let q):
-		__dispatch_assert_queue(q)
+		dispatch_assert_queue(q.__wrapped)
 	case .onQueueAsBarrier(let q):
-		__dispatch_assert_queue_barrier(q)
+		dispatch_assert_queue_barrier(q.__wrapped)
 	case .notOnQueue(let q):
-		__dispatch_assert_queue_not(q)
+		dispatch_assert_queue_not(q.__wrapped)
 	}
 	return true
 }
@@ -94,27 +96,27 @@ public struct DispatchQoS : Equatable {
 		case unspecified
 
 		@available(OSX 10.10, iOS 8.0, *)
-		internal init?(qosClass: qos_class_t) {
+		internal init?(qosClass: _OSQoSClass) {
 			switch qosClass {
-			case QOS_CLASS_BACKGROUND: self = .background
-			case QOS_CLASS_UTILITY: self = .utility
-			case QOS_CLASS_DEFAULT: self = .default
-			case QOS_CLASS_USER_INITIATED: self = .userInitiated
-			case QOS_CLASS_USER_INTERACTIVE: self = .userInteractive
-			case QOS_CLASS_UNSPECIFIED: self = .unspecified
+			case .QOS_CLASS_BACKGROUND: self = .background
+			case .QOS_CLASS_UTILITY: self = .utility
+			case .QOS_CLASS_DEFAULT: self = .default
+			case .QOS_CLASS_USER_INITIATED: self = .userInitiated
+			case .QOS_CLASS_USER_INTERACTIVE: self = .userInteractive
+			case .QOS_CLASS_UNSPECIFIED: self = .unspecified
 			default: return nil
 			}
 		}
 
 		@available(OSX 10.10, iOS 8.0, *)
-		internal var rawValue: qos_class_t {
+		internal var rawValue: _OSQoSClass {
 			switch self {
-			case .background: return QOS_CLASS_BACKGROUND
-			case .utility: return QOS_CLASS_UTILITY
-			case .default: return QOS_CLASS_DEFAULT
-			case .userInitiated: return QOS_CLASS_USER_INITIATED
-			case .userInteractive: return QOS_CLASS_USER_INTERACTIVE
-			case .unspecified: return QOS_CLASS_UNSPECIFIED
+			case .background: return .QOS_CLASS_BACKGROUND
+			case .utility: return .QOS_CLASS_UTILITY
+			case .default: return .QOS_CLASS_DEFAULT
+			case .userInitiated: return .QOS_CLASS_USER_INITIATED
+			case .userInteractive: return .QOS_CLASS_USER_INTERACTIVE
+			case .unspecified: return .QOS_CLASS_UNSPECIFIED
 			}
 		}
 	}
@@ -132,6 +134,7 @@ public func ==(a: DispatchQoS, b: DispatchQoS) -> Bool {
 /// 
 
 public enum DispatchTimeoutResult {
+    static let KERN_OPERATION_TIMED_OUT:Int = 49
 	case Success
 	case TimedOut
 }
@@ -142,27 +145,27 @@ public extension DispatchGroup {
 	public func notify(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], queue: DispatchQueue, execute work: @convention(block) () -> ()) {
 		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: work)
-			__dispatch_group_notify(self, queue, item._block)
+			dispatch_group_notify(self.__wrapped, queue.__wrapped, item._block)
 		} else {
-			__dispatch_group_notify(self, queue, work)
+			dispatch_group_notify(self.__wrapped, queue.__wrapped, work)
 		}
 	}
 
 	@available(OSX 10.10, iOS 8.0, *)
 	public func notify(queue: DispatchQueue, work: DispatchWorkItem) {
-		__dispatch_group_notify(self, queue, work._block)
+		dispatch_group_notify(self.__wrapped, queue.__wrapped, work._block)
 	}
 
 	public func wait() {
-		_ = __dispatch_group_wait(self, DispatchTime.distantFuture.rawValue)
+		_ = dispatch_group_wait(self.__wrapped, DispatchTime.distantFuture.rawValue)
 	}
 
 	public func wait(timeout: DispatchTime) -> DispatchTimeoutResult {
-		return __dispatch_group_wait(self, timeout.rawValue) == 0 ? .Success : .TimedOut
+		return dispatch_group_wait(self.__wrapped, timeout.rawValue) == 0 ? .Success : .TimedOut
 	}
 
 	public func wait(wallTimeout timeout: DispatchWallTime) -> DispatchTimeoutResult {
-		return __dispatch_group_wait(self, timeout.rawValue) == 0 ? .Success : .TimedOut
+		return dispatch_group_wait(self.__wrapped, timeout.rawValue) == 0 ? .Success : .TimedOut
 	}
 }
 
@@ -171,7 +174,7 @@ public extension DispatchGroup {
 	public func wait(walltime timeout: DispatchWallTime) -> Int {
 		switch wait(wallTimeout: timeout) {
 		case .Success: return 0
-		case .TimedOut: return Int(KERN_OPERATION_TIMED_OUT)
+		case .TimedOut: return DispatchTimeoutResult.KERN_OPERATION_TIMED_OUT
 		}
 	}
 }
@@ -181,19 +184,19 @@ public extension DispatchGroup {
 public extension DispatchSemaphore {
 	@discardableResult
 	public func signal() -> Int {
-		return __dispatch_semaphore_signal(self)
+		return dispatch_semaphore_signal(self.__wrapped)
 	}
 
 	public func wait() {
-		_ = __dispatch_semaphore_wait(self, DispatchTime.distantFuture.rawValue)
+		_ = dispatch_semaphore_wait(self.__wrapped, DispatchTime.distantFuture.rawValue)
 	}
 
 	public func wait(timeout: DispatchTime) -> DispatchTimeoutResult {
-		return __dispatch_semaphore_wait(self, timeout.rawValue) == 0 ? .Success : .TimedOut
+		return dispatch_semaphore_wait(self.__wrapped, timeout.rawValue) == 0 ? .Success : .TimedOut
 	}
 
 	public func wait(wallTimeout: DispatchWallTime) -> DispatchTimeoutResult {
-		return __dispatch_semaphore_wait(self, wallTimeout.rawValue) == 0 ? .Success : .TimedOut
+		return dispatch_semaphore_wait(self.__wrapped, wallTimeout.rawValue) == 0 ? .Success : .TimedOut
 	}
 }
 
@@ -202,7 +205,7 @@ public extension DispatchSemaphore {
 	public func wait(walltime timeout: DispatchWalltime) -> Int {
 		switch wait(wallTimeout: timeout) {
 		case .Success: return 0
-		case .TimedOut: return Int(KERN_OPERATION_TIMED_OUT)
+		case .TimedOut: return DispatchTimeoutResult.KERN_OPERATION_TIMED_OUT
 		}
 	}
 }

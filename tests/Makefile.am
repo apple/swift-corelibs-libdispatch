@@ -121,7 +121,11 @@ if HAVE_PTHREAD_WORKQUEUES
 endif
 endif
 
-LDADD=libbsdtests.la $(top_builddir)/src/libdispatch.la $(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS)
+if HAVE_SWIFT
+  SWIFT_LIBS=-L$(SWIFT_LIBDIR) -lswiftCore
+endif
+
+LDADD=libbsdtests.la $(top_builddir)/src/libdispatch.la $(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS) $(SWIFT_LIBS)
 libbsdtests_la_LDFLAGS=-avoid-version
 
 bsdtestsummarize_LDADD=-lm $(BSD_OVERLAY_LIBS)
