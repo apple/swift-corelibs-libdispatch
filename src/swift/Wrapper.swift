@@ -16,10 +16,9 @@ import CDispatch
 // importer via Dispatch.apinote when the platform has Objective-C support
 
 public class DispatchObject {
-	// TODO: add deinit method to invoke dispatch_release on wrapped()
 
 	internal func wrapped() -> dispatch_object_t {
-		assert(false, "should be override in subclass")
+		fatalError("should be overriden in subclass")
 	}
 
 	public func setTarget(queue:DispatchQueue) {
@@ -43,12 +42,16 @@ public class DispatchObject {
 public class DispatchGroup : DispatchObject {
 	internal let __wrapped:dispatch_group_t;
 
-	internal override func wrapped() -> dispatch_object_t {
+	final internal override func wrapped() -> dispatch_object_t {
 		return unsafeBitCast(__wrapped, to: dispatch_object_t.self)
 	}
 
 	public override init() {
 		__wrapped = dispatch_group_create()
+	}
+
+	deinit {
+		_swift_dispatch_release(wrapped())
 	}
 
 	public func enter() {
@@ -63,19 +66,23 @@ public class DispatchGroup : DispatchObject {
 public class DispatchSemaphore : DispatchObject {
 	internal let __wrapped: dispatch_semaphore_t;
 
-	internal override func wrapped() -> dispatch_object_t {
+	final internal override func wrapped() -> dispatch_object_t {
 		return unsafeBitCast(__wrapped, to: dispatch_object_t.self)
 	}
 
 	public init(value: Int) {
 		__wrapped = dispatch_semaphore_create(value)
 	}
+
+	deinit {
+		_swift_dispatch_release(wrapped())
+	}
 }
 
 public class DispatchIO : DispatchObject {
 	internal let __wrapped:dispatch_io_t
 
-	internal override func wrapped() -> dispatch_object_t {
+	final internal override func wrapped() -> dispatch_object_t {
 		return unsafeBitCast(__wrapped, to: dispatch_object_t.self)
 	}
 
@@ -98,6 +105,10 @@ public class DispatchIO : DispatchObject {
 		__wrapped = queue
 	}
 
+	deinit {
+		_swift_dispatch_release(wrapped())
+	}
+
 	public func barrier(execute: () -> ()) {
 		dispatch_io_barrier(self.__wrapped, execute)
 	}
@@ -118,7 +129,7 @@ public class DispatchIO : DispatchObject {
 public class DispatchQueue : DispatchObject {
 	internal let __wrapped:dispatch_queue_t;
 
-	internal override func wrapped() -> dispatch_object_t {
+	final internal override func wrapped() -> dispatch_object_t {
 		return unsafeBitCast(__wrapped, to: dispatch_object_t.self)
 	}
 
@@ -134,6 +145,10 @@ public class DispatchQueue : DispatchObject {
 		__wrapped = queue
 	}
 
+	deinit {
+		_swift_dispatch_release(wrapped())
+	}
+
 	public func sync(execute workItem: @noescape ()->()) {
 		dispatch_sync(self.__wrapped, workItem)
 	}
@@ -146,12 +161,16 @@ public class DispatchSource : DispatchObject,
 	DispatchSourceWrite {
 	internal let __wrapped:dispatch_source_t
 
-	internal override func wrapped() -> dispatch_object_t {
+	final internal override func wrapped() -> dispatch_object_t {
 		return unsafeBitCast(__wrapped, to: dispatch_object_t.self)
 	}
 
 	internal init(source:dispatch_source_t) {
 		__wrapped = source
+	}
+
+	deinit {
+		_swift_dispatch_release(wrapped())
 	}
 }
 
@@ -295,3 +314,6 @@ internal enum _OSQoSClass : UInt32  {
 		}
 	}
 }
+
+@_silgen_name("_swift_dispatch_release")
+internal func _swift_dispatch_release(_ obj: dispatch_object_t) -> Void 

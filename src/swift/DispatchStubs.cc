@@ -159,6 +159,12 @@ _swift_dispatch_sync(dispatch_queue_t queue, dispatch_block_t block) {
   dispatch_sync(queue, block);
 }
 
+SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
+extern "C" void
+_swift_dispatch_release(dispatch_object_t obj) {
+  dispatch_release(obj);
+}
+
 // DISPATCH_RUNTIME_STDLIB_INTERFACE
 // extern "C" dispatch_queue_t
 // _swift_apply_current_root_queue() {
