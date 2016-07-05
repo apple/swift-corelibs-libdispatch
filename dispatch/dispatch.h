@@ -48,8 +48,8 @@
 #include <fcntl.h>
 
 #ifdef __linux__
-#ifdef __DISPATCH_BUILDING_SWIFT_MODULE__
-#include <stdio.h> // for off_t
+#if __has_feature(modules)
+#include <stdio.h> // for off_t (to match Glibc.modulemap)
 #endif
 #endif
 

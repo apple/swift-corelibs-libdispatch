@@ -108,7 +108,7 @@ typedef union {
 #define DISPATCH_RETURNS_RETAINED
 #endif
 
-#if OS_OBJECT_SWIFT3
+#if OS_OBJECT_SWIFT3 && OS_OBJECT_USE_OBJC
 #define DISPATCH_SOURCE_TYPE_DECL(name) \
 		DISPATCH_EXPORT struct dispatch_source_type_s \
 				_dispatch_source_type_##name; \
