@@ -44,8 +44,8 @@
 #endif
 
 #ifdef __linux__
-#ifdef __DISPATCH_BUILDING_SWIFT_MODULE__
-#include <stdio.h> // for off_t
+#if __has_feature(modules)
+#include <stdio.h> // for off_t (to match Glibc.modulemap)
 #endif
 #define DISPATCH_LINUX_UNAVAILABLE() \
 		__DISPATCH_UNAVAILABLE("This interface is unavailable on linux systems")

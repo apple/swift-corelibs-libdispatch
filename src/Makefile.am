@@ -149,7 +149,7 @@ SWIFT_GEN_FILES=	\
 	$(SWIFT_OBJ_FILES:%=%.~partial.swiftdoc) \
 	$(SWIFT_OBJ_FILES:%=%.~partial.swiftdeps)
 
-SWIFTC_FLAGS = -Xcc -D__DISPATCH_BUILDING_SWIFT_MODULE__=1 -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.modulemap -I$(abs_top_srcdir) -Xcc -fblocks
+SWIFTC_FLAGS = -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.modulemap -I$(abs_top_srcdir) -Xcc -fblocks
 
 $(abs_builddir)/swift/%.o:	$(abs_srcdir)/swift/%.swift
 	$(SWIFTC) -frontend -c $(SWIFT_ABS_SRC_FILES) -primary-file $< \
