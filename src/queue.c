@@ -48,6 +48,7 @@
 #define pthread_workqueue_t void*
 #endif
 
+static void _dispatch_sig_thread(void *ctxt);
 static void _dispatch_cache_cleanup(void *value);
 static void _dispatch_sync_f(dispatch_queue_t dq, void *ctxt,
 		dispatch_function_t func, pthread_priority_t pp);
@@ -5690,6 +5691,17 @@ dispatch_main(void)
 		_dispatch_object_debug(&_dispatch_main_q, "%s", __func__);
 		_dispatch_program_is_probably_callback_driven = true;
 		_dispatch_ktrace0(ARIADNE_ENTER_DISPATCH_MAIN_CODE);
+#ifdef __linux__
+		// On Linux, if the main thread calls pthread_exit, the process becomes a zombie.
+		// To avoid that, just before calling pthread_exit we register a TSD destructor
+		// that will call _dispatch_sig_thread -- thus capturing the main thread in sigsuspend.
+		// This relies on an implementation detail (currently true in glibc) that TSD destructors
+		// will be called in the order of creation to cause all the TSD cleanup functions to
+		// run before the thread becomes trapped in sigsuspend.
+		pthread_key_t dispatch_main_key;
+		pthread_key_create(&dispatch_main_key, _dispatch_sig_thread);
+		pthread_setspecific(dispatch_main_key, &dispatch_main_key);
+#endif
 		pthread_exit(NULL);
 		DISPATCH_INTERNAL_CRASH(errno, "pthread_exit() returned");
 #if HAVE_PTHREAD_MAIN_NP
@@ -5773,11 +5785,14 @@ _dispatch_queue_cleanup2(void)
 	// overload the "probably" variable to mean that dispatch_main() or
 	// similar non-POSIX API was called
 	// this has to run before the DISPATCH_COCOA_COMPAT below
+	// See dispatch_main for call to _dispatch_sig_thread on linux.
+#ifndef __linux__
 	if (_dispatch_program_is_probably_callback_driven) {
 		_dispatch_barrier_async_detached_f(_dispatch_get_root_queue(
 				_DISPATCH_QOS_CLASS_DEFAULT, true), NULL, _dispatch_sig_thread);
 		sleep(1); // workaround 6778970
 	}
+#endif
 
 #if DISPATCH_COCOA_COMPAT
 	dispatch_once_f(&_dispatch_main_q_port_pred, dq,
