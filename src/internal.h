@@ -251,6 +251,9 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #include <sys/mman.h>
 #include <netinet/in.h>
 #endif
+#if defined(__linux__)
+#include <sys/eventfd.h>
+#endif
 
 #ifdef __BLOCKS__
 #include <Block_private.h>

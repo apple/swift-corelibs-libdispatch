@@ -74,11 +74,11 @@ static int _dispatch_pthread_sigmask(int how, sigset_t *set, sigset_t *oset);
 #endif
 
 #if DISPATCH_COCOA_COMPAT
-static dispatch_once_t _dispatch_main_q_port_pred;
+static dispatch_once_t _dispatch_main_q_handle_pred;
 static void _dispatch_runloop_queue_poke(dispatch_queue_t dq,
 		pthread_priority_t pp, dispatch_wakeup_flags_t flags);
-static void _dispatch_runloop_queue_port_init(void *ctxt);
-static void _dispatch_runloop_queue_port_dispose(dispatch_queue_t dq);
+static void _dispatch_runloop_queue_handle_init(void *ctxt);
+static void _dispatch_runloop_queue_handle_dispose(dispatch_queue_t dq);
 #endif
 
 static void _dispatch_root_queues_init_once(void *context);
@@ -4058,6 +4058,49 @@ _dispatch_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
 	}
 }
 
+#if DISPATCH_COCOA_COMPAT
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_runloop_handle_is_valid(dispatch_runloop_handle_t handle)
+{
+#if TARGET_OS_MAC
+	return MACH_PORT_VALID(handle);
+#elif defined(__linux__)
+	return handle >= 0;
+#else
+#error "runloop support not implemented on this platform"
+#endif
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline dispatch_runloop_handle_t
+_dispatch_runloop_queue_get_handle(dispatch_queue_t dq)
+{
+#if TARGET_OS_MAC
+	return ((dispatch_runloop_handle_t)(uintptr_t)dq->do_ctxt);
+#elif defined(__linux__)
+	// decode: 0 is a valid fd, so offset by 1 to distinguish from NULL
+	return ((dispatch_runloop_handle_t)(uintptr_t)dq->do_ctxt) - 1;
+#else
+#error "runloop support not implemented on this platform"
+#endif
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_runloop_queue_set_handle(dispatch_queue_t dq, dispatch_runloop_handle_t handle)
+{
+#if TARGET_OS_MAC
+	dq->do_ctxt = (void *)(uintptr_t)handle;
+#elif defined(__linux__)
+	// encode: 0 is a valid fd, so offset by 1 to distinguish from NULL
+	dq->do_ctxt = (void *)(uintptr_t)(handle + 1);
+#else
+#error "runloop support not implemented on this platform"
+#endif
+}
+#endif // DISPATCH_COCOA_COMPAT
+
 void
 _dispatch_runloop_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
 		dispatch_wakeup_flags_t flags)
@@ -4084,8 +4127,6 @@ _dispatch_runloop_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
 	if (flags & DISPATCH_WAKEUP_CONSUME) {
 		return _dispatch_release_tailcall(dq);
 	}
-#elif defined(__linux__)
-	LINUX_PORT_ERROR();
 #else
 	return _dispatch_queue_wakeup(dq, pp, flags);
 #endif
@@ -4122,10 +4163,13 @@ _dispatch_root_queue_wakeup(dispatch_queue_t dq,
 static inline void
 _dispatch_runloop_queue_class_poke(dispatch_queue_t dq)
 {
-	mach_port_t mp = (mach_port_t)dq->do_ctxt;
-	if (!mp) {
+	dispatch_runloop_handle_t handle = _dispatch_runloop_queue_get_handle(dq);
+	if (!_dispatch_runloop_handle_is_valid(handle)) {
 		return;
 	}
+
+#if TARGET_OS_MAC
+	mach_port_t mp = handle;
 	kern_return_t kr = _dispatch_send_wakeup_runloop_thread(mp, 0);
 	switch (kr) {
 	case MACH_SEND_TIMEOUT:
@@ -4136,6 +4180,15 @@ _dispatch_runloop_queue_class_poke(dispatch_queue_t dq)
 		(void)dispatch_assume_zero(kr);
 		break;
 	}
+#elif defined(__linux__)
+	int result;
+	do {
+		result = eventfd_write(handle, 1);
+	} while (result == -1 && errno == EINTR);
+	(void)dispatch_assume_zero(result);
+#else
+#error "runloop support not implemented on this platform"
+#endif
 }
 
 DISPATCH_NOINLINE
@@ -4150,8 +4203,8 @@ _dispatch_runloop_queue_poke(dispatch_queue_t dq,
 	// or in _dispatch_queue_cleanup2() for the main thread.
 
 	if (dq == &_dispatch_main_q) {
-		dispatch_once_f(&_dispatch_main_q_port_pred, dq,
-				_dispatch_runloop_queue_port_init);
+		dispatch_once_f(&_dispatch_main_q_handle_pred, dq,
+				_dispatch_runloop_queue_handle_init);
 	}
 	_dispatch_queue_override_priority(dq, /* inout */ &pp, /* inout */ &flags);
 	if (flags & DISPATCH_WAKEUP_OVERRIDING) {
@@ -4493,8 +4546,8 @@ _dispatch_main_queue_drain(void)
 				" from the wrong thread");
 	}
 
-	dispatch_once_f(&_dispatch_main_q_port_pred, dq,
-			_dispatch_runloop_queue_port_init);
+	dispatch_once_f(&_dispatch_main_q_handle_pred, dq,
+			_dispatch_runloop_queue_handle_init);
 
 	_dispatch_perfmon_start();
 	// <rdar://problem/23256682> hide the frame chaining when CFRunLoop
@@ -5544,7 +5597,7 @@ _dispatch_runloop_root_queue_create_4CF(const char *label, unsigned long flags)
 	_dispatch_queue_init(dq, DQF_THREAD_BOUND | DQF_CANNOT_TRYSYNC, 1, false);
 	dq->do_targetq = _dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT,true);
 	dq->dq_label = label ? label : "runloop-queue"; // no-copy contract
-	_dispatch_runloop_queue_port_init(dq);
+	_dispatch_runloop_queue_handle_init(dq);
 	_dispatch_queue_set_bound_thread(dq);
 	_dispatch_object_debug(dq, "%s", __func__);
 	return _dispatch_introspection_queue_create(dq);
@@ -5566,7 +5619,7 @@ _dispatch_runloop_queue_dispose(dispatch_queue_t dq)
 {
 	_dispatch_object_debug(dq, "%s", __func__);
 	_dispatch_introspection_queue_dispose(dq);
-	_dispatch_runloop_queue_port_dispose(dq);
+	_dispatch_runloop_queue_handle_dispose(dq);
 	_dispatch_queue_destroy(dq);
 }
 
@@ -5591,23 +5644,26 @@ _dispatch_runloop_root_queue_wakeup_4CF(dispatch_queue_t dq)
 	_dispatch_runloop_queue_wakeup(dq, 0, false);
 }
 
-mach_port_t
+dispatch_runloop_handle_t
 _dispatch_runloop_root_queue_get_port_4CF(dispatch_queue_t dq)
 {
 	if (slowpath(dq->do_vtable != DISPATCH_VTABLE(queue_runloop))) {
 		DISPATCH_CLIENT_CRASH(dq->do_vtable, "Not a runloop queue");
 	}
-	return (mach_port_t)dq->do_ctxt;
+	return _dispatch_runloop_queue_get_handle(dq);
 }
 
 static void
-_dispatch_runloop_queue_port_init(void *ctxt)
+_dispatch_runloop_queue_handle_init(void *ctxt)
 {
 	dispatch_queue_t dq = (dispatch_queue_t)ctxt;
-	mach_port_t mp;
-	kern_return_t kr;
+	dispatch_runloop_handle_t handle;
 
 	_dispatch_fork_becomes_unsafe();
+
+#if TARGET_OS_MAC
+	mach_port_t mp;
+	kern_return_t kr;
 	kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &mp);
 	DISPATCH_VERIFY_MIG(kr);
 	(void)dispatch_assume_zero(kr);
@@ -5625,38 +5681,81 @@ _dispatch_runloop_queue_port_init(void *ctxt)
 		DISPATCH_VERIFY_MIG(kr);
 		(void)dispatch_assume_zero(kr);
 	}
-	dq->do_ctxt = (void*)(uintptr_t)mp;
+	handle = mp;
+#elif defined(__linux__)
+	int fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+	if (fd == -1) {
+		int err = errno;
+		switch (err) {
+		case EMFILE:
+			DISPATCH_CLIENT_CRASH(err, "eventfd() failure: "
+					"process is out of file descriptors");
+			break;
+		case ENFILE:
+			DISPATCH_CLIENT_CRASH(err, "eventfd() failure: "
+					"system is out of file descriptors");
+			break;
+		case ENOMEM:
+			DISPATCH_CLIENT_CRASH(err, "eventfd() failure: "
+					"kernel is out of memory");
+			break;
+		default:
+			DISPATCH_INTERNAL_CRASH(err, "eventfd() failure");
+			break;
+		}
+	}
+	handle = fd;
+#else
+#error "runloop support not implemented on this platform"
+#endif	
+	_dispatch_runloop_queue_set_handle(dq, handle);
 
 	_dispatch_program_is_probably_callback_driven = true;
 }
 
 static void
-_dispatch_runloop_queue_port_dispose(dispatch_queue_t dq)
+_dispatch_runloop_queue_handle_dispose(dispatch_queue_t dq)
 {
-	mach_port_t mp = (mach_port_t)dq->do_ctxt;
-	if (!mp) {
+	dispatch_runloop_handle_t handle = _dispatch_runloop_queue_get_handle(dq);
+	if (!_dispatch_runloop_handle_is_valid(handle)) {
 		return;
 	}
 	dq->do_ctxt = NULL;
+#if TARGET_OS_MAC
+	mach_port_t mp = handle;
 	kern_return_t kr = mach_port_deallocate(mach_task_self(), mp);
 	DISPATCH_VERIFY_MIG(kr);
 	(void)dispatch_assume_zero(kr);
 	kr = mach_port_mod_refs(mach_task_self(), mp, MACH_PORT_RIGHT_RECEIVE, -1);
 	DISPATCH_VERIFY_MIG(kr);
 	(void)dispatch_assume_zero(kr);
+#elif defined(__linux__)
+	int rc = close(handle);
+	(void)dispatch_assume_zero(rc);
+#else
+#error "runloop support not implemented on this platform"
+#endif
 }
 
 #pragma mark -
 #pragma mark dispatch_main_queue
 
-mach_port_t
-_dispatch_get_main_queue_port_4CF(void)
+dispatch_runloop_handle_t
+_dispatch_get_main_queue_handle_4CF(void)
 {
 	dispatch_queue_t dq = &_dispatch_main_q;
-	dispatch_once_f(&_dispatch_main_q_port_pred, dq,
-			_dispatch_runloop_queue_port_init);
-	return (mach_port_t)dq->do_ctxt;
+	dispatch_once_f(&_dispatch_main_q_handle_pred, dq,
+			_dispatch_runloop_queue_handle_init);
+	return _dispatch_runloop_queue_get_handle(dq);
 }
+
+#if TARGET_OS_MAC
+dispatch_runloop_handle_t
+_dispatch_get_main_queue_port_4CF(void)
+{
+	return _dispatch_get_main_queue_handle_4CF();
+}
+#endif
 
 static bool main_q_is_draining;
 
@@ -5670,7 +5769,7 @@ _dispatch_queue_set_mainq_drain_state(bool arg)
 }
 
 void
-_dispatch_main_queue_callback_4CF(mach_msg_header_t *msg DISPATCH_UNUSED)
+_dispatch_main_queue_callback_4CF(void *ignored DISPATCH_UNUSED)
 {
 	if (main_q_is_draining) {
 		return;
@@ -5795,9 +5894,9 @@ _dispatch_queue_cleanup2(void)
 #endif
 
 #if DISPATCH_COCOA_COMPAT
-	dispatch_once_f(&_dispatch_main_q_port_pred, dq,
-			_dispatch_runloop_queue_port_init);
-	_dispatch_runloop_queue_port_dispose(dq);
+	dispatch_once_f(&_dispatch_main_q_handle_pred, dq,
+			_dispatch_runloop_queue_handle_init);
+	_dispatch_runloop_queue_handle_dispose(dq);
 #endif
 }
 

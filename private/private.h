@@ -166,31 +166,43 @@ void _dispatch_prohibit_transition_to_multithreaded(bool prohibit);
  * SPI for CoreFoundation/Foundation ONLY
  */
 
-#define DISPATCH_COCOA_COMPAT (TARGET_OS_MAC || TARGET_OS_WIN32)
+#if TARGET_OS_MAC
+#define DISPATCH_COCOA_COMPAT 1
+#elif defined(__linux__)
+#define DISPATCH_COCOA_COMPAT 1
+#else
+#define DISPATCH_COCOA_COMPAT 0
+#endif
 
 #if DISPATCH_COCOA_COMPAT
+
+#define DISPATCH_CF_SPI_VERSION 20160712
+
+#if TARGET_OS_MAC
+typedef mach_port_t dispatch_runloop_handle_t;
+#elif defined(__linux__)
+typedef int dispatch_runloop_handle_t;
+#else
+#error "runloop support not implemented on this platform"
+#endif
 
 #if TARGET_OS_MAC
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_CONST DISPATCH_WARN_RESULT DISPATCH_NOTHROW
-mach_port_t
+dispatch_runloop_handle_t
 _dispatch_get_main_queue_port_4CF(void);
+#endif
 
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
+__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
 DISPATCH_EXPORT DISPATCH_NOTHROW
-void
-_dispatch_main_queue_callback_4CF(mach_msg_header_t *_Null_unspecified msg);
-#elif TARGET_OS_WIN32
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NOTHROW
-HANDLE
+dispatch_runloop_handle_t
 _dispatch_get_main_queue_handle_4CF(void);
 
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
-_dispatch_main_queue_callback_4CF(void);
-#endif // TARGET_OS_WIN32
+_dispatch_main_queue_callback_4CF(void *_Null_unspecified msg);
 
 __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
