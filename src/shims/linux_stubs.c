@@ -33,12 +33,6 @@
 #undef LINUX_PORT_ERROR
 #define LINUX_PORT_ERROR()  do { printf("LINUX_PORT_ERROR_CALLED %s:%d: %s\n",__FILE__,__LINE__,__FUNCTION__); abort(); } while (0)
 
-unsigned long _dispatch_runloop_queue_probe(dispatch_queue_t dq) {
-  LINUX_PORT_ERROR();
-}
-void _dispatch_runloop_queue_xref_dispose() { LINUX_PORT_ERROR();  }
-
-void _dispatch_runloop_queue_dispose() { LINUX_PORT_ERROR();  }
 
 /*
  * Stubbed out static data
