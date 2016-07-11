@@ -15,6 +15,10 @@ import CDispatch
 // This file contains declarations that are provided by the
 // importer via Dispatch.apinote when the platform has Objective-C support
 
+@noreturn public func dispatchMain() {
+	CDispatch.dispatch_main()
+}
+
 public class DispatchObject {
 
 	internal func wrapped() -> dispatch_object_t {
