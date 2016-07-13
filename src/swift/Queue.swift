@@ -302,32 +302,34 @@ public extension DispatchQueue {
 		}
 	}
 
-	public func after(when: DispatchTime, qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], execute work: @convention(block) () -> Void) {
+	public func after(_ duration: DispatchTimeInterval, from: DispatchTime = DispatchTime.now(), qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], execute work: @convention(block) () -> Void) {
+		let executeTime = from + duration
 		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: work)
-			dispatch_after(when.rawValue, self.__wrapped, item._block)
+			dispatch_after(executeTime.rawValue, self.__wrapped, item._block)
 		} else {
-			dispatch_after(when.rawValue, self.__wrapped, work)
+			dispatch_after(executeTime.rawValue, self.__wrapped, work)
 		}
 	}
 
 	@available(OSX 10.10, iOS 8.0, *)
-	public func after(when: DispatchTime, execute: DispatchWorkItem) {
-		dispatch_after(when.rawValue, self.__wrapped, execute._block)
+	public func after(_ duration: DispatchTimeInterval, from: DispatchTime = DispatchTime.now(), execute: DispatchWorkItem) {
+		let executeTime = from + duration
+		dispatch_after(executeTime.rawValue, self.__wrapped, execute._block)
 	}
 
-	public func after(walltime when: DispatchWallTime, qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], execute work: @convention(block) () -> Void) {
+	public func at(_ time: DispatchWallTime, qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], execute work: @convention(block) () -> Void) {
 		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: work)
-			dispatch_after(when.rawValue, self.__wrapped, item._block)
+			dispatch_after(time.rawValue, self.__wrapped, item._block)
 		} else {
-			dispatch_after(when.rawValue, self.__wrapped, work)
+			dispatch_after(time.rawValue, self.__wrapped, work)
 		}
 	}
 
 	@available(OSX 10.10, iOS 8.0, *)
-	public func after(walltime when: DispatchWallTime, execute: DispatchWorkItem) {
-		dispatch_after(when.rawValue, self.__wrapped, execute._block)
+	public func at(_ time: DispatchWallTime, execute: DispatchWorkItem) {
+		dispatch_after(time.rawValue, self.__wrapped, execute._block)
 	}
 
 	@available(OSX 10.10, iOS 8.0, *)
