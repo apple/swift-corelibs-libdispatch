@@ -122,7 +122,8 @@ endif
 endif
 
 if HAVE_SWIFT
-  SWIFT_LIBS=-L$(SWIFT_LIBDIR) -lswiftCore
+  SWIFT_LIBS=-L$(SWIFT_LIBDIR) -lswiftCore -lswiftSwiftOnoneSupport
+  AM_LDFLAGS=-rpath $(SWIFT_LIBDIR)
 endif
 
 LDADD=libbsdtests.la $(top_builddir)/src/libdispatch.la $(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS) $(SWIFT_LIBS)
