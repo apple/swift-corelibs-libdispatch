@@ -108,11 +108,12 @@ const dispatch_block_t _dispatch_data_destructor_none = ^{
 	DISPATCH_INTERNAL_CRASH(0, "none destructor called");
 };
 
+#if !HAVE_MACH
 const dispatch_block_t _dispatch_data_destructor_munmap = ^{
 	DISPATCH_INTERNAL_CRASH(0, "munmap destructor called");
 };
-
-#if HAVE_MACH
+#else
+// _dispatch_data_destructor_munmap is a linker alias to the following
 const dispatch_block_t _dispatch_data_destructor_vm_deallocate = ^{
 	DISPATCH_INTERNAL_CRASH(0, "vmdeallocate destructor called");
 };
