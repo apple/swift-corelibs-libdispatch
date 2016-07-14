@@ -47,7 +47,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#ifdef __linux__
+#if defined(__linux__) && defined(__has_feature)
 #if __has_feature(modules)
 #include <stdio.h> // for off_t (to match Glibc.modulemap)
 #endif
