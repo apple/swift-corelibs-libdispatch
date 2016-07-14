@@ -64,6 +64,7 @@
 #define DISPATCH_MALLOC __attribute__((__malloc__))
 #define DISPATCH_ALWAYS_INLINE __attribute__((__always_inline__))
 #define DISPATCH_UNAVAILABLE __attribute__((__unavailable__))
+#define DISPATCH_UNAVAILABLE_MSG(msg) __attribute__((__unavailable__(msg)))
 #else
 /*! @parseOnly */
 #define DISPATCH_NORETURN
@@ -99,6 +100,16 @@
 #define DISPATCH_ALWAYS_INLINE
 /*! @parseOnly */
 #define DISPATCH_UNAVAILABLE
+/*! @parseOnly */
+#define DISPATCH_UNAVAILABLE_MSG(msg)
+#endif
+
+#ifdef __linux__
+#define DISPATCH_LINUX_UNAVAILABLE() \
+		DISPATCH_UNAVAILABLE_MSG( \
+		"This interface is unavailable on linux systems")
+#else
+#define DISPATCH_LINUX_UNAVAILABLE()
 #endif
 
 #ifndef DISPATCH_ALIAS_V2

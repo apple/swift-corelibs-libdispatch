@@ -108,7 +108,7 @@ const dispatch_block_t _dispatch_data_destructor_none = ^{
 	DISPATCH_INTERNAL_CRASH(0, "none destructor called");
 };
 
-#ifndef __linux__
+#if HAVE_MACH
 const dispatch_block_t _dispatch_data_destructor_vm_deallocate = ^{
 	DISPATCH_INTERNAL_CRASH(0, "vmdeallocate destructor called");
 };
@@ -249,7 +249,7 @@ dispatch_data_create_f(const void *buffer, size_t size, dispatch_queue_t queue,
 	if (destructor != DISPATCH_DATA_DESTRUCTOR_DEFAULT &&
 			destructor != DISPATCH_DATA_DESTRUCTOR_FREE &&
 			destructor != DISPATCH_DATA_DESTRUCTOR_NONE &&
-#ifndef __linux__
+#if HAVE_MACH
 			destructor != DISPATCH_DATA_DESTRUCTOR_VM_DEALLOCATE &&
 #endif
 			destructor != DISPATCH_DATA_DESTRUCTOR_INLINE) {
