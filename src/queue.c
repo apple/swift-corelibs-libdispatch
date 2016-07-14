@@ -5707,7 +5707,7 @@ _dispatch_runloop_queue_handle_init(void *ctxt)
 	handle = fd;
 #else
 #error "runloop support not implemented on this platform"
-#endif	
+#endif
 	_dispatch_runloop_queue_set_handle(dq, handle);
 
 	_dispatch_program_is_probably_callback_driven = true;
@@ -5769,7 +5769,13 @@ _dispatch_queue_set_mainq_drain_state(bool arg)
 }
 
 void
-_dispatch_main_queue_callback_4CF(void *ignored DISPATCH_UNUSED)
+_dispatch_main_queue_callback_4CF(
+#if TARGET_OS_MAC
+		mach_msg_header_t *_Null_unspecified msg
+#else
+		void *ignored
+#endif
+		DISPATCH_UNUSED)
 {
 	if (main_q_is_draining) {
 		return;

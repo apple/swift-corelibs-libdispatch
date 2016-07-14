@@ -199,10 +199,17 @@ DISPATCH_EXPORT DISPATCH_NOTHROW
 dispatch_runloop_handle_t
 _dispatch_get_main_queue_handle_4CF(void);
 
+#if TARGET_OS_MAC
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+DISPATCH_EXPORT DISPATCH_NOTHROW
+void
+_dispatch_main_queue_callback_4CF(mach_msg_header_t *_Null_unspecified msg);
+#else
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 _dispatch_main_queue_callback_4CF(void *_Null_unspecified msg);
+#endif
 
 __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
