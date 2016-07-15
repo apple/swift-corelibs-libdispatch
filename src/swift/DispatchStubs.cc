@@ -51,10 +51,16 @@ static void _dispatch_overlay_constructor() {
 
 #endif /* USE_OBJC */
 
-#if 0 /* FIXME -- adding directory to include path may need build-script plumbing to do properly... */
-#include "swift/Runtime/Config.h"
+
+// Replicate the SWIFT_CC(swift) calling convention macro from
+// swift/include/swift/Runtime/Config.h because it is
+// quite awkward to include Config.h and its recursive includes
+// in dispatch. This define must be manually kept in synch
+#define SWIFT_CC(CC) SWIFT_CC_##CC
+#if SWIFT_USE_SWIFTCALL
+#define SWIFT_CC_swift __attribute__((swiftcall))
 #else
-#define SWIFT_CC(x) /* FIXME!! */
+#define SWIFT_CC_swift
 #endif
 
 SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
