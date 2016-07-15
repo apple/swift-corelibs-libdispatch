@@ -16,9 +16,6 @@
 #ifndef __DISPATCH__STUBS__INTERNAL
 #define __DISPATCH__STUBS__INTERNAL
 
-// marker for hacks we have made to make progress
-#define __LINUX_PORT_HDD__ 1
-
 /*
  * Stub out defines for some mach types and related macros
  */
