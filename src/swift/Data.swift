@@ -19,7 +19,6 @@ public struct DispatchData : RandomAccessCollection {
 
 	public static let empty: DispatchData = DispatchData(data: _swift_dispatch_data_empty())
 
-#if false /* FIXME: dragging in _TMBO (Objective-C) */
 	public enum Deallocator {
 		/// Use `free`
 		case free
@@ -28,7 +27,13 @@ public struct DispatchData : RandomAccessCollection {
 		case unmap
 
 		/// A custom deallocator
-		case custom(DispatchQueue?, @convention(block) () -> Void)
+		// FIXME: Want @convention(block) here to minimize the overhead of
+		//        doing the conversion (once per custom enum instance instead
+		//        of once per call to DispatchData.init using the enum instance).
+		//        However, adding the annotation here results in Data.o containing
+		//        a reference to _TMBO (opaque metadata for Builtin.UnknownObject)
+		//        which is only made available on platforms with Objective-C.
+		case custom(DispatchQueue?, () -> Void)
 
 		private var _deallocator: (DispatchQueue?, @convention(block) () -> Void) {
 			switch self {
@@ -38,35 +43,34 @@ public struct DispatchData : RandomAccessCollection {
 			}
 		}
 	}
-#endif
-	internal var __wrapped: dispatch_data_t
+
+	internal var __wrapped: __DispatchData
 
 	/// Initialize a `Data` with copied memory content.
 	///
 	/// - parameter bytes: A pointer to the memory. It will be copied.
 	/// - parameter count: The number of bytes to copy.
 	public init(bytes buffer: UnsafeBufferPointer<UInt8>) {
-		__wrapped = dispatch_data_create(
-			buffer.baseAddress!, buffer.count, nil, _dispatch_data_destructor_default())
+		let d = dispatch_data_create(buffer.baseAddress!, buffer.count, nil, _dispatch_data_destructor_default())
+		self.init(data: d)
 	}
-#if false /* FIXME: dragging in _TMBO (Objective-C) */
+
 	/// Initialize a `Data` without copying the bytes.
 	///
-	/// - parameter bytes: A pointer to the bytes.
-	/// - parameter count: The size of the bytes.
+	/// - parameter bytes: A buffer pointer containing the data.
 	/// - parameter deallocator: Specifies the mechanism to free the indicated buffer.
 	public init(bytesNoCopy bytes: UnsafeBufferPointer<UInt8>, deallocator: Deallocator = .free) {
 		let (q, b) = deallocator._deallocator
-
-		__wrapped = dispatch_data_create(bytes.baseAddress!, bytes.count, q?.__wrapped, b)
+		let d = dispatch_data_create(bytes.baseAddress!, bytes.count, q?.__wrapped, b)
+		self.init(data: d)
 	}
-#endif
+
 	internal init(data: dispatch_data_t) {
-		__wrapped = data
+		__wrapped = __DispatchData(data: data)
 	}
 
 	public var count: Int {
-		return CDispatch.dispatch_data_get_size(__wrapped)
+		return CDispatch.dispatch_data_get_size(__wrapped.__wrapped)
 	}
 
 	public func withUnsafeBytes<Result, ContentType>(
@@ -74,7 +78,7 @@ public struct DispatchData : RandomAccessCollection {
 	{
 		var ptr: UnsafePointer<Void>? = nil
 		var size = 0;
-		let data = CDispatch.dispatch_data_create_map(__wrapped, &ptr, &size)
+		let data = CDispatch.dispatch_data_create_map(__wrapped.__wrapped, &ptr, &size)
 		defer { _fixLifetime(data) }
 		return try body(UnsafePointer<ContentType>(ptr!))
 	}
@@ -82,7 +86,7 @@ public struct DispatchData : RandomAccessCollection {
 	public func enumerateBytes(
 		block: @noescape (buffer: UnsafeBufferPointer<UInt8>, byteIndex: Int, stop: inout Bool) -> Void) 
 	{
-		_swift_dispatch_data_apply(__wrapped) { (data: dispatch_data_t, offset: Int, ptr: UnsafePointer<Void>, size: Int) in
+		_swift_dispatch_data_apply(__wrapped.__wrapped) { (data: dispatch_data_t, offset: Int, ptr: UnsafePointer<Void>, size: Int) in
 			let bp = UnsafeBufferPointer(start: UnsafePointer<UInt8>(ptr), count: size)
 			var stop = false
 			block(buffer: bp, byteIndex: offset, stop: &stop)
@@ -103,8 +107,8 @@ public struct DispatchData : RandomAccessCollection {
 	///
 	/// - parameter data: The data to append to this data.
 	public mutating func append(_ other: DispatchData) {
-		let data = CDispatch.dispatch_data_create_concat(__wrapped, other.__wrapped)
-		__wrapped = data
+		let data = CDispatch.dispatch_data_create_concat(__wrapped.__wrapped, other.__wrapped.__wrapped)
+		__wrapped = __DispatchData(data: data)
 	}
 
 	/// Append a buffer of bytes to the data.
@@ -116,7 +120,7 @@ public struct DispatchData : RandomAccessCollection {
 
 	private func _copyBytesHelper(to pointer: UnsafeMutablePointer<UInt8>, from range: CountableRange<Index>) {
 		var copiedCount = 0
-		_ = CDispatch.dispatch_data_apply(__wrapped) { (data: dispatch_data_t, offset: Int, ptr: UnsafePointer<Void>, size: Int) in
+		_ = CDispatch.dispatch_data_apply(__wrapped.__wrapped) { (data: dispatch_data_t, offset: Int, ptr: UnsafePointer<Void>, size: Int) in
 			let limit = Swift.min((range.endIndex - range.startIndex) - copiedCount, size)
 			memcpy(pointer + copiedCount, ptr, limit)
 			copiedCount += limit
@@ -177,7 +181,7 @@ public struct DispatchData : RandomAccessCollection {
 	/// Sets or returns the byte at the specified index.
 	public subscript(index: Index) -> UInt8 {
 		var offset = 0
-		let subdata = CDispatch.dispatch_data_copy_region(__wrapped, index, &offset)
+		let subdata = CDispatch.dispatch_data_copy_region(__wrapped.__wrapped, index, &offset)
 
 		var ptr: UnsafePointer<Void>? = nil
 		var size = 0
@@ -197,13 +201,13 @@ public struct DispatchData : RandomAccessCollection {
 	/// - parameter range: The range to copy.
 	public func subdata(in range: CountableRange<Index>) -> DispatchData {
 		let subrange = CDispatch.dispatch_data_create_subrange(
-			__wrapped, range.startIndex, range.endIndex - range.startIndex)
+			__wrapped.__wrapped, range.startIndex, range.endIndex - range.startIndex)
 		return DispatchData(data: subrange)
 	}
 
 	public func region(location: Int) -> (data: DispatchData, offset: Int) {
 		var offset: Int = 0
-		let data = CDispatch.dispatch_data_copy_region(__wrapped, location, &offset)
+		let data = CDispatch.dispatch_data_copy_region(__wrapped.__wrapped, location, &offset)
 		return (DispatchData(data: data), offset)
 	}
 
@@ -237,7 +241,7 @@ public struct DispatchDataIterator : IteratorProtocol, Sequence {
 	public init(_data: DispatchData) {
 		var ptr: UnsafePointer<Void>?
 		self._count = 0
-		self._data = CDispatch.dispatch_data_create_map(_data.__wrapped, &ptr, &self._count)
+		self._data = __DispatchData(data: CDispatch.dispatch_data_create_map(_data.__wrapped.__wrapped, &ptr, &self._count))
 		self._ptr = UnsafePointer(ptr)
 		self._position = _data.startIndex
 
@@ -254,7 +258,7 @@ public struct DispatchDataIterator : IteratorProtocol, Sequence {
 		return element
 	}
 
-	internal let _data: dispatch_data_t
+	internal let _data: __DispatchData
 	internal var _ptr: UnsafePointer<UInt8>!
 	internal var _count: Int
 	internal var _position: DispatchData.Index
