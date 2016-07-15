@@ -41,7 +41,7 @@ public extension DispatchIO {
 	}
 
 	public class func write(fromFileDescriptor: Int32, data: DispatchData, runningHandlerOn queue: DispatchQueue, handler: (data: DispatchData?, error: Int32) -> Void) {
-		dispatch_write(fromFileDescriptor, data.__wrapped, queue.__wrapped) { (data: dispatch_data_t?, error: Int32) in
+		dispatch_write(fromFileDescriptor, data.__wrapped.__wrapped, queue.__wrapped) { (data: dispatch_data_t?, error: Int32) in
 			handler(data: data.flatMap { DispatchData(data: $0) }, error: error)
 		}
 	}
@@ -82,7 +82,7 @@ public extension DispatchIO {
 	}
 
 	public func write(offset: off_t, data: DispatchData, queue: DispatchQueue, ioHandler: (done: Bool, data: DispatchData?, error: Int32) -> Void) {
-		dispatch_io_write(self.__wrapped, offset, data.__wrapped, queue.__wrapped) { (done: Bool, data: dispatch_data_t?, error: Int32) in
+		dispatch_io_write(self.__wrapped, offset, data.__wrapped.__wrapped, queue.__wrapped) { (done: Bool, data: dispatch_data_t?, error: Int32) in
 			ioHandler(done: done, data: data.flatMap { DispatchData(data: $0) }, error: error)
 		}
 	}

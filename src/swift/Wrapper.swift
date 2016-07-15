@@ -186,6 +186,22 @@ extension DispatchSource : DispatchSourceProcess,
 }
 #endif
 
+internal class __DispatchData : DispatchObject {
+	internal let __wrapped:dispatch_data_t
+
+	final internal override func wrapped() -> dispatch_object_t {
+		return unsafeBitCast(__wrapped, to: dispatch_object_t.self)
+	}
+
+	internal init(data:dispatch_data_t) {
+		__wrapped = data
+	}
+
+	deinit {
+		_swift_dispatch_release(wrapped())
+	}
+}
+
 public typealias DispatchSourceHandler = @convention(block) () -> Void
 
 public protocol DispatchSourceType {
@@ -307,9 +323,9 @@ internal enum _OSQoSClass : UInt32  {
 		case 0x21: self = .QOS_CLASS_USER_INTERACTIVE
 		case 0x19: self = .QOS_CLASS_USER_INITIATED
 		case 0x15: self = .QOS_CLASS_DEFAULT
-		case 0x11: self = QOS_CLASS_UTILITY
-		case 0x09: self = QOS_CLASS_BACKGROUND
-		case 0x00: self = QOS_CLASS_UNSPECIFIED
+		case 0x11: self = .QOS_CLASS_UTILITY
+		case 0x09: self = .QOS_CLASS_BACKGROUND
+		case 0x00: self = .QOS_CLASS_UNSPECIFIED
 		default: return nil
 		}
 	}
