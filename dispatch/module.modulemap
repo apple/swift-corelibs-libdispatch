@@ -1,20 +1,10 @@
-module Dispatch {
-	requires blocks
+module Dispatch [system] [extern_c] {
+	umbrella header "dispatch.h"
+	module * { export * }
 	export *
-	link "dispatch"
-	link "BlocksRuntime"
 }
 
 module DispatchIntrospection [system] [extern_c] {
 	header "introspection.h"
 	export *
-}
-
-module CDispatch [system] [extern_c] {
-	umbrella header "dispatch.h"
-	module * { export * }
-	export *
-	requires blocks
-	link "dispatch"
-	link "BlocksRuntime"
 }
