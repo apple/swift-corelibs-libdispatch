@@ -40,8 +40,8 @@
 extern char **environ;
 
 #ifdef __linux__
-// FIXME: LINUX_PORT_HDD
-//     For initial bringup, don't use libdispatch to test libdispatch!
+// Linux lacks the DISPATCH_SOURCE_TYPE_PROC functionality
+// the real test harness needs.
 #define SIMPLE_TEST_HARNESS 1
 #else
 #define SIMPLE_TEST_HARNESS 0
