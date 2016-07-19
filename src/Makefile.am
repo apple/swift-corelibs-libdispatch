@@ -61,6 +61,9 @@ AM_CPPFLAGS=-I$(top_builddir) -I$(top_srcdir) -I$(top_srcdir)/private
 
 DISPATCH_CFLAGS=-Wall $(VISIBILITY_FLAGS) $(OMIT_LEAF_FP_FLAGS) \
 	$(MARCH_FLAGS) $(KQUEUE_CFLAGS) $(BSD_OVERLAY_CFLAGS)
+if DISPATCH_ENABLE_ASSERTS
+DISPATCH_CFLAGS+=-DDISPATCH_DEBUG=1
+endif
 AM_CFLAGS= $(PTHREAD_WORKQUEUE_CFLAGS) $(DISPATCH_CFLAGS) $(CBLOCKS_FLAGS)
 AM_OBJCFLAGS=$(DISPATCH_CFLAGS) $(CBLOCKS_FLAGS)
 AM_CXXFLAGS=$(PTHREAD_WORKQUEUE_CFLAGS) $(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
@@ -150,6 +153,9 @@ SWIFT_GEN_FILES=	\
 	$(SWIFT_OBJ_FILES:%=%.~partial.swiftdeps)
 
 SWIFTC_FLAGS = -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.modulemap -I$(abs_top_srcdir) -Xcc -fblocks
+if DISPATCH_ENABLE_OPTIMIZATION
+SWIFTC_FLAGS+=-O
+endif
 
 $(abs_builddir)/swift/%.o:	$(abs_srcdir)/swift/%.swift
 	$(SWIFTC) -frontend -c $(SWIFT_ABS_SRC_FILES) -primary-file $< \

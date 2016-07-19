@@ -6585,7 +6585,7 @@ dispatch_kevent_debug(const char *verb, const _dispatch_kevent_qos_s *kev,
 #else
 			0ull, 0ull,
 #endif
-			str, function, line);
+			function, line);
 #endif
 }
 
