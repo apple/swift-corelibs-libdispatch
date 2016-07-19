@@ -11,6 +11,46 @@ AC_CONFIG_MACRO_DIR([m4])
 ac_clean_files=a.out.dSYM
 AM_MAINTAINER_MODE
 
+#
+# Command line argument to specify build variant (default to release).
+# Impacts default value of CFLAGS et al. so must come before AC_PROG_CC
+#
+AC_ARG_WITH([build-variant],
+  [AS_HELP_STRING([--with-build-variant=release|debug|releaseassert|releasedebuginfo], [Specify build variant [default=release]])],
+  [dispatch_build_variant=${withval}],
+  [dispatch_build_variant=release]
+)
+AS_CASE([$dispatch_build_variant],
+  [debug], [
+    default_compiler_flags="-g -O0"
+    dispatch_enable_asserts=true
+    dispatch_enable_optimization=false
+  ],
+  [release], [
+    default_compiler_flags="-O2"
+    dispatch_enable_asserts=false
+    dispatch_enable_optimization=true
+  ],
+  [releaseassert], [
+    default_compiler_flags="-O2"
+    dispatch_enable_asserts=true
+    dispatch_enable_optimization=true
+  ],
+  [releasedebuginfo], [
+    default_compiler_flags="-g -O2"
+    dispatch_enable_asserts=false
+    dispatch_enable_optimization=true
+  ],
+  [AC_MSG_ERROR("invalid build-variant $dispatch_build_variant")]
+)
+AM_CONDITIONAL(DISPATCH_ENABLE_ASSERTS, $dispatch_enable_asserts)
+AM_CONDITIONAL(DISPATCH_ENABLE_OPTIMIZATION, $dispatch_enable_optimization)
+
+: ${CFLAGS=$default_compiler_flags}
+: ${CXXFLAGS=$default_compiler_flags}
+: ${OBJCFLAGS=$default_compiler_flags}
+: ${OBJCXXFLAGS=$default_compiler_flags}
+
 AC_PROG_CC([clang gcc cc])
 AC_PROG_CXX([clang++ g++ c++])
 AC_PROG_OBJC([clang gcc cc])
