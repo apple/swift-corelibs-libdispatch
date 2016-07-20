@@ -2341,11 +2341,15 @@ _dispatch_kevent_timer_set_delay(_dispatch_kevent_qos_s *ke, uint64_t delay,
 {
 	// call to update nows[]
 	_dispatch_source_timer_now(nows, DISPATCH_TIMER_KIND_WALL);
+#if KEVENT_NSEC_NOT_SUPPORTED
 	// adjust nsec based delay to msec based and ignore leeway
 	delay /= 1000000L;
 	if ((int64_t)(delay) <= 0) {
 		delay = 1; // if value <= 0 the dispatch will stop
 	}
+#else
+	ke->fflags |= NOTE_NSECONDS;
+#endif
 	ke->data = (int64_t)delay;
 }
 
