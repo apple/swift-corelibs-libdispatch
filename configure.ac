@@ -223,12 +223,18 @@ esac
 AC_SEARCH_LIBS(clock_gettime, rt)
 AC_SEARCH_LIBS(pthread_create, pthread)
 
-#
-# Prefer native kqueue(2); otherwise use libkqueue if present.
-#
-AC_CHECK_HEADER(sys/event.h, [],
-  [PKG_CHECK_MODULES(KQUEUE, libkqueue)]
+AS_IF([test -f $srcdir/libkqueue/configure.ac],
+  [AC_DEFINE(BUILD_OWN_KQUEUES, 1, [Define if building libkqueue from source])
+   ac_configure_args="--disable-libkqueue-install $ac_configure_args"
+   AC_CONFIG_SUBDIRS([libkqueue])
+   build_own_kqueues=true],
+  [build_own_kqueues=false
+   AC_CHECK_HEADER(sys/event.h, [],
+     [PKG_CHECK_MODULES(KQUEUE, libkqueue)]
+   )
+  ]
 )
+AM_CONDITIONAL(BUILD_OWN_KQUEUES, $build_own_kqueues)
 
 AC_CHECK_FUNCS([strlcpy getprogname], [],
   [PKG_CHECK_MODULES(BSD_OVERLAY, libbsd-overlay,[
