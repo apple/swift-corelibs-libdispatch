@@ -238,14 +238,15 @@ public struct DispatchDataIterator : IteratorProtocol, Sequence {
 		var ptr: UnsafePointer<Void>?
 		self._count = 0
 		self._data = CDispatch.dispatch_data_create_map(_data.__wrapped, &ptr, &self._count)
-		self._ptr = UnsafePointer(ptr!)
+		self._ptr = UnsafePointer(ptr)
 		self._position = _data.startIndex
+
+		// The only time we expect a 'nil' pointer is when the data is empty.
+		assert(self._ptr != nil || self._count == self._position)
 	}
 
 	/// Advance to the next element and return it, or `nil` if no next
 	/// element exists.
-	///
-	/// - Precondition: No preceding call to `self.next()` has returned `nil`.
 	public mutating func next() -> DispatchData._Element? {
 		if _position == _count { return nil }
 		let element = _ptr[_position];
@@ -254,7 +255,7 @@ public struct DispatchDataIterator : IteratorProtocol, Sequence {
 	}
 
 	internal let _data: dispatch_data_t
-	internal var _ptr: UnsafePointer<UInt8>
+	internal var _ptr: UnsafePointer<UInt8>!
 	internal var _count: Int
 	internal var _position: DispatchData.Index
 }
