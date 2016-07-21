@@ -36,7 +36,7 @@
 #define delay (1ull * NSEC_PER_SEC)
 #define interval (5ull * NSEC_PER_USEC)
 
-#define N 100000
+#define N 25000
 
 static dispatch_source_t t[N];
 static dispatch_queue_t q;
