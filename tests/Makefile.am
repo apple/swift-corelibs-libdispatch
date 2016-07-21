@@ -26,6 +26,13 @@ UNPORTED_TESTS=					\
 	dispatch_vm					\
 	dispatch_vnode
 
+# Tests that have been disabled as they dont' reliably
+# pass or fail (so can't succeed, or run as XFAIL tests)
+DISABLED_TESTS=					\
+	dispatch_priority			\
+	dispatch_priority2			\
+	dispatch_read
+
 TESTS=							\
 	dispatch_apply				\
 	dispatch_api				\
@@ -36,10 +43,7 @@ TESTS=							\
 	dispatch_overcommit			\
 	dispatch_pingpong			\
 	dispatch_plusplus			\
-	dispatch_priority			\
-	dispatch_priority2			\
 	dispatch_context_for_key	\
-	dispatch_read				\
 	dispatch_read2				\
 	dispatch_after				\
 	dispatch_timer				\
