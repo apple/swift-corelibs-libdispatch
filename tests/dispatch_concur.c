@@ -32,7 +32,7 @@
 static volatile size_t done, concur;
 static int use_group_async;
 static uint32_t activecpu;
-static int32_t xfail = 0;
+static uint32_t min_acceptable_concurrency;
 
 static dispatch_queue_t q;
 static dispatch_group_t g, gw;
@@ -96,8 +96,8 @@ test_concur_async(size_t n, size_t qw)
 
 	if (qw > 1) {
 		size_t concurrency = MIN(n * workers, qw);
-		if (concurrency > done && done >= activecpu) {
-			xfail++;
+		if (done > min_acceptable_concurrency) {
+			test_long_less_than_or_equal("concurrently completed workers", done, concurrency);
 		} else {
 			test_long("concurrently completed workers", done, concurrency);
 		}
@@ -111,8 +111,8 @@ test_concur_async(size_t n, size_t qw)
 	free(mcs);
 
 	size_t expect = MIN(n, qw);
-	if (expect > max_concur && max_concur >= activecpu) {
-		xfail++;
+	if (max_concur > min_acceptable_concurrency) {
+		test_long_less_than_or_equal("max submission concurrency", max_concur, expect);
 	} else {
 		test_long("max submission concurrency", max_concur, expect);
 	}
@@ -154,8 +154,8 @@ test_concur_sync(size_t n, size_t qw)
 	free(mcs);
 
 	size_t expect = qw == 1 ? 1 : n;
-	if (expect > max_concur && max_concur >= activecpu) {
-		xfail++;
+	if (max_concur > min_acceptable_concurrency) {
+		test_long_less_than_or_equal("max sync concurrency", max_concur, expect);
 	} else {
 		test_long("max sync concurrency", max_concur, expect);
 	}
@@ -185,8 +185,8 @@ test_concur_apply(size_t n, size_t qw)
 	free(mcs);
 
 	size_t expect = MIN(n, qw);
-	if (expect > max_concur && max_concur >= activecpu) {
-		xfail++;
+	if (max_concur > min_acceptable_concurrency) {
+		test_long_less_than_or_equal("max apply concurrency", max_concur, expect);
 	} else {
 		test_long("max apply concurrency", max_concur, expect);
 	}
@@ -233,6 +233,7 @@ main(int argc __attribute__((unused)), char* argv[] __attribute__((unused)))
 	sysctlbyname("hw.activecpu", &activecpu, &s, NULL, 0);
 #endif
 	size_t n = activecpu / 2 > 1 ? activecpu / 2 : 1, w = activecpu * 2;
+	min_acceptable_concurrency = n;
 	dispatch_queue_t tq, ttq;
 	long qw, tqw, ttqw;
 	const char *ql, *tql, *ttql;
@@ -273,8 +274,6 @@ main(int argc __attribute__((unused)), char* argv[] __attribute__((unused)))
 		}
 		dispatch_release(ttq);
 	}
-
-	test_long_less_than_or_equal("6 failures for this test is acceptable", xfail, 6);
 
 	dispatch_release(g);
 	dispatch_release(gw);
