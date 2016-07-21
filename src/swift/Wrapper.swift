@@ -15,7 +15,7 @@ import CDispatch
 // This file contains declarations that are provided by the
 // importer via Dispatch.apinote when the platform has Objective-C support
 
-@noreturn public func dispatchMain() {
+public func dispatchMain() -> Never {
 	CDispatch.dispatch_main()
 }
 
@@ -159,7 +159,7 @@ public class DispatchQueue : DispatchObject {
 }
 
 public class DispatchSource : DispatchObject,
-	DispatchSourceType,	DispatchSourceRead,
+	DispatchSourceProtocol,	DispatchSourceRead,
 	DispatchSourceSignal, DispatchSourceTimer,
 	DispatchSourceUserDataAdd, DispatchSourceUserDataOr,
 	DispatchSourceWrite {
@@ -208,7 +208,7 @@ internal class __DispatchData : DispatchObject {
 
 public typealias DispatchSourceHandler = @convention(block) () -> Void
 
-public protocol DispatchSourceType {
+public protocol DispatchSourceProtocol {
 	func setEventHandler(qos: DispatchQoS, flags: DispatchWorkItemFlags, handler: DispatchSourceHandler?)
 
 	func setEventHandler(handler: DispatchWorkItem)
@@ -236,18 +236,16 @@ public protocol DispatchSourceType {
 	var isCancelled: Bool { get }
 }
 
-public protocol DispatchSourceUserDataAdd : DispatchSourceType {
-	func mergeData(value: UInt)
+public protocol DispatchSourceUserDataAdd : DispatchSourceProtocol {
+	func add(data: UInt)
 }
 
-public protocol DispatchSourceUserDataOr {
-#if false /*FIXME: clashes with UserDataAdd?? */
-	func mergeData(value: UInt)
-#endif
+public protocol DispatchSourceUserDataOr : DispatchSourceProtocol {
+	func or(data: UInt)
 }
 
 #if HAVE_MACH
-public protocol DispatchSourceMachSend : DispatchSourceType {
+public protocol DispatchSourceMachSend : DispatchSourceProtocol {
 	public var handle: mach_port_t { get }
 
 	public var data: DispatchSource.MachSendEvent { get }
@@ -257,13 +255,13 @@ public protocol DispatchSourceMachSend : DispatchSourceType {
 #endif
 
 #if HAVE_MACH
-public protocol DispatchSourceMachReceive : DispatchSourceType {
+public protocol DispatchSourceMachReceive : DispatchSourceProtocol {
 	var handle: mach_port_t { get }
 }
 #endif
 
 #if HAVE_MACH
-public protocol DispatchSourceMemoryPressure : DispatchSourceType {
+public protocol DispatchSourceMemoryPressure : DispatchSourceProtocol {
 	public var data: DispatchSource.MemoryPressureEvent { get }
 
 	public var mask: DispatchSource.MemoryPressureEvent { get }
@@ -271,7 +269,7 @@ public protocol DispatchSourceMemoryPressure : DispatchSourceType {
 #endif
 
 #if !os(Linux)
-public protocol DispatchSourceProcess : DispatchSourceType {
+public protocol DispatchSourceProcess : DispatchSourceProtocol {
 	var handle: pid_t { get }
 
 	var data: DispatchSource.ProcessEvent { get }
@@ -280,28 +278,28 @@ public protocol DispatchSourceProcess : DispatchSourceType {
 }
 #endif
 
-public protocol DispatchSourceRead : DispatchSourceType {
+public protocol DispatchSourceRead : DispatchSourceProtocol {
 }
 
-public protocol DispatchSourceSignal : DispatchSourceType {
+public protocol DispatchSourceSignal : DispatchSourceProtocol {
 }
 
-public protocol DispatchSourceTimer : DispatchSourceType {
-	func setTimer(start: DispatchTime, leeway: DispatchTimeInterval)
+public protocol DispatchSourceTimer : DispatchSourceProtocol {
+	func scheduleOneshot(deadline: DispatchTime, leeway: DispatchTimeInterval)
 
-	func setTimer(walltime start: DispatchWallTime, leeway: DispatchTimeInterval)
+	func scheduleOneshot(wallDeadline: DispatchWallTime, leeway: DispatchTimeInterval)
 
-	func setTimer(start: DispatchTime, interval: DispatchTimeInterval, leeway: DispatchTimeInterval)
+	func scheduleRepeating(deadline: DispatchTime, interval: DispatchTimeInterval, leeway: DispatchTimeInterval)
 
-	func setTimer(start: DispatchTime, interval: Double, leeway: DispatchTimeInterval)
+	func scheduleRepeating(deadline: DispatchTime, interval: Double, leeway: DispatchTimeInterval)
 
-	func setTimer(walltime start: DispatchWallTime, interval: DispatchTimeInterval, leeway: DispatchTimeInterval)
+	func scheduleRepeating(wallDeadline: DispatchWallTime, interval: DispatchTimeInterval, leeway: DispatchTimeInterval)
 
-	func setTimer(walltime start: DispatchWallTime, interval: Double, leeway: DispatchTimeInterval)
+	func scheduleRepeating(wallDeadline: DispatchWallTime, interval: Double, leeway: DispatchTimeInterval)
 }
 
 #if !os(Linux)
-public protocol DispatchSourceFileSystemObject : DispatchSourceType {
+public protocol DispatchSourceFileSystemObject : DispatchSourceProtocol {
 	var handle: Int32 { get }
 
 	var data: DispatchSource.FileSystemEvent { get }
@@ -310,7 +308,7 @@ public protocol DispatchSourceFileSystemObject : DispatchSourceType {
 }
 #endif
 
-public protocol DispatchSourceWrite : DispatchSourceType {
+public protocol DispatchSourceWrite : DispatchSourceProtocol {
 }
 
 
