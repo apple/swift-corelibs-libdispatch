@@ -408,8 +408,9 @@ DISPATCH_EXPORT DISPATCH_NOINLINE __attribute__((__format__(__printf__,1,2)))
 void _dispatch_log(const char *msg, ...);
 #endif // DISPATCH_USE_OS_DEBUG_LOG
 
-#define dsnprintf(...) \
-		({ int _r = snprintf(__VA_ARGS__); _r < 0 ? 0u : (size_t)_r; })
+#define dsnprintf(buf, siz, ...) \
+		({ size_t _siz = siz; int _r = snprintf(buf, _siz, __VA_ARGS__); \
+		 _r < 0 ? 0u : ((size_t)_r > _siz ? _siz : (size_t)_r); })
 
 #if __GNUC__
 #define dispatch_static_assert(e) ({ \
@@ -864,11 +865,15 @@ typedef struct kevent64_s _dispatch_kevent_qos_s;
 #define DISPATCH_TRACE_SUBCLASS_DEFAULT 0
 #define DISPATCH_TRACE_SUBCLASS_VOUCHER 1
 #define DISPATCH_TRACE_SUBCLASS_PERF 2
+#define DISPATCH_TRACE_SUBCLASS_MACH_MSG 3
+
 #define DISPATCH_PERF_non_leaf_retarget DISPATCH_CODE(PERF, 1)
 #define DISPATCH_PERF_post_activate_retarget DISPATCH_CODE(PERF, 2)
 #define DISPATCH_PERF_post_activate_mutation DISPATCH_CODE(PERF, 3)
 #define DISPATCH_PERF_delayed_registration DISPATCH_CODE(PERF, 4)
 #define DISPATCH_PERF_mutable_target DISPATCH_CODE(PERF, 5)
+
+#define DISPATCH_MACH_MSG_hdr_move DISPATCH_CODE(MACH_MSG, 1)
 
 DISPATCH_ALWAYS_INLINE
 static inline void
@@ -1034,8 +1039,7 @@ DISPATCH_ENUM(_dispatch_thread_set_self, unsigned long,
 	DISPATCH_PRIORITY_ENFORCE = 0x1,
 	DISPATCH_VOUCHER_REPLACE = 0x2,
 	DISPATCH_VOUCHER_CONSUME = 0x4,
-	DISPATCH_IGNORE_UNBIND = 0x8,
-	DISPATCH_THREAD_PARK = 0x10,
+	DISPATCH_THREAD_PARK = 0x8,
 );
 DISPATCH_WARN_RESULT
 static inline voucher_t _dispatch_adopt_priority_and_set_voucher(

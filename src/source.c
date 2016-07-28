@@ -2433,7 +2433,7 @@ _dispatch_timers_calendar_change(void)
 	_dispatch_timer_expired = true;
 	for (qos = 0; qos < DISPATCH_TIMER_QOS_COUNT; qos++) {
 		_dispatch_timers_mask |=
-				1 << DISPATCH_TIMER_INDEX(DISPATCH_TIMER_WALL_CLOCK, qos);
+				1 << DISPATCH_TIMER_INDEX(DISPATCH_TIMER_KIND_WALL, qos);
 	}
 }
 #endif
@@ -4566,6 +4566,9 @@ _dispatch_mach_msg_recv(dispatch_mach_t dm, dispatch_mach_reply_refs_t dmr,
 			DISPATCH_MACH_MSG_DESTRUCTOR_DEFAULT :
 			DISPATCH_MACH_MSG_DESTRUCTOR_FREE;
 	dmsg = dispatch_mach_msg_create(hdr, siz, destructor, NULL);
+	if (hdr == _dispatch_kevent_mach_msg_buf(ke)) {
+		_dispatch_ktrace2(DISPATCH_MACH_MSG_hdr_move, (uint64_t)hdr, (uint64_t)dmsg->dmsg_buf);
+	}
 	dmsg->dmsg_voucher = voucher;
 	dmsg->dmsg_priority = priority;
 	dmsg->do_ctxt = ctxt;
@@ -4585,6 +4588,7 @@ _dispatch_mach_msg_reply_recv(dispatch_mach_t dm,
 	}
 	void *ctxt = dmr->dmr_ctxt;
 	mach_msg_header_t *hdr, *hdr2 = NULL;
+	void *hdr_copyout_addr;
 	mach_msg_size_t siz, msgsiz = 0;
 	mach_msg_return_t kr;
 	mach_msg_option_t options;
@@ -4602,6 +4606,7 @@ retry:
 			(options & MACH_RCV_TIMEOUT) ? "poll" : "wait");
 	kr = mach_msg(hdr, options, 0, siz, reply_port, MACH_MSG_TIMEOUT_NONE,
 			MACH_PORT_NULL);
+	hdr_copyout_addr = hdr;
 	_dispatch_debug_machport(reply_port);
 	_dispatch_debug("machport[0x%08x]: MACH_RCV_MSG (size %u, opts 0x%x) "
 			"returned: %s - 0x%x", reply_port, siz, options,
@@ -4652,18 +4657,20 @@ retry:
 		dispatch_assume_zero(kr);
 		break;
 	}
-	if (slowpath(dm->dq_atomic_flags & DSF_CANCELED)) {
+	_dispatch_mach_msg_reply_received(dm, dmr, hdr->msgh_local_port);
+	hdr->msgh_local_port = MACH_PORT_NULL;
+	if (slowpath((dm->dq_atomic_flags & DSF_CANCELED) || kr)) {
 		if (!kr) mach_msg_destroy(hdr);
 		goto out;
 	}
-	_dispatch_mach_msg_reply_received(dm, dmr, hdr->msgh_local_port);
-	hdr->msgh_local_port = MACH_PORT_NULL;
-	if (kr) goto out;
 	dispatch_mach_msg_t dmsg;
 	dispatch_mach_msg_destructor_t destructor = (!hdr2) ?
 			DISPATCH_MACH_MSG_DESTRUCTOR_DEFAULT :
 			DISPATCH_MACH_MSG_DESTRUCTOR_FREE;
 	dmsg = dispatch_mach_msg_create(hdr, siz, destructor, NULL);
+	if (!hdr2 || hdr != hdr_copyout_addr) {
+		_dispatch_ktrace2(DISPATCH_MACH_MSG_hdr_move, (uint64_t)hdr_copyout_addr, (uint64_t)_dispatch_mach_msg_get_msg(dmsg));
+	}
 	dmsg->do_ctxt = ctxt;
 	return dmsg;
 out:
@@ -5902,8 +5909,12 @@ _dispatch_mach_install(dispatch_mach_t dm, pthread_priority_t pp)
 	}
 	if (dm->ds_is_direct_kevent) {
 		pp &= (~_PTHREAD_PRIORITY_FLAGS_MASK |
+				_PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG |
 				_PTHREAD_PRIORITY_OVERCOMMIT_FLAG);
 		// _dispatch_mach_reply_kevent_register assumes this has been done
+		// which is unlike regular sources or queues, the DEFAULTQUEUE flag
+		// is used so that the priority of that channel doesn't act as a floor
+		// QoS for incoming messages (26761457)
 		dm->dq_priority = (dispatch_priority_t)pp;
 	}
 	dm->ds_is_installed = true;

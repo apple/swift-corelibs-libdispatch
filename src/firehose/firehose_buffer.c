@@ -305,10 +305,10 @@ firehose_buffer_create(mach_port_t logd_port, uint64_t unique_pid,
 				"Invalid values for MADVISE_CHUNK_COUNT / CHUNK_SIZE");
 	}
 
-	kr = mach_vm_map(mach_task_self(), &vm_addr, sizeof(*fb),
-			0, VM_FLAGS_ANYWHERE | VM_MAKE_TAG(VM_MEMORY_GENEALOGY),
-			MEMORY_OBJECT_NULL, 0, FALSE, VM_PROT_DEFAULT, VM_PROT_ALL,
-			VM_INHERIT_NONE);
+	kr = mach_vm_map(mach_task_self(), &vm_addr, sizeof(*fb), 0,
+			VM_FLAGS_ANYWHERE | VM_FLAGS_PURGABLE |
+			VM_MAKE_TAG(VM_MEMORY_GENEALOGY), MEMORY_OBJECT_NULL, 0, FALSE,
+			VM_PROT_DEFAULT, VM_PROT_ALL, VM_INHERIT_NONE);
 	if (slowpath(kr)) {
 		if (kr != KERN_NO_SPACE) dispatch_assume_zero(kr);
 		firehose_mach_port_send_release(logd_port);

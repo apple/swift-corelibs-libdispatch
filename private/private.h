@@ -66,7 +66,7 @@
 #endif /* !__DISPATCH_BUILDING_DISPATCH__ */
 
 // <rdar://problem/9627726> Check that public and private dispatch headers match
-#if DISPATCH_API_VERSION != 20160612 // Keep in sync with <dispatch/dispatch.h>
+#if DISPATCH_API_VERSION != 20160712 // Keep in sync with <dispatch/dispatch.h>
 #error "Dispatch header mismatch between /usr/include and /usr/local/include"
 #endif
 
