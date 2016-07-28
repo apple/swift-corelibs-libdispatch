@@ -16,7 +16,7 @@
 
 import CDispatch
 
-public struct DispatchTime {
+public struct DispatchTime : Comparable {
 	public let rawValue: dispatch_time_t
 
 	public static func now() -> DispatchTime {
@@ -29,9 +29,33 @@ public struct DispatchTime {
 	private init(rawValue: dispatch_time_t) { 
 		self.rawValue = rawValue
 	}
+
+	/// Creates a `DispatchTime` relative to the system clock that
+	/// ticks since boot.
+	///
+	/// - Parameters:
+	///   - uptimeNanoseconds: The number of nanoseconds since boot, excluding
+	///                        time the system spent asleep
+	/// - Returns: A new `DispatchTime`
+	public init(uptimeNanoseconds: UInt64) {
+		self.rawValue = dispatch_time_t(uptimeNanoseconds)
+	}
+
+	public var uptimeNanoseconds: UInt64 {
+		return UInt64(self.rawValue)
+	}
 }
 
-public struct DispatchWallTime {
+public func <(a: DispatchTime, b: DispatchTime) -> Bool {
+	if a.rawValue == ~0 || b.rawValue == ~0 { return false }
+	return a.rawValue < b.rawValue
+}
+
+public func ==(a: DispatchTime, b: DispatchTime) -> Bool {
+	return a.rawValue == b.rawValue
+}
+
+public struct DispatchWallTime : Comparable {
 	public let rawValue: dispatch_time_t
 
 	public static func now() -> DispatchWallTime {
@@ -44,14 +68,20 @@ public struct DispatchWallTime {
 		self.rawValue = rawValue
 	}
 
-	public init(time: timespec) {
-		var t = time
+	public init(timespec: timespec) {
+		var t = timespec
 		self.rawValue = CDispatch.dispatch_walltime(&t, 0)
 	}
 }
 
-@available(*, deprecated, renamed: "DispatchWallTime")
-public typealias DispatchWalltime = DispatchWallTime
+public func <(a: DispatchWallTime, b: DispatchWallTime) -> Bool {
+	if a.rawValue == ~0 || b.rawValue == ~0 { return false }
+	return -Int64(a.rawValue) < -Int64(b.rawValue)
+}
+
+public func ==(a: DispatchWallTime, b: DispatchWallTime) -> Bool {
+	return a.rawValue == b.rawValue
+}
 
 public enum DispatchTimeInterval {
 	case seconds(Int)
