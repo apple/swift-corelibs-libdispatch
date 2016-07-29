@@ -66,7 +66,7 @@ provider dispatch {
  *
  * Timer configuration indicates that dispatch_source_set_timer() was called.
  * Timer programming indicates that the dispatch manager is about to sleep
- * for 'deadline' (but may wake up earlier if non-timer events occur).
+ * for 'deadline' ns (but may wake up earlier if non-timer events occur).
  * Time parameters are in nanoseconds, a value of -1 means "forever".
  *
  * dispatch$target:libdispatch*.dylib::timer-configure
