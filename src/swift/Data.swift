@@ -35,7 +35,7 @@ public struct DispatchData : RandomAccessCollection {
 		//        which is only made available on platforms with Objective-C.
 		case custom(DispatchQueue?, () -> Void)
 
-		private var _deallocator: (DispatchQueue?, @convention(block) () -> Void) {
+		fileprivate var _deallocator: (DispatchQueue?, @convention(block) () -> Void) {
 			switch self {
 			case .free: return (nil, _dispatch_data_destructor_free())
 			case .unmap: return (nil, _dispatch_data_destructor_munmap())
