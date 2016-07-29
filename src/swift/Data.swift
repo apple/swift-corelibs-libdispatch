@@ -118,7 +118,7 @@ public struct DispatchData : RandomAccessCollection {
 	///
 	/// - parameter buffer: The buffer of bytes to append. The size is calculated from `SourceType` and `buffer.count`.
 	public mutating func append<SourceType>(_ buffer : UnsafeBufferPointer<SourceType>) {
-		self.append(UnsafePointer(buffer.baseAddress!), count: buffer.count * MemoryLayout<SourceType>.size)
+		self.append(UnsafePointer(buffer.baseAddress!), count: buffer.count * MemoryLayout<SourceType>.stride)
 	}
 
 	private func _copyBytesHelper(to pointer: UnsafeMutablePointer<UInt8>, from range: CountableRange<Index>) {
@@ -169,9 +169,9 @@ public struct DispatchData : RandomAccessCollection {
 			precondition(r.endIndex >= 0)
 			precondition(r.endIndex <= cnt, "The range is outside the bounds of the data")
 			
-			copyRange = r.startIndex..<(r.startIndex + Swift.min(buffer.count * MemoryLayout<DestinationType>.size, r.count))
+			copyRange = r.startIndex..<(r.startIndex + Swift.min(buffer.count * MemoryLayout<DestinationType>.stride, r.count))
 		} else {
-			copyRange = 0..<Swift.min(buffer.count * MemoryLayout<DestinationType>.size, cnt)
+			copyRange = 0..<Swift.min(buffer.count * MemoryLayout<DestinationType>.stride, cnt)
 		}
 		
 		guard !copyRange.isEmpty else { return 0 }
