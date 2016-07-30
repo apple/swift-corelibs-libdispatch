@@ -86,13 +86,13 @@ public struct DispatchData : RandomAccessCollection {
 	}
 
 	public func enumerateBytes(
-		block: @noescape (buffer: UnsafeBufferPointer<UInt8>, byteIndex: Int, stop: inout Bool) -> Void) 
+		block: @noescape (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void) 
 	{
 		_swift_dispatch_data_apply(__wrapped.__wrapped) { (data: dispatch_data_t, offset: Int, ptr: UnsafeRawPointer, size: Int) in
 			let bytePtr = ptr.bindMemory(to: UInt8.self, capacity: size)
 			let bp = UnsafeBufferPointer(start: bytePtr, count: size)
 			var stop = false
-			block(buffer: bp, byteIndex: offset, stop: &stop)
+			block(bp, offset, &stop)
 			return !stop
 		}
 	}
