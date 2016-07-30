@@ -118,7 +118,10 @@ public struct DispatchData : RandomAccessCollection {
 	///
 	/// - parameter buffer: The buffer of bytes to append. The size is calculated from `SourceType` and `buffer.count`.
 	public mutating func append<SourceType>(_ buffer : UnsafeBufferPointer<SourceType>) {
-		self.append(UnsafePointer(buffer.baseAddress!), count: buffer.count * sizeof(SourceType.self))
+               let count = buffer.count * sizeof(SourceType.self)
+	       buffer.baseAddress?.withMemoryRebound(to: UInt8.self, capacity: count) {
+	    	    self.append($0, count: count)
+               }
 	}
 
 	private func _copyBytesHelper(to pointer: UnsafeMutablePointer<UInt8>, from range: CountableRange<Index>) {
@@ -176,8 +179,11 @@ public struct DispatchData : RandomAccessCollection {
 		
 		guard !copyRange.isEmpty else { return 0 }
 		
-		let pointer : UnsafeMutablePointer<UInt8> = UnsafeMutablePointer<UInt8>(buffer.baseAddress!)
-		_copyBytesHelper(to: pointer, from: copyRange)
+		let bufferCapacity = buffer.count * sizeof(DestinationType.self)
+ 	        buffer.baseAddress?.withMemoryRebound(to: UInt8.self, capacity: bufferCapacity) {
+
+		    _copyBytesHelper(to: $0, from: copyRange)
+                }
 		return copyRange.count
 	}
 
