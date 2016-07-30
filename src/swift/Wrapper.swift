@@ -91,17 +91,17 @@ public class DispatchIO : DispatchObject {
 	}
 
 	internal init(__type: UInt, fd: Int32, queue: DispatchQueue,
-				  handler: (error: Int32) -> Void) {
+				  handler: (_ error: Int32) -> Void) {
 		__wrapped = dispatch_io_create(__type, fd, queue.__wrapped, handler)
 	}
 
 	internal init(__type: UInt, path: UnsafePointer<Int8>, oflag: Int32,
-				  mode: mode_t, queue: DispatchQueue, handler: (error: Int32) -> Void) {
+				  mode: mode_t, queue: DispatchQueue, handler: (_ error: Int32) -> Void) {
 		__wrapped = dispatch_io_create_with_path(__type, path, oflag, mode, queue.__wrapped, handler)
 	}
 
 	internal init(__type: UInt, io: DispatchIO,
-				  queue: DispatchQueue, handler: (error: Int32) -> Void) {
+				  queue: DispatchQueue, handler: (_ error: Int32) -> Void) {
 		__wrapped = dispatch_io_create_with_io(__type, io.__wrapped, queue.__wrapped, handler)
 	}
 
