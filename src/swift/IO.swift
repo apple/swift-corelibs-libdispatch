@@ -50,7 +50,7 @@ public extension DispatchIO {
 		type: StreamType,
 		fileDescriptor: Int32,
 		queue: DispatchQueue,
-		cleanupHandler: (_ error: Int32) -> Void)
+		cleanupHandler: @escaping (_ error: Int32) -> Void)
 	{
 		self.init(__type: type.rawValue, fd: fileDescriptor, queue: queue, handler: cleanupHandler)
 	}
@@ -61,7 +61,7 @@ public extension DispatchIO {
 		oflag: Int32,
 		mode: mode_t,
 		queue: DispatchQueue,
-		cleanupHandler: (_ error: Int32) -> Void)
+		cleanupHandler: @escaping (_ error: Int32) -> Void)
 	{
 		self.init(__type: type.rawValue, path: path, oflag: oflag, mode: mode, queue: queue, handler: cleanupHandler)
 	}
@@ -70,7 +70,7 @@ public extension DispatchIO {
 		type: StreamType,
 		io: DispatchIO,
 		queue: DispatchQueue,
-		cleanupHandler: (_ error: Int32) -> Void)
+		cleanupHandler: @escaping (_ error: Int32) -> Void)
 	{
 		self.init(__type: type.rawValue, io: io, queue: queue, handler: cleanupHandler)
 	}
