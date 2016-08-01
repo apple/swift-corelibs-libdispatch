@@ -41,12 +41,12 @@ public class DispatchWorkItem {
 
 	// Temporary for swift-corelibs-foundation
 	@available(*, deprecated, renamed: "DispatchWorkItem(qos:flags:block:)")
-	public convenience init(group: DispatchGroup, qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], block: @convention(block) () -> ()) {
+	public convenience init(group: DispatchGroup, qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], block: @escaping @convention(block) () -> ()) {
 		self.init(qos: qos, flags: flags, block: block)
 
 	}
 
-	public init(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], block: @convention(block) () -> ()) {
+	public init(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], block: @escaping @convention(block) () -> ()) {
 		_block =  dispatch_block_create_with_qos_class(dispatch_block_flags_t(flags.rawValue),
 			qos.qosClass.rawValue.rawValue, Int32(qos.relativePriority), block)
 	}
@@ -77,7 +77,7 @@ public class DispatchWorkItem {
 		qos: DispatchQoS = .unspecified, 
 		flags: DispatchWorkItemFlags = [], 
 		queue: DispatchQueue, 
-		execute: @convention(block) () -> Void) 
+		execute: @escaping @convention(block) () -> ()) 
 	{
 		if qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: execute)
