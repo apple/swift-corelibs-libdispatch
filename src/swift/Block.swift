@@ -47,7 +47,7 @@ public class DispatchWorkItem {
 	}
 
 	public init(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], block: @escaping @convention(block) () -> ()) {
-		_block =  dispatch_block_create_with_qos_class(dispatch_block_flags_t(flags.rawValue),
+		_block = _swift_dispatch_block_create_with_qos_class(dispatch_block_flags_t(flags.rawValue),
 			qos.qosClass.rawValue.rawValue, Int32(qos.relativePriority), block)
 	}
 
@@ -106,6 +106,9 @@ public class DispatchWorkItem {
 /// on the referential identity of a block. Particularly, dispatch_block_create.
 internal typealias _DispatchBlock = @convention(block) () -> Void
 internal typealias dispatch_block_t = @convention(block) () -> Void
+
+@_silgen_name("_swift_dispatch_block_create_with_qos_class")
+internal func _swift_dispatch_block_create_with_qos_class(_ flags: dispatch_block_flags_t, _ qos: dispatch_qos_class_t, _ relativePriority: Int32, _ block: () -> Void) -> _DispatchBlock
 
 @_silgen_name("_swift_dispatch_block_create_noescape")
 internal func _swift_dispatch_block_create_noescape(_ flags: dispatch_block_flags_t, _ block: @noescape () -> ()) -> _DispatchBlock

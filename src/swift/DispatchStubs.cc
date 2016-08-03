@@ -155,8 +155,20 @@ _swift_dispatch_async(dispatch_queue_t queue, dispatch_block_t block) {
 
 SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
 extern "C" void
+_swift_dispatch_barrier_async(dispatch_queue_t queue, dispatch_block_t block) {
+  dispatch_barrier_async(queue, block);
+}
+
+SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
+extern "C" void
 _swift_dispatch_group_async(dispatch_group_t group, dispatch_queue_t queue, dispatch_block_t block) {
   dispatch_group_async(group, queue, block);
+}
+
+SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
+extern "C" void
+_swift_dispatch_group_notify(dispatch_group_t group, dispatch_queue_t queue, dispatch_block_t block) {
+  dispatch_group_notify(group, queue, block);
 }
 
 SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
@@ -167,8 +179,32 @@ _swift_dispatch_sync(dispatch_queue_t queue, dispatch_block_t block) {
 
 SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
 extern "C" void
+_swift_dispatch_after(dispatch_time_t when, dispatch_queue_t queue, dispatch_block_t block) {
+  dispatch_after(when, queue, block);
+}
+
+SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
+extern "C" void
 _swift_dispatch_release(dispatch_object_t obj) {
   dispatch_release(obj);
+}
+
+SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
+extern "C" void
+_swift_dispatch_source_set_event_handler(dispatch_source_t source, dispatch_block_t block) {
+  dispatch_source_set_event_handler(source, block);
+}
+
+SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
+extern "C" void
+_swift_dispatch_source_set_cancel_handler(dispatch_source_t source, dispatch_block_t block) {
+  dispatch_source_set_cancel_handler(source, block);
+}
+
+SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
+extern "C" void
+_swift_dispatch_source_set_registration_handler(dispatch_source_t source, dispatch_block_t block) {
+  dispatch_source_set_registration_handler(source, block);
 }
 
 // DISPATCH_RUNTIME_STDLIB_INTERFACE
