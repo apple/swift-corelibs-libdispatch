@@ -12,10 +12,10 @@
 
 import CDispatch
 
-public extension DispatchSourceType {
+public extension DispatchSourceProtocol {
 
 	public func setEventHandler(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], handler: DispatchSourceHandler?) {
-		if #available(OSX 10.10, iOS 8.0, *), let h = handler where qos != .unspecified || !flags.isEmpty {
+		if #available(OSX 10.10, iOS 8.0, *), let h = handler, qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: h)
 			CDispatch.dispatch_source_set_event_handler((self as! DispatchSource).__wrapped, item._block)
 		} else {
@@ -29,7 +29,7 @@ public extension DispatchSourceType {
 	}
 
 	public func setCancelHandler(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], handler: DispatchSourceHandler?) {
-		if #available(OSX 10.10, iOS 8.0, *), let h = handler where qos != .unspecified || !flags.isEmpty {
+		if #available(OSX 10.10, iOS 8.0, *), let h = handler, qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: h)
 			CDispatch.dispatch_source_set_cancel_handler((self as! DispatchSource).__wrapped, item._block)
 		} else {
@@ -43,7 +43,7 @@ public extension DispatchSourceType {
 	}
 
 	public func setRegistrationHandler(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], handler: DispatchSourceHandler?) {
-		if #available(OSX 10.10, iOS 8.0, *), let h = handler where qos != .unspecified || !flags.isEmpty {
+		if #available(OSX 10.10, iOS 8.0, *), let h = handler, qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: h)
 			CDispatch.dispatch_source_set_registration_handler((self as! DispatchSource).__wrapped, item._block)
 		} else {
@@ -150,66 +150,66 @@ public extension DispatchSource {
 	}
 
 #if HAVE_MACH
-	public class func machSend(port: mach_port_t, eventMask: MachSendEvent, queue: DispatchQueue? = nil) -> DispatchSourceMachSend {
+	public class func makeMachSendSource(port: mach_port_t, eventMask: MachSendEvent, queue: DispatchQueue? = nil) -> DispatchSourceMachSend {
 		let source = dispatch_source_create(_swift_dispatch_source_type_mach_send(), UInt(port), eventMask.rawValue, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceMachSend
 	}
 #endif
 
 #if HAVE_MACH
-	public class func machReceive(port: mach_port_t, queue: DispatchQueue? = nil) -> DispatchSourceMachReceive {
+	public class func makeMachReceiveSource(port: mach_port_t, queue: DispatchQueue? = nil) -> DispatchSourceMachReceive {
 		let source = dispatch_source_create(_swift_dispatch_source_type_mach_recv(), UInt(port), 0, queue?.__wrapped)
 		return DispatchSource(source) as DispatchSourceMachReceive
 	}
 #endif
 
 #if HAVE_MACH
-	public class func memoryPressure(eventMask: MemoryPressureEvent, queue: DispatchQueue? = nil) -> DispatchSourceMemoryPressure {
+	public class func makeMemoryPressureSource(eventMask: MemoryPressureEvent, queue: DispatchQueue? = nil) -> DispatchSourceMemoryPressure {
 		let source = dispatch_source_create(_swift_dispatch_source_type_memorypressure(), 0, eventMask.rawValue, queue.__wrapped)
 		return DispatchSourceMemoryPressure(source)
 	}
 #endif
 
 #if !os(Linux)
-	public class func process(identifier: pid_t, eventMask: ProcessEvent, queue: DispatchQueue? = nil) -> DispatchSourceProcess {
+	public class func makeProcessSource(identifier: pid_t, eventMask: ProcessEvent, queue: DispatchQueue? = nil) -> DispatchSourceProcess {
 		let source = dispatch_source_create(_swift_dispatch_source_type_proc(), UInt(identifier), eventMask.rawValue, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceProcess
 	}
 #endif
 
-	public class func read(fileDescriptor: Int32, queue: DispatchQueue? = nil) -> DispatchSourceRead {
+	public class func makeReadSource(fileDescriptor: Int32, queue: DispatchQueue? = nil) -> DispatchSourceRead {
 		let source = dispatch_source_create(_swift_dispatch_source_type_read(), UInt(fileDescriptor), 0, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceRead
 	}
 
-	public class func signal(signal: Int32, queue: DispatchQueue? = nil) -> DispatchSourceSignal {
+	public class func makeSignalSource(signal: Int32, queue: DispatchQueue? = nil) -> DispatchSourceSignal {
 		let source = dispatch_source_create(_swift_dispatch_source_type_signal(), UInt(signal), 0, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceSignal
 	}
 
-	public class func timer(flags: TimerFlags = [], queue: DispatchQueue? = nil) -> DispatchSourceTimer {
+	public class func makeTimerSource(flags: TimerFlags = [], queue: DispatchQueue? = nil) -> DispatchSourceTimer {
 		let source = dispatch_source_create(_swift_dispatch_source_type_timer(), 0, flags.rawValue, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceTimer
 	}
 
-	public class func userDataAdd(queue: DispatchQueue? = nil) -> DispatchSourceUserDataAdd {
+	public class func makeUserDataAddSource(queue: DispatchQueue? = nil) -> DispatchSourceUserDataAdd {
 		let source = dispatch_source_create(_swift_dispatch_source_type_data_add(), 0, 0, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceUserDataAdd
 	}
 
-	public class func userDataOr(queue: DispatchQueue? = nil) -> DispatchSourceUserDataOr {
+	public class func makeUserDataOrSource(queue: DispatchQueue? = nil) -> DispatchSourceUserDataOr {
 		let source = dispatch_source_create(_swift_dispatch_source_type_data_or(), 0, 0, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceUserDataOr
 	}
 
 #if !os(Linux)
-	public class func fileSystemObject(fileDescriptor: Int32, eventMask: FileSystemEvent, queue: DispatchQueue? = nil) -> DispatchSourceFileSystemObject {
+	public class func makeFileSystemObjectSource(fileDescriptor: Int32, eventMask: FileSystemEvent, queue: DispatchQueue? = nil) -> DispatchSourceFileSystemObject {
 		let source = dispatch_source_create(_swift_dispatch_source_type_vnode(), UInt(fileDescriptor), eventMask.rawValue, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceFileSystemObject
 	}
 #endif
 
-	public class func write(fileDescriptor: Int32, queue: DispatchQueue? = nil) -> DispatchSourceWrite {
+	public class func makeWriteSource(fileDescriptor: Int32, queue: DispatchQueue? = nil) -> DispatchSourceWrite {
 		let source = dispatch_source_create(_swift_dispatch_source_type_write(), UInt(fileDescriptor), 0, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceWrite
 	}
@@ -299,38 +299,6 @@ public extension DispatchSourceTimer {
 	}
 }
 
-public extension DispatchSourceTimer {
-	@available(*, deprecated, renamed: "DispatchSourceTimer.scheduleOneshot(self:deadline:leeway:)")
-	public func setTimer(start: DispatchTime, leeway: DispatchTimeInterval = .nanoseconds(0)) {
-		scheduleOneshot(deadline: start, leeway: leeway)
-	}
-
-	@available(*, deprecated, renamed: "DispatchSourceTimer.scheduleOneshot(self:wallDeadline:leeway:)")
-	public func setTimer(walltime start: DispatchWallTime, leeway: DispatchTimeInterval = .nanoseconds(0)) {
-		scheduleOneshot(wallDeadline: start, leeway: leeway)
-	}
-
-	@available(*, deprecated, renamed: "DispatchSourceTimer.scheduleRepeating(self:deadline:interval:leeway:)")
-	public func setTimer(start: DispatchTime, interval: DispatchTimeInterval, leeway: DispatchTimeInterval = .nanoseconds(0)) {
-		scheduleRepeating(deadline: start, interval: interval, leeway: leeway)
-	}
-
-	@available(*, deprecated, renamed: "DispatchSourceTimer.scheduleRepeating(self:deadline:interval:leeway:)")
-	public func setTimer(start: DispatchTime, interval: Double, leeway: DispatchTimeInterval = .nanoseconds(0)) {
-		scheduleRepeating(deadline: start, interval: interval, leeway: leeway)
-	}
-
-	@available(*, deprecated, renamed: "DispatchSourceTimer.scheduleRepeating(self:wallDeadline:interval:leeway:)")
-	public func setTimer(walltime start: DispatchWallTime, interval: DispatchTimeInterval, leeway: DispatchTimeInterval = .nanoseconds(0)) {
-		scheduleRepeating(wallDeadline: start, interval: interval, leeway: leeway)
-	}
-
-	@available(*, deprecated, renamed: "DispatchSourceTimer.scheduleRepeating(self:wallDeadline:interval:leeway:)")
-	public func setTimer(walltime start: DispatchWallTime, interval: Double, leeway: DispatchTimeInterval = .nanoseconds(0)) {
-		scheduleRepeating(wallDeadline: start, interval: interval, leeway: leeway)
-	}
-}
-
 #if !os(Linux)
 public extension DispatchSourceFileSystemObject {
 	public var handle: Int32 {
@@ -361,13 +329,12 @@ public extension DispatchSourceUserDataAdd {
 	/// The value to coalesce with the pending data using a logical OR or an ADD
 	/// as specified by the dispatch source type. A value of zero has no effect
 	/// and will not result in the submission of the event handler block.
-	public func mergeData(value: UInt) {
-		dispatch_source_merge_data((self as! DispatchSource).__wrapped, value)
+	public func add(data: UInt) {
+		dispatch_source_merge_data((self as! DispatchSource).__wrapped, data)
 	}
 }
 
 public extension DispatchSourceUserDataOr {
-#if false /*FIXME: clashes with UserDataAdd?? */
 	/// @function mergeData
 	///
 	/// @abstract
@@ -379,10 +346,9 @@ public extension DispatchSourceUserDataOr {
 	/// The value to coalesce with the pending data using a logical OR or an ADD
 	/// as specified by the dispatch source type. A value of zero has no effect
 	/// and will not result in the submission of the event handler block.
-	public func mergeData(value: UInt) {
-		dispatch_source_merge_data((self as! DispatchSource).__wrapped, value)
+	public func or(data: UInt) {
+		dispatch_source_merge_data((self as! DispatchSource).__wrapped, data)
 	}
-#endif
 }
 
 @_silgen_name("_swift_dispatch_source_type_DATA_ADD")

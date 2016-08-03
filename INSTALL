@@ -4,20 +4,44 @@ GCD is a concurrent programming framework first shipped with Mac OS X Snow
 Leopard.  This package is an open source bundling of libdispatch, the core
 user space library implementing GCD.  At the time of writing, support for
 the BSD kqueue API, and specifically extensions introduced in Mac OS X Snow
-Leopard and FreeBSD 9-CURRENT, are required to use libdispatch.  Support
-for Linux is a work in progress (see Linux notes below). Other systems are
-currently unsupported.
+Leopard and FreeBSD 9-CURRENT, are required to use libdispatch.  Linux is
+supported, but requires specific packages to be installed (see Linux
+section at the end of the file). Other systems are currently unsupported.
 
-  Configuring and installing libdispatch
+I. Configuring and installing libdispatch (general comments)
 
 GCD is built using autoconf, automake, and libtool, and has a number of
 compile-time configuration options that should be reviewed before starting.
-An uncustomized install requires:
+An uncustomized install of the C-API to libdispatch requires:
 
 	sh autogen.sh
 	./configure
 	make
 	make install
+
+libdispatch can be optionally built to include a Swift API. This requires a
+Swift toolchain to compile the Swift code in libdispatch and can be done
+in two possible scenarios.
+
+If you are building your own Swift toolchain from source, then you should build
+libdispatch simply by giving additional arguments to swift/utils/build-script:
+
+    ./swift/utils/build-script --libdispatch -- --install-libdispatch
+
+To build libdispatch using a pre-built Swift toolchain and install libdispatch
+into that toolchain (to allow that toolchain to compile Swift code containing
+"import Dispatch") requires:
+
+    sh autogen.sh
+	./configure --with-swift-toolchain=<PATH_TO_SWIFT_TOOLCHAIN> --prefix=<PATH_TO_SWIFT_TOOLCHAIN>
+	make
+	make install
+
+Note that once libdispatch is installed into a Swift toolchain, that
+toolchain cannot be used to compile libdispatch again (you must 'make uninstall'
+libdispatch from the toolchain before using it to rebuild libdispatch).
+
+II. Building and installing on OS X
 
 The following configure options may be of general interest:
 
@@ -88,6 +112,8 @@ libdispatch for /usr/lib/system on OS X El Capitan:
 		--with-apple-objc4-source=/path/to/10.11.0/objc4-680
 	make check
 
+III. Building and installing for FreeBSD
+
 Typical configuration line for FreeBSD 8.x and 9.x to build libdispatch with
 clang and blocks support:
 
@@ -95,26 +121,33 @@ clang and blocks support:
 	./configure CC=clang --with-blocks-runtime=/usr/local/lib
 	make check
 
-Instructions for building on Linux. Initial focus is on ubuntu 15.04.
-Prepare your system
- 1. Install compiler, autotools
-    sudo apt-get install clang
-    sudo apt-get install autoconf libtool pkg-config
- 2. Install dtrace (to generate provider.h)
+IV. Building and installing for Linux
+
+Note that libdispatch development and testing is done only
+on Ubuntu; currently supported versions are 14.04, 15.10 and 16.04.
+
+(1) The first thing to do is install required packages:
+ 1a. Install build tools and clang compiler.
+    sudo apt-get install autoconf libtool pkg-config clang
+ 1b. Install dtrace (to generate provider.h)
     sudo apt-get install systemtap-sdt-dev
- 3. Install libdispatch pre-reqs
+ 1c. Install additional libdispatch dependencies
     sudo apt-get install libblocksruntime-dev libkqueue-dev libbsd-dev
 
-Initialize git submodules:
-  We are using git submodules to incorporate a specific revision of the
-  upstream pthread_workqueue library into the build.
+Note: compiling libdispatch requires clang 3.8 or better and
+the gold linker. If the default clang on your Ubuntu version is
+too old, see http://apt.llvm.org/ to install a newer version.
+On older Ubuntu releases, you may need to install binutils-gold
+to get the gold linker.
+
+(2) Initialize git submodules.
+  We are using git submodules to incorporate specific revisions of the
+  upstream pthread_workqueue and libkqueue projects into the build.
     git submodule init
     git submodule update
 
-Build:
+(3) Build (as in the general instructions above)
 	sh autogen.sh
 	./configure
 	make
-
-Note: the build currently fails building tests, but libdispatch.so should
-      build successfully.
+    make install
