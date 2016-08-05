@@ -24,3 +24,25 @@ Our first tasks for this project are:
 0. Incrementally add functionality back in.
 
 Some C headers and sources (e.g. `Availability.h`, `Block.h`, and the libclosure `runtime.c`) are similar to ones embedded into the CoreFoundation part of [swift-corelibs-foundation](http://github.com/apple/swift-corelibs-foundation). We should figure out a mechanism to share these instead of duplicating them across projects.
+
+## Toolchain
+To add libdispatch to the toolchain in Linux, you need to add libdispatch and install-libdispatch lines to ./swift/utils/build-presets.ini under `[preset: buildbot_linux]` section. Also to make the build run faster, you can comment the test lines. After those updates the section would be as following:
+
+```
+[preset: buildbot_linux]
+mixin-preset=mixin_linux_installation
+build-subdir=buildbot_linux
+lldb
+release
+#test
+#validation-test
+#long-test
+libdispatch
+foundation
+lit-args=-v
+dash-dash
+
+install-libdispatch
+install-foundation
+reconfigure
+```
