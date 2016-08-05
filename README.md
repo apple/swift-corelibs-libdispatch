@@ -46,3 +46,7 @@ install-libdispatch
 install-foundation
 reconfigure
 ```
+
+After that run:
+
+    utils/build-toolchain local.swift
