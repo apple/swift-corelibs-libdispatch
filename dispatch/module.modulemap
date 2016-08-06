@@ -1,5 +1,4 @@
 module Dispatch {
-	requires blocks
 	export *
 	link "dispatch"
 	link "BlocksRuntime"
@@ -14,7 +13,6 @@ module CDispatch [system] [extern_c] {
 	umbrella header "dispatch.h"
 	module * { export * }
 	export *
-	requires blocks
 	link "dispatch"
 	link "BlocksRuntime"
 }
