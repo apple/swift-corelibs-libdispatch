@@ -1,4 +1,4 @@
-Grand Central Dispatch (GCD)
+## Grand Central Dispatch (GCD)
 
 GCD is a concurrent programming framework first shipped with Mac OS X Snow
 Leopard.  This package is an open source bundling of libdispatch, the core
@@ -8,7 +8,7 @@ Leopard and FreeBSD 9-CURRENT, are required to use libdispatch.  Linux is
 supported, but requires specific packages to be installed (see Linux
 section at the end of the file). Other systems are currently unsupported.
 
-I. Configuring and installing libdispatch (general comments)
+### I. Configuring and installing libdispatch (general comments)
 
 GCD is built using autoconf, automake, and libtool, and has a number of
 compile-time configuration options that should be reviewed before starting.
@@ -93,7 +93,7 @@ OS X as a replacement for /usr/lib/system/libdispatch.dylib:
 	when building libdispatch for /usr/lib/system on OS X.  This should not
 	be used on other OS's, or on OS X when building a stand-alone library.
 
-  Typical configuration commands
+#### Typical configuration commands
 
 The following command lines create the configuration required to build
 libdispatch for /usr/lib/system on OS X El Capitan:
@@ -112,7 +112,7 @@ libdispatch for /usr/lib/system on OS X El Capitan:
 		--with-apple-objc4-source=/path/to/10.11.0/objc4-680
 	make check
 
-III. Building and installing for FreeBSD
+### III. Building and installing for FreeBSD
 
 Typical configuration line for FreeBSD 8.x and 9.x to build libdispatch with
 clang and blocks support:
@@ -121,33 +121,69 @@ clang and blocks support:
 	./configure CC=clang --with-blocks-runtime=/usr/local/lib
 	make check
 
-IV. Building and installing for Linux
+### IV. Building and installing for Linux
 
 Note that libdispatch development and testing is done only
 on Ubuntu; currently supported versions are 14.04, 15.10 and 16.04.
 
-(1) The first thing to do is install required packages:
+1. The first thing to do is install required packages:
+    
  1a. Install build tools and clang compiler.
     sudo apt-get install autoconf libtool pkg-config clang
+ 
  1b. Install dtrace (to generate provider.h)
     sudo apt-get install systemtap-sdt-dev
+ 
  1c. Install additional libdispatch dependencies
     sudo apt-get install libblocksruntime-dev libkqueue-dev libbsd-dev
 
-Note: compiling libdispatch requires clang 3.8 or better and
+    Note: compiling libdispatch requires clang 3.8 or better and
 the gold linker. If the default clang on your Ubuntu version is
 too old, see http://apt.llvm.org/ to install a newer version.
 On older Ubuntu releases, you may need to install binutils-gold
 to get the gold linker.
 
-(2) Initialize git submodules.
+2. Initialize git submodules.
   We are using git submodules to incorporate specific revisions of the
   upstream pthread_workqueue and libkqueue projects into the build.
+
+    ```
     git submodule init
     git submodule update
+    ```
+    
+3. Build (as in the general instructions above)
 
-(3) Build (as in the general instructions above)
-	sh autogen.sh
-	./configure
-	make
+    ```
+    sh autogen.sh
+    ./configure
+    make
     make install
+    ```
+
+## Toolchain
+To add libdispatch to the toolchain in Linux, you need to add libdispatch and install-libdispatch lines to ./swift/utils/build-presets.ini under `[preset: buildbot_linux]` section. After those updates the section would be as following:
+
+```
+[preset: buildbot_linux]
+mixin-preset=mixin_linux_installation
+build-subdir=buildbot_linux
+lldb
+release
+test
+validation-test
+long-test
+libdispatch
+foundation
+lit-args=-v
+dash-dash
+
+install-libdispatch
+install-foundation
+reconfigure
+```
+
+After that run:
+
+    utils/build-toolchain local.swift
+    
