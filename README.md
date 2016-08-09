@@ -18,13 +18,18 @@ libdispatch on Darwin is a combination of logic in the `xnu` kernel alongside th
 
 Our first tasks for this project are:
 
+<<<<<<< HEAD
 1. Adapt the current autotools build system to work on Linux, or develop a new makefile or other build script for the project on Linux. The current version of the build system has only been tested on Darwin, though previous versions have been made to work on FreeBSD and Linux (see INSTALL).
+=======
+1. Adapt the current autotools build system to work on Linux, or develop a new makefile or other build script for the project on Linux. The current version of the build system has only been tested on Darwin, though previous versions have been made to work on FreeBSD and Linux (see [INSTALL](INSTALL.md)).
+>>>>>>> INSTALL
 2. Omit as much of the extra functionality of the library as possible, to get a core version of the project building. Much of the OS X-specific functionality can be elided completely on Linux.
 3. Adopt libdispatch in other Core Libraries projects, especially Foundation. This will validate our work and get immediate coverage on basic functionality.
 4. Incrementally add functionality back in.
 
 Some C headers and sources (e.g. `Availability.h`, `Block.h`, and the libclosure `runtime.c`) are similar to ones embedded into the CoreFoundation part of [swift-corelibs-foundation](http://github.com/apple/swift-corelibs-foundation). We should figure out a mechanism to share these instead of duplicating them across projects.
 
+<<<<<<< HEAD
 ## Toolchain
 To add libdispatch to the toolchain in Linux, you need to add libdispatch and install-libdispatch lines to ./swift/utils/build-presets.ini under `[preset: buildbot_linux]` section. Also to make the build run faster, you can comment the test lines. After those updates the section would be as following:
 
@@ -50,3 +55,8 @@ reconfigure
 ## See also
 
 * [Install](INSTALL)
+=======
+## See also
+
+[INSTALL](INSTALL.md)
+>>>>>>> INSTALL
