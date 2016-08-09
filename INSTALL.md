@@ -41,7 +41,7 @@ Note that once libdispatch is installed into a Swift toolchain, that
 toolchain cannot be used to compile libdispatch again (you must 'make uninstall'
 libdispatch from the toolchain before using it to rebuild libdispatch).
 
-II. Building and installing on OS X
+### II. Building and installing on OS X
 
 The following configure options may be of general interest:
 
