@@ -41,7 +41,8 @@ Note that once libdispatch is installed into a Swift toolchain, that
 toolchain cannot be used to compile libdispatch again (you must 'make uninstall'
 libdispatch from the toolchain before using it to rebuild libdispatch).
 
-To create the toolchain with libdispatch Using build-toolchain in Linux:
+You can also use the build-toolchain script to create a toolchain
+that includes libdispatch on Linux:
 
 1. Add libdispatch and install-libdispatch lines to ./swift/utils/build-presets.ini under `[preset: buildbot_linux]` section, as following:
 
@@ -151,15 +152,8 @@ on Ubuntu; currently supported versions are 14.04, 15.10 and 16.04.
 
 1. The first thing to do is install required packages:
     
- 1a. Install build tools and clang compiler.
-    `sudo apt-get install autoconf libtool pkg-config clang`
+    `sudo apt-get install autoconf libtool pkg-config clang systemtap-sdt-dev libbsd-dev`
  
- 1b. Install dtrace (to generate provider.h)
-    `sudo apt-get install systemtap-sdt-dev`
- 
- 1c. Install additional libdispatch dependencies
-    `sudo apt-get install libblocksruntime-dev libkqueue-dev libbsd-dev`
-
     Note: compiling libdispatch requires clang 3.8 or better and
 the gold linker. If the default clang on your Ubuntu version is
 too old, see http://apt.llvm.org/ to install a newer version.
