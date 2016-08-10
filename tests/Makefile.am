@@ -130,6 +130,11 @@ if HAVE_PTHREAD_WORKQUEUES
 endif
 endif
 
+if BUILD_OWN_BLOCKS_RUNTIME
+CBLOCKS_FLAGS+= -I$(top_srcdir)/src/BlocksRuntime
+CXXBLOCKS_FLAGS+= -I$(top_srcdir)/src/BlocksRuntime
+endif
+
 if HAVE_SWIFT
   SWIFT_LIBS=-L$(SWIFT_LIBDIR) -lswiftCore -lswiftSwiftOnoneSupport
   AM_LDFLAGS=-rpath $(SWIFT_LIBDIR)
