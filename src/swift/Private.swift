@@ -141,7 +141,7 @@ public func dispatch_io_set_interval(_ channel: DispatchIO, _ interval: UInt64, 
 }
 
 @available(*, unavailable, renamed:"DispatchQueue.apply(attributes:iterations:execute:)")
-public func dispatch_apply(_ iterations: Int, _ queue: DispatchQueue, _ block: @noescape (Int) -> Void) 
+public func dispatch_apply(_ iterations: Int, _ queue: DispatchQueue, _ block: (Int) -> Void)
 {
 	fatalError()
 }
@@ -207,7 +207,7 @@ public func dispatch_barrier_async(_ queue: DispatchQueue, _ block: () -> Void)
 }
 
 @available(*, unavailable, renamed:"DispatchQueue.synchronously(self:flags:execute:)")
-public func dispatch_barrier_sync(_ queue: DispatchQueue, _ block: @noescape () -> Void)
+public func dispatch_barrier_sync(_ queue: DispatchQueue, _ block: () -> Void)
 {
 	fatalError()
 }
