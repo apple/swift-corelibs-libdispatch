@@ -41,7 +41,8 @@ Note that once libdispatch is installed into a Swift toolchain, that
 toolchain cannot be used to compile libdispatch again (you must 'make uninstall'
 libdispatch from the toolchain before using it to rebuild libdispatch).
 
-To create the toolchain with libdispatch Using build-toolchain in Linux:
+You can also use the build-toolchain script to create a toolchain
+that includes libdispatch on Linux:
 
 1. Add libdispatch and install-libdispatch lines to ./swift/utils/build-presets.ini under `[preset: buildbot_linux]` section, as following:
 
