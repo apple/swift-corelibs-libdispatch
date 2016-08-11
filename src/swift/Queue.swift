@@ -32,7 +32,7 @@ public struct DispatchQueueAttributes : OptionSet {
 	public static let serial = DispatchQueueAttributes(rawValue: 1<<0)
 	public static let concurrent = DispatchQueueAttributes(rawValue: 1<<1)
 
-	private var _translatedValue: DispatchQueue.Attributes {
+	fileprivate var _translatedValue: DispatchQueue.Attributes {
 		if self.contains(.concurrent) { return .concurrent }
 		return []
 	}
@@ -48,7 +48,7 @@ public extension DispatchQueue {
 		@available(OSX 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
 		public static let initiallyInactive = Attributes(rawValue: 1<<2)
 
-		private func _attr() -> dispatch_queue_attr_t? {
+		fileprivate func _attr() -> dispatch_queue_attr_t? {
 			var attr: dispatch_queue_attr_t? = nil
 
 			if self.contains(.concurrent) {
@@ -95,7 +95,7 @@ public extension DispatchQueue {
 	public enum GlobalQueueDeprecatedPriority {
 		case qosBackground
 
-		private var _translatedValue: DispatchQoS.QoSClass {
+		fileprivate var _translatedValue: DispatchQoS.QoSClass {
 			switch self {
 			case .qosBackground: return .background
 			}
@@ -221,7 +221,7 @@ public extension DispatchQueue {
 		group: DispatchGroup? = nil, 
 		qos: DispatchQoS = .unspecified, 
 		flags: DispatchWorkItemFlags = [], 
-		execute work: @convention(block) () -> Void) 
+		execute work: @escaping @convention(block) () -> Void) 
 	{
 		if group == nil && qos == .unspecified && flags.isEmpty {
 			// Fast-path route for the most common API usage
@@ -229,7 +229,7 @@ public extension DispatchQueue {
 			return
 		}
 
-		var block: @convention(block) () -> Void = work
+		var block: @escaping @convention(block) () -> Void = work
 		if #available(OSX 10.10, iOS 8.0, *), (qos != .unspecified || !flags.isEmpty) {
 			let workItem = DispatchWorkItem(qos: qos, flags: flags, block: work)
 			block = workItem._block
@@ -309,7 +309,7 @@ public extension DispatchQueue {
 		deadline: DispatchTime, 
 		qos: DispatchQoS = .unspecified, 
 		flags: DispatchWorkItemFlags = [], 
-		execute work: @convention(block) () -> Void) 
+		execute work: @escaping @convention(block) () -> Void) 
 	{
 		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: work)
@@ -323,7 +323,7 @@ public extension DispatchQueue {
 		wallDeadline: DispatchWallTime,
 		qos: DispatchQoS = .unspecified, 
 		flags: DispatchWorkItemFlags = [], 
-		execute work: @convention(block) () -> Void) 
+		execute work: @escaping @convention(block) () -> Void) 
 	{
 		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: work)
