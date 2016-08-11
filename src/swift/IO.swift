@@ -34,15 +34,15 @@ public extension DispatchIO {
 		public static let strictInterval = IntervalFlags(rawValue: 1)
 	}
 
-	public class func read(fromFileDescriptor: Int32, maxLength: Int, runningHandlerOn queue: DispatchQueue, handler: (data: DispatchData, error: Int32) -> Void) {
+	public class func read(fromFileDescriptor: Int32, maxLength: Int, runningHandlerOn queue: DispatchQueue, handler: @escaping (_ data: DispatchData, _ error: Int32) -> Void) {
 		dispatch_read(fromFileDescriptor, maxLength, queue.__wrapped) { (data: dispatch_data_t, error: Int32) in
-			handler(data: DispatchData(data: data), error: error)
+			handler(DispatchData(data: data), error)
 		}
 	}
 
-	public class func write(toFileDescriptor: Int32, data: DispatchData, runningHandlerOn queue: DispatchQueue, handler: (data: DispatchData?, error: Int32) -> Void) {
+	public class func write(toFileDescriptor: Int32, data: DispatchData, runningHandlerOn queue: DispatchQueue, handler: @escaping (_ data: DispatchData?, _ error: Int32) -> Void) {
 		dispatch_write(toFileDescriptor, data.__wrapped.__wrapped, queue.__wrapped) { (data: dispatch_data_t?, error: Int32) in
-			handler(data: data.flatMap { DispatchData(data: $0) }, error: error)
+			handler(data.flatMap { DispatchData(data: $0) }, error)
 		}
 	}
 
@@ -50,7 +50,7 @@ public extension DispatchIO {
 		type: StreamType,
 		fileDescriptor: Int32,
 		queue: DispatchQueue,
-		cleanupHandler: (error: Int32) -> Void)
+		cleanupHandler: @escaping (_ error: Int32) -> Void)
 	{
 		self.init(__type: type.rawValue, fd: fileDescriptor, queue: queue, handler: cleanupHandler)
 	}
@@ -61,7 +61,7 @@ public extension DispatchIO {
 		oflag: Int32,
 		mode: mode_t,
 		queue: DispatchQueue,
-		cleanupHandler: (error: Int32) -> Void)
+		cleanupHandler: @escaping (_ error: Int32) -> Void)
 	{
 		self.init(__type: type.rawValue, path: path, oflag: oflag, mode: mode, queue: queue, handler: cleanupHandler)
 	}
@@ -70,20 +70,20 @@ public extension DispatchIO {
 		type: StreamType,
 		io: DispatchIO,
 		queue: DispatchQueue,
-		cleanupHandler: (error: Int32) -> Void)
+		cleanupHandler: @escaping (_ error: Int32) -> Void)
 	{
 		self.init(__type: type.rawValue, io: io, queue: queue, handler: cleanupHandler)
 	}
 
-	public func read(offset: off_t, length: Int, queue: DispatchQueue, ioHandler: (done: Bool, data: DispatchData?, error: Int32) -> Void) {
+	public func read(offset: off_t, length: Int, queue: DispatchQueue, ioHandler: @escaping (_ done: Bool, _ data: DispatchData?, _ error: Int32) -> Void) {
 		dispatch_io_read(self.__wrapped, offset, length, queue.__wrapped) { (done: Bool, data: dispatch_data_t?, error: Int32) in
-			ioHandler(done: done, data: data.flatMap { DispatchData(data: $0) }, error: error)
+			ioHandler(done, data.flatMap { DispatchData(data: $0) }, error)
 		}
 	}
 
-	public func write(offset: off_t, data: DispatchData, queue: DispatchQueue, ioHandler: (done: Bool, data: DispatchData?, error: Int32) -> Void) {
+	public func write(offset: off_t, data: DispatchData, queue: DispatchQueue, ioHandler: @escaping (_ done: Bool, _ data: DispatchData?, _ error: Int32) -> Void) {
 		dispatch_io_write(self.__wrapped, offset, data.__wrapped.__wrapped, queue.__wrapped) { (done: Bool, data: dispatch_data_t?, error: Int32) in
-			ioHandler(done: done, data: data.flatMap { DispatchData(data: $0) }, error: error)
+			ioHandler(done, data.flatMap { DispatchData(data: $0) }, error)
 		}
 	}
 

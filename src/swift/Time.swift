@@ -26,7 +26,7 @@ public struct DispatchTime : Comparable {
 
 	public static let distantFuture = DispatchTime(rawValue: ~0)
 
-	private init(rawValue: dispatch_time_t) { 
+	fileprivate init(rawValue: dispatch_time_t) { 
 		self.rawValue = rawValue
 	}
 
@@ -64,7 +64,7 @@ public struct DispatchWallTime : Comparable {
 
 	public static let distantFuture = DispatchWallTime(rawValue: ~0)
 
-	private init(rawValue: dispatch_time_t) {
+	fileprivate init(rawValue: dispatch_time_t) {
 		self.rawValue = rawValue
 	}
 
