@@ -2734,12 +2734,16 @@ _dispatch_block_create_with_voucher_and_priority(dispatch_block_flags_t flags,
 	bool assign = (flags & DISPATCH_BLOCK_ASSIGN_CURRENT);
 
 	if (assign && !(flags & DISPATCH_BLOCK_HAS_VOUCHER)) {
+#if OS_VOUCHER_ACTIVITY_SPI
 		voucher = VOUCHER_CURRENT;
+#endif
 		flags |= DISPATCH_BLOCK_HAS_VOUCHER;
 	}
+#if OS_VOUCHER_ACTIVITY_SPI
 	if (voucher == VOUCHER_CURRENT) {
 		voucher = _voucher_get();
 	}
+#endif
 	if (assign && !(flags & DISPATCH_BLOCK_HAS_PRIORITY)) {
 		pri = _dispatch_priority_propagate();
 		flags |= DISPATCH_BLOCK_HAS_PRIORITY;
