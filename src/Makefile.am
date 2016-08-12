@@ -164,7 +164,7 @@ SWIFT_GEN_FILES=	\
 	$(SWIFT_OBJ_FILES:%=%.~partial.swiftdoc) \
 	$(SWIFT_OBJ_FILES:%=%.~partial.swiftdeps)
 
-SWIFTC_FLAGS = -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.map -I$(abs_top_srcdir) -Xcc -fblocks
+SWIFTC_FLAGS = -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.modulemap -I$(abs_top_srcdir) -Xcc -fblocks
 if DISPATCH_ENABLE_OPTIMIZATION
 SWIFTC_FLAGS+=-O
 endif
