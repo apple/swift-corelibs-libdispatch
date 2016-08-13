@@ -5844,6 +5844,9 @@ _dispatch_main_queue_callback_4CF(
 void
 dispatch_main(void)
 {
+	dispatch_once_f(&_dispatch_root_queues_pred, NULL,
+		_dispatch_root_queues_init_once);
+
 #if HAVE_PTHREAD_MAIN_NP
 	if (pthread_main_np()) {
 #endif
