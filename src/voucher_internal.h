@@ -90,8 +90,10 @@ voucher_get_mach_voucher(voucher_t voucher);
 void _voucher_init(void);
 void _voucher_atfork_child(void);
 void _voucher_activity_debug_channel_init(void);
+#if OS_VOUCHER_ACTIVITY_SPI
 void _voucher_activity_swap(firehose_activity_id_t old_id,
 		firehose_activity_id_t new_id);
+#endif
 void _voucher_xref_dispose(voucher_t voucher);
 void _voucher_dispose(voucher_t voucher);
 size_t _voucher_debug(voucher_t v, char* buf, size_t bufsiz);

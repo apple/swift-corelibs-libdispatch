@@ -87,10 +87,11 @@ if BUILD_OWN_BLOCKS_RUNTIME
 libdispatch_la_SOURCES+= BlocksRuntime/data.c BlocksRuntime/runtime.c
 CBLOCKS_FLAGS+= -I$(top_srcdir)/src/BlocksRuntime
 CXXBLOCKS_FLAGS+= -I$(top_srcdir)/src/BlocksRuntime
+BLOCKS_RUNTIME_LIBS=-ldl
 endif
 
 libdispatch_la_LDFLAGS=-avoid-version
-libdispatch_la_LIBADD=$(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS)
+libdispatch_la_LIBADD=$(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS) $(BLOCKS_RUNTIME_LIBS)
 
 if HAVE_DARWIN_LD
 libdispatch_la_LDFLAGS+=-Wl,-compatibility_version,1 \
@@ -163,7 +164,7 @@ SWIFT_GEN_FILES=	\
 	$(SWIFT_OBJ_FILES:%=%.~partial.swiftdoc) \
 	$(SWIFT_OBJ_FILES:%=%.~partial.swiftdeps)
 
-SWIFTC_FLAGS = -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.map -I$(abs_top_srcdir) -Xcc -fblocks
+SWIFTC_FLAGS = -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.modulemap -I$(abs_top_srcdir) -Xcc -fblocks
 if DISPATCH_ENABLE_OPTIMIZATION
 SWIFTC_FLAGS+=-O
 endif
