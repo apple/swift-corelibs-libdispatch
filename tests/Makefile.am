@@ -31,7 +31,8 @@ UNPORTED_TESTS=					\
 DISABLED_TESTS=					\
 	dispatch_priority			\
 	dispatch_priority2			\
-	dispatch_read
+	dispatch_read				\
+	dispatch_read2
 
 TESTS=							\
 	dispatch_apply				\
@@ -44,7 +45,6 @@ TESTS=							\
 	dispatch_pingpong			\
 	dispatch_plusplus			\
 	dispatch_context_for_key	\
-	dispatch_read2				\
 	dispatch_after				\
 	dispatch_timer				\
 	dispatch_timer_short		\
@@ -128,6 +128,11 @@ if !BUILD_OWN_PTHREAD_WORKQUEUES
 if HAVE_PTHREAD_WORKQUEUES
   PTHREAD_WORKQUEUE_LIBS=-lpthread_workqueue
 endif
+endif
+
+if BUILD_OWN_BLOCKS_RUNTIME
+CBLOCKS_FLAGS+= -I$(top_srcdir)/src/BlocksRuntime
+CXXBLOCKS_FLAGS+= -I$(top_srcdir)/src/BlocksRuntime
 endif
 
 if HAVE_SWIFT
