@@ -3,7 +3,7 @@
 #
 
 AC_PREREQ(2.69)
-AC_INIT([libdispatch], [1.3], [libdispatch@macosforge.org], [libdispatch], [http://libdispatch.macosforge.org])
+AC_INIT([libdispatch], [1.3], [https://bugs.swift.org], [libdispatch], [https://github.com/apple/swift-corelibs-libdispatch])
 AC_REVISION([$$])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_HEADER([config/config_ac.h])
