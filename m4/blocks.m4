@@ -14,8 +14,8 @@ AC_ARG_WITH([blocks-runtime],
 # Configure argument to enable/disable using an embedded blocks runtime
 #
 AC_ARG_ENABLE([embedded_blocks_runtime],
-  [AS_HELP_STRING([--enable_embedded_blocks_runtime],
-    [Enable usage of blocks runtime embedded in libdispatch])],,
+  [AS_HELP_STRING([--enable-embedded-blocks-runtime],
+    [Embed blocks runtime in libdispatch [default=yes on Linux, default=no on all other platforms]])],,
   [case $target_os in
       linux*)
         enable_embedded_blocks_runtime=yes
