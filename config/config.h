@@ -13,6 +13,10 @@
    don't. */
 #define HAVE_DECL_FD_COPY 1
 
+/* Define to 1 if you have the declaration of `NOTE_LOWAT', and to 0 if you
+   don't. */
+#define HAVE_DECL_NOTE_LOWAT 1
+
 /* Define to 1 if you have the declaration of `NOTE_NONE', and to 0 if you
    don't. */
 #define HAVE_DECL_NOTE_NONE 1

@@ -271,8 +271,8 @@ Sources of this type allow applications to manually trigger the source's event
 handler via a call to
 .Fn dispatch_source_merge_data .
 The data will be merged with the source's pending data via an atomic add or
-logic OR (based on the source's type), and the event handler block will be
-submitted to the source's target queue. The
+atomic bitwise OR (based on the source's type), and the event handler block will
+be submitted to the source's target queue. The
 .Fa data
 is application defined. These sources have no
 .Fa handle
@@ -297,7 +297,8 @@ The data returned by
 .Fn dispatch_source_get_data
 indicates which of the events in the
 .Fa mask
-were observed.  Note that because this source type will request notifications on the provided port, it should not be mixed with the use of
+were observed.  Note that because this source type will request notifications on
+the provided port, it should not be mixed with the use of
 .Fn mach_port_request_notification
 on the same port.
 .Pp
@@ -314,8 +315,8 @@ on the mach port is waiting to be received.
 .Pp
 .Vt DISPATCH_SOURCE_TYPE_MEMORYPRESSURE
 .Pp
-Sources of this type monitor the system memory pressure condition for state changes.
-The
+Sources of this type monitor the system memory pressure condition for state
+changes.  The
 .Fa handle
 is unused and should be zero. The
 .Fa mask

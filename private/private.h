@@ -66,7 +66,7 @@
 #endif /* !__DISPATCH_BUILDING_DISPATCH__ */
 
 // <rdar://problem/9627726> Check that public and private dispatch headers match
-#if DISPATCH_API_VERSION != 20160612 // Keep in sync with <dispatch/dispatch.h>
+#if DISPATCH_API_VERSION != 20160712 // Keep in sync with <dispatch/dispatch.h>
 #error "Dispatch header mismatch between /usr/include and /usr/local/include"
 #endif
 
@@ -199,10 +199,17 @@ DISPATCH_EXPORT DISPATCH_NOTHROW
 dispatch_runloop_handle_t
 _dispatch_get_main_queue_handle_4CF(void);
 
+#if TARGET_OS_MAC
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+DISPATCH_EXPORT DISPATCH_NOTHROW
+void
+_dispatch_main_queue_callback_4CF(mach_msg_header_t *_Null_unspecified msg);
+#else
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 _dispatch_main_queue_callback_4CF(void *_Null_unspecified msg);
+#endif
 
 __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT

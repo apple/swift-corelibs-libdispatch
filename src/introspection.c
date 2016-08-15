@@ -189,6 +189,7 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 	if (_dispatch_object_has_vtable(dc)) {
 		flags = 0;
 		switch (dc_type(dc)) {
+#if HAVE_PTHREAD_WORKQUEUE_QOS
 		case DC_OVERRIDE_STEALING_TYPE:
 		case DC_OVERRIDE_OWNING_TYPE:
 			dc = dc->dc_data;
@@ -200,6 +201,7 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 				return;
 			}
 			return _dispatch_introspection_continuation_get_info(dq, dc, diqi);
+#endif
 		case DC_ASYNC_REDIRECT_TYPE:
 			DISPATCH_INTERNAL_CRASH(0, "Handled by the caller");
 		case DC_MACH_SEND_BARRRIER_DRAIN_TYPE:

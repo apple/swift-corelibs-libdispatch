@@ -1560,6 +1560,7 @@ _voucher_init(void)
 {
 }
 
+#if OS_VOUCHER_ACTIVITY_SPI
 void*
 voucher_activity_get_metadata_buffer(size_t *length)
 {
@@ -1631,6 +1632,7 @@ voucher_activity_initialize_4libtrace(voucher_activity_hooks_t hooks)
 {
 	(void)hooks;
 }
+#endif // OS_VOUCHER_ACTIVITY_SPI
 
 size_t
 _voucher_debug(voucher_t v, char* buf, size_t bufsiz)

@@ -69,7 +69,7 @@ typedef struct firehose_buffer_chunk_s {
 	uint8_t  fbc_data[FIREHOSE_BUFFER_CHUNK_SIZE
 			- sizeof(firehose_buffer_pos_u)
 			- sizeof(uint64_t)];
-} *firehose_buffer_chunk_t;
+} __attribute__((aligned(8))) *firehose_buffer_chunk_t;
 
 typedef struct firehose_buffer_range_s {
 	uint16_t fbr_offset; // offset from the start of the buffer
