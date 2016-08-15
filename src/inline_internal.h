@@ -861,8 +861,6 @@ static inline pthread_priority_t _dispatch_get_defaultpriority(void);
 static inline void _dispatch_set_defaultpriority_override(void);
 static inline void _dispatch_reset_defaultpriority(pthread_priority_t pp);
 static inline pthread_priority_t _dispatch_get_priority(void);
-static inline void _dispatch_set_priority(pthread_priority_t pp,
-		_dispatch_thread_set_self_t flags);
 static inline pthread_priority_t _dispatch_set_defaultpriority(
 		pthread_priority_t pp, pthread_priority_t *new_pp);
 
@@ -1553,36 +1551,38 @@ _dispatch_queue_push_inline(dispatch_queue_t dq, dispatch_object_t _tail,
 }
 
 struct _dispatch_identity_s {
-	pthread_priority_t old_pri;
 	pthread_priority_t old_pp;
 };
 
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_root_queue_identity_assume(struct _dispatch_identity_s *di,
-		pthread_priority_t pp, _dispatch_thread_set_self_t flags)
+		pthread_priority_t pp)
 {
 	// assumed_rq was set by the caller, we need to fake the priorities
 	dispatch_queue_t assumed_rq = _dispatch_queue_get_current();
 
 	dispatch_assert(dx_type(assumed_rq) == DISPATCH_QUEUE_GLOBAL_ROOT_TYPE);
 
-	di->old_pri = _dispatch_get_priority();
-	// _dispatch_root_queue_drain_deferred_item() may turn a manager thread
-	// into a regular root queue, and we must never try to restore the manager
-	// flag once we became a regular work queue thread.
-	di->old_pri &= ~(pthread_priority_t)_PTHREAD_PRIORITY_EVENT_MANAGER_FLAG;
 	di->old_pp = _dispatch_get_defaultpriority();
 
-	if (!pp) pp = di->old_pri;
-	if ((pp & _PTHREAD_PRIORITY_QOS_CLASS_MASK) >
-			(assumed_rq->dq_priority & _PTHREAD_PRIORITY_QOS_CLASS_MASK)) {
-		_dispatch_wqthread_override_start(_dispatch_tid_self(), pp);
-		// Ensure that the root queue sees that this thread was overridden.
-		_dispatch_set_defaultpriority_override();
+	if (!(assumed_rq->dq_priority & _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG)) {
+		if (!pp) {
+			pp = _dispatch_get_priority();
+			// _dispatch_root_queue_drain_deferred_item() may turn a manager
+			// thread into a regular root queue, and we must never try to
+			// restore the manager flag once we became a regular work queue
+			// thread.
+			pp &= ~(pthread_priority_t)_PTHREAD_PRIORITY_EVENT_MANAGER_FLAG;
+		}
+		if ((pp & _PTHREAD_PRIORITY_QOS_CLASS_MASK) >
+				(assumed_rq->dq_priority & _PTHREAD_PRIORITY_QOS_CLASS_MASK)) {
+			_dispatch_wqthread_override_start(_dispatch_tid_self(), pp);
+			// Ensure that the root queue sees that this thread was overridden.
+			_dispatch_set_defaultpriority_override();
+		}
 	}
 	_dispatch_reset_defaultpriority(assumed_rq->dq_priority);
-	_dispatch_set_priority(assumed_rq->dq_priority, flags);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -1590,7 +1590,6 @@ static inline void
 _dispatch_root_queue_identity_restore(struct _dispatch_identity_s *di)
 {
 	_dispatch_reset_defaultpriority(di->old_pp);
-	_dispatch_set_priority(di->old_pri, 0);
 }
 
 typedef dispatch_queue_t
@@ -1631,7 +1630,7 @@ drain_pending_barrier:
 		if (overriding) {
 			_dispatch_object_debug(dq, "stolen onto thread 0x%x, 0x%lx",
 					_dispatch_tid_self(), _dispatch_get_defaultpriority());
-			_dispatch_root_queue_identity_assume(&di, 0, 0);
+			_dispatch_root_queue_identity_assume(&di, 0);
 		}
 
 		if (!(flags & DISPATCH_INVOKE_MANAGER_DRAIN)) {
@@ -1819,6 +1818,23 @@ _dispatch_get_root_queue_for_priority(pthread_priority_t pp, bool overcommit)
 }
 #endif
 
+DISPATCH_ALWAYS_INLINE DISPATCH_CONST
+static inline dispatch_queue_t
+_dispatch_get_root_queue_with_overcommit(dispatch_queue_t rq, bool overcommit)
+{
+	bool rq_overcommit = (rq->dq_priority & _PTHREAD_PRIORITY_OVERCOMMIT_FLAG);
+	// root queues in _dispatch_root_queues are not overcommit for even indices
+	// and overcommit for odd ones, so fixing overcommit is either returning
+	// the same queue, or picking its neighbour in _dispatch_root_queues
+	if (overcommit && !rq_overcommit) {
+		return rq + 1;
+	}
+	if (!overcommit && rq_overcommit) {
+		return rq - 1;
+	}
+	return rq;
+}
+
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_queue_set_bound_thread(dispatch_queue_t dq)
@@ -1927,10 +1943,16 @@ _dispatch_queue_priority_inherit_from_target(dispatch_queue_t dq,
 #if HAVE_PTHREAD_WORKQUEUE_QOS
 	const dispatch_priority_t rootqueue_flag = _PTHREAD_PRIORITY_ROOTQUEUE_FLAG;
 	const dispatch_priority_t inherited_flag = _PTHREAD_PRIORITY_INHERIT_FLAG;
+	const dispatch_priority_t defaultqueue_flag =
+			_PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG;
 	dispatch_priority_t dqp = dq->dq_priority, tqp = tq->dq_priority;
 	if ((!(dqp & ~_PTHREAD_PRIORITY_FLAGS_MASK) || (dqp & inherited_flag)) &&
 			(tqp & rootqueue_flag)) {
-		dq->dq_priority = (tqp & ~rootqueue_flag) | inherited_flag;
+		if (tqp & defaultqueue_flag) {
+			dq->dq_priority = 0;
+		} else {
+			dq->dq_priority = (tqp & ~rootqueue_flag) | inherited_flag;
+		}
 	}
 #else
 	(void)dq; (void)tq;
@@ -1963,7 +1985,7 @@ _dispatch_set_defaultpriority(pthread_priority_t pp, pthread_priority_t *new_pp)
 	if (new_pp) *new_pp = pp;
 	return old_pp;
 #else
-	(void)pp;
+	(void)pp; (void)new_pp;
 	return 0;
 #endif
 }
@@ -2007,10 +2029,11 @@ _dispatch_priority_inherit_from_root_queue(pthread_priority_t pp,
 #if HAVE_PTHREAD_WORKQUEUE_QOS
 	pthread_priority_t p = pp & ~_PTHREAD_PRIORITY_FLAGS_MASK;
 	pthread_priority_t rqp = rq->dq_priority & ~_PTHREAD_PRIORITY_FLAGS_MASK;
-	bool defaultqueue = rq->dq_priority & _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG;
+	pthread_priority_t defaultqueue =
+			rq->dq_priority & _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG;
 
 	if (!p || (!defaultqueue && p < rqp)) {
-		p = rqp;
+		p = rqp | defaultqueue;
 	}
 	return p | (rq->dq_priority & _PTHREAD_PRIORITY_OVERCOMMIT_FLAG);
 #else
@@ -2032,12 +2055,11 @@ _dispatch_get_priority(void)
 #endif
 }
 
+#if HAVE_PTHREAD_WORKQUEUE_QOS
 DISPATCH_ALWAYS_INLINE
 static inline pthread_priority_t
-_dispatch_priority_compute_update(pthread_priority_t pp,
-		_dispatch_thread_set_self_t flags)
+_dispatch_priority_compute_update(pthread_priority_t pp)
 {
-#if HAVE_PTHREAD_WORKQUEUE_QOS
 	dispatch_assert(pp != DISPATCH_NO_PRIORITY);
 	if (!_dispatch_set_qos_class_enabled) return 0;
 	// the priority in _dispatch_get_priority() only tracks manager-ness
@@ -2051,11 +2073,7 @@ _dispatch_priority_compute_update(pthread_priority_t pp,
 	pthread_priority_t cur_priority = _dispatch_get_priority();
 	pthread_priority_t unbind = _PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG;
 	pthread_priority_t overcommit = _PTHREAD_PRIORITY_OVERCOMMIT_FLAG;
-	if (flags & DISPATCH_IGNORE_UNBIND) {
-		// if DISPATCH_IGNORE_UNBIND is passed, we want to ignore the
-		// difference if it is limited to the NEEDS_UNBIND flag
-		cur_priority &= ~(unbind | overcommit);
-	} else if (unlikely(cur_priority & unbind)) {
+	if (unlikely(cur_priority & unbind)) {
 		// else we always need an update if the NEEDS_UNBIND flag is set
 		// the slowpath in _dispatch_set_priority_and_voucher_slow() will
 		// adjust the priority further with the proper overcommitness
@@ -2064,11 +2082,9 @@ _dispatch_priority_compute_update(pthread_priority_t pp,
 		cur_priority &= ~overcommit;
 	}
 	if (unlikely(pp != cur_priority)) return pp;
-#else
-	(void)pp; (void)flags;
-#endif
 	return 0;
 }
+#endif
 
 DISPATCH_ALWAYS_INLINE DISPATCH_WARN_RESULT
 static inline voucher_t
@@ -2076,7 +2092,7 @@ _dispatch_set_priority_and_voucher(pthread_priority_t pp,
 		voucher_t v, _dispatch_thread_set_self_t flags)
 {
 #if HAVE_PTHREAD_WORKQUEUE_QOS
-	pp = _dispatch_priority_compute_update(pp, flags);
+	pp = _dispatch_priority_compute_update(pp);
 	if (likely(!pp)) {
 		if (v == DISPATCH_NO_VOUCHER) {
 			return DISPATCH_NO_VOUCHER;
@@ -2126,21 +2142,6 @@ _dispatch_reset_voucher(voucher_t v, _dispatch_thread_set_self_t flags)
 {
 	flags |= DISPATCH_VOUCHER_CONSUME | DISPATCH_VOUCHER_REPLACE;
 	(void)_dispatch_set_priority_and_voucher(0, v, flags);
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_set_priority(pthread_priority_t pp,
-		_dispatch_thread_set_self_t flags)
-{
-	dispatch_assert(pp != DISPATCH_NO_PRIORITY);
-	pp = _dispatch_priority_compute_update(pp, flags);
-	if (likely(!pp)) {
-		return;
-	}
-#if HAVE_PTHREAD_WORKQUEUE_QOS
-	_dispatch_set_priority_and_mach_voucher_slow(pp, VOUCHER_NO_MACH_VOUCHER);
-#endif
 }
 
 DISPATCH_ALWAYS_INLINE

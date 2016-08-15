@@ -353,7 +353,7 @@ AC_CHECK_FUNCS([mach_port_construct])
 #
 AC_CHECK_DECLS([CLOCK_UPTIME, CLOCK_MONOTONIC], [], [],
   [[#include <time.h>]])
-AC_CHECK_DECLS([NOTE_NONE, NOTE_REAP, NOTE_REVOKE, NOTE_SIGNAL], [], [],
+AC_CHECK_DECLS([NOTE_NONE, NOTE_REAP, NOTE_REVOKE, NOTE_SIGNAL, NOTE_LOWAT], [], [],
   [[#include <sys/event.h>]])
 AC_CHECK_DECLS([FD_COPY], [], [], [[#include <sys/select.h>]])
 AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])
@@ -433,6 +433,20 @@ AS_IF([test "x$have_mach" = "xtrue"], [
 AM_CONDITIONAL(HAVE_DARWIN_LD, [test "x$dispatch_cv_ld_darwin" == "xyes"])
 
 #
+# symlink platform-specific module.modulemap files
+#
+AS_CASE([$target_os],
+  [darwin*], [ dispatch_module_map_os=darwin ],
+  [ dispatch_module_map_os=generic ]
+)
+AC_CONFIG_COMMANDS([modulemaps], [
+      ln -fs $dispatch_module_map_os/module.modulemap $ac_top_srcdir/dispatch/module.modulemap
+      ln -fs $dispatch_module_map_os/module.modulemap $ac_top_srcdir/private/module.modulemap
+  ],
+  [dispatch_module_map_os="$dispatch_module_map_os"]
+)
+
+#
 # Temporary: some versions of clang do not mark __builtin_trap() as
 # __attribute__((__noreturn__)).  Detect and add if required.
 #
@@ -449,6 +463,6 @@ AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile os/Makefile private/Mak
 #
 # Generate testsuite links
 #
-AC_CONFIG_LINKS([tests/dispatch:$top_srcdir/private tests/leaks-wrapper:tests/leaks-wrapper.sh])
+AC_CONFIG_LINKS([tests/dispatch:$ac_top_srcdir/private tests/leaks-wrapper:tests/leaks-wrapper.sh])
 
 AC_OUTPUT

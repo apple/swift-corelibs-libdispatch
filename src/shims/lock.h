@@ -497,12 +497,8 @@ _dispatch_gate_tryenter(dispatch_gate_t l)
 			DLOCK_GATE_UNLOCKED, tid_self, acquire));
 }
 
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_gate_wait(dispatch_gate_t l, dispatch_lock_options_t flags)
-{
-	_dispatch_gate_wait_slow(l, DLOCK_GATE_UNLOCKED, flags);
-}
+#define _dispatch_gate_wait(l, flags) \
+	_dispatch_gate_wait_slow(l, DLOCK_GATE_UNLOCKED, flags)
 
 DISPATCH_ALWAYS_INLINE
 static inline void
@@ -523,13 +519,9 @@ _dispatch_once_gate_tryenter(dispatch_once_gate_t l)
 			DLOCK_ONCE_UNLOCKED, tid_self, acquire));
 }
 
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_once_gate_wait(dispatch_once_gate_t l)
-{
-	_dispatch_gate_wait_slow(&l->dgo_gate, (dispatch_lock)DLOCK_ONCE_DONE,
-			DLOCK_LOCK_NONE);
-}
+#define _dispatch_once_gate_wait(l) \
+	_dispatch_gate_wait_slow(&(l)->dgo_gate, (dispatch_lock)DLOCK_ONCE_DONE, \
+			DLOCK_LOCK_NONE)
 
 DISPATCH_ALWAYS_INLINE
 static inline void

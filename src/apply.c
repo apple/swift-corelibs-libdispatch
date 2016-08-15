@@ -87,6 +87,9 @@ out:
 		_dispatch_thread_event_destroy(&da->da_event);
 	}
 	if (os_atomic_dec2o(da, da_thr_cnt, release) == 0) {
+#if DISPATCH_INTROSPECTION
+		_dispatch_continuation_free(da->da_dc);
+#endif
 		_dispatch_continuation_free((dispatch_continuation_t)da);
 	}
 }
@@ -145,6 +148,9 @@ _dispatch_apply_serial(void *ctxt)
 		});
 	} while (++idx < iter);
 
+#if DISPATCH_INTROSPECTION
+	_dispatch_continuation_free(da->da_dc);
+#endif
 	_dispatch_continuation_free((dispatch_continuation_t)da);
 }
 
@@ -262,7 +268,12 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 	da->da_iterations = iterations;
 	da->da_nested = nested;
 	da->da_thr_cnt = thr_cnt;
+#if DISPATCH_INTROSPECTION
+	da->da_dc = _dispatch_continuation_alloc();
+	*da->da_dc = dc;
+#else
 	da->da_dc = &dc;
+#endif
 	da->da_flags = 0;
 
 	if (slowpath(dq->dq_width == 1) || slowpath(thr_cnt <= 1)) {
