@@ -137,15 +137,15 @@ public extension DispatchGroup {
 	public func notify(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], queue: DispatchQueue, execute work: @escaping @convention(block) () -> ()) {
 		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: work)
-			dispatch_group_notify(self.__wrapped, queue.__wrapped, item._block)
+			_swift_dispatch_group_notify(self.__wrapped, queue.__wrapped, item._block)
 		} else {
-			dispatch_group_notify(self.__wrapped, queue.__wrapped, work)
+			_swift_dispatch_group_notify(self.__wrapped, queue.__wrapped, work)
 		}
 	}
 
 	@available(OSX 10.10, iOS 8.0, *)
 	public func notify(queue: DispatchQueue, work: DispatchWorkItem) {
-		dispatch_group_notify(self.__wrapped, queue.__wrapped, work._block)
+		_swift_dispatch_group_notify(self.__wrapped, queue.__wrapped, work._block)
 	}
 
 	public func wait() {
@@ -181,3 +181,6 @@ public extension DispatchSemaphore {
 		return dispatch_semaphore_wait(self.__wrapped, wallTimeout.rawValue) == 0 ? .success : .timedOut
 	}
 }
+
+@_silgen_name("_swift_dispatch_group_notify")
+internal func _swift_dispatch_group_notify(_ group: dispatch_group_t, _ queue: dispatch_queue_t, _ block: @convention(block) () -> Void)

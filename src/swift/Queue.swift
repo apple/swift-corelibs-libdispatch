@@ -204,17 +204,17 @@ public extension DispatchQueue {
 
 	@available(OSX 10.10, iOS 8.0, *)
 	public func sync(execute workItem: DispatchWorkItem) {
-		CDispatch.dispatch_sync(self.__wrapped, workItem._block)
+		_swift_dispatch_sync(self.__wrapped, workItem._block)
 	}
 
 	@available(OSX 10.10, iOS 8.0, *)
 	public func async(execute workItem: DispatchWorkItem) {
-		CDispatch.dispatch_async(self.__wrapped, workItem._block)
+		_swift_dispatch_async(self.__wrapped, workItem._block)
 	}
 
 	@available(OSX 10.10, iOS 8.0, *)
 	public func async(group: DispatchGroup, execute workItem: DispatchWorkItem) {
-		CDispatch.dispatch_group_async(group.__wrapped, self.__wrapped, workItem._block)
+		_swift_dispatch_group_async(group.__wrapped, self.__wrapped, workItem._block)
 	}
 
 	public func async(
@@ -223,10 +223,15 @@ public extension DispatchQueue {
 		flags: DispatchWorkItemFlags = [], 
 		execute work: @escaping @convention(block) () -> Void) 
 	{
-		if group == nil && qos == .unspecified && flags.isEmpty {
+		if group == nil && qos == .unspecified {
 			// Fast-path route for the most common API usage
-			CDispatch.dispatch_async(self.__wrapped, work)
-			return
+			if flags.isEmpty {
+				_swift_dispatch_async(self.__wrapped, work)
+				return
+			} else if flags == .barrier {
+				_swift_dispatch_barrier_async(self.__wrapped, work)
+				return
+			}
 		}
 
 		var block: @escaping @convention(block) () -> Void = work
@@ -236,9 +241,9 @@ public extension DispatchQueue {
 		}
 
 		if let g = group {
-			CDispatch.dispatch_group_async(g.__wrapped, self.__wrapped, block)
+			_swift_dispatch_group_async(g.__wrapped, self.__wrapped, block)
 		} else {
-			CDispatch.dispatch_async(self.__wrapped, block)
+			_swift_dispatch_async(self.__wrapped, block)
 		}
 	}
 
@@ -313,9 +318,9 @@ public extension DispatchQueue {
 	{
 		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: work)
-			CDispatch.dispatch_after(deadline.rawValue, self.__wrapped, item._block)
+			_swift_dispatch_after(deadline.rawValue, self.__wrapped, item._block)
 		} else {
-			CDispatch.dispatch_after(deadline.rawValue, self.__wrapped, work)
+			_swift_dispatch_after(deadline.rawValue, self.__wrapped, work)
 		}
 	}
 
@@ -327,20 +332,20 @@ public extension DispatchQueue {
 	{
 		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: work)
-			CDispatch.dispatch_after(wallDeadline.rawValue, self.__wrapped, item._block)
+			_swift_dispatch_after(wallDeadline.rawValue, self.__wrapped, item._block)
 		} else {
-			CDispatch.dispatch_after(wallDeadline.rawValue, self.__wrapped, work)
+			_swift_dispatch_after(wallDeadline.rawValue, self.__wrapped, work)
 		}
 	}
 
 	@available(OSX 10.10, iOS 8.0, *)
 	public func asyncAfter(deadline: DispatchTime, execute: DispatchWorkItem) {
-		CDispatch.dispatch_after(deadline.rawValue, self.__wrapped, execute._block)
+		_swift_dispatch_after(deadline.rawValue, self.__wrapped, execute._block)
 	}
 
 	@available(OSX 10.10, iOS 8.0, *)
 	public func asyncAfter(wallDeadline: DispatchWallTime, execute: DispatchWorkItem) {
-		CDispatch.dispatch_after(wallDeadline.rawValue, self.__wrapped, execute._block)
+		_swift_dispatch_after(wallDeadline.rawValue, self.__wrapped, execute._block)
 	}
 
 	@available(OSX 10.10, iOS 8.0, *)
@@ -386,3 +391,19 @@ internal func _swift_dispatch_apply_current_root_queue() -> dispatch_queue_t
 
 @_silgen_name("_swift_dispatch_apply_current")
 internal func _swift_dispatch_apply_current(_ iterations: Int, _ block: @convention(block) @noescape (Int) -> Void)
+
+// sync, async, group_async, barrier_async, after
+@_silgen_name("_swift_dispatch_sync")
+internal func _swift_dispatch_sync(_ queue: dispatch_queue_t, _ block: @convention(block) @noescape () -> Void)
+
+@_silgen_name("_swift_dispatch_async")
+internal func _swift_dispatch_async(_ queue: dispatch_queue_t, _ block: @convention(block) () -> Void)
+
+@_silgen_name("_swift_dispatch_group_async")
+internal func _swift_dispatch_group_async(_ group: dispatch_group_t, _ queue: dispatch_queue_t, _ block: @convention(block) () -> Void)
+
+@_silgen_name("_swift_dispatch_barrier_async")
+internal func _swift_dispatch_barrier_async(_ queue: dispatch_queue_t, _ block: @convention(block) () -> Void)
+
+@_silgen_name("_swift_dispatch_after")
+internal func _swift_dispatch_after(_ when: dispatch_time_t, _ queue: dispatch_queue_t, _ block: @convention(block) () -> Void)
