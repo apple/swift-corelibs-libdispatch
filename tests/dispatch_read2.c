@@ -118,7 +118,7 @@ dispatch_read2(dispatch_fd_t fd,
 static void
 test_read(void)
 {
-	const char *path = "/usr/share/dict/words";
+	const char *path = "/usr/bin/vi";
 	int fd = open(path, O_RDONLY);
 	if (fd == -1) {
 		test_errno("open", errno, 0);
