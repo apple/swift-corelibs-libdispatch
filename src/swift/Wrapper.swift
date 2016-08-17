@@ -63,7 +63,7 @@ public class DispatchGroup : DispatchObject {
 	}
 
 	public func leave() {
-		dispatch_group_enter(__wrapped)
+		dispatch_group_leave(__wrapped)
 	}
 }
 
