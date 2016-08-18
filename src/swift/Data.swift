@@ -74,7 +74,7 @@ public struct DispatchData : RandomAccessCollection {
 	}
 
 	public func withUnsafeBytes<Result, ContentType>(
-		body: @noescape (UnsafePointer<ContentType>) throws -> Result) rethrows -> Result
+		body: (UnsafePointer<ContentType>) throws -> Result) rethrows -> Result
 	{
 		var ptr: UnsafeRawPointer? = nil
 		var size = 0
@@ -86,7 +86,7 @@ public struct DispatchData : RandomAccessCollection {
 	}
 
 	public func enumerateBytes(
-		block: @noescape (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void) 
+		block: (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void) 
 	{
 		_swift_dispatch_data_apply(__wrapped.__wrapped) { (data: dispatch_data_t, offset: Int, ptr: UnsafeRawPointer, size: Int) in
 			let bytePtr = ptr.bindMemory(to: UInt8.self, capacity: size)
@@ -271,7 +271,7 @@ public struct DispatchDataIterator : IteratorProtocol, Sequence {
 	internal var _position: DispatchData.Index
 }
 
-typealias _swift_data_applier = @convention(block) @noescape (dispatch_data_t, Int, UnsafeRawPointer, Int) -> Bool
+typealias _swift_data_applier = @convention(block) (dispatch_data_t, Int, UnsafeRawPointer, Int) -> Bool
 
 @_silgen_name("_swift_dispatch_data_apply")
 internal func _swift_dispatch_data_apply(_ data: dispatch_data_t, _ block: _swift_data_applier)
