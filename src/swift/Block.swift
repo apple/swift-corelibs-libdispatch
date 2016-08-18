@@ -53,7 +53,7 @@ public class DispatchWorkItem {
 
 	// Used by DispatchQueue.synchronously<T> to provide a @noescape path through
 	// dispatch_block_t, as we know the lifetime of the block in question.
-	internal init(flags: DispatchWorkItemFlags = [], noescapeBlock: @noescape () -> ()) {
+	internal init(flags: DispatchWorkItemFlags = [], noescapeBlock: () -> ()) {
 		_block = _swift_dispatch_block_create_noescape(dispatch_block_flags_t(flags.rawValue), noescapeBlock)
 	}
 
@@ -108,4 +108,4 @@ internal typealias _DispatchBlock = @convention(block) () -> Void
 internal typealias dispatch_block_t = @convention(block) () -> Void
 
 @_silgen_name("_swift_dispatch_block_create_noescape")
-internal func _swift_dispatch_block_create_noescape(_ flags: dispatch_block_flags_t, _ block: @noescape () -> ()) -> _DispatchBlock
+internal func _swift_dispatch_block_create_noescape(_ flags: dispatch_block_flags_t, _ block: () -> ()) -> _DispatchBlock
