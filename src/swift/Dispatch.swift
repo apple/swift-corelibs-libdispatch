@@ -96,7 +96,6 @@ public struct DispatchQoS : Equatable {
 			case .QOS_CLASS_USER_INITIATED: self = .userInitiated
 			case .QOS_CLASS_USER_INTERACTIVE: self = .userInteractive
 			case .QOS_CLASS_UNSPECIFIED: self = .unspecified
-			default: return nil
 			}
 		}
 
