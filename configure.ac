@@ -147,6 +147,12 @@ AC_ARG_WITH([swift-toolchain],
    case $target_os in
       linux*)
 	    os_string="linux"
+	    case $target_cpu in
+		    armv7l*)
+			target_cpu="armv7"
+			;;
+			*)
+            esac
 	    ;;
 	  *)
         os_string=$target_os
