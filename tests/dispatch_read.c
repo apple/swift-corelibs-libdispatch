@@ -45,7 +45,7 @@ test_fin(void *cxt)
 int
 main(void)
 {
-	const char *path = "/usr/share/dict/words";
+	const char *path = "/usr/bin/vi";
 	struct stat sb;
 
 	dispatch_test_start("Dispatch Source Read");
