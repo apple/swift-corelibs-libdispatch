@@ -32,7 +32,8 @@ DISABLED_TESTS=					\
 	dispatch_priority			\
 	dispatch_priority2			\
 	dispatch_read				\
-	dispatch_read2
+	dispatch_read2				\
+	dispatch_pingpong
 
 TESTS=							\
 	dispatch_apply				\
@@ -42,7 +43,6 @@ TESTS=							\
 	dispatch_queue_finalizer	\
 	dispatch_group				\
 	dispatch_overcommit			\
-	dispatch_pingpong			\
 	dispatch_plusplus			\
 	dispatch_context_for_key	\
 	dispatch_after				\
