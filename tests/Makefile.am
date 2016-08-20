@@ -35,6 +35,7 @@ DISABLED_TESTS=					\
 	dispatch_read2				\
 	dispatch_pingpong			\
 	dispatch_drift				\
+	dispatch_cascade			\
 	dispatch_io
 
 TESTS=							\
@@ -57,7 +58,6 @@ TESTS=							\
 	dispatch_timer_bit63		\
 	dispatch_timer_set_time		\
 	dispatch_starfish			\
-	dispatch_cascade			\
 	dispatch_data				\
 	dispatch_io_net				\
 	dispatch_select
