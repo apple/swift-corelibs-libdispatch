@@ -180,7 +180,7 @@ extension DispatchSource : DispatchSourceMachSend,
 }
 #endif
 
-#if !os(Linux)
+#if !os(Linux) && !os(Android)
 extension DispatchSource : DispatchSourceProcess,
 	DispatchSourceFileSystemObject {
 }
@@ -268,7 +268,7 @@ public protocol DispatchSourceMemoryPressure : DispatchSourceProtocol {
 }
 #endif
 
-#if !os(Linux)
+#if !os(Linux) && !os(Android)
 public protocol DispatchSourceProcess : DispatchSourceProtocol {
 	var handle: pid_t { get }
 
@@ -298,7 +298,7 @@ public protocol DispatchSourceTimer : DispatchSourceProtocol {
 	func scheduleRepeating(wallDeadline: DispatchWallTime, interval: Double, leeway: DispatchTimeInterval)
 }
 
-#if !os(Linux)
+#if !os(Linux) && !os(Android)
 public protocol DispatchSourceFileSystemObject : DispatchSourceProtocol {
 	var handle: Int32 { get }
 

@@ -28,7 +28,11 @@
 #include <TargetConditionals.h>
 #endif
 #include <sys/types.h>
+#ifdef __ANDROID__
+#include <linux/sysctl.h>
+#else
 #include <sys/sysctl.h>
+#endif /* __ANDROID__ */
 
 #include <bsdtests.h>
 #include "dispatch_test.h"
