@@ -976,6 +976,7 @@ _dispatch_get_mach_host_port(void)
 #include <unistd.h>
 #include <sys/syscall.h>
 
+#ifndef __ANDROID__
 #ifdef SYS_gettid
 DISPATCH_ALWAYS_INLINE
 static inline pid_t
@@ -985,7 +986,8 @@ gettid(void)
 }
 #else
 #error "SYS_gettid unavailable on this system"
-#endif
+#endif /* SYS_gettid */
+#endif /* ! __ANDROID__ */
 
 #define _tsd_call_cleanup(k, f)  do { \
 		if ((f) && tsd->k) ((void(*)(void*))(f))(tsd->k); \

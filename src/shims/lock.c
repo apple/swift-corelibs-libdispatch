@@ -117,7 +117,11 @@ _dispatch_unfair_lock_wake(uint32_t *uaddr, uint32_t flags)
 #pragma mark - futex wrappers
 #if HAVE_FUTEX
 #include <sys/time.h>
+#ifdef __ANDROID__
+#include <sys/syscall.h>
+#else
 #include <syscall.h>
+#endif /* __ANDROID__ */
 
 DISPATCH_ALWAYS_INLINE
 static inline int
