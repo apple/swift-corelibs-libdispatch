@@ -149,10 +149,12 @@ firehose_client_snapshot_mark_done(firehose_client_t fc,
 }
 
 #define DRAIN_BATCH_SIZE  4
+#define FIREHOSE_DRAIN_FOR_IO 0x1
+#define FIREHOSE_DRAIN_POLL 0x2
 
 OS_NOINLINE
 static void
-firehose_client_drain(firehose_client_t fc, mach_port_t port, bool for_io)
+firehose_client_drain(firehose_client_t fc, mach_port_t port, uint32_t flags)
 {
 	firehose_buffer_t fb = fc->fc_buffer;
 	firehose_buffer_chunk_t fbc;
@@ -161,6 +163,7 @@ firehose_client_drain(firehose_client_t fc, mach_port_t port, bool for_io)
 	uint16_t flushed, ref, count = 0;
 	uint16_t client_head, client_flushed, sent_flushed;
 	firehose_snapshot_t snapshot = NULL;
+	bool for_io = (flags & FIREHOSE_DRAIN_FOR_IO);
 
 	if (for_io) {
 		evt = FIREHOSE_EVENT_IO_BUFFER_RECEIVED;
@@ -201,9 +204,9 @@ firehose_client_drain(firehose_client_t fc, mach_port_t port, bool for_io)
 			}
 		}
 
-		ref = (flushed + count) & FIREHOSE_RING_POS_IDX_MASK;
 		// see firehose_buffer_ring_enqueue
 		do {
+			ref = (flushed + count) & FIREHOSE_RING_POS_IDX_MASK;
 			ref = os_atomic_load(&fbh_ring[ref], relaxed);
 			ref &= FIREHOSE_RING_POS_IDX_MASK;
 		} while (fc->fc_is_kernel && !ref);
@@ -251,13 +254,24 @@ firehose_client_drain(firehose_client_t fc, mach_port_t port, bool for_io)
 		firehose_client_notify(fc, port);
 	}
 	if (fc->fc_is_kernel) {
-		// see firehose_client_kernel_source_handle_event
-		dispatch_resume(fc->fc_kernel_source);
-	} else if (fc->fc_use_notifs && count >= DRAIN_BATCH_SIZE) {
-		// if we hit the drain batch size, the client probably logs a lot
-		// and there's more to drain, so optimistically schedule draining again
-		// this is cheap since the queue is hot, and is fair for other clients
-		firehose_client_push_async_merge(fc, 0, for_io);
+		if (!(flags & FIREHOSE_DRAIN_POLL)) {
+			// see firehose_client_kernel_source_handle_event
+			dispatch_resume(fc->fc_kernel_source);
+		}
+	} else {
+		if (fc->fc_use_notifs && count >= DRAIN_BATCH_SIZE) {
+			// if we hit the drain batch size, the client probably logs a lot
+			// and there's more to drain, so optimistically schedule draining
+			// again this is cheap since the queue is hot, and is fair for other
+			// clients
+			firehose_client_push_async_merge(fc, 0, for_io);
+		}
+		if (count && server_config.fs_kernel_client) {
+			// the kernel is special because it can drop messages, so if we're
+			// draining, poll the kernel each time while we're bound to a thread
+			firehose_client_drain(server_config.fs_kernel_client,
+					MACH_PORT_NULL, flags | FIREHOSE_DRAIN_POLL);
+		}
 	}
 	return;
 
@@ -277,13 +291,13 @@ corrupt:
 static void
 firehose_client_drain_io_async(void *ctx)
 {
-	firehose_client_drain(ctx, MACH_PORT_NULL, true);
+	firehose_client_drain(ctx, MACH_PORT_NULL, FIREHOSE_DRAIN_FOR_IO);
 }
 
 static void
 firehose_client_drain_mem_async(void *ctx)
 {
-	firehose_client_drain(ctx, MACH_PORT_NULL, false);
+	firehose_client_drain(ctx, MACH_PORT_NULL, 0);
 }
 
 OS_NOINLINE
@@ -751,8 +765,6 @@ firehose_server_resume(void)
 {
 	struct firehose_server_s *fs = &server_config;
 
-	dispatch_mach_connect(fs->fs_mach_channel, fs->fs_bootstrap_port,
-			MACH_PORT_NULL, NULL);
 	if (fs->fs_kernel_client) {
 		dispatch_async(fs->fs_io_drain_queue, ^{
 			struct firehose_client_connected_info_s fcci = {
@@ -761,6 +773,8 @@ firehose_server_resume(void)
 			firehose_client_resume(fs->fs_kernel_client, &fcci);
 		});
 	}
+	dispatch_mach_connect(fs->fs_mach_channel, fs->fs_bootstrap_port,
+			MACH_PORT_NULL, NULL);
 }
 
 #pragma mark -
@@ -1035,7 +1049,7 @@ firehose_server_register(mach_port_t server_port OS_UNUSED,
 	if (extra_info_port && extra_info_size) {
 		mach_vm_address_t addr = 0;
 		kr = mach_vm_map(mach_task_self(), &addr, extra_info_size, 0,
-				VM_FLAGS_ANYWHERE, mem_port, 0, FALSE,
+				VM_FLAGS_ANYWHERE, extra_info_port, 0, FALSE,
 				VM_PROT_READ, VM_PROT_READ, VM_INHERIT_NONE);
 		if (dispatch_assume_zero(kr)) {
 			mach_vm_deallocate(mach_task_self(), base_addr, mem_size);
@@ -1104,7 +1118,8 @@ firehose_server_push(mach_port_t server_port OS_UNUSED,
 	}
 
 	block = dispatch_block_create_with_qos_class(flags, qos, 0, ^{
-		firehose_client_drain(fc, reply_port, for_io);
+		firehose_client_drain(fc, reply_port,
+				for_io ? FIREHOSE_DRAIN_FOR_IO : 0);
 	});
 	dispatch_async(q, block);
 	_Block_release(block);

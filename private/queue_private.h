@@ -228,6 +228,23 @@ dispatch_pthread_root_queue_flags_pool_size(uint8_t pool_size)
 #endif /* __BLOCKS__ */
 
 /*!
+ * @function dispatch_pthread_root_queue_copy_current
+ *
+ * @abstract
+ * Returns a reference to the pthread root queue object that has created the
+ * currently executing thread, or NULL if the current thread is not associated
+ * to a pthread root queue.
+ *
+ * @result
+ * A new reference to a pthread root queue object or NULL.
+ */
+__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
+__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+DISPATCH_EXPORT DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+dispatch_queue_t _Nullable
+dispatch_pthread_root_queue_copy_current(void);
+
+/*!
  * @constant DISPATCH_APPLY_CURRENT_ROOT_QUEUE
  * @discussion Constant to pass to the dispatch_apply() and dispatch_apply_f()
  * functions to indicate that the root queue for the current thread should be

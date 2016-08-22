@@ -1197,8 +1197,8 @@ dispatch_source_type_readwrite_init(dispatch_source_t ds,
 	dispatch_queue_t q DISPATCH_UNUSED)
 {
 	ds->ds_is_level = true;
+#if HAVE_DECL_NOTE_LOWAT
 	// bypass kernel check for device kqueue support rdar://19004921
-#ifdef NOTE_LOWAT
 	ds->ds_dkev->dk_kevent.fflags = NOTE_LOWAT;
 #endif
 	ds->ds_dkev->dk_kevent.data = 1;

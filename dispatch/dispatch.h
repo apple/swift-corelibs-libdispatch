@@ -24,7 +24,20 @@
 #ifdef __APPLE__
 #include <Availability.h>
 #include <TargetConditionals.h>
-#endif
+#else
+#define __OSX_AVAILABLE_STARTING(x, y)
+#define __OSX_AVAILABLE_BUT_DEPRECATED(...)
+#define __OSX_AVAILABLE_BUT_DEPRECATED_MSG(...)
+#define __OSX_AVAILABLE(...)
+#define __IOS_AVAILABLE(...)
+#define __TVOS_AVAILABLE(...)
+#define __WATCHOS_AVAILABLE(...)
+#define __OSX_DEPRECATED(...)
+#define __IOS_DEPRECATED(...)
+#define __TVOS_DEPRECATED(...)
+#define __WATCHOS_DEPRECATED(...)
+#endif // __APPLE__
+
 #include <sys/cdefs.h>
 #include <sys/types.h>
 #include <stddef.h>
@@ -34,61 +47,13 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#ifdef __has_attribute
-#if __has_attribute(unavailable)
-#define __DISPATCH_UNAVAILABLE(msg) __attribute__((__unavailable__(msg)))
-#endif
-#endif
-#ifndef __DISPATCH_UNAVAILABLE
-#define __DISPATCH_UNAVAILABLE(msg)
-#endif
-
-#ifdef __linux__
+#if defined(__linux__) && defined(__has_feature)
 #if __has_feature(modules)
 #include <stdio.h> // for off_t (to match Glibc.modulemap)
 #endif
-#define DISPATCH_LINUX_UNAVAILABLE() \
-		__DISPATCH_UNAVAILABLE("This interface is unavailable on linux systems")
-#else
-#define DISPATCH_LINUX_UNAVAILABLE()
 #endif
 
-#ifndef __OSX_AVAILABLE_STARTING
-#define __OSX_AVAILABLE_STARTING(x, y)
-#endif
-#ifndef __OSX_AVAILABLE_BUT_DEPRECATED
-#define __OSX_AVAILABLE_BUT_DEPRECATED(...)
-#endif
-#ifndef __OSX_AVAILABLE_BUT_DEPRECATED_MSG
-#define __OSX_AVAILABLE_BUT_DEPRECATED_MSG(...)
-#endif
-
-#ifndef __OSX_AVAILABLE
-#define __OSX_AVAILABLE(...)
-#endif
-#ifndef __IOS_AVAILABLE
-#define __IOS_AVAILABLE(...)
-#endif
-#ifndef __TVOS_AVAILABLE
-#define __TVOS_AVAILABLE(...)
-#endif
-#ifndef __WATCHOS_AVAILABLE
-#define __WATCHOS_AVAILABLE(...)
-#endif
-#ifndef __OSX_DEPRECATED
-#define __OSX_DEPRECATED(...)
-#endif
-#ifndef __IOS_DEPRECATED
-#define __IOS_DEPRECATED(...)
-#endif
-#ifndef __TVOS_DEPRECATED
-#define __TVOS_DEPRECATED(...)
-#endif
-#ifndef __WATCHOS_DEPRECATED
-#define __WATCHOS_DEPRECATED(...)
-#endif
-
-#define DISPATCH_API_VERSION 20160612
+#define DISPATCH_API_VERSION 20160712
 
 #ifndef __DISPATCH_BUILDING_DISPATCH__
 

@@ -238,7 +238,7 @@ test_io_stop(void) // rdar://problem/8250057
 static void
 test_io_read_write(void)
 {
-	const char *path_in = "/usr/share/dict/words";
+	const char *path_in = "/usr/bin/vi";
 	char path_out[] = "/tmp/dispatchtest_io.XXXXXX";
 
 	int in = open(path_in, O_RDONLY);

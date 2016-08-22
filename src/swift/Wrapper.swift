@@ -63,7 +63,7 @@ public class DispatchGroup : DispatchObject {
 	}
 
 	public func leave() {
-		dispatch_group_enter(__wrapped)
+		dispatch_group_leave(__wrapped)
 	}
 }
 
@@ -334,4 +334,4 @@ internal enum _OSQoSClass : UInt32  {
 }
 
 @_silgen_name("_swift_dispatch_release")
-internal func _swift_dispatch_release(_ obj: dispatch_object_t) -> Void 
+internal func _swift_dispatch_release(_ obj: dispatch_object_t) -> Void

@@ -260,7 +260,7 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 #if USE_MACH_SEM
 	mach_timespec_t _timeout;
 	kern_return_t kr;
-#elif USE_POSIX_SEM 
+#elif USE_POSIX_SEM
 	struct timespec _timeout;
 	int ret;
 #elif USE_WIN32_SEM

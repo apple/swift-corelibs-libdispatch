@@ -60,7 +60,7 @@ dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 	dispatch_thread_event_t event;
 
 	if (os_atomic_cmpxchg(vval, NULL, tail, acquire)) {
-		dow.dow_thread = _dispatch_thread_port();
+		dow.dow_thread = _dispatch_tid_self();
 		_dispatch_client_callout(ctxt, func);
 
 		// The next barrier must be long and strong.
