@@ -187,7 +187,7 @@ public struct DispatchData : RandomAccessCollection {
 		return copyRange.count
 	}
 
-	/// Sets or returns the byte at the specified index.
+	/// Returns the byte at the specified index.
 	public subscript(index: Index) -> UInt8 {
 		var offset = 0
 		let subdata = CDispatch.dispatch_data_copy_region(__wrapped.__wrapped, index, &offset)
