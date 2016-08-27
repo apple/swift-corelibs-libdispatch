@@ -62,7 +62,7 @@ main(int argc, char** argv)
 	socklen_t addr1len;
 	pid_t clientid;
 
-	const char *path = "/usr/share/dict/words";
+	const char *path = "/usr/bin/vi";
 	int read_fd, fd;
 
 	if (argc == 2) {

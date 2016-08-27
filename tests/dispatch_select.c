@@ -84,7 +84,7 @@ stage1(int stage)
 void
 stage2(void)
 {
-	const char *path = "/usr/share/dict/words";
+	const char *path = "/usr/bin/vi";
 	struct stat sb;
 
 	int fd = open(path, O_RDONLY);
