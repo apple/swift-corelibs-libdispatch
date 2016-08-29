@@ -24,6 +24,10 @@
 #define DISPATCH_IO_DEBUG DISPATCH_DEBUG
 #endif
 
+#ifndef PAGE_SIZE
+#define PAGE_SIZE getpagesize()
+#endif
+
 #if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 #define _dispatch_io_data_retain(x) _dispatch_objc_retain(x)
 #define _dispatch_io_data_release(x) _dispatch_objc_release(x)

@@ -49,7 +49,9 @@
 
 #if defined(__linux__) && defined(__has_feature)
 #if __has_feature(modules)
+#if !defined(__arm__)
 #include <stdio.h> // for off_t (to match Glibc.modulemap)
+#endif
 #endif
 #endif
 
