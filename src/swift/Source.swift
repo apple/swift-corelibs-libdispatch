@@ -283,7 +283,7 @@ public extension DispatchSourceTimer {
 	}
 
 	public func scheduleRepeating(deadline: DispatchTime, interval: DispatchTimeInterval, leeway: DispatchTimeInterval = .nanoseconds(0)) {
-		dispatch_source_set_timer((self as! DispatchSource).__wrapped, deadline.rawValue, interval.rawValue, UInt64(leeway.rawValue))
+		dispatch_source_set_timer((self as! DispatchSource).__wrapped, deadline.rawValue, UInt64(interval.rawValue), UInt64(leeway.rawValue))
 	}
 
 	public func scheduleRepeating(deadline: DispatchTime, interval: Double, leeway: DispatchTimeInterval = .nanoseconds(0)) {
@@ -291,7 +291,7 @@ public extension DispatchSourceTimer {
 	}
 
 	public func scheduleRepeating(wallDeadline: DispatchWallTime, interval: DispatchTimeInterval, leeway: DispatchTimeInterval = .nanoseconds(0)) {
-		dispatch_source_set_timer((self as! DispatchSource).__wrapped, wallDeadline.rawValue, interval.rawValue, UInt64(leeway.rawValue))
+		dispatch_source_set_timer((self as! DispatchSource).__wrapped, wallDeadline.rawValue, UInt64(interval.rawValue), UInt64(leeway.rawValue))
 	}
 
 	public func scheduleRepeating(wallDeadline: DispatchWallTime, interval: Double, leeway: DispatchTimeInterval = .nanoseconds(0)) {
