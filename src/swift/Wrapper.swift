@@ -153,7 +153,7 @@ public class DispatchQueue : DispatchObject {
 		_swift_dispatch_release(wrapped())
 	}
 
-	public func sync(execute workItem: @noescape ()->()) {
+	public func sync(execute workItem: ()->()) {
 		dispatch_sync(self.__wrapped, workItem)
 	}
 }
