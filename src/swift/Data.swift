@@ -49,7 +49,6 @@ public struct DispatchData : RandomAccessCollection {
 	/// Initialize a `Data` with copied memory content.
 	///
 	/// - parameter bytes: A pointer to the memory. It will be copied.
-	/// - parameter count: The number of bytes to copy.
 	public init(bytes buffer: UnsafeBufferPointer<UInt8>) {
 		let d = dispatch_data_create(buffer.baseAddress!, buffer.count, nil, _dispatch_data_destructor_default())
 		self.init(data: d)
@@ -88,7 +87,7 @@ public struct DispatchData : RandomAccessCollection {
 	public func enumerateBytes(
 		block: (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void) 
 	{
-		_swift_dispatch_data_apply(__wrapped.__wrapped) { (data: dispatch_data_t, offset: Int, ptr: UnsafeRawPointer, size: Int) in
+		_swift_dispatch_data_apply(__wrapped.__wrapped) { (_, offset: Int, ptr: UnsafeRawPointer, size: Int) in
 			let bytePtr = ptr.bindMemory(to: UInt8.self, capacity: size)
 			let bp = UnsafeBufferPointer(start: bytePtr, count: size)
 			var stop = false
@@ -124,7 +123,7 @@ public struct DispatchData : RandomAccessCollection {
 		}
 	}
 
-	private func _copyBytesHelper(to pointer: UnsafeMutablePointer<UInt8>, from range: CountableRange<Index>) {
+	private func _copyBytesHelper(to pointer: UnsafeMutableRawPointer, from range: CountableRange<Index>) {
 		var copiedCount = 0
 		_ = CDispatch.dispatch_data_apply(__wrapped.__wrapped) { (data: dispatch_data_t, offset: Int, ptr: UnsafeRawPointer, size: Int) in
 			let limit = Swift.min((range.endIndex - range.startIndex) - copiedCount, size)
@@ -179,10 +178,7 @@ public struct DispatchData : RandomAccessCollection {
 		
 		guard !copyRange.isEmpty else { return 0 }
 		
-		let bufferCapacity = buffer.count * MemoryLayout<DestinationType>.stride
-		buffer.baseAddress?.withMemoryRebound(to: UInt8.self, capacity: bufferCapacity) {
-			_copyBytesHelper(to: $0, from: copyRange)
-		}
+		_copyBytesHelper(to: buffer.baseAddress!, from: copyRange)
 		return copyRange.count
 	}
 
@@ -244,7 +240,7 @@ public struct DispatchData : RandomAccessCollection {
 
 public struct DispatchDataIterator : IteratorProtocol, Sequence {
 
-	/// Create an iterator over the given DisaptchData
+	/// Create an iterator over the given DispatchData
 	public init(_data: DispatchData) {
 		var ptr: UnsafeRawPointer?
 		self._count = 0
