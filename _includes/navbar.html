@@ -12,7 +12,7 @@
     </div>
     <div class="collapse navbar-collapse" id="main-navbar">
       <ul class="nav navbar-nav">
-        <li{% if page_url_parts[1] == 'tutorial' %} class="active"{% endif %}><a href="{{ '/tutorial' | prepend: site.base_url }}">Tutorial</a></li>
+        <li{% if page_url_parts[1] == 'tutorial' %} class="active"{% endif %}><a href="{{ '/tutorial/' | prepend: site.baseurl }}">Tutorial</a></li>
         <li{% if page_url_parts[1] == 'news' or page_url_parts[1] == 'post' %} class="active"{% endif %}><a href="{{ '/news/' | prepend: site.baseurl }}">News</a></li>
         <li><a href="https://lists.macosforge.org/mailman/listinfo/libdispatch-dev">Mailing List</a></li>
         <li><a href="https://github.com/apple/swift-corelibs-libdispatch">Development</a></li>
