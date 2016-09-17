@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page.title | smartify | escape_once }}</title>
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+    <link href="{{ '/styles.css' | prepend: site.baseurl }}" rel="stylesheet">
+    <!--[if lt IE 9]>
+      <script src="https://cdn.jsdelivr.net/html5shiv/3.7.3/html5shiv.min.js" integrity="sha256-3Jy/GbSLrg0o9y5Z5n1uw0qxZECH7C6OQpVBgNFYa0g=" crossorigin="anonymous"></script>
+      <script src="https://cdn.jsdelivr.net/respond/1.4.2/respond.min.js" integrity="sha256-g6iAfvZp+nDQ2TdTR/VVKJf3bGro4ub5fvWSWVRi2NE=" crossorigin="anonymous"></script>
+    <![endif]-->
+    {% if page.url != "/404.html" %}<link rel="canonical" href="{{ page.url | prepend: site.baseurl | prepend: site.url }}">{% endif %}
+  </head>
+  <body>
+    {% include navbar.html %}
+    <div class="container">
+      <div class="row">
+        <div class="col-md-12">
+          <h1>{{ page.title | smartify | escape_once }}{% if page.date %} <small>{{ page.date | date: "%B %-d, %Y" }}</small>{% endif %}</h1>
+          {{ content }}
+        </div>
+      </div>
+    </div>
+    <footer class="sticky-footer">
+      <div class="container">
+        <ul class="list-inline">
+          <li><small class="text-muted">Copyright &copy; 2009&ndash;{{ "now" | date: "%Y" }} Apple Inc. All rights reserved.</small></li>
+        </ul>
+      </div>
+    </footer>
+    <script src="https://cdn.jsdelivr.net/jquery/3.1.0/jquery.slim.min.js" integrity="sha256-cRpWjoSOw5KcyIOaZNo4i6fZ9tKPhYYb6i5T9RSVJG8=" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+  </body>
+</html>

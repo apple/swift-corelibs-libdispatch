@@ -1,0 +1,14 @@
+baseurl: "/swift-corelibs-libdispatch"
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: "default"
+exclude:
+  - .gitignore
+  - Gemfile
+  - Gemfile.lock
+  - README.md
+permalink: pretty
+title: "Grand Central Dispatch"
+url: "https://apple.github.io"

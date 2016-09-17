@@ -1,0 +1,16 @@
+html {
+  min-height: 100%;
+  position: relative;
+}
+
+body {
+  margin-bottom: 3em;
+}
+
+.sticky-footer {
+  bottom: 0;
+  height: 3em;
+  padding: 1em 0;
+  position: absolute;
+  width: 100%;
+}
