@@ -11,6 +11,7 @@
       <script src="https://cdn.jsdelivr.net/html5shiv/3.7.3/html5shiv.min.js" integrity="sha256-3Jy/GbSLrg0o9y5Z5n1uw0qxZECH7C6OQpVBgNFYa0g=" crossorigin="anonymous"></script>
       <script src="https://cdn.jsdelivr.net/respond/1.4.2/respond.min.js" integrity="sha256-g6iAfvZp+nDQ2TdTR/VVKJf3bGro4ub5fvWSWVRi2NE=" crossorigin="anonymous"></script>
     <![endif]-->
+    {% feed_meta %}
     {% if page.url != "/404.html" %}<link rel="canonical" href="{{ page.url | prepend: site.baseurl | prepend: site.url }}">{% endif %}
   </head>
   <body>

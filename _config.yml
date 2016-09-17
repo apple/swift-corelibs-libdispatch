@@ -4,11 +4,20 @@ defaults:
       path: ""
     values:
       layout: "default"
+  - scope:
+      path: ""
+      type: "posts"
+    values:
+      permalink: "/post/:title/"
+excerpt_separator: <!--more-->
 exclude:
   - .gitignore
   - Gemfile
   - Gemfile.lock
   - README.md
+gems:
+  - jekyll-feed
+  - jekyll-redirect-from
 permalink: pretty
 title: "Grand Central Dispatch"
 url: "https://apple.github.io"
