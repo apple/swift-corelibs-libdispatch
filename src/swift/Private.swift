@@ -140,7 +140,7 @@ public func dispatch_io_set_interval(_ channel: DispatchIO, _ interval: UInt64, 
 	fatalError()
 }
 
-@available(*, unavailable, renamed:"DispatchQueue.apply(attributes:iterations:execute:)")
+@available(*, unavailable, renamed:"DispatchQueue.concurrentPerform(iterations:execute:)")
 public func dispatch_apply(_ iterations: Int, _ queue: DispatchQueue, _ block: (Int) -> Void) 
 {
 	fatalError()
