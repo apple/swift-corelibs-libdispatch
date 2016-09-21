@@ -1,0 +1,21 @@
+Description:
+ Prevent an invalid macro for dispatch_atomic_xchg() on some platforms.
+ Credit to Joakim Johansson for reporting this bug as libdispatch Trac 
+ ticket #35, and credit to Paolo Bonzini for identifying the fix.
+ .
+Author: Mark Heily <mark@heily.com>
+Date: Sat, 24 Sep 2011 21:02:28 -0400
+
+Index: hw_shims.h
+===================================================================
+--- hw_shims.h	(revision 197)
++++ hw_shims.h	(working copy)
+@@ -36,7 +36,7 @@
+ // GCC generates suboptimal register pressure
+ // LLVM does better, but doesn't support tail calls
+ // 6248590 __sync_*() intrinsics force a gratuitous "lea" instruction, with resulting register pressure
+-#if 0 && defined(__i386__) || defined(__x86_64__)
++#if 0 && (defined(__i386__) || defined(__x86_64__))
+ #define dispatch_atomic_xchg(p, n)	({ typeof(*(p)) _r; asm("xchg %0, %1" : "=r" (_r) : "m" (*(p)), "0" (n)); _r; })
+ #else
+ #define dispatch_atomic_xchg(p, n)	((typeof(*(p)))__sync_lock_test_and_set((p), (n)))

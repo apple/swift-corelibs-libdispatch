@@ -1,0 +1,1149 @@
+Index: server/mpm/MPM.NAMING
+===================================================================
+--- server/mpm/MPM.NAMING	(revision 895969)
++++ server/mpm/MPM.NAMING	(working copy)
+@@ -12,3 +12,4 @@
+   worker ........ Multi Process model with threads.  One acceptor thread,
+                   multiple worker threads.
+   netware ....... Multi-threaded MPM for Netware
++  gcd ........... Experimental Grand Central Dispatch (GCD) MPM.
+Index: server/mpm/config.m4
+===================================================================
+--- server/mpm/config.m4	(revision 895969)
++++ server/mpm/config.m4	(working copy)
+@@ -38,6 +38,30 @@
+     fi
+ ])
+ 
++dnl Is GCD supported on this platform?
++AC_CACHE_CHECK([whether GCD is available], [ac_cv_have_gcd], [
++    AC_CHECK_LIB(dispatch, dispatch_main)
++    if test "$ac_cv_func_dispatch_main" != "no"; then
++        ac_cv_have_gcd=yes
++    else
++        ac_cv_have_gcd=no
++    fi
++])
++
++dnl Check for C blocks support.
++AC_CACHE_CHECK([for C blocks support], ac_cv_blocks, [
++    save_CFLAGS=$CFLAGS
++    CFLAGS="$CFLAGS -fblocks"
++    AC_TRY_COMPILE([], [ ^{ ;}; ], ac_cv_cblocks=yes, ac_cv_cblocks=no)]
++    CFLAGS=$save_CFLAGS
++)
++if test "$ac_cv_cblocks" = "yes"; then
++    CFLAGS="$CFLAGS -fblocks"
++    AC_MSG_RESULT(yes)
++else
++    AC_MSG_RESULT(no)
++fi
++
+ dnl See if this is a forking platform w.r.t. MPMs
+ case $host in
+     *mingw32* | *os2-emx*)
+Index: server/mpm/config2.m4
+===================================================================
+--- server/mpm/config2.m4	(revision 895969)
++++ server/mpm/config2.m4	(working copy)
+@@ -1,7 +1,7 @@
+ AC_MSG_CHECKING(which MPM to use by default)
+ AC_ARG_WITH(mpm,
+ APACHE_HELP_STRING(--with-mpm=MPM,Choose the process model for Apache to use by default.
+-                          MPM={simple|event|worker|prefork|winnt}
++                          MPM={simple|event|worker|prefork|winnt|gcd}
+                           This will be statically linked as the only available MPM unless
+                           --enable-mpms-shared is also specified.
+ ),[
+Index: server/mpm/gcd/Makefile.in
+===================================================================
+--- server/mpm/gcd/Makefile.in	(revision 0)
++++ server/mpm/gcd/Makefile.in	(revision 0)
+@@ -0,0 +1 @@
++include $(top_srcdir)/build/special.mk
+
+Property changes on: server/mpm/gcd/Makefile.in
+___________________________________________________________________
+Added: svn:mime-type
+   + text/plain
+Added: svn:keywords
+   + FreeBSD=%H
+Added: svn:eol-style
+   + native
+
+Index: server/mpm/gcd/gcd.h
+===================================================================
+--- server/mpm/gcd/gcd.h	(revision 0)
++++ server/mpm/gcd/gcd.h	(revision 0)
+@@ -0,0 +1,36 @@
++/*
++ * Copyright (c) 2009-2010 Apple Inc. All rights reserved.
++ *
++ * @APPLE_APACHE_LICENSE_HEADER_START@
++ * 
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ * 
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ * @APPLE_APACHE_LICENSE_HEADER_END@
++ */
++
++/*
++ * Variables from gcd_parent.c.
++ */
++extern int			mpm_state;
++extern volatile ap_generation_t	my_generation;
++extern volatile int		is_graceful;
++extern volatile int		restart_pending;
++extern volatile int		shutdown_pending;
++extern apr_pool_t		*pconf;
++extern u_int			listener_count;
++
++/*
++ * Variables and functions from gcd.c.
++ */
++apr_status_t	gcdmpm_child_run(void);
++extern u_int	gcdmpm_connection_limit;
+
+Property changes on: server/mpm/gcd/gcd.h
+___________________________________________________________________
+Added: svn:mime-type
+   + text/plain
+Added: svn:keywords
+   + FreeBSD=%H
+Added: svn:eol-style
+   + native
+
+Index: server/mpm/gcd/mpm_default.h
+===================================================================
+--- server/mpm/gcd/mpm_default.h	(revision 0)
++++ server/mpm/gcd/mpm_default.h	(revision 0)
+@@ -0,0 +1,3 @@
++#ifndef DEFAULT_PIDLOG
++#define DEFAULT_PIDLOG DEFAULT_REL_RUNTIMEDIR "/httpd.pid"
++#endif
+Index: server/mpm/gcd/config.m4
+===================================================================
+--- server/mpm/gcd/config.m4	(revision 0)
++++ server/mpm/gcd/config.m4	(revision 0)
+@@ -0,0 +1,9 @@
++AC_MSG_CHECKING(if gcd MPM supports this platform)
++if test $ac_cv_have_gcd != yes; then
++    AC_MSG_RESULT(no - This is not a GCD-aware platform)
++elif test $ac_cv_cblocks != yes; then
++    AC_MSG_RESULT(no - No compiler support for blocks)
++else
++    AC_MSG_RESULT(yes)
++    APACHE_MPM_SUPPORTED(gcd, yes, yes)
++fi
+Index: server/mpm/gcd/config3.m4
+===================================================================
+--- server/mpm/gcd/config3.m4	(revision 0)
++++ server/mpm/gcd/config3.m4	(revision 0)
+@@ -0,0 +1 @@
++APACHE_MPM_MODULE(gcd, $enable_mpm_gcd, gcd_parent.lo gcd.lo)
+Index: server/mpm/gcd/gcd_parent.c
+===================================================================
+--- server/mpm/gcd/gcd_parent.c	(revision 0)
++++ server/mpm/gcd/gcd_parent.c	(revision 0)
+@@ -0,0 +1,308 @@
++/*
++ * Copyright (c) 2009-2010 Apple Inc. All rights reserved.
++ *
++ * @APPLE_APACHE_LICENSE_HEADER_START@
++ * 
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ * 
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ * @APPLE_APACHE_LICENSE_HEADER_END@
++ */
++
++/*
++ * This file implements the main Apache work loop and process, and is
++ * responsible for starting (and restarting) a child process that implements
++ * connection listening and processing using GCD.  We are careful not to kick
++ * GCD (as we would be with threading) before calling fork(), so have to use
++ * normal UNIX signal handlers for signal processing.  The body of the GCD
++ * MPM is found in gcd.c:gcdmpm_child_run().
++ */
++
++#include "apr.h"
++#include "apr_portable.h"
++#include "apr_signal.h"
++
++#include "httpd.h"
++#include "http_main.h"
++#include "http_log.h"
++#include "http_config.h"
++#include "http_connection.h"
++#include "http_vhost.h"
++#include "mpm_common.h"
++#include "ap_listen.h"
++#include "scoreboard.h"
++#include "unixd.h"
++
++#include "gcd.h"
++#include "mpm_default.h"
++
++/*
++ * Global variables relating to MPM state and state transitions.
++ */
++int				mpm_state = AP_MPMQ_STARTING;
++volatile ap_generation_t	my_generation = 0;
++volatile int			is_graceful;
++volatile int			restart_pending;
++volatile int			shutdown_pending;
++
++static pid_t			child_pid;
++
++apr_pool_t			*pconf;	/* Pool for config stuff. */
++u_int				listener_count;
++
++/*
++ * Handle signals in the parent; gcdmpm_run will forward to the child.
++ */
++static void
++gcdmpm_signal_handler(int sig)
++{
++
++	switch (sig) {
++	case AP_SIG_GRACEFUL:
++		is_graceful = 1;
++	case SIGHUP:
++		restart_pending = 1;
++		break;
++	case AP_SIG_GRACEFUL_STOP:
++		is_graceful = 1;
++	case SIGTERM:
++		shutdown_pending = 1;
++		break;
++	}
++}
++
++static const char *
++gcdmpm_get_name(void)
++{
++
++	return ("gcd");
++}
++
++static int
++gcdmpm_query(int query_code, int *result, apr_status_t *rv)
++{
++
++	*rv = APR_SUCCESS;
++	switch (query_code) {
++	case AP_MPMQ_IS_THREADED:
++		*result = AP_MPMQ_DYNAMIC;
++		break;
++	case AP_MPMQ_IS_FORKED:
++		*result = AP_MPMQ_STATIC;
++		break;
++	case AP_MPMQ_IS_ASYNC:
++		*result = 1;
++		break;
++	case AP_MPMQ_HARD_LIMIT_DAEMONS:
++	case AP_MPMQ_MAX_DAEMONS:
++	case AP_MPMQ_MAX_DAEMON_USED:
++		*result = 1;
++		break;
++	case AP_MPMQ_HARD_LIMIT_THREADS:
++		*result = gcdmpm_connection_limit;
++		break;
++	case AP_MPMQ_MAX_THREADS:
++		*result = gcdmpm_connection_limit;
++		break;
++	case AP_MPMQ_MIN_SPARE_DAEMONS:
++	case AP_MPMQ_MAX_SPARE_DAEMONS:
++	case AP_MPMQ_MIN_SPARE_THREADS:
++	case AP_MPMQ_MAX_SPARE_THREADS:
++		*result = 0;
++		break;
++	case AP_MPMQ_MAX_REQUESTS_DAEMON:
++		*result = -1;
++		break;
++	case AP_MPMQ_MPM_STATE:
++		*result = mpm_state;
++		break;
++	case AP_MPMQ_GENERATION:
++		*result = my_generation;
++		break;
++	default:
++		*rv = APR_ENOTIMPL;
++		break;
++	}
++	return (OK);
++}
++
++static int
++gcdmpm_run(apr_pool_t *_pconf, apr_pool_t *plog, server_rec *s)
++{
++	int rv;
++
++	restart_pending = shutdown_pending = 0;
++
++	ap_log_pid(pconf, ap_pid_fname);
++
++	if (!is_graceful) {
++		if (ap_run_pre_mpm(s->process->pool, SB_SHARED) != OK) {
++			mpm_state = AP_MPMQ_STOPPING;
++			return (DONE);
++		}
++		ap_scoreboard_image->global->running_generation =
++		    my_generation;
++	}
++
++	/*
++	 * XXXGCD: Should use APR APIs for fork/wait/...
++	 */
++	child_pid = fork();
++	if (child_pid < 0) {
++		ap_log_error(APLOG_MARK, APLOG_ERR, errno, s,
++		    "fork: Unable to fork new process");
++		apr_sleep(apr_time_from_sec(10));
++		return -1;
++	}
++	if (child_pid == 0) {
++		exit(gcdmpm_child_run());
++	}
++
++	apr_signal(AP_SIG_GRACEFUL, gcdmpm_signal_handler);
++	apr_signal(SIGHUP, gcdmpm_signal_handler);
++	apr_signal(AP_SIG_GRACEFUL_STOP, gcdmpm_signal_handler);
++	apr_signal(SIGTERM, gcdmpm_signal_handler);
++
++	while (!restart_pending && !shutdown_pending) {
++		static const sigset_t ss;
++		(void)sigsuspend(&ss);
++	}
++
++	if (shutdown_pending && !is_graceful) {
++		const char *pidfile;
++
++		kill(child_pid, SIGTERM);
++		pidfile = ap_server_root_relative(pconf, ap_pid_fname);
++		if (pidfile != NULL && unlink(pidfile) == 0) {
++			ap_log_error(APLOG_MARK, APLOG_INFO, 0,
++			    ap_server_conf, "removed PID file %s (pid=%ld)",
++			    pidfile, (long)getpid());
++		}
++		ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, ap_server_conf,
++		    "caught SIGTERM, shutting down");
++		return (DONE);
++	} else if (shutdown_pending) {
++		const char *pidfile;
++
++		kill(child_pid, AP_SIG_GRACEFUL_STOP);
++		ap_close_listeners();
++		pidfile = ap_server_root_relative(pconf, ap_pid_fname);
++		if (pidfile != NULL && unlink(pidfile) == 0) {
++			ap_log_error(APLOG_MARK, APLOG_INFO, 0,
++			    ap_server_conf, "removed PID file %s (pid=%ld)",
++			    pidfile, (long)getpid());
++		}
++		ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, ap_server_conf,
++		    "caught " AP_SIG_GRACEFUL_STOP_STRING
++		    ", shutting down gracefully");
++		do {
++			rv = waitpid(child_pid, NULL, 0);
++			if (rv < 0 && errno != EINTR) {
++				/* XXXGCD: handle? */
++			}
++		} while (rv != child_pid);
++		return (DONE);
++	}
++
++	++my_generation;
++	ap_scoreboard_image->global->running_generation = my_generation;
++
++	if (is_graceful) {
++		ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, ap_server_conf,
++		    AP_SIG_GRACEFUL_STRING " received.  "
++		    "Doing graceful restart");
++		kill(child_pid, AP_SIG_GRACEFUL);
++	} else {
++		ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, ap_server_conf,
++		    "SIGHUP received.  Attempting restart");
++		kill(child_pid, SIGHUP);
++	}
++	return (OK);
++}
++
++static int
++gcdmpm_open_logs(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp,
++    server_rec *s)
++{
++
++	pconf = p;
++	listener_count = ap_setup_listeners(ap_server_conf);
++	if (listener_count < 0) {
++		ap_log_error(APLOG_MARK, APLOG_ALERT, 0, s,
++		    "no listening sockets available, shutting down");
++		return (DONE);
++	}
++	return (OK);
++}
++
++static int
++gcdmpm_pre_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp)
++{
++	int debug, foreground, no_detach;
++	apr_status_t rv;
++
++	/* XXXRW: Possibly more should be done here. */
++
++	mpm_state = AP_MPMQ_STARTING;
++	debug = ap_exists_config_define("DEBUG");
++	if (debug) {
++		foreground = 1;
++		no_detach = 0;
++	} else {
++		no_detach = ap_exists_config_define("NO_DETACH");
++		foreground = ap_exists_config_define("FOREGROUND");
++	}
++	if (!foreground) {
++		rv = apr_proc_detach(no_detach ? APR_PROC_DETACH_FOREGROUND
++		    : APR_PROC_DETACH_DAEMONIZE);
++		if (rv != APR_SUCCESS) {
++			ap_log_error(APLOG_MARK, APLOG_CRIT, rv, NULL,
++			    "apr_proc_detach failed");
++			return (HTTP_INTERNAL_SERVER_ERROR);
++		}
++	}
++	ap_listen_pre_config();
++	ap_pid_fname = DEFAULT_PIDLOG;
++	return (OK);
++}
++
++static void
++gcdmpm_hooks(apr_pool_t *p)
++{
++	static const char *const aszSucc[] = { "core.c", NULL };
++
++	ap_hook_open_logs(gcdmpm_open_logs, NULL, aszSucc,
++	    APR_HOOK_REALLY_FIRST);
++	ap_hook_pre_config(gcdmpm_pre_config, NULL, NULL,
++	    APR_HOOK_REALLY_FIRST);
++	/* ap_hook_check_config() */
++	ap_hook_mpm(gcdmpm_run, NULL, NULL, APR_HOOK_MIDDLE);
++	ap_hook_mpm_query(gcdmpm_query, NULL, NULL, APR_HOOK_MIDDLE);
++	ap_hook_mpm_get_name(gcdmpm_get_name, NULL, NULL, APR_HOOK_MIDDLE);
++}
++
++static const command_rec gcdmpm_cmds[] = {
++	LISTEN_COMMANDS,
++	AP_GRACEFUL_SHUTDOWN_TIMEOUT_COMMAND,
++	{ NULL }
++};
++
++module AP_MODULE_DECLARE_DATA mpm_gcd_module = {
++	MPM20_MODULE_STUFF,
++	NULL,			/* hook to run before apache parses args */
++	NULL,			/* create per-directory config structure */
++	NULL,			/* merge per-directory config structures */
++	NULL,			/* create per-server config structure */
++	NULL,			/* merge per-server config structures */
++	gcdmpm_cmds,		/* command apr_table_t */
++	gcdmpm_hooks		/* register_hooks */
++};
+
+Property changes on: server/mpm/gcd/gcd_parent.c
+___________________________________________________________________
+Added: svn:mime-type
+   + text/plain
+Added: svn:keywords
+   + FreeBSD=%H
+Added: svn:eol-style
+   + native
+
+Index: server/mpm/gcd/gcd.c
+===================================================================
+--- server/mpm/gcd/gcd.c	(revision 0)
++++ server/mpm/gcd/gcd.c	(revision 0)
+@@ -0,0 +1,647 @@
++/*-
++ * Copyright (c) 2009-2010 Apple Inc. All rights reserved.
++ *
++ * @APPLE_APACHE_LICENSE_HEADER_START@
++ * 
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ * 
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ * @APPLE_APACHE_LICENSE_HEADER_END@
++ */
++
++/*-
++ * Experimental GCD Apache MPM.
++ *
++ * This Apache module makes use of Apple's Grand Central Dispatch (GCD)
++ * concurrent programming framework to manage Apache concurrency.  While
++ * similar in design to the event MPM, this MPM associates GCD dispatch
++ * queues, rather than threads, with various tasks.
++ *
++ * Four types of queues are used in this module:
++ *
++ * main queue - configuration and shutdown, blocked in the steady state,
++ * signals queue - serial queue to await and process signals,
++ * listener queue - concurrent queue accepting from listen sockets,
++ * connection queues - one serial queue for each active connection, quantity
++ *                     limited by gcdmpm_connection_sema.
++ *
++ * Because we wish to restart across privilege drops, we do need multiple
++ * processes for the GCD MPM.  gcd_parent.c encapsulates a parent process,
++ * whose single goal is to spawn (and respawn) a GCD-enabled child process
++ * implemented in this file.  This also makes it easier to implement
++ * ungraceful shutdown and restart by simply calling exit() from the child.
++ *
++ * Author: Robert N. M. Watson <robert@fledge.watson.org>.
++ */
++
++/*-
++ * gcdmpm TODO
++ *
++ * - Because we don't bother with threads, and hence thread IDs, we don't
++ *   properly maintain the scoreboard.  This should be solved in some
++ *   moderately scalable way.
++ * - Are there custom configuration parameters that could/should be
++ *   supported?
++ * - Error checking for apr and GCD routines leaves something to be desired,
++ *   but is not inconsistent with other MPMs.
++ * - APR routines for fork/wait/sigsuspend should be used, rather than UNIX
++ *   interfaces in gcd_parent.c.
++ * - The semaphore wait for a free connection slot following accept(2) is
++ *   non-interruptible, which could prevent the listener pool from draining
++ *   during graceful restart or shutdown.  As soon as necessary connections
++ *   close, it will be able to continue.  This may be a bug.
++ * - There is the (unexploited) opportunity to check for graceful
++ *   restart/shutdown while the HTTP connection is idle.
++ */
++
++#include <dispatch/dispatch.h>
++
++#include "apr.h"
++#include "apr_portable.h"
++#include "apr_signal.h"
++
++#if !APR_HAS_THREADS
++#error "The GCD MPM requires APR threading support, which is not present."
++#endif
++
++#include "httpd.h"
++#include "http_main.h"
++#include "http_log.h"
++#include "http_config.h"
++#include "http_connection.h"
++#include "http_core.h"
++#include "http_vhost.h"
++#include "mpm_common.h"
++#include "ap_listen.h"
++#include "scoreboard.h"
++#include "unixd.h"
++
++#include "gcd.h"
++
++/*
++ * Semaphore that the main queue will block on waiting for restart/shutdown
++ * events.  Fired from the gcdmpm_signals_queue.
++ */
++static dispatch_semaphore_t	gcdmpm_signalfired_sema;
++
++/*
++ * A queue to process signals, a semaphore to notify when the queue has
++ * drained, and dispatch sources for each signal.
++ */
++static dispatch_queue_t		gcdmpm_signals_queue;
++static dispatch_source_t	ds_sighup, ds_sigterm;
++static dispatch_source_t	ds_sig_graceful, ds_sig_graceful_stop;
++
++/*
++ * A concurrent queue in which to perform accept(2) operations, a semaphore
++ * to notify when the queue has drained, and an array of dispatch sources
++ * (size listener_count), one for each listen socket.
++ */
++static dispatch_queue_t		gcdmpm_listen_queue;
++static dispatch_source_t	*ds_listeners;
++
++/*
++ * Connection queues are created dynamically as sockets are accepted; the
++ * number of queues is bounded by gcdmpm_connection_sema, and each active
++ * connection is counted towards gcdmpm_connection_group which can then be
++ * waited on during a graceful shutdown.  gcdmpm_connection_limit is a bound
++ * on the number of connection queues we will create concurrently.
++ *
++ * Each per-connection queue executes in serial, with gcdmpm_process_socket()
++ * bumping between connection states in response to dispatch sources set up
++ * in gcdmpm_newconn().
++ */
++static dispatch_semaphore_t	gcdmpm_connection_sema;
++static dispatch_group_t		gcdmpm_connection_group;
++u_int				gcdmpm_connection_limit = 1024;
++
++/*
++ * Each in-flight connection is described by one instance of
++ * gcdmpm_connection, which holds references to its associated queue,
++ * dispatch sources, socket, and Apache connection state.
++ */
++struct gcdmpm_connection {
++	/* GCD-related state. */
++	dispatch_queue_t	 gc_queue;
++	dispatch_source_t	 gc_read_source;
++	dispatch_source_t	 gc_write_source;
++	dispatch_source_t	 gc_timer_source;
++	int			 gc_read_source_enabled;
++	int			 gc_write_source_enabled;
++	int			 gc_timer_source_enabled;
++
++	/* Apache state. */
++	apr_socket_t		*gc_sock;
++	conn_state_t		*gc_cs;
++	apr_pool_t		*gc_pool;
++};
++
++/*
++ * Close a connection: tear down GCD state, tear down Apache state, and
++ * signal gcdmpm_connection_sema so that processing can start on a new
++ * connection if we're at the limit.
++ */
++static void
++gcdmpm_closeconn(struct gcdmpm_connection *gcp)
++{
++
++	dispatch_source_cancel(gcp->gc_read_source);
++	dispatch_source_cancel(gcp->gc_write_source);
++	dispatch_source_cancel(gcp->gc_timer_source);
++
++	dispatch_resume(gcp->gc_read_source);
++	dispatch_resume(gcp->gc_write_source);
++	dispatch_resume(gcp->gc_timer_source);
++
++	dispatch_release(gcp->gc_read_source);
++	dispatch_release(gcp->gc_write_source);
++	dispatch_release(gcp->gc_timer_source);
++
++	ap_lingering_close(gcp->gc_cs->c);
++	dispatch_release(gcp->gc_queue);
++	apr_pool_destroy(gcp->gc_pool);
++
++	dispatch_semaphore_signal(gcdmpm_connection_sema);
++}
++
++/*
++ * Suspend I/O and timer dispatch sources for a connection.
++ */
++static void
++gcdmpm_suspend_sources(struct gcdmpm_connection *gcp)
++{
++
++	if (gcp->gc_read_source_enabled) {
++		dispatch_suspend(gcp->gc_read_source);
++		gcp->gc_read_source_enabled = 0;
++	}
++	if (gcp->gc_write_source_enabled) {
++		dispatch_suspend(gcp->gc_write_source);
++		gcp->gc_write_source_enabled = 0;
++	}
++	if (gcp->gc_timer_source_enabled) {
++		dispatch_suspend(gcp->gc_timer_source);
++		gcp->gc_timer_source_enabled = 0;
++	}
++}
++
++/*
++ * Resume I/O dispatch sources for a connection.
++ */
++static void
++gcdmpm_read_set(struct gcdmpm_connection *gcp)
++{
++
++	dispatch_resume(gcp->gc_read_source);
++	gcp->gc_read_source_enabled = 1;
++}
++
++static void
++gcdmpm_write_set(struct gcdmpm_connection *gcp)
++{
++
++	dispatch_resume(gcp->gc_write_source);
++	gcp->gc_write_source_enabled = 1;
++}
++
++/*
++ * Set a timeout for a connection.
++ */
++static void
++gcdmpm_timer_set(struct gcdmpm_connection *gcp, apr_interval_time_t it)
++{
++	uint64_t dt;
++
++	/* NB: Only second granularity at this point. */
++	dt = (uint64_t)apr_time_sec(it) * NSEC_PER_SEC;
++	dispatch_source_set_timer(gcp->gc_timer_source,
++	    dispatch_time(DISPATCH_TIME_NOW, dt), DISPATCH_TIME_FOREVER, 0);
++	dispatch_resume(gcp->gc_timer_source);
++	gcp->gc_timer_source_enabled = 1;
++}
++
++/*
++ * Setup and operate a single connection.  This code is modeled on the event
++ * MPM's process_socket().
++ */
++static void
++gcdmpm_process_socket(struct gcdmpm_connection *gcp)
++{
++	ap_sb_handle_t *sbh;
++	conn_state_t *cs;
++	conn_rec *c;
++	apr_status_t rv;
++
++	gcdmpm_suspend_sources(gcp);
++
++	ap_create_sb_handle(&sbh, gcp->gc_pool, 0, 0);
++
++	/*
++	 * Allocate state for a new connection.
++	 */
++	if (gcp->gc_cs == NULL) {
++		cs = gcp->gc_cs = apr_pcalloc(gcp->gc_pool,
++		    sizeof(*gcp->gc_cs));
++		cs->bucket_alloc = apr_bucket_alloc_create(gcp->gc_pool);
++		c = cs->c = ap_run_create_connection(gcp->gc_pool,
++		    ap_server_conf, gcp->gc_sock, 0, sbh,
++		    cs->bucket_alloc);
++		c->cs = cs;
++
++		ap_update_vhost_given_ip(c);
++		rv = ap_run_pre_connection(c, gcp->gc_sock);
++		if (rv != OK && rv != DONE) {
++			ap_log_error(APLOG_MARK, APLOG_DEBUG, 0,
++			    ap_server_conf,
++			    "gcdmpm_process_socket: connection aborted");
++			c->aborted = 1;
++		}
++		cs->state = CONN_STATE_CHECK_REQUEST_LINE_READABLE;
++	} else {
++		cs = gcp->gc_cs;
++		c = cs->c;
++		c->sbh = sbh;
++	}
++
++	/*
++	 * If clogging input filters are present (mod_ssl), hand over control.
++	 */
++	if (c->clogging_input_filters && !c->aborted) {
++		ap_run_process_connection(c);
++		if (cs->state != CONN_STATE_SUSPENDED) {
++			cs->state = CONN_STATE_LINGER;
++		}
++	}
++
++read_request:
++	/*
++	 * Ready to read on the socket.
++	 */
++	if (cs->state == CONN_STATE_READ_REQUEST_LINE) {
++		if (!c->aborted) {
++			ap_run_process_connection(c);
++		} else {
++			cs->state = CONN_STATE_LINGER;
++		}
++	}
++
++	/*
++	 * Need to write on the socket.
++	 */
++	if (cs->state == CONN_STATE_WRITE_COMPLETION) {
++		ap_filter_t *output_filter = c->output_filters;
++
++		while (output_filter->next != NULL) {
++			output_filter = output_filter->next;
++		}
++		rv = output_filter->frec->filter_func.out_func(output_filter,
++		    NULL);
++		if (rv != APR_SUCCESS) {
++			ap_log_error(APLOG_MARK, APLOG_WARNING, rv,
++			    ap_server_conf,
++			    "network write failure im core output filter");
++			cs->state = CONN_STATE_LINGER;
++		} else if (c->data_in_output_filters) {
++			gcdmpm_timer_set(gcp, ap_server_conf->timeout);
++			gcdmpm_write_set(gcp);
++			return;
++		} else if (c->keepalive != AP_CONN_KEEPALIVE || c->aborted) {
++			/* Could check shutdown/restart_pending here as well? */
++			cs->state = CONN_STATE_LINGER;
++		} else if (c->data_in_input_filters) {
++			cs->state = CONN_STATE_READ_REQUEST_LINE;
++			goto read_request;
++		} else {
++			cs->state = CONN_STATE_CHECK_REQUEST_LINE_READABLE;
++		}
++	}
++
++	if (cs->state == CONN_STATE_LINGER) {
++		gcdmpm_closeconn(gcp);
++	} else if (cs->state == CONN_STATE_CHECK_REQUEST_LINE_READABLE) {
++		gcdmpm_timer_set(gcp, ap_server_conf->keep_alive_timeout);
++		gcdmpm_read_set(gcp);
++	}
++}
++
++/*
++ * Allocate basic state for a new connection, configure GCD, and give it a
++ * a kick so that further new connection processing can be performed
++ * asynchronously in its per-connection queue.  All further processing on the
++ * connection is done by gcdmpm_process_socket().
++ */
++static void
++gcdmpm_newconn(apr_socket_t *sock, apr_pool_t *ptrans)
++{
++	struct gcdmpm_connection *gcp;
++	int fd;
++
++	gcp = apr_pcalloc(ptrans, sizeof(*gcp));
++	gcp->gc_sock = sock;
++	gcp->gc_pool = ptrans;
++
++	/*
++	 * Create a queue from which we'll run any connection-related events.
++	 */
++	gcp->gc_queue = dispatch_queue_create("gcdmpm_work", NULL);
++	dispatch_suspend(gcp->gc_queue);
++
++	/*
++	 * Create three sources: read/write on the socket, and a timer.
++	 */
++	apr_os_sock_get(&fd, sock);
++	gcp->gc_read_source = dispatch_source_create(
++	    DISPATCH_SOURCE_TYPE_READ, fd, 0, gcp->gc_queue);
++	dispatch_source_set_event_handler(gcp->gc_read_source, ^{
++		switch (gcp->gc_cs->state) {
++		case CONN_STATE_CHECK_REQUEST_LINE_READABLE:
++			gcp->gc_cs->state = CONN_STATE_READ_REQUEST_LINE;
++			break;
++		default:
++			ap_log_error(APLOG_MARK, APLOG_ERR, 0,
++			    ap_server_conf, "gcdmpm_newconn: unexpected "
++			    "state %d", gcp->gc_cs->state);
++			AP_DEBUG_ASSERT(0);
++		}
++		gcdmpm_process_socket(gcp);
++	});
++
++	gcp->gc_write_source = dispatch_source_create(
++	    DISPATCH_SOURCE_TYPE_WRITE, fd, 0, gcp->gc_queue);
++	dispatch_source_set_event_handler(gcp->gc_write_source, ^{
++		gcdmpm_process_socket(gcp);
++	});
++
++	gcp->gc_timer_source = dispatch_source_create(
++	    DISPATCH_SOURCE_TYPE_TIMER, 0, 0, gcp->gc_queue);
++	dispatch_source_set_event_handler(gcp->gc_timer_source, ^{
++		gcp->gc_cs->state = CONN_STATE_LINGER;
++		gcdmpm_process_socket(gcp);
++	});
++
++	/*
++	 * Continue setup asynchronously in gcdmpm_process_socket().
++	 */
++	dispatch_group_async(gcdmpm_connection_group, gcp->gc_queue, ^{
++		gcdmpm_process_socket(gcp);
++	});
++	dispatch_resume(gcp->gc_queue);
++}
++
++/*
++ * Implement connection accept for an accept-ready socket; block if all slots
++ * are in use.
++ */
++static void
++gcdmpm_server_accept(ap_listen_rec *lr)
++{
++	apr_allocator_t *allocator;
++	apr_pool_t *ptrans;
++	apr_socket_t *sock;
++	apr_status_t rv;
++
++	/*
++	 * XXXGCD: This is a non-interruptible wait, and may block a listener
++	 * thread waiting for a worker thread to complete during shutdown.
++	 */
++	dispatch_semaphore_wait(gcdmpm_connection_sema, DISPATCH_TIME_FOREVER);
++
++	apr_allocator_create(&allocator);
++	apr_allocator_max_free_set(allocator, ap_max_mem_free);
++	apr_pool_create_ex(&ptrans, pconf, NULL, allocator);
++	apr_allocator_owner_set(allocator, ptrans);
++	apr_pool_tag(ptrans, "transaction");
++
++	rv = lr->accept_func((void **)&sock, lr, ptrans);
++	AP_DEBUG_ASSERT(rv == APR_SUCCESS || sock == NULL);
++	if (sock == NULL) {
++		/* XXXRW: does ptrans need to be freed here? */
++		return;
++	}
++
++	gcdmpm_newconn(sock, ptrans);
++}
++
++/*
++ * Create two queues: a signal queue, and concurrent listen queue.  A
++ * separate signal queue prevents the concurrency bound on the listen queue
++ * from blocking signal delivery.
++ */
++static void
++gcdmpm_setup_queues(void)
++{
++
++	/* Serialized signal queue. */
++	gcdmpm_signals_queue = dispatch_queue_create("gcdmpm_signals", NULL);
++
++	/* Concurrent listener queue. */
++	gcdmpm_listen_queue = dispatch_queue_create("gcdmpm_listen", NULL);
++	dispatch_queue_set_width(gcdmpm_listen_queue, listener_count);
++}
++
++/*
++ * Set up signal handlers for SIGHUP, SIGTERM, and their GRACEFUL variants.
++ */
++static void
++gcdmpm_setup_signals(void)
++{
++
++	apr_signal(SIGPIPE, SIG_IGN);
++
++	apr_signal(SIGHUP, SIG_IGN);
++	ds_sighup = dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL,
++	    SIGHUP, 0, gcdmpm_signals_queue);
++	dispatch_source_set_event_handler(ds_sighup, ^{
++		mpm_state = AP_MPMQ_STOPPING;
++		is_graceful = 0;
++		restart_pending = 1;
++		dispatch_semaphore_signal(gcdmpm_signalfired_sema);
++	});
++	dispatch_resume(ds_sighup);
++
++	apr_signal(AP_SIG_GRACEFUL, SIG_IGN);
++	ds_sig_graceful = dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL,
++	    AP_SIG_GRACEFUL, 0, gcdmpm_signals_queue);
++	dispatch_source_set_event_handler(ds_sig_graceful, ^{
++		mpm_state = AP_MPMQ_STOPPING;
++		is_graceful = 1;
++		restart_pending = 1;
++		dispatch_semaphore_signal(gcdmpm_signalfired_sema);
++	});
++	dispatch_resume(ds_sig_graceful);
++
++	apr_signal(SIGTERM, SIG_IGN);
++	ds_sigterm = dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL,
++	    SIGTERM, 0, gcdmpm_signals_queue);
++	dispatch_source_set_event_handler(ds_sigterm, ^{
++		mpm_state = AP_MPMQ_STOPPING;
++		is_graceful = 0;
++		shutdown_pending = 1;
++		dispatch_semaphore_signal(gcdmpm_signalfired_sema);
++	});
++	dispatch_resume(ds_sigterm);
++
++	apr_signal(AP_SIG_GRACEFUL_STOP, SIG_IGN);
++	ds_sig_graceful_stop = dispatch_source_create(
++	    DISPATCH_SOURCE_TYPE_SIGNAL, AP_SIG_GRACEFUL_STOP, 0,
++	    gcdmpm_signals_queue);
++	dispatch_source_set_event_handler(ds_sig_graceful_stop, ^{
++		mpm_state = AP_MPMQ_STOPPING;
++		is_graceful = 1;
++		shutdown_pending = 1;
++		dispatch_semaphore_signal(gcdmpm_signalfired_sema);
++	});
++	dispatch_resume(ds_sig_graceful_stop);
++}
++
++/*
++ * Create connection group and semaphore.
++ */
++static void
++gcdmpm_setup_connections(void)
++{
++
++	gcdmpm_connection_sema =
++	    dispatch_semaphore_create(gcdmpm_connection_limit);
++	gcdmpm_connection_group = dispatch_group_create();
++}
++
++/*
++ * Cancel signal registration.
++ */
++static void
++gcdmpm_cleanup_signals(void)
++{
++
++	dispatch_source_cancel(ds_sighup);
++	dispatch_release(ds_sighup);
++
++	dispatch_source_cancel(ds_sigterm);
++	dispatch_release(ds_sigterm);
++
++	dispatch_source_cancel(ds_sig_graceful);
++	dispatch_release(ds_sig_graceful);
++
++	dispatch_source_cancel(ds_sig_graceful_stop);
++	dispatch_release(ds_sig_graceful_stop);
++}
++
++/*
++ * Set up a dispatch source for each listening socket.
++ */
++static void
++gcdmpm_setup_listeners(void)
++{
++	ap_listen_rec *lr;
++	u_int i;
++	int fd;
++
++	ds_listeners = malloc(listener_count * sizeof(*ds_listeners));
++	for (lr = ap_listeners, i = 0; lr != NULL; lr = lr->next, i++) {
++		lr->accept_func = ap_unixd_accept;
++		apr_socket_opt_set(lr->sd, APR_SO_NONBLOCK, 1);
++		apr_os_sock_get(&fd, lr->sd);
++		ds_listeners[i] = dispatch_source_create(
++		    DISPATCH_SOURCE_TYPE_READ, fd, 0, gcdmpm_listen_queue);
++		dispatch_source_set_event_handler(ds_listeners[i], ^{
++			gcdmpm_server_accept(lr);
++		});
++		dispatch_resume(ds_listeners[i]);
++	}
++}
++
++/*
++ * Cancel listeners.
++ */
++static void
++gcdmpm_cleanup_listeners(void)
++{
++	u_int i;
++
++	for (i = 0; i < listener_count; i++) {
++		dispatch_source_cancel(ds_listeners[i]);
++		dispatch_release(ds_listeners[i]);
++	}
++	free(ds_listeners);
++}
++
++/*
++ * Wait for any in-progress connections to terminate.
++ */
++static void
++gcdmpm_cleanup_connections(void)
++{
++
++	dispatch_group_wait(gcdmpm_connection_group, DISPATCH_TIME_FOREVER);
++	dispatch_release(gcdmpm_connection_group);
++	dispatch_release(gcdmpm_connection_sema);
++}
++
++/*
++ * Wait for listeners and the signal queue to terminate.
++ */
++static void
++gcdmpm_cleanup_queues(void)
++{
++
++	dispatch_sync(gcdmpm_listen_queue, ^{});
++	dispatch_release(gcdmpm_listen_queue);
++
++	dispatch_sync(gcdmpm_signals_queue, ^{});
++	dispatch_release(gcdmpm_signals_queue);
++}
++
++/*
++ * This is the main run loop of the GCD MPM.
++ */
++apr_status_t
++gcdmpm_child_run(void)
++{
++	apr_status_t rv;
++
++	rv = ap_run_drop_privileges(pconf, ap_server_conf);
++	if (rv)
++		return (APEXIT_CHILDFATAL);
++
++	restart_pending = shutdown_pending = 0;
++	mpm_state = AP_MPMQ_RUNNING;
++
++	while (!shutdown_pending) {
++		gcdmpm_signalfired_sema = dispatch_semaphore_create(0);
++		gcdmpm_setup_queues();
++		gcdmpm_setup_signals();
++		gcdmpm_setup_connections();
++
++		ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, ap_server_conf,
++		    "%s configured -- resuming normal operations",
++		    ap_get_server_description());
++		ap_log_error(APLOG_MARK, APLOG_INFO, 0, ap_server_conf,
++		    "Server built: %s", ap_get_server_built());
++
++		gcdmpm_setup_listeners();
++
++		/* Block until restart/shutdown signal received. */
++		dispatch_semaphore_wait(gcdmpm_signalfired_sema,
++		    DISPATCH_TIME_FOREVER);
++
++		/* On ungraceful restart/shutdown, just exit. */
++		if (!is_graceful)
++			break;
++
++		gcdmpm_cleanup_listeners();
++		gcdmpm_cleanup_connections();
++		gcdmpm_cleanup_signals();
++		gcdmpm_cleanup_queues();
++		dispatch_release(gcdmpm_signalfired_sema);
++	}
++	return (0);
++}
+
+Property changes on: server/mpm/gcd/gcd.c
+___________________________________________________________________
+Added: svn:mime-type
+   + text/plain
+Added: svn:keywords
+   + FreeBSD=%H
+Added: svn:eol-style
+   + native
+
+Index: modules/arch/unix/config5.m4
+===================================================================
+--- modules/arch/unix/config5.m4	(revision 895969)
++++ modules/arch/unix/config5.m4	(working copy)
+@@ -4,6 +4,7 @@
+ if ap_mpm_is_enabled "simple" \
+    || ap_mpm_is_enabled "worker" \
+    || ap_mpm_is_enabled "event" \
++   || ap_mpm_is_enabled "gcd" \
+    || ap_mpm_is_enabled "prefork"; then
+     unixd_mods_enable=yes
+ else

@@ -1,0 +1,22 @@
+Index: buildconf
+===================================================================
+--- buildconf	(revision 896212)
++++ buildconf	(working copy)
+@@ -50,7 +50,7 @@
+ lt_version=`echo $lt_pversion|sed -e 's/\([a-z]*\)$/.\1/'`
+ IFS=.; set $lt_version; IFS=' '
+ if test "$1" = "1"; then
+-  $libtoolize --copy --automake --force $verbose
++  $libtoolize --install --copy --automake --force $verbose
+   if [ -f libtool.m4 ]; then 
+     ltfile=`pwd`/libtool.m4
+   else
+@@ -72,7 +72,7 @@
+   cat $ltfile | sed -e 's/LIBTOOL=\(.*\)top_build/LIBTOOL=\1apr_build/' > build/libtool.m4
+ fi
+ if test "$1" = "2"; then
+-  $libtoolize --copy --automake --force $verbose
++  $libtoolize --install --copy --automake --force $verbose
+   # Wouldn't it just be better to define top_builddir??
+   mv build/libtool.m4 build/libtool.m4.$$
+   cat build/libtool.m4.$$ | sed -e 's/LIBTOOL=\(.*\)top_build/LIBTOOL=\1apr_build/' > build/libtool.m4
