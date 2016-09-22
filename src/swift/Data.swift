@@ -66,7 +66,11 @@ public struct DispatchData : RandomAccessCollection {
 	}
 
 	internal init(data: dispatch_data_t) {
-		__wrapped = __DispatchData(data: data)
+		__wrapped = __DispatchData(data: data, owned: true)
+	}
+
+	internal init(borrowedData: dispatch_data_t) {
+		__wrapped = __DispatchData(data: borrowedData, owned: false)
 	}
 
 	public var count: Int {
@@ -111,7 +115,7 @@ public struct DispatchData : RandomAccessCollection {
 	/// - parameter data: The data to append to this data.
 	public mutating func append(_ other: DispatchData) {
 		let data = CDispatch.dispatch_data_create_concat(__wrapped.__wrapped, other.__wrapped.__wrapped)
-		__wrapped = __DispatchData(data: data)
+		__wrapped = __DispatchData(data: data, owned: true)
 	}
 
 	/// Append a buffer of bytes to the data.
@@ -248,7 +252,7 @@ public struct DispatchDataIterator : IteratorProtocol, Sequence {
 	public init(_data: DispatchData) {
 		var ptr: UnsafeRawPointer?
 		self._count = 0
-		self._data = __DispatchData(data: CDispatch.dispatch_data_create_map(_data.__wrapped.__wrapped, &ptr, &self._count))
+		self._data = __DispatchData(data: CDispatch.dispatch_data_create_map(_data.__wrapped.__wrapped, &ptr, &self._count), owned: true)
 		self._ptr = ptr
 		self._position = _data.startIndex
 
