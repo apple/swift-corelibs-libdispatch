@@ -192,17 +192,21 @@ extension DispatchSource : DispatchSourceProcess,
 
 internal class __DispatchData : DispatchObject {
 	internal let __wrapped:dispatch_data_t
+	internal let __owned:Bool
 
 	final internal override func wrapped() -> dispatch_object_t {
 		return unsafeBitCast(__wrapped, to: dispatch_object_t.self)
 	}
 
-	internal init(data:dispatch_data_t) {
+	internal init(data:dispatch_data_t, owned:Bool) {
 		__wrapped = data
+		__owned = owned
 	}
 
 	deinit {
-		_swift_dispatch_release(wrapped())
+		if __owned {
+			_swift_dispatch_release(wrapped())
+		}
 	}
 }
 
