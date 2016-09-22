@@ -9,9 +9,10 @@ libdispatch on Darwin is a combination of logic in the `xnu` kernel alongside th
 ## Project Goals
 
 We are currently early in the development of this project. We began with a mirror of the open source drop that corresponds with OS X El Capitan (10.11) and have ported it to x86_64 Ubuntu 14.04 and 15.10. The next steps are:
+
 1. Complete the work to adopt libdispatch in other Core Libraries projects, especially Foundation. This will validate our work and get immediate test coverage on basic functionality of the Swift API.
 2. Include libdispatch and libdispatch-enabled Core Libraries in the Swift CI environment and the pre-built Swift toolchains at Swift.org.
-4. Develop a test suite for the Swift APIs of libdispatch.
+3. Develop a test suite for the Swift APIs of libdispatch.
 4. Enhance libdispatch as needed to support Swift language evolution and the needs of the other Core Libraries projects.
 
 ## Build and Install
