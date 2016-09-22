@@ -32,6 +32,8 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+DISPATCH_ASSUME_NONNULL_BEGIN
+
 __BEGIN_DECLS
 
 /*!
@@ -77,18 +79,19 @@ DISPATCH_SOURCE_TYPE_DECL(interval);
  * The handle is a process identifier (pid_t).
  */
 #define DISPATCH_SOURCE_TYPE_VFS (&_dispatch_source_type_vfs)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vfs;
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_VM
  * @discussion A dispatch source that monitors virtual memory
  * The mask is a mask of desired events from dispatch_source_vm_flags_t.
- * This type is deprecated, use DISPATCH_SOURCE_TYPE_MEMORYSTATUS instead.
+ * This type is deprecated, use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead.
  */
 #define DISPATCH_SOURCE_TYPE_VM (&_dispatch_source_type_vm)
 __OSX_AVAILABLE_BUT_DEPRECATED_MSG(__MAC_10_7, __MAC_10_10, __IPHONE_4_3,
-		__IPHONE_8_0, "Use DISPATCH_SOURCE_TYPE_MEMORYSTATUS instead")
+		__IPHONE_8_0, "Use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead")
+DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vm;
 
 /*!
@@ -98,7 +101,11 @@ DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vm;
  * dispatch_source_memorystatus_flags_t.
  */
 #define DISPATCH_SOURCE_TYPE_MEMORYSTATUS (&_dispatch_source_type_memorystatus)
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
+__OSX_DEPRECATED(10.9, 10.12, "Use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead")
+__IOS_DEPRECATED(6.0, 10.0, "Use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead")
+__TVOS_DEPRECATED(6.0, 10.0, "Use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead")
+__WATCHOS_DEPRECATED(1.0, 3.0, "Use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead")
+DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT const struct dispatch_source_type_s
 		_dispatch_source_type_memorystatus;
 
@@ -107,7 +114,7 @@ DISPATCH_EXPORT const struct dispatch_source_type_s
  * @discussion A dispatch source that monitors events on socket state changes.
  */
 #define DISPATCH_SOURCE_TYPE_SOCK (&_dispatch_source_type_sock)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_sock;
 
 __END_DECLS
@@ -150,6 +157,9 @@ __END_DECLS
  *
  * @constant DISPATCH_SOCK_CONNINFO_UPDATED
  * Connection info was updated
+ *
+ * @constant DISPATCH_SOCK_NOTIFY_ACK
+ * Notify acknowledgement
  */
 enum {
 	DISPATCH_SOCK_CONNRESET = 0x00000001,
@@ -166,6 +176,7 @@ enum {
 	DISPATCH_SOCK_CONNECTED = 0x00000800,
 	DISPATCH_SOCK_DISCONNECTED = 0x00001000,
 	DISPATCH_SOCK_CONNINFO_UPDATED = 0x00002000,
+	DISPATCH_SOCK_NOTIFY_ACK = 0x00004000,
 };
 
 /*!
@@ -200,6 +211,9 @@ enum {
  *
  * @constant DISPATCH_VFS_VERYLOWDISK
  * File system has *very* little disk space left.
+ *
+ * @constant DISPATCH_VFS_QUOTA
+ * We hit a user quota (quotactl) for this filesystem.
  */
 enum {
 	DISPATCH_VFS_NOTRESP = 0x0001,
@@ -212,6 +226,7 @@ enum {
 	DISPATCH_VFS_NOTRESPLOCK = 0x0080,
 	DISPATCH_VFS_UPDATE = 0x0100,
 	DISPATCH_VFS_VERYLOWDISK = 0x0200,
+	DISPATCH_VFS_QUOTA = 0x1000,
 };
 
 /*!
@@ -270,35 +285,126 @@ enum {
 enum {
 	DISPATCH_VM_PRESSURE __OSX_AVAILABLE_BUT_DEPRECATED_MSG(
 			__MAC_10_7, __MAC_10_10, __IPHONE_4_3, __IPHONE_8_0,
-			"Use DISPATCH_MEMORYSTATUS_PRESSURE_WARN instead") = 0x80000000,
+			"Use DISPATCH_MEMORYPRESSURE_WARN instead") = 0x80000000,
+};
+
+/*!
+ * @typedef dispatch_source_memorypressure_flags_t
+ * Type of dispatch_source_memorypressure flags
+ *
+ * @constant DISPATCH_MEMORYPRESSURE_LOW_SWAP
+ * The system's memory pressure state has entered the "low swap" condition.
+ * Restricted to the root user.
+ */
+enum {
+	DISPATCH_MEMORYPRESSURE_LOW_SWAP
+			__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0) = 0x08,
 };
 
 /*!
  * @enum dispatch_source_memorystatus_flags_t
- *
- * @constant DISPATCH_MEMORYSTATUS_PRESSURE_NORMAL
- * The system's memory pressure state has returned to normal.
- * @constant DISPATCH_MEMORYSTATUS_PRESSURE_WARN
- * The system's memory pressure state has changed to warning.
- * @constant DISPATCH_MEMORYSTATUS_PRESSURE_CRITICAL
- * The system's memory pressure state has changed to critical.
- * @constant DISPATCH_MEMORYSTATUS_LOW_SWAP
- * The system's memory pressure state has entered the "low swap" condition.
- * Restricted to the root user.
+ * @warning Deprecated, see DISPATCH_MEMORYPRESSURE_*
  */
-
 enum {
 	DISPATCH_MEMORYSTATUS_PRESSURE_NORMAL
-			__OSX_AVAILABLE_STARTING(__MAC_10_9, __IPHONE_6_0) = 0x01,
+			__OSX_DEPRECATED(10.9, 10.12, "Use DISPATCH_MEMORYPRESSURE_NORMAL instead")
+			__IOS_DEPRECATED(6.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_NORMAL instead")
+			__TVOS_DEPRECATED(6.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_NORMAL instead")
+			__WATCHOS_DEPRECATED(1.0, 3.0, "Use DISPATCH_MEMORYPRESSURE_NORMAL instead")
+			= 0x01,
 	DISPATCH_MEMORYSTATUS_PRESSURE_WARN
-			__OSX_AVAILABLE_STARTING(__MAC_10_9, __IPHONE_6_0) = 0x02,
+			__OSX_DEPRECATED(10.9, 10.12, "Use DISPATCH_MEMORYPRESSURE_WARN instead")
+			__IOS_DEPRECATED(6.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_WARN instead")
+			__TVOS_DEPRECATED(6.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_WARN instead")
+			__WATCHOS_DEPRECATED(1.0, 3.0, "Use DISPATCH_MEMORYPRESSURE_WARN instead")
+			= 0x02,
 	DISPATCH_MEMORYSTATUS_PRESSURE_CRITICAL
-			__OSX_AVAILABLE_STARTING(__MAC_10_9, __IPHONE_8_0) = 0x04,
+			__OSX_DEPRECATED(10.9, 10.12, "Use DISPATCH_MEMORYPRESSURE_CRITICAL instead")
+			__IOS_DEPRECATED(8.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_CRITICAL instead")
+			__TVOS_DEPRECATED(8.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_CRITICAL instead")
+			__WATCHOS_DEPRECATED(1.0, 3.0, "Use DISPATCH_MEMORYPRESSURE_CRITICAL instead")
+			= 0x04,
 	DISPATCH_MEMORYSTATUS_LOW_SWAP
-			__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0) = 0x08,
+			__OSX_DEPRECATED(10.10, 10.12, "Use DISPATCH_MEMORYPRESSURE_LOW_SWAP instead")
+			__IOS_DEPRECATED(8.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_LOW_SWAP instead")
+			__TVOS_DEPRECATED(8.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_LOW_SWAP instead")
+			__WATCHOS_DEPRECATED(1.0, 3.0, "Use DISPATCH_MEMORYPRESSURE_LOW_SWAP instead")
+			= 0x08,
 };
 
+/*!
+ * @typedef dispatch_source_memorypressure_flags_t
+ * Type of dispatch_source_memorypressure flags
+ *
+ * @constant DISPATCH_MEMORYPRESSURE_PROC_LIMIT_WARN
+ * The memory of the process has crossed 80% of its high watermark limit.
+ *
+ * @constant DISPATCH_MEMORYPRESSURE_PROC_LIMIT_CRITICAL
+ * The memory of the process has reached 100% of its high watermark limit.
+ */
+enum {
+	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_WARN
+			__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.10)
+			__TVOS_AVAILABLE(10.10) __WATCHOS_AVAILABLE(3.0) = 0x10,
+
+	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_CRITICAL
+		__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.10)
+		__TVOS_AVAILABLE(10.10) __WATCHOS_AVAILABLE(3.0) = 0x20,
+};
+
+
 __BEGIN_DECLS
+
+/*!
+ * @function dispatch_source_cancel_and_wait
+ *
+ * @abstract
+ * Synchronously cancel the dispatch source, preventing any further invocation
+ * of its event handler block.
+ *
+ * @discussion
+ * Cancellation prevents any further invocation of handler blocks for the
+ * specified dispatch source, but does not interrupt a handler block that is
+ * already in progress.
+ *
+ * When this function returns, any handler block that may have been in progress
+ * has returned, the specified source has been unregistered and it is safe to
+ * reclaim any system resource (such as file descriptors or mach ports) that
+ * the specified source was monitoring.
+ *
+ * If the specified dispatch source is inactive, it will be activated as a side
+ * effect of calling this function.
+ *
+ * It is possible to call this function from several threads concurrently,
+ * and it is the responsibility of the callers to synchronize reclaiming the
+ * associated system resources.
+ *
+ * This function is not subject to priority inversion when it is waiting on
+ * a handler block still in progress, unlike patterns based on waiting on
+ * a dispatch semaphore or a dispatch group signaled (or left) from the source
+ * cancel handler.
+ *
+ * This function must not be called if the specified source has a cancel
+ * handler set, or from the context of its handler blocks.
+ *
+ * This function must not be called from the context of the target queue of
+ * the specified source or from any queue that synchronizes with it. Note that
+ * calling dispatch_source_cancel() from such a context already guarantees
+ * that no handler is in progress, and that no new event will be delivered.
+ *
+ * This function must not be called on sources suspended with an explicit
+ * call to dispatch_suspend(), or being concurrently activated on another
+ * thread.
+ *
+ * @param source
+ * The dispatch source to be canceled.
+ * The result of passing NULL in this parameter is undefined.
+ */
+__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.10)
+__TVOS_AVAILABLE(10.10) __WATCHOS_AVAILABLE(3.0)
+DISPATCH_EXPORT DISPATCH_NOTHROW
+void
+dispatch_source_cancel_and_wait(dispatch_source_t source);
 
 /*!
  * @typedef dispatch_timer_aggregate_t
@@ -350,9 +456,9 @@ __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
 DISPATCH_EXPORT DISPATCH_NOTHROW
 uint64_t
 dispatch_timer_aggregate_get_delay(dispatch_timer_aggregate_t aggregate,
-		uint64_t *leeway_ptr);
+		uint64_t *_Nullable leeway_ptr);
 
-#if TARGET_OS_MAC
+#if __has_include(<mach/mach.h>)
 /*!
  * @typedef dispatch_mig_callback_t
  *
@@ -362,7 +468,7 @@ dispatch_timer_aggregate_get_delay(dispatch_timer_aggregate_t aggregate,
 typedef boolean_t (*dispatch_mig_callback_t)(mach_msg_header_t *message,
 		mach_msg_header_t *reply);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 mach_msg_return_t
 dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
@@ -374,13 +480,15 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
  * @abstract
  * Extract the context pointer from a mach message trailer.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NONNULL_ALL
 DISPATCH_NOTHROW
-void *
+void *_Nullable
 dispatch_mach_msg_get_context(mach_msg_header_t *msg);
 #endif
 
 __END_DECLS
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif

@@ -92,7 +92,7 @@
  *******************************************************************************
  */
 
-#if USE_OBJC
+#if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 #define _dispatch_data_retain(x) _dispatch_objc_retain(x)
 #define _dispatch_data_release(x) _dispatch_objc_release(x)
 #else
@@ -101,26 +101,33 @@
 #endif
 
 const dispatch_block_t _dispatch_data_destructor_free = ^{
-	DISPATCH_CRASH("free destructor called");
+	DISPATCH_INTERNAL_CRASH(0, "free destructor called");
 };
 
 const dispatch_block_t _dispatch_data_destructor_none = ^{
-	DISPATCH_CRASH("none destructor called");
+	DISPATCH_INTERNAL_CRASH(0, "none destructor called");
 };
 
-const dispatch_block_t _dispatch_data_destructor_vm_deallocate = ^{
-	DISPATCH_CRASH("vmdeallocate destructor called");
+#if !HAVE_MACH
+const dispatch_block_t _dispatch_data_destructor_munmap = ^{
+	DISPATCH_INTERNAL_CRASH(0, "munmap destructor called");
 };
+#else
+// _dispatch_data_destructor_munmap is a linker alias to the following
+const dispatch_block_t _dispatch_data_destructor_vm_deallocate = ^{
+	DISPATCH_INTERNAL_CRASH(0, "vmdeallocate destructor called");
+};
+#endif
 
 const dispatch_block_t _dispatch_data_destructor_inline = ^{
-	DISPATCH_CRASH("inline destructor called");
+	DISPATCH_INTERNAL_CRASH(0, "inline destructor called");
 };
 
 struct dispatch_data_s _dispatch_data_empty = {
+#if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 	.do_vtable = DISPATCH_DATA_EMPTY_CLASS,
-#if !USE_OBJC
-	.do_ref_cnt = DISPATCH_OBJECT_GLOBAL_REFCNT,
-	.do_xref_cnt = DISPATCH_OBJECT_GLOBAL_REFCNT,
+#else
+	DISPATCH_GLOBAL_OBJECT_HEADER(data),
 	.do_next = DISPATCH_OBJECT_LISTLESS,
 #endif
 };
@@ -129,11 +136,17 @@ DISPATCH_ALWAYS_INLINE
 static inline dispatch_data_t
 _dispatch_data_alloc(size_t n, size_t extra)
 {
-	dispatch_data_t data = _dispatch_alloc(DISPATCH_DATA_CLASS,
-			sizeof(struct dispatch_data_s) + extra +
-			n * sizeof(range_record));
+	dispatch_data_t data;
+	size_t size;
+
+	if (os_mul_and_add_overflow(n, sizeof(range_record),
+			sizeof(struct dispatch_data_s) + extra, &size)) {
+		return DISPATCH_OUT_OF_MEMORY;
+	}
+
+	data = _dispatch_alloc(DISPATCH_DATA_CLASS, size);
 	data->num_records = n;
-#if !USE_OBJC
+#if !DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 	data->do_targetq = dispatch_get_global_queue(
 			DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
 	data->do_next = DISPATCH_OBJECT_LISTLESS;
@@ -149,10 +162,12 @@ _dispatch_data_destroy_buffer(const void* buffer, size_t size,
 		free((void*)buffer);
 	} else if (destructor == DISPATCH_DATA_DESTRUCTOR_NONE) {
 		// do nothing
+#if HAVE_MACH
 	} else if (destructor == DISPATCH_DATA_DESTRUCTOR_VM_DEALLOCATE) {
 		mach_vm_size_t vm_size = size;
 		mach_vm_address_t vm_addr = (uintptr_t)buffer;
 		mach_vm_deallocate(mach_task_self(), vm_addr, vm_size);
+#endif
 	} else {
 		if (!queue) {
 			queue = dispatch_get_global_queue(
@@ -213,7 +228,7 @@ dispatch_data_create(const void* buffer, size_t size, dispatch_queue_t queue,
 		// copied.
 		data_buf = malloc(size);
 		if (slowpath(!data_buf)) {
-			return NULL;
+			return DISPATCH_OUT_OF_MEMORY;
 		}
 		buffer = memcpy(data_buf, buffer, size);
 		data = _dispatch_data_alloc(0, 0);
@@ -239,7 +254,9 @@ dispatch_data_create_f(const void *buffer, size_t size, dispatch_queue_t queue,
 	if (destructor != DISPATCH_DATA_DESTRUCTOR_DEFAULT &&
 			destructor != DISPATCH_DATA_DESTRUCTOR_FREE &&
 			destructor != DISPATCH_DATA_DESTRUCTOR_NONE &&
+#if HAVE_MACH
 			destructor != DISPATCH_DATA_DESTRUCTOR_VM_DEALLOCATE &&
+#endif
 			destructor != DISPATCH_DATA_DESTRUCTOR_INLINE) {
 		destructor = ^{ destructor_function((void*)buffer); };
 	}
@@ -319,6 +336,8 @@ dispatch_data_t
 dispatch_data_create_concat(dispatch_data_t dd1, dispatch_data_t dd2)
 {
 	dispatch_data_t data;
+	size_t n;
+
 	if (!dd1->size) {
 		_dispatch_data_retain(dd2);
 		return dd2;
@@ -328,8 +347,11 @@ dispatch_data_create_concat(dispatch_data_t dd1, dispatch_data_t dd2)
 		return dd1;
 	}
 
-	data = _dispatch_data_alloc(_dispatch_data_num_records(dd1) +
-			_dispatch_data_num_records(dd2), 0);
+	if (os_add_overflow(_dispatch_data_num_records(dd1),
+			_dispatch_data_num_records(dd2), &n)) {
+		return DISPATCH_OUT_OF_MEMORY;
+	}
+	data = _dispatch_data_alloc(n, 0);
 	data->size = dd1->size + dd2->size;
 	// Copy the constituent records into the newly created data object
 	// Reference leaf objects as sub-objects
@@ -361,9 +383,10 @@ dispatch_data_create_subrange(dispatch_data_t dd, size_t offset,
 		size_t length)
 {
 	dispatch_data_t data;
+
 	if (offset >= dd->size || !length) {
 		return dispatch_data_empty;
-	} else if ((offset + length) > dd->size) {
+	} else if (length > dd->size - offset) {
 		length = dd->size - offset;
 	} else if (length == dd->size) {
 		_dispatch_data_retain(dd);
@@ -398,8 +421,8 @@ dispatch_data_create_subrange(dispatch_data_t dd, size_t offset,
 
 	// Crashing here indicates memory corruption of passed in data object
 	if (slowpath(i >= dd_num_records)) {
-		DISPATCH_CRASH("dispatch_data_create_subrange out of bounds");
-		return NULL;
+		DISPATCH_INTERNAL_CRASH(i,
+				"dispatch_data_create_subrange out of bounds");
 	}
 
 	// if everything is from a single dispatch data object, avoid boxing it
@@ -428,8 +451,8 @@ dispatch_data_create_subrange(dispatch_data_t dd, size_t offset,
 
 			// Crashing here indicates memory corruption of passed in data object
 			if (slowpath(i + count >= dd_num_records)) {
-				DISPATCH_CRASH("dispatch_data_create_subrange out of bounds");
-				return NULL;
+				DISPATCH_INTERNAL_CRASH(i + count,
+						"dispatch_data_create_subrange out of bounds");
 			}
 		}
 	}
@@ -529,7 +552,7 @@ _dispatch_data_get_flattened_bytes(dispatch_data_t dd)
 	void *flatbuf = _dispatch_data_flatten(dd);
 	if (fastpath(flatbuf)) {
 		// we need a release so that readers see the content of the buffer
-		if (slowpath(!dispatch_atomic_cmpxchgv2o(dd, buf, NULL, flatbuf,
+		if (slowpath(!os_atomic_cmpxchgv2o(dd, buf, NULL, flatbuf,
 				&buffer, release))) {
 			free(flatbuf);
 		} else {
@@ -651,7 +674,8 @@ _dispatch_data_copy_region(dispatch_data_t dd, size_t from, size_t size,
 		return _dispatch_data_copy_region(dd, from, length, location, offset_ptr);
 	}
 
-	DISPATCH_CRASH("dispatch_data_copy_region out of bounds");
+	DISPATCH_INTERNAL_CRASH(*offset_ptr+offset,
+			"dispatch_data_copy_region out of bounds");
 }
 
 // Returs either a leaf object or an object composed of a single leaf object

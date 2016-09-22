@@ -82,6 +82,9 @@ struct dispatch_block_private_data_s {
 			if (!dbpd_performed) dispatch_group_leave(dbpd_group);
 			((void (*)(dispatch_group_t))dispatch_release)(dbpd_group);
 		}
+		if (dbpd_queue) {
+			((void (*)(os_mpsc_queue_t))_os_object_release_internal)(dbpd_queue);
+		}
 		if (dbpd_block) Block_release(dbpd_block);
 		if (dbpd_voucher) voucher_release(dbpd_voucher);
 	}
@@ -95,7 +98,7 @@ _dispatch_block_create(dispatch_block_flags_t flags, voucher_t voucher,
 	return _dispatch_Block_copy(^{
 		// Capture stack object: invokes copy constructor (17094902)
 		(void)dbpds;
-		_dispatch_block_invoke(&dbpds);
+		_dispatch_block_invoke_direct(&dbpds);
 	});
 }
 
@@ -103,7 +106,11 @@ extern "C" {
 // The compiler hides the name of the function it generates, and changes it if
 // we try to reference it directly, but the linker still sees it.
 extern void DISPATCH_BLOCK_SPECIAL_INVOKE(void *)
+#ifdef __linux__
+		asm("___dispatch_block_create_block_invoke");
+#else
 		asm("____dispatch_block_create_block_invoke");
+#endif
 void (*_dispatch_block_special_invoke)(void*) = DISPATCH_BLOCK_SPECIAL_INVOKE;
 }
 

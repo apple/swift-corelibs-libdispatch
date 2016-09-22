@@ -26,6 +26,8 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+DISPATCH_ASSUME_NONNULL_BEGIN
+
 /*!
  * @typedef dispatch_group_t
  * @abstract
@@ -119,7 +121,7 @@ DISPATCH_NOTHROW
 void
 dispatch_group_async_f(dispatch_group_t group,
 	dispatch_queue_t queue,
-	void *context,
+	void *_Nullable context,
 	dispatch_function_t work);
 
 /*!
@@ -132,8 +134,7 @@ dispatch_group_async_f(dispatch_group_t group,
  * @discussion
  * This function waits for the completion of the blocks associated with the
  * given dispatch group, and returns after all blocks have completed or when
- * the specified timeout has elapsed. When a timeout occurs, the group is
- * restored to its original state.
+ * the specified timeout has elapsed.
  *
  * This function will return immediately if there are no blocks associated
  * with the dispatch group (i.e. the group is empty).
@@ -229,7 +230,7 @@ DISPATCH_NOTHROW
 void
 dispatch_group_notify_f(dispatch_group_t group,
 	dispatch_queue_t queue,
-	void *context,
+	void *_Nullable context,
 	dispatch_function_t work);
 
 /*!
@@ -260,7 +261,7 @@ dispatch_group_enter(dispatch_group_t group);
  *
  * @discussion
  * Calling this function indicates block has completed and left the dispatch
- * groupJ by a means other than dispatch_group_async().
+ * group by a means other than dispatch_group_async().
  *
  * @param group
  * The dispatch group to update.
@@ -272,5 +273,7 @@ void
 dispatch_group_leave(dispatch_group_t group);
 
 __END_DECLS
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif

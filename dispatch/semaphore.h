@@ -26,6 +26,8 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+DISPATCH_ASSUME_NONNULL_BEGIN
+
 /*!
  * @typedef dispatch_semaphore_t
  *
@@ -44,7 +46,7 @@ __BEGIN_DECLS
  *
  * @discussion
  * Passing zero for the value is useful for when two threads need to reconcile
- * the completion of a particular event. Passing a value greather than zero is
+ * the completion of a particular event. Passing a value greater than zero is
  * useful for managing a finite pool of resources, where the pool size is equal
  * to the value.
  *
@@ -109,5 +111,7 @@ long
 dispatch_semaphore_signal(dispatch_semaphore_t dsema);
 
 __END_DECLS
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif /* __DISPATCH_SEMAPHORE__ */

@@ -1,0 +1,3 @@
+[submodule "libpwq"]
+	path = libpwq
+	url = https://github.com/mheily/libpwq.git

@@ -32,6 +32,8 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+DISPATCH_ASSUME_NONNULL_BEGIN
+
 __BEGIN_DECLS
 
 /*!
@@ -51,7 +53,7 @@ DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(none);
  */
 #define DISPATCH_DATA_DESTRUCTOR_VM_DEALLOCATE \
 		(_dispatch_data_destructor_vm_deallocate)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(vm_deallocate);
 
 /*!
@@ -80,8 +82,8 @@ DISPATCH_EXPORT DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
 dispatch_data_create_f(const void *buffer,
 	size_t size,
-	dispatch_queue_t queue,
-	dispatch_function_t destructor);
+	dispatch_queue_t _Nullable queue,
+	dispatch_function_t _Nullable destructor);
 
 /*!
  * @function dispatch_data_create_alloc
@@ -102,7 +104,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
-dispatch_data_create_alloc(size_t size, void** buffer_ptr);
+dispatch_data_create_alloc(size_t size, void *_Nullable *_Nullable buffer_ptr);
 
 /*!
  * @typedef dispatch_data_applier_function_t
@@ -116,7 +118,7 @@ dispatch_data_create_alloc(size_t size, void** buffer_ptr);
  * @param size		The size of the memory for the current region.
  * @result		A Boolean indicating whether traversal should continue.
  */
-typedef bool (*dispatch_data_applier_function_t)(void *context,
+typedef bool (*dispatch_data_applier_function_t)(void *_Nullable context,
 	dispatch_data_t region, size_t offset, const void *buffer, size_t size);
 
 /*!
@@ -143,7 +145,7 @@ typedef bool (*dispatch_data_applier_function_t)(void *context,
 __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 bool
-dispatch_data_apply_f(dispatch_data_t data, void *context,
+dispatch_data_apply_f(dispatch_data_t data, void *_Nullable context,
 	dispatch_data_applier_function_t applier);
 
 #if TARGET_OS_MAC
@@ -159,7 +161,7 @@ dispatch_data_apply_f(dispatch_data_t data, void *context,
  *
  * @param data		The data object to make a memory entry for.
  * @result		A mach port for the newly made memory entry, or
- *			MACH_PORT_NULL if an error ocurred.
+ *			MACH_PORT_NULL if an error occurred.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
@@ -286,7 +288,7 @@ DISPATCH_DATA_FORMAT_TYPE_DECL(utf_any);
  * Flags specifying the input format of the source dispatch_data_t
  *
  * @param output_type
- * Flags specifying the expected output format of the resulting transfomation.
+ * Flags specifying the expected output format of the resulting transformation.
  *
  * @result
  * A newly created dispatch data object, dispatch_data_empty if no has been
@@ -302,5 +304,7 @@ dispatch_data_create_with_transform(dispatch_data_t data,
 	dispatch_data_format_type_t output_type);
 
 __END_DECLS
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif // __DISPATCH_DATA_PRIVATE__

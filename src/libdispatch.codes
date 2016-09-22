@@ -1,0 +1,13 @@
+0x2bdc0008	DISPATCH_ARIADNE_dispatch_main
+
+0x2e010004	DISPATCH_VOUCHER_dc_push
+0x2e010008	DISPATCH_VOUCHER_dc_pop
+0x2e01000c	DISPATCH_VOUCHER_dmsg_push
+0x2e010010	DISPATCH_VOUCHER_dmsg_pop
+0x2e010018	DISPATCH_VOUCHER_activity_adopt
+
+0x2e020004	DISPATCH_PERF_non_leaf_retarget
+0x2e020008	DISPATCH_PERF_post_activate_mutation
+0x2e02000c	DISPATCH_PERF_post_activate_mutation
+0x2e020010	DISPATCH_PERF_delayed_registration
+0x2e020014	DISPATCH_PERF_mutable_target

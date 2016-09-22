@@ -20,18 +20,15 @@
 
 #include "internal.h"
 
-#if USE_OBJC
+#if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 
-#if !__OBJC2__
-#error "Cannot build with legacy ObjC runtime"
-#endif
 #if _OS_OBJECT_OBJC_ARC
 #error "Cannot build with ARC"
 #endif
 
 #include <Foundation/NSString.h>
 
-@interface DISPATCH_CLASS(data) ()
+@interface DISPATCH_CLASS(data) () <DISPATCH_CLASS(data)>
 @property (readonly) NSUInteger length;
 @property (readonly) const void *bytes NS_RETURNS_INNER_POINTER;
 
@@ -94,10 +91,6 @@
 	_dispatch_data_objc_dispose(dealloc);
 }
 
-- (void)finalize {
-	_dispatch_data_objc_dispose(finalize);
-}
-
 - (BOOL)_bytesAreVM {
 	struct dispatch_data_s *dd = (void*)self;
 	return dd->destructor == DISPATCH_DATA_DESTRUCTOR_VM_DEALLOCATE;
@@ -122,7 +115,7 @@
 	struct dispatch_data_s *dd = (void*)self;
 	_os_object_retain_internal((_os_object_t)queue);
 	dispatch_queue_t prev;
-	prev = dispatch_atomic_xchg2o(dd, do_targetq, queue, release);
+	prev = os_atomic_xchg2o(dd, do_targetq, queue, release);
 	if (prev) _os_object_release_internal((_os_object_t)prev);
 }
 
@@ -149,6 +142,15 @@
 - (BOOL)_isCompact {
 	struct dispatch_data_s *dd = (void*)self;
 	return !dd->size || _dispatch_data_map_direct(dd, 0, NULL, NULL) != NULL;
+}
+
+- (void)_suspend {
+}
+
+- (void)_resume {
+}
+
+- (void)_activate {
 }
 
 @end
@@ -189,6 +191,15 @@
 }
 
 - (void)_setTargetQueue:(dispatch_queue_t) DISPATCH_UNUSED queue {
+}
+
+- (void)_suspend {
+}
+
+- (void)_resume {
+}
+
+- (void)_activate {
 }
 
 @end

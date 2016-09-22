@@ -2,11 +2,11 @@
 # When this file changes, rerun autogen.sh.
 #
 
-AC_PREREQ(2.59)
-AC_INIT([libdispatch], [1.2], [libdispatch@macosforge.org], [libdispatch])
+AC_PREREQ(2.69)
+AC_INIT([libdispatch], [1.3], [libdispatch@macosforge.org], [libdispatch], [http://libdispatch.macosforge.org])
 AC_REVISION([$$])
 AC_CONFIG_AUX_DIR(config)
-AC_CONFIG_HEADER([config/config.h])
+AC_CONFIG_HEADER([config/config_ac.h])
 AC_CONFIG_MACRO_DIR([m4])
 ac_clean_files=a.out.dSYM
 AM_MAINTAINER_MODE
@@ -14,32 +14,42 @@ AM_MAINTAINER_MODE
 AC_PROG_CC([clang gcc cc])
 AC_PROG_CXX([clang++ g++ c++])
 AC_PROG_OBJC([clang gcc cc])
+AC_PROG_OBJCXX([clang++ g++ c++])
 
 #
 # On Mac OS X, some required header files come from other source packages;
 # allow specifying where those are.
 #
-AC_ARG_WITH([apple-libc-source],
-  [AS_HELP_STRING([--with-apple-libc-source],
-    [Specify path to Apple Libc source])], [
-  apple_libc_source_pthreads_path=${withval}/pthreads
-  CPPFLAGS="$CPPFLAGS -I$apple_libc_source_pthreads_path"
+AC_ARG_WITH([apple-libpthread-source],
+  [AS_HELP_STRING([--with-apple-libpthread-source],
+    [Specify path to Apple libpthread source])], [
+  apple_libpthread_source_path=${withval}
+  CPPFLAGS="$CPPFLAGS -isystem $apple_libpthread_source_path"
+])
+
+AC_ARG_WITH([apple-libplatform-source],
+  [AS_HELP_STRING([--with-apple-libplatform-source],
+    [Specify path to Apple libplatform source])], [
+  apple_libplatform_source_include_path=${withval}/include
+  CPPFLAGS="$CPPFLAGS -isystem $apple_libplatform_source_include_path"
 ])
 
 AC_ARG_WITH([apple-libclosure-source],
   [AS_HELP_STRING([--with-apple-libclosure-source],
     [Specify path to Apple libclosure source])], [
   apple_libclosure_source_path=${withval}
-  CPPFLAGS="$CPPFLAGS -I$apple_libclosure_source_path"
+  CPPFLAGS="$CPPFLAGS -isystem $apple_libclosure_source_path"
 ])
 
 AC_ARG_WITH([apple-xnu-source],
   [AS_HELP_STRING([--with-apple-xnu-source],
     [Specify path to Apple XNU source])], [
+  apple_xnu_source_libsyscall_path=${withval}/libsyscall
+  apple_xnu_source_libproc_path=${withval}/libsyscall/wrappers/libproc
   apple_xnu_source_libkern_path=${withval}/libkern
   apple_xnu_source_bsd_path=${withval}/bsd
   apple_xnu_source_osfmk_path=${withval}/osfmk
-  CPPFLAGS="$CPPFLAGS -idirafter $apple_xnu_source_libkern_path -isystem $apple_xnu_source_bsd_path"
+  CPPFLAGS="$CPPFLAGS -idirafter $apple_xnu_source_libkern_path -isystem $apple_xnu_source_bsd_path -isystem $apple_xnu_source_libsyscall_path -isystem $apple_xnu_source_libproc_path "
 ])
 
 AC_ARG_WITH([apple-objc4-source],
@@ -48,19 +58,12 @@ AC_ARG_WITH([apple-objc4-source],
   apple_objc4_source_runtime_path=${withval}/runtime
 ])
 
-AC_ARG_WITH([apple-libauto-source],
-  [AS_HELP_STRING([--with-apple-libauto-source],
-    [Specify path to Apple libauto source])], [
-  apple_libauto_source_path=${withval}
-  CPPFLAGS="$CPPFLAGS -I$apple_libauto_source_path"
-])
-
 AC_CACHE_CHECK([for System.framework/PrivateHeaders], dispatch_cv_system_privateheaders,
   [AS_IF([test -d /System/Library/Frameworks/System.framework/PrivateHeaders],
     [dispatch_cv_system_privateheaders=yes], [dispatch_cv_system_privateheaders=no])]
 )
 AS_IF([test "x$dispatch_cv_system_privateheaders" != "xno"],
-  [CPPFLAGS="$CPPFLAGS -I/System/Library/Frameworks/System.framework/PrivateHeaders"]
+  [CPPFLAGS="$CPPFLAGS -isystem /System/Library/Frameworks/System.framework/PrivateHeaders"]
 )
 
 #
@@ -91,16 +94,79 @@ AS_IF([test "x$enable_apple_tsd_optimizations" = "xyes"],
     [Define to use non-portable pthread TSD optimizations for Mac OS X)])]
 )
 
+AC_CANONICAL_TARGET
+
+#
+# Enable building Swift overlay support into libdispatch
+#
+AC_ARG_WITH([swift-toolchain],
+  [AS_HELP_STRING([--with-swift-toolchain], [Specify path to Swift toolchain])],
+  [swift_toolchain_path=${withval}
+   AC_DEFINE(HAVE_SWIFT, 1, [Define if building for Swift])
+   SWIFTC="$swift_toolchain_path/bin/swiftc"
+   case $target_os in
+      linux*)
+	    os_string="linux"
+	    ;;
+	  *)
+        os_string=$target_os
+		;;
+	esac
+   SWIFT_LIBDIR="$swift_toolchain_path/lib/swift/$os_string/$target_cpu"
+   have_swift=true],
+  [have_swift=false]
+)
+AM_CONDITIONAL(HAVE_SWIFT, $have_swift)
+AC_SUBST([SWIFTC])
+AC_SUBST([SWIFT_LIBDIR])
+
+#
+# Enable use of gold linker when building the Swift overlay
+# to avoid a symbol relocation issue.
+# Ultimately the request to use gold should be passed in as an arg
+#
+AC_CHECK_PROG(use_gold_linker, ld.gold, true, false)
+AM_CONDITIONAL(USE_GOLD_LINKER, $use_gold_linker)
+
+#
+# Enable __thread based TSD on platforms where it is efficient
+# Allow override based on command line argument to configure
+#
+AC_ARG_ENABLE([thread-local-storage],
+  [AS_HELP_STRING([--enable-thread-local-storage],
+    [Enable usage of thread local storage via __thread])],,
+  [case $target_os in
+      linux*)
+        enable_thread_local_storage=yes
+	    ;;
+      *)
+        enable_thread_local_storage=no
+   esac]
+)
+AS_IF([test "x$enable_thread_local_storage" = "xyes"],
+  [AC_DEFINE(DISPATCH_USE_THREAD_LOCAL_STORAGE, 1,
+    [Enable usage of thread local storage via __thread])]
+)
+
 AC_USE_SYSTEM_EXTENSIONS
-AM_INIT_AUTOMAKE([foreign no-dependencies])
+AM_INIT_AUTOMAKE([foreign no-dependencies subdir-objects])
 LT_INIT([disable-static])
 
 AC_PROG_INSTALL
 AC_PATH_PROGS(MIG, mig)
+AC_PATH_PROG(DTRACE, dtrace)
+AS_IF([test "x$DTRACE" != "x"], [use_dtrace=true],[
+  use_dtrace=false
+  CPPFLAGS="$CPPFLAGS -DDISPATCH_USE_DTRACE=0"
+])
+AM_CONDITIONAL(USE_DTRACE, $use_dtrace)
 AC_PATH_PROG(LEAKS, leaks)
 AS_IF([test "x$LEAKS" != "x"],
-  [AC_DEFINE(HAVE_LEAKS, 1, [Define if Apple leaks program is present])]
+  [AC_DEFINE(HAVE_LEAKS, 1, [Define if Apple leaks program is present])
+   have_leaks=true],
+  [have_leaks=false]
 )
+AM_CONDITIONAL(HAVE_LEAKS, $have_leaks)
 
 DISPATCH_C_ATOMIC_BUILTINS
 
@@ -124,24 +190,65 @@ AC_CHECK_HEADER(sys/event.h, [],
   [PKG_CHECK_MODULES(KQUEUE, libkqueue)]
 )
 
+AC_CHECK_FUNCS([strlcpy getprogname], [],
+  [PKG_CHECK_MODULES(BSD_OVERLAY, libbsd-overlay,[
+    AC_DEFINE(HAVE_STRLCPY, 1, [])
+    AC_DEFINE(HAVE_GETPROGNAME, 1, [])
+  ])], [#include <string.h>]
+)
+
 #
 # Checks for header files.
 #
 AC_HEADER_STDC
-AC_CHECK_HEADERS([TargetConditionals.h pthread_np.h malloc/malloc.h libkern/OSCrossEndian.h libkern/OSAtomic.h sys/guarded.h libproc_internal.h])
+AC_CHECK_HEADERS([TargetConditionals.h pthread_np.h malloc/malloc.h libkern/OSCrossEndian.h libkern/OSAtomic.h sys/guarded.h fcntl.h])
 
-# hack for pthread_machdep.h's #include <System/machine/cpu_capabilities.h>
-AS_IF([test -n "$apple_xnu_source_osfmk_path"], [
+# hack for pthread/private headers
+AS_IF([test -n "$apple_libpthread_source_path" -a -n "$apple_xnu_source_osfmk_path"], [
   saveCPPFLAGS="$CPPFLAGS"
   CPPFLAGS="$CPPFLAGS -I."
+  ln -fsh "$apple_libpthread_source_path"/private/tsd_private.h pthread_machdep.h
+  ln -fsh "$apple_libpthread_source_path"/private pthread
   ln -fsh "$apple_xnu_source_osfmk_path" System
+  mkdir -p mach && ln -fsh "$apple_xnu_source_osfmk_path"/mach/coalition.h mach
 ])
-AC_CHECK_HEADERS([pthread_machdep.h])
-AS_IF([test -n "$apple_xnu_source_osfmk_path"], [
-  rm -f System
+AC_CHECK_HEADERS([pthread_machdep.h pthread/qos.h])
+
+# pthread_workqueues.
+# Look for own version first, then system version.
+AS_IF([test -f $srcdir/libpwq/configure.ac],
+  [AC_DEFINE(BUILD_OWN_PTHREAD_WORKQUEUES, 1, [Define if building pthread work queues from source])
+   ac_configure_args="--disable-libpwq-install $ac_configure_args"
+   AC_CONFIG_SUBDIRS([libpwq])
+   build_own_pthread_workqueues=true
+   AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])
+   have_pthread_workqueues=true],
+  [build_own_pthread_workqueues=false
+   AC_CHECK_HEADERS([pthread/workqueue_private.h pthread_workqueue.h],
+     [AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])
+      have_pthread_workqueues=true],
+     [have_pthread_workqueues=false]
+   )]
+)
+AM_CONDITIONAL(BUILD_OWN_PTHREAD_WORKQUEUES, $build_own_pthread_workqueues)
+AM_CONDITIONAL(HAVE_PTHREAD_WORKQUEUES, $have_pthread_workqueues)
+
+AC_CHECK_HEADERS([libproc_internal.h], [], [], [#include <mach/mach.h>])
+AC_CHECK_FUNCS([pthread_workqueue_setdispatch_np _pthread_workqueue_init])
+AS_IF([test -n "$apple_libpthread_source_path" -a -n "$apple_xnu_source_osfmk_path"], [
+  rm -f pthread_machdep.h pthread System mach/coalition.h
   CPPFLAGS="$saveCPPFLAGS"
+  AC_CONFIG_COMMANDS([src/pthread_machdep.h],
+    [ln -fsh "$apple_libpthread_source_path"/private/tsd_private.h src/pthread_machdep.h],
+    [apple_libpthread_source_path="$apple_libpthread_source_path"])
+  AC_CONFIG_COMMANDS([src/pthread],
+    [ln -fsh "$apple_libpthread_source_path"/private src/pthread],
+    [apple_libpthread_source_path="$apple_libpthread_source_path"])
   AC_CONFIG_COMMANDS([src/System],
     [ln -fsh "$apple_xnu_source_osfmk_path" src/System],
+    [apple_xnu_source_osfmk_path="$apple_xnu_source_osfmk_path"])
+  AC_CONFIG_COMMANDS([src/mach/coalition.h],
+    [ln -fsh "$apple_xnu_source_osfmk_path"/mach/coalition.h src/mach],
     [apple_xnu_source_osfmk_path="$apple_xnu_source_osfmk_path"])
 ])
 # hack for xnu/bsd/sys/event.h EVFILT_SOCK declaration
@@ -193,28 +300,20 @@ AC_CHECK_HEADER([mach/mach.h], [
   have_mach=true], [have_mach=false]
 )
 AM_CONDITIONAL(USE_MIG, $have_mach)
-
-#
-# We use the availability of pthread_workqueue.h to decide whether to compile
-# in support for pthread work queues.
-#
-AC_CHECK_HEADER([pthread_workqueue.h],
-  [AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])]
-)
-AC_CHECK_FUNCS([pthread_workqueue_setdispatch_np])
+AC_CHECK_FUNCS([mach_port_construct])
 
 #
 # Find functions and declarations we care about.
 #
 AC_CHECK_DECLS([CLOCK_UPTIME, CLOCK_MONOTONIC], [], [],
   [[#include <time.h>]])
-AC_CHECK_DECLS([NOTE_NONE, NOTE_REAP, NOTE_SIGNAL], [], [],
+AC_CHECK_DECLS([NOTE_NONE, NOTE_REAP, NOTE_REVOKE, NOTE_SIGNAL, NOTE_LOWAT], [], [],
   [[#include <sys/event.h>]])
 AC_CHECK_DECLS([FD_COPY], [], [], [[#include <sys/select.h>]])
 AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])
-AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK], [], [], [[#include <sys/mount.h>]])
+AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK, VQ_QUOTA], [], [], [[#include <sys/mount.h>]])
 AC_CHECK_DECLS([program_invocation_short_name], [], [], [[#include <errno.h>]])
-AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sysconf getprogname])
+AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sysconf])
 
 AC_CHECK_DECLS([POSIX_SPAWN_START_SUSPENDED],
   [have_posix_spawn_start_suspended=true], [have_posix_spawn_start_suspended=false],
@@ -273,15 +372,17 @@ AS_IF([test "x$dispatch_cv_cc_omit_leaf_fp" != "xno"], [
 ])
 AC_SUBST([OMIT_LEAF_FP_FLAGS])
 
-AC_CACHE_CHECK([for darwin linker], [dispatch_cv_ld_darwin], [
-  saveLDFLAGS="$LDFLAGS"
-  LDFLAGS="$LDFLAGS -dynamiclib -compatibility_version 1.2.3 -current_version 4.5.6 -dead_strip"
-  AC_LINK_IFELSE([AC_LANG_PROGRAM([
-    extern int foo; int foo;], [foo = 0;])],
-    [dispatch_cv_ld_darwin="yes"], [dispatch_cv_ld_darwin="no"])
-  LDFLAGS="$saveLDFLAGS"
+AS_IF([test "x$have_mach" = "xtrue"], [
+  AC_CACHE_CHECK([for darwin linker], [dispatch_cv_ld_darwin], [
+    saveLDFLAGS="$LDFLAGS"
+    LDFLAGS="$LDFLAGS -dynamiclib -compatibility_version 1.2.3 -current_version 4.5.6 -dead_strip"
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([
+      extern int foo; int foo;], [foo = 0;])],
+      [dispatch_cv_ld_darwin="yes"], [dispatch_cv_ld_darwin="no"])
+    LDFLAGS="$saveLDFLAGS"
+  ])
 ])
-AM_CONDITIONAL(HAVE_DARWIN_LD, [test "x$dispatch_cv_ld_darwin" != "xno"])
+AM_CONDITIONAL(HAVE_DARWIN_LD, [test "x$dispatch_cv_ld_darwin" == "xyes"])
 
 #
 # Temporary: some versions of clang do not mark __builtin_trap() as
@@ -295,5 +396,11 @@ AC_COMPILE_IFELSE(
 #
 # Generate Makefiles.
 #
-AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile os/Makefile private/Makefile src/Makefile])
+AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile os/Makefile private/Makefile src/Makefile tests/Makefile])
+
+#
+# Generate testsuite links
+#
+AC_CONFIG_LINKS([tests/dispatch:$top_srcdir/private tests/leaks-wrapper:tests/leaks-wrapper.sh])
+
 AC_OUTPUT

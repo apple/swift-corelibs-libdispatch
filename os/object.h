@@ -23,8 +23,13 @@
 
 #ifdef __APPLE__
 #include <Availability.h>
+#include <TargetConditionals.h>
 #endif
+#ifndef __linux__
 #include <os/base.h>
+#else
+#include <os/linux_base.h>
+#endif
 
 /*!
  * @header
@@ -50,14 +55,24 @@
  */
 
 #ifndef OS_OBJECT_HAVE_OBJC_SUPPORT
-#if defined(__OBJC__) && defined(__OBJC2__) && !defined(__OBJC_GC__) && ( \
-		__MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_8 || \
-		__IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_6_0)
-#define OS_OBJECT_HAVE_OBJC_SUPPORT 1
+#if !defined(__OBJC__) || defined(__OBJC_GC__)
+#  define OS_OBJECT_HAVE_OBJC_SUPPORT 0
+#elif !defined(TARGET_OS_MAC) || !TARGET_OS_MAC
+#  define OS_OBJECT_HAVE_OBJC_SUPPORT 0
+#elif TARGET_OS_IOS && __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_6_0
+#  define OS_OBJECT_HAVE_OBJC_SUPPORT 0
+#elif TARGET_OS_MAC && !TARGET_OS_IPHONE
+#  if __MAC_OS_X_VERSION_MIN_REQUIRED < __MAC_10_8
+#  define OS_OBJECT_HAVE_OBJC_SUPPORT 0
+#  elif defined(__i386__) && __MAC_OS_X_VERSION_MIN_REQUIRED < __MAC_10_12
+#  define OS_OBJECT_HAVE_OBJC_SUPPORT 0
+#  else
+#  define OS_OBJECT_HAVE_OBJC_SUPPORT 1
+#  endif
 #else
-#define OS_OBJECT_HAVE_OBJC_SUPPORT 0
+#  define OS_OBJECT_HAVE_OBJC_SUPPORT 1
 #endif
-#endif
+#endif // OS_OBJECT_HAVE_OBJC_SUPPORT
 
 #if OS_OBJECT_HAVE_OBJC_SUPPORT
 #ifndef OS_OBJECT_USE_OBJC
@@ -71,18 +86,49 @@
 #define OS_OBJECT_USE_OBJC 0
 #endif
 
+#ifndef OS_OBJECT_SWIFT3
+#if defined(SWIFT_SDK_OVERLAY_DISPATCH_EPOCH) && \
+		SWIFT_SDK_OVERLAY_DISPATCH_EPOCH >= 2
+#define OS_OBJECT_SWIFT3 1
+#else
+#define OS_OBJECT_SWIFT3 0
+#endif // SWIFT_SDK_OVERLAY_DISPATCH_EPOCH >= 2
+#endif // OS_OBJECT_SWIFT3
+
 #if OS_OBJECT_USE_OBJC
 #import <objc/NSObject.h>
+#if __has_attribute(objc_independent_class)
+#define OS_OBJC_INDEPENDENT_CLASS __attribute__((objc_independent_class))
+#endif // __has_attribute(objc_independent_class)
+#ifndef OS_OBJC_INDEPENDENT_CLASS
+#define OS_OBJC_INDEPENDENT_CLASS
+#endif
 #define OS_OBJECT_CLASS(name) OS_##name
-#define OS_OBJECT_DECL_IMPL(name, ...) \
+#define OS_OBJECT_DECL_PROTOCOL(name, ...) \
 		@protocol OS_OBJECT_CLASS(name) __VA_ARGS__ \
-		@end \
-		typedef NSObject<OS_OBJECT_CLASS(name)> *name##_t
+		@end
+#define OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL_IMPL(name, proto) \
+		@interface name () <proto> \
+		@end
+#define OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL(name, proto) \
+		OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL_IMPL( \
+				OS_OBJECT_CLASS(name), OS_OBJECT_CLASS(proto))
+#define OS_OBJECT_DECL_IMPL(name, ...) \
+		OS_OBJECT_DECL_PROTOCOL(name, __VA_ARGS__) \
+		typedef NSObject<OS_OBJECT_CLASS(name)> \
+				* OS_OBJC_INDEPENDENT_CLASS name##_t
+#define OS_OBJECT_DECL_BASE(name, ...) \
+		@interface OS_OBJECT_CLASS(name) : __VA_ARGS__ \
+		- (instancetype)init OS_SWIFT_UNAVAILABLE("Unavailable in Swift"); \
+		@end
+#define OS_OBJECT_DECL_IMPL_CLASS(name, ...) \
+		OS_OBJECT_DECL_BASE(name, ## __VA_ARGS__) \
+		typedef OS_OBJECT_CLASS(name) \
+				* OS_OBJC_INDEPENDENT_CLASS name##_t
 #define OS_OBJECT_DECL(name, ...) \
-		OS_OBJECT_DECL_IMPL(name, <NSObject> __VA_ARGS__)
+		OS_OBJECT_DECL_IMPL(name, <NSObject>)
 #define OS_OBJECT_DECL_SUBCLASS(name, super) \
 		OS_OBJECT_DECL_IMPL(name, <OS_OBJECT_CLASS(super)>)
-#if defined(__has_attribute)
 #if __has_attribute(ns_returns_retained)
 #define OS_OBJECT_RETURNS_RETAINED __attribute__((__ns_returns_retained__))
 #else
@@ -93,11 +139,6 @@
 #else
 #define OS_OBJECT_CONSUMED
 #endif
-#else
-#define OS_OBJECT_RETURNS_RETAINED
-#define OS_OBJECT_CONSUMED
-#endif
-#if defined(__has_feature)
 #if __has_feature(objc_arc)
 #define OS_OBJECT_BRIDGE __bridge
 #define OS_WARN_RESULT_NEEDS_RELEASE
@@ -105,23 +146,47 @@
 #define OS_OBJECT_BRIDGE
 #define OS_WARN_RESULT_NEEDS_RELEASE OS_WARN_RESULT
 #endif
+#if __has_attribute(objc_runtime_visible) && \
+		((defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && \
+		__MAC_OS_X_VERSION_MIN_REQUIRED < __MAC_10_12) || \
+		(defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && \
+		!defined(__TV_OS_VERSION_MIN_REQUIRED) && \
+		!defined(__WATCH_OS_VERSION_MIN_REQUIRED) && \
+		__IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_10_0) || \
+		(defined(__TV_OS_VERSION_MIN_REQUIRED) && \
+		__TV_OS_VERSION_MIN_REQUIRED < __TVOS_10_0) || \
+		(defined(__WATCH_OS_VERSION_MIN_REQUIRED) && \
+		__WATCH_OS_VERSION_MIN_REQUIRED < __WATCHOS_3_0))
+/*
+ * To provide backward deployment of ObjC objects in Swift on pre-10.12
+ * SDKs, OS_object classes can be marked as OS_OBJECT_OBJC_RUNTIME_VISIBLE.
+ * When compiling with a deployment target earlier than OS X 10.12 (iOS 10.0, 
+ * tvOS 10.0, watchOS 3.0) the Swift compiler will only refer to this type at
+ * runtime (using the ObjC runtime).
+ */
+#define OS_OBJECT_OBJC_RUNTIME_VISIBLE __attribute__((objc_runtime_visible))
 #else
-#define OS_OBJECT_BRIDGE
-#define OS_WARN_RESULT_NEEDS_RELEASE OS_WARN_RESULT
+#define OS_OBJECT_OBJC_RUNTIME_VISIBLE
 #endif
 #ifndef OS_OBJECT_USE_OBJC_RETAIN_RELEASE
 #if defined(__clang_analyzer__)
 #define OS_OBJECT_USE_OBJC_RETAIN_RELEASE 1
-#elif defined(__has_feature)
-#if __has_feature(objc_arc)
+#elif __has_feature(objc_arc) && !OS_OBJECT_SWIFT3
 #define OS_OBJECT_USE_OBJC_RETAIN_RELEASE 1
 #else
 #define OS_OBJECT_USE_OBJC_RETAIN_RELEASE 0
 #endif
-#else
-#define OS_OBJECT_USE_OBJC_RETAIN_RELEASE 0
 #endif
-#endif
+#if OS_OBJECT_SWIFT3
+#define OS_OBJECT_DECL_SWIFT(name) \
+		OS_EXPORT OS_OBJECT_OBJC_RUNTIME_VISIBLE \
+		OS_OBJECT_DECL_IMPL_CLASS(name, NSObject)
+#define OS_OBJECT_DECL_SUBCLASS_SWIFT(name, super) \
+		OS_EXPORT OS_OBJECT_OBJC_RUNTIME_VISIBLE \
+		OS_OBJECT_DECL_IMPL_CLASS(name, OS_OBJECT_CLASS(super))
+OS_EXPORT OS_OBJECT_OBJC_RUNTIME_VISIBLE
+OS_OBJECT_DECL_BASE(object, NSObject);
+#endif // OS_OBJECT_SWIFT3
 #else
 /*! @parseOnly */
 #define OS_OBJECT_RETURNS_RETAINED
@@ -131,7 +196,20 @@
 #define OS_OBJECT_BRIDGE
 /*! @parseOnly */
 #define OS_WARN_RESULT_NEEDS_RELEASE OS_WARN_RESULT
+/*! @parseOnly */
+#define OS_OBJECT_OBJC_RUNTIME_VISIBLE
 #define OS_OBJECT_USE_OBJC_RETAIN_RELEASE 0
+#endif
+
+#if OS_OBJECT_SWIFT3
+#define OS_OBJECT_DECL_CLASS(name) \
+		OS_OBJECT_DECL_SUBCLASS_SWIFT(name, object)
+#elif OS_OBJECT_USE_OBJC
+#define OS_OBJECT_DECL_CLASS(name) \
+		OS_OBJECT_DECL(name)
+#else
+#define OS_OBJECT_DECL_CLASS(name) \
+		typedef struct name##_s *name##_t
 #endif
 
 #define OS_OBJECT_GLOBAL_OBJECT(type, object) ((OS_OBJECT_BRIDGE type)&(object))
@@ -155,7 +233,7 @@ __BEGIN_DECLS
  * The retained object.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
-OS_EXPORT
+OS_EXPORT OS_SWIFT_UNAVAILABLE("Can't be used with ARC")
 void*
 os_retain(void *object);
 #if OS_OBJECT_USE_OBJC
@@ -178,7 +256,7 @@ os_retain(void *object);
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
 OS_EXPORT
-void
+void OS_SWIFT_UNAVAILABLE("Can't be used with ARC")
 os_release(void *object);
 #if OS_OBJECT_USE_OBJC
 #undef os_release

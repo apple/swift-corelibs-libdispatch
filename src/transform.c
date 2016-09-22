@@ -20,7 +20,17 @@
 
 #include "internal.h"
 
+#ifdef __APPLE__
 #include <libkern/OSByteOrder.h>
+#elif __linux__
+#include <endian.h>
+#define OSLittleEndian __LITTLE_ENDIAN
+#define OSBigEndian __BIG_ENDIAN
+#define OSSwapLittleToHostInt16 le16toh
+#define OSSwapBigToHostInt16 be16toh
+#define OSSwapHostToLittleInt16 htole16
+#define OSSwapHostToBigInt16 htobe16
+#endif
 
 #if defined(__LITTLE_ENDIAN__)
 #define DISPATCH_DATA_FORMAT_TYPE_UTF16_HOST DISPATCH_DATA_FORMAT_TYPE_UTF16LE
@@ -28,6 +38,8 @@
 #elif defined(__BIG_ENDIAN__)
 #define DISPATCH_DATA_FORMAT_TYPE_UTF16_HOST DISPATCH_DATA_FORMAT_TYPE_UTF16BE
 #define DISPATCH_DATA_FORMAT_TYPE_UTF16_REV DISPATCH_DATA_FORMAT_TYPE_UTF16LE
+#else
+#error Unsupported Endianness
 #endif
 
 enum {
@@ -102,16 +114,6 @@ typedef struct dispatch_transform_buffer_s {
 	} ptr;
 	size_t size;
 } dispatch_transform_buffer_s;
-
-static size_t
-_dispatch_transform_sizet_mul(size_t a, size_t b)
-{
-	size_t rv = SIZE_MAX;
-	if (a == 0 || rv/a >= b) {
-		rv = a * b;
-	}
-	return rv;
-}
 
 #define BUFFER_MALLOC_MAX (100*1024*1024)
 
@@ -286,11 +288,13 @@ _dispatch_transform_to_utf16(dispatch_data_t data, int32_t byteOrder)
 			DISPATCH_UNUSED dispatch_data_t region,
 			size_t offset, const void *_buffer, size_t size) {
 		const uint8_t *src = _buffer;
-		size_t i;
+		size_t i, dest_size;
 
 		if (offset == 0) {
-			size_t dest_size = 2 + _dispatch_transform_sizet_mul(size,
-					sizeof(uint16_t));
+			if (os_mul_and_add_overflow(size, sizeof(uint16_t),
+					sizeof(uint16_t), &dest_size)) {
+				return (bool)false;
+			}
 			if (!_dispatch_transform_buffer_new(&buffer, dest_size, 0)) {
 				return (bool)false;
 			}
@@ -312,6 +316,7 @@ _dispatch_transform_to_utf16(dispatch_data_t data, int32_t byteOrder)
 		for (i = 0; i < size;) {
 			uint32_t wch = 0;
 			uint8_t byte_size = _dispatch_transform_utf8_length(*src);
+			size_t next;
 
 			if (byte_size == 0) {
 				return (bool)false;
@@ -336,7 +341,9 @@ _dispatch_transform_to_utf16(dispatch_data_t data, int32_t byteOrder)
 				i += byte_size;
 			}
 
-			size_t next = _dispatch_transform_sizet_mul(size - i, sizeof(uint16_t));
+			if (os_mul_overflow(size - i, sizeof(uint16_t), &next)) {
+				return (bool)false;
+			}
 			if (wch >= 0xd800 && wch < 0xdfff) {
 				// Illegal range (surrogate pair)
 				return (bool)false;
@@ -390,8 +397,8 @@ _dispatch_transform_from_utf16(dispatch_data_t data, int32_t byteOrder)
 		const uint16_t *src = _buffer;
 
 		if (offset == 0) {
+			size_t dest_size = howmany(size, 3) * 2;
 			// Assume first buffer will be mostly single-byte UTF-8 sequences
-			size_t dest_size = _dispatch_transform_sizet_mul(size, 2) / 3;
 			if (!_dispatch_transform_buffer_new(&buffer, dest_size, 0)) {
 				return (bool)false;
 			}
@@ -418,6 +425,7 @@ _dispatch_transform_from_utf16(dispatch_data_t data, int32_t byteOrder)
 		for (i = 0; i < max; i++) {
 			uint32_t wch = 0;
 			uint16_t ch;
+			size_t next;
 
 			if ((i == (max - 1)) && (max > (size / 2))) {
 				// Last byte of an odd sized range
@@ -472,7 +480,9 @@ _dispatch_transform_from_utf16(dispatch_data_t data, int32_t byteOrder)
 				wch = ch;
 			}
 
-			size_t next = _dispatch_transform_sizet_mul(max - i, 2);
+			if (os_mul_overflow(max - i, 2, &next)) {
+				return (bool)false;
+			}
 			if (wch < 0x80) {
 				if (!_dispatch_transform_buffer_new(&buffer, 1, next)) {
 					return (bool)false;
@@ -554,8 +564,7 @@ _dispatch_transform_from_base32_with_table(dispatch_data_t data,
 	bool success = dispatch_data_apply(data, ^(
 			DISPATCH_UNUSED dispatch_data_t region,
 			DISPATCH_UNUSED size_t offset, const void *buffer, size_t size) {
-		size_t i, dest_size = (size * 5) / 8;
-
+		size_t i, dest_size = howmany(size, 8) * 5;
 		uint8_t *dest = (uint8_t*)malloc(dest_size * sizeof(uint8_t));
 		uint8_t *ptr = dest;
 		if (dest == NULL) {
@@ -632,18 +641,17 @@ _dispatch_transform_from_base32_with_table(dispatch_data_t data,
 static dispatch_data_t
 _dispatch_transform_to_base32_with_table(dispatch_data_t data, const unsigned char* table)
 {
-	size_t total = dispatch_data_get_size(data);
+	size_t total = dispatch_data_get_size(data), dest_size;
 	__block size_t count = 0;
 
-	if (total > SIZE_T_MAX-4 || ((total+4)/5 > SIZE_T_MAX/8)) {
-		/* We can't hold larger than size_t in a dispatch_data_t
-		 * and we want to avoid an integer overflow in the next
-		 * calculation.
-		 */
+	dest_size = howmany(total, 5);
+	// <rdar://problem/25676583>
+	// os_mul_overflow(dest_size, 8, &dest_size)
+	if (dest_size > SIZE_T_MAX / 8) {
 		return NULL;
 	}
+	dest_size *= 8;
 
-	size_t dest_size = (total + 4) / 5 * 8;
 	uint8_t *dest = (uint8_t*)malloc(dest_size);
 	if (dest == NULL) {
 		return NULL;
@@ -799,7 +807,7 @@ _dispatch_transform_from_base64(dispatch_data_t data)
 	bool success = dispatch_data_apply(data, ^(
 			DISPATCH_UNUSED dispatch_data_t region,
 			DISPATCH_UNUSED size_t offset, const void *buffer, size_t size) {
-		size_t i, dest_size = (size * 3) / 4;
+		size_t i, dest_size = howmany(size, 4) * 3;
 
 		uint8_t *dest = (uint8_t*)malloc(dest_size * sizeof(uint8_t));
 		uint8_t *ptr = dest;
@@ -868,18 +876,17 @@ _dispatch_transform_to_base64(dispatch_data_t data)
 {
 	// RFC 4648 states that we should not linebreak
 	// http://tools.ietf.org/html/rfc4648
-	size_t total = dispatch_data_get_size(data);
+	size_t total = dispatch_data_get_size(data), dest_size;
 	__block size_t count = 0;
 
-	if (total > SIZE_T_MAX-2 || ((total+2)/3> SIZE_T_MAX/4)) {
-		/* We can't hold larger than size_t in a dispatch_data_t
-		 * and we want to avoid an integer overflow in the next
-		 * calculation.
-		 */
+	dest_size = howmany(total, 3);
+	// <rdar://problem/25676583>
+	// os_mul_overflow(dest_size, 4, &dest_size)
+	if (dest_size > SIZE_T_MAX / 4) {
 		return NULL;
 	}
+	dest_size *= 4;
 
-	size_t dest_size = (total + 2) / 3 * 4;
 	uint8_t *dest = (uint8_t*)malloc(dest_size);
 	if (dest == NULL) {
 		return NULL;
@@ -968,16 +975,16 @@ dispatch_data_create_with_transform(dispatch_data_t data,
 	if (input->type == _DISPATCH_DATA_FORMAT_UTF_ANY) {
 		input = _dispatch_transform_detect_utf(data);
 		if (input == NULL) {
-			return NULL;
+			return DISPATCH_BAD_INPUT;
 		}
 	}
 
 	if ((input->type & ~output->input_mask) != 0) {
-		return NULL;
+		return DISPATCH_BAD_INPUT;
 	}
 
 	if ((output->type & ~input->output_mask) != 0) {
-		return NULL;
+		return DISPATCH_BAD_INPUT;
 	}
 
 	if (dispatch_data_get_size(data) == 0) {
@@ -993,7 +1000,7 @@ dispatch_data_create_with_transform(dispatch_data_t data,
 	}
 
 	if (!temp1) {
-		return NULL;
+		return DISPATCH_BAD_INPUT;
 	}
 
 	dispatch_data_t temp2;

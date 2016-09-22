@@ -35,6 +35,8 @@
 #include <sys/signal.h>
 #endif
 
+DISPATCH_ASSUME_NONNULL_BEGIN
+
 /*!
  * @header
  * The dispatch framework provides a suite of interfaces for monitoring low-
@@ -52,7 +54,7 @@
  * Dispatch sources are used to automatically submit event handler blocks to
  * dispatch queues in response to external events.
  */
-DISPATCH_DECL(dispatch_source);
+DISPATCH_SOURCE_DECL(dispatch_source);
 
 __BEGIN_DECLS
 
@@ -64,20 +66,10 @@ __BEGIN_DECLS
  * is being monitored by the dispatch source. Constants of this type are
  * passed as a parameter to dispatch_source_create() and determine how the
  * handle argument is interpreted (i.e. as a file descriptor, mach port,
- * signal number, process identifer, etc.), and how the mask arugment is
+ * signal number, process identifier, etc.), and how the mask argument is
  * interpreted.
  */
 typedef const struct dispatch_source_type_s *dispatch_source_type_t;
-
-#if !TARGET_OS_WIN32
-/*! @parseOnly */
-#define DISPATCH_SOURCE_TYPE_DECL(name) \
-	DISPATCH_EXPORT const struct dispatch_source_type_s \
-	_dispatch_source_type_##name
-#else
-#define DISPATCH_SOURCE_TYPE_DECL(name) \
-	DISPATCH_EXPORT struct dispatch_source_type_s _dispatch_source_type_##name
-#endif
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_DATA_ADD
@@ -109,7 +101,7 @@ DISPATCH_SOURCE_TYPE_DECL(data_or);
  * The mask is a mask of desired events from dispatch_source_mach_send_flags_t.
  */
 #define DISPATCH_SOURCE_TYPE_MACH_SEND (&_dispatch_source_type_mach_send)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(mach_send);
 
 /*!
@@ -119,7 +111,7 @@ DISPATCH_SOURCE_TYPE_DECL(mach_send);
  * The mask is unused (pass zero for now).
  */
 #define DISPATCH_SOURCE_TYPE_MACH_RECV (&_dispatch_source_type_mach_recv)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(mach_recv);
 
 /*!
@@ -132,7 +124,7 @@ DISPATCH_SOURCE_TYPE_DECL(mach_recv);
  */
 #define DISPATCH_SOURCE_TYPE_MEMORYPRESSURE \
 		(&_dispatch_source_type_memorypressure)
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_8_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_8_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(memorypressure);
 
 /*!
@@ -143,7 +135,7 @@ DISPATCH_SOURCE_TYPE_DECL(memorypressure);
  * The mask is a mask of desired events from dispatch_source_proc_flags_t.
  */
 #define DISPATCH_SOURCE_TYPE_PROC (&_dispatch_source_type_proc)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(proc);
 
 /*!
@@ -186,7 +178,7 @@ DISPATCH_SOURCE_TYPE_DECL(timer);
  * The mask is a mask of desired events from dispatch_source_vnode_flags_t.
  */
 #define DISPATCH_SOURCE_TYPE_VNODE (&_dispatch_source_type_vnode)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(vnode);
 
 /*!
@@ -289,6 +281,9 @@ typedef unsigned long dispatch_source_proc_flags_t;
  *
  * @constant DISPATCH_VNODE_REVOKE
  * The filesystem object was revoked.
+ *
+ * @constant DISPATCH_VNODE_FUNLOCK
+ * The filesystem object was unlocked.
  */
 
 #define DISPATCH_VNODE_DELETE	0x1
@@ -298,6 +293,7 @@ typedef unsigned long dispatch_source_proc_flags_t;
 #define DISPATCH_VNODE_LINK		0x10
 #define DISPATCH_VNODE_RENAME	0x20
 #define DISPATCH_VNODE_REVOKE	0x40
+#define DISPATCH_VNODE_FUNLOCK	0x100
 
 typedef unsigned long dispatch_source_vnode_flags_t;
 
@@ -321,7 +317,6 @@ typedef unsigned long dispatch_source_vnode_flags_t;
 
 typedef unsigned long dispatch_source_timer_flags_t;
 
-
 /*!
  * @function dispatch_source_create
  *
@@ -335,23 +330,36 @@ typedef unsigned long dispatch_source_timer_flags_t;
  * will be coalesced and delivered after the dispatch source is resumed or the
  * event handler block has returned.
  *
- * Dispatch sources are created in a suspended state. After creating the
+ * Dispatch sources are created in an inactive state. After creating the
  * source and setting any desired attributes (i.e. the handler, context, etc.),
- * a call must be made to dispatch_resume() in order to begin event delivery.
+ * a call must be made to dispatch_activate() in order to begin event delivery.
+ *
+ * Calling dispatch_set_target_queue() on a source once it has been activated
+ * is not allowed (see dispatch_activate() and dispatch_set_target_queue()).
+ *
+ * For backward compatibility reasons, dispatch_resume() on an inactive,
+ * and not otherwise suspended source has the same effect as calling
+ * dispatch_activate(). For new code, using dispatch_activate() is preferred.
  *
  * @param type
  * Declares the type of the dispatch source. Must be one of the defined
  * dispatch_source_type_t constants.
+ *
  * @param handle
  * The underlying system handle to monitor. The interpretation of this argument
  * is determined by the constant provided in the type parameter.
+ *
  * @param mask
  * A mask of flags specifying which events are desired. The interpretation of
  * this argument is determined by the constant provided in the type parameter.
+ *
  * @param queue
  * The dispatch queue to which the event handler block will be submitted.
  * If queue is DISPATCH_TARGET_QUEUE_DEFAULT, the source will submit the event
  * handler block to the default priority global queue.
+ *
+ * @result
+ * The newly created dispatch source. Or NULL if invalid arguments are passed.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
@@ -360,7 +368,7 @@ dispatch_source_t
 dispatch_source_create(dispatch_source_type_t type,
 	uintptr_t handle,
 	unsigned long mask,
-	dispatch_queue_t queue);
+	dispatch_queue_t _Nullable queue);
 
 /*!
  * @function dispatch_source_set_event_handler
@@ -380,7 +388,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_event_handler(dispatch_source_t source,
-	dispatch_block_t handler);
+	dispatch_block_t _Nullable handler);
 #endif /* __BLOCKS__ */
 
 /*!
@@ -395,15 +403,14 @@ dispatch_source_set_event_handler(dispatch_source_t source,
  *
  * @param handler
  * The event handler function to submit to the source's target queue.
- * The context parameter passed to the event handler function is the current
- * context of the dispatch source at the time the handler call is made.
- * The result of passing NULL in this parameter is undefined.
+ * The context parameter passed to the event handler function is the context of
+ * the dispatch source current at the time the event handler was set.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_event_handler_f(dispatch_source_t source,
-	dispatch_function_t handler);
+	dispatch_function_t _Nullable handler);
 
 /*!
  * @function dispatch_source_set_cancel_handler
@@ -437,7 +444,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_cancel_handler(dispatch_source_t source,
-	dispatch_block_t handler);
+	dispatch_block_t _Nullable handler);
 #endif /* __BLOCKS__ */
 
 /*!
@@ -462,7 +469,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_cancel_handler_f(dispatch_source_t source,
-	dispatch_function_t handler);
+	dispatch_function_t _Nullable handler);
 
 /*!
  * @function dispatch_source_cancel
@@ -712,7 +719,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_registration_handler(dispatch_source_t source,
-	dispatch_block_t handler);
+	dispatch_block_t _Nullable handler);
 #endif /* __BLOCKS__ */
 
 /*!
@@ -737,8 +744,10 @@ __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_registration_handler_f(dispatch_source_t source,
-	dispatch_function_t handler);
+	dispatch_function_t _Nullable handler);
 
 __END_DECLS
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif

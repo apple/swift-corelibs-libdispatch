@@ -64,7 +64,7 @@ _os_object_retain_with_resurrect(_os_object_t obj)
 {
 	int xref_cnt = _os_object_xrefcnt_inc(obj);
 	if (slowpath(xref_cnt < 0)) {
-		_OS_OBJECT_CLIENT_CRASH("Resurrection of an overreleased object");
+		_OS_OBJECT_CLIENT_CRASH("Resurrection of an over-released object");
 	}
 	if (slowpath(xref_cnt == 0)) {
 		_os_object_retain_internal(obj);
@@ -100,7 +100,7 @@ retry:
 	if (slowpath(xref_cnt < -1)) {
 		goto overrelease;
 	}
-	if (slowpath(!dispatch_atomic_cmpxchgvw2o(obj, os_obj_xref_cnt, xref_cnt,
+	if (slowpath(!os_atomic_cmpxchgvw2o(obj, os_obj_xref_cnt, xref_cnt,
 			xref_cnt + 1, &xref_cnt, relaxed))) {
 		goto retry;
 	}
@@ -128,7 +128,15 @@ _os_object_allows_weak_reference(_os_object_t obj)
 void *
 _dispatch_alloc(const void *vtable, size_t size)
 {
+#if OS_OBJECT_HAVE_OBJC1
+	const struct dispatch_object_vtable_s *_vtable = vtable;
+	dispatch_object_t dou;
+	dou._os_obj = _os_object_alloc_realized(_vtable->_os_obj_objc_isa, size);
+	dou._do->do_vtable = vtable;
+	return dou._do;
+#else
 	return _os_object_alloc_realized(vtable, size);
+#endif
 }
 
 void
@@ -151,37 +159,40 @@ _dispatch_dealloc(dispatch_object_t dou)
 	dispatch_queue_t tq = dou._do->do_targetq;
 	dispatch_function_t func = dou._do->do_finalizer;
 	void *ctxt = dou._do->do_ctxt;
-
+#if OS_OBJECT_HAVE_OBJC1
+	// so that ddt doesn't pick up bad objects when malloc reuses this memory
+	dou._do->do_vtable = NULL;
+#endif
 	_os_object_dealloc(dou._os_obj);
 
 	if (func && ctxt) {
 		dispatch_async_f(tq, ctxt, func);
 	}
-	_dispatch_release(tq);
+	_dispatch_release_tailcall(tq);
 }
 
+#if !USE_OBJC
 void
 _dispatch_xref_dispose(dispatch_object_t dou)
 {
-	if (slowpath(DISPATCH_OBJECT_SUSPENDED(dou._do))) {
-		// Arguments for and against this assert are within 6705399
-		DISPATCH_CLIENT_CRASH("Release of a suspended object");
+	unsigned long metatype = dx_metatype(dou._do);
+	if (metatype == _DISPATCH_QUEUE_TYPE || metatype == _DISPATCH_SOURCE_TYPE) {
+		_dispatch_queue_xref_dispose(dou._dq);
 	}
-#if !USE_OBJC
 	if (dx_type(dou._do) == DISPATCH_SOURCE_KEVENT_TYPE) {
 		_dispatch_source_xref_dispose(dou._ds);
-	} else if (dou._dq->do_vtable == DISPATCH_VTABLE(queue_runloop)) {
+	} else if (dx_type(dou._do) == DISPATCH_QUEUE_RUNLOOP_TYPE) {
 		_dispatch_runloop_queue_xref_dispose(dou._dq);
 	}
-	return _dispatch_release(dou._os_obj);
-#endif
+	return _dispatch_release_tailcall(dou._os_obj);
 }
+#endif
 
 void
 _dispatch_dispose(dispatch_object_t dou)
 {
 	if (slowpath(dou._do->do_next != DISPATCH_OBJECT_LISTLESS)) {
-		DISPATCH_CRASH("Release while enqueued");
+		DISPATCH_INTERNAL_CRASH(dou._do->do_next, "Release while enqueued");
 	}
 	dx_dispose(dou._do);
 	return _dispatch_dealloc(dou);
@@ -192,7 +203,7 @@ dispatch_get_context(dispatch_object_t dou)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_get_context, dou);
 	if (slowpath(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) ||
-			slowpath(dx_type(dou._do) == DISPATCH_QUEUE_ROOT_TYPE)) {
+			slowpath(dx_hastypeflag(dou._do, QUEUE_ROOT))) {
 		return NULL;
 	}
 	return dou._do->do_ctxt;
@@ -203,7 +214,7 @@ dispatch_set_context(dispatch_object_t dou, void *context)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_set_context, dou, context);
 	if (slowpath(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) ||
-			slowpath(dx_type(dou._do) == DISPATCH_QUEUE_ROOT_TYPE)) {
+			slowpath(dx_hastypeflag(dou._do, QUEUE_ROOT))) {
 		return;
 	}
 	dou._do->do_ctxt = context;
@@ -214,69 +225,57 @@ dispatch_set_finalizer_f(dispatch_object_t dou, dispatch_function_t finalizer)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_set_finalizer_f, dou, finalizer);
 	if (slowpath(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) ||
-			slowpath(dx_type(dou._do) == DISPATCH_QUEUE_ROOT_TYPE)) {
+			slowpath(dx_hastypeflag(dou._do, QUEUE_ROOT))) {
 		return;
 	}
 	dou._do->do_finalizer = finalizer;
 }
 
 void
+dispatch_set_target_queue(dispatch_object_t dou, dispatch_queue_t tq)
+{
+	DISPATCH_OBJECT_TFB(_dispatch_objc_set_target_queue, dou, tq);
+	if (dx_vtable(dou._do)->do_set_targetq) {
+		dx_vtable(dou._do)->do_set_targetq(dou._do, tq);
+	} else if (dou._do->do_ref_cnt != DISPATCH_OBJECT_GLOBAL_REFCNT &&
+			!slowpath(dx_hastypeflag(dou._do, QUEUE_ROOT))) {
+		if (slowpath(!tq)) {
+			tq = _dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT, false);
+		}
+		_dispatch_object_set_target_queue_inline(dou._do, tq);
+	}
+}
+
+void
+dispatch_activate(dispatch_object_t dou)
+{
+	DISPATCH_OBJECT_TFB(_dispatch_objc_activate, dou);
+	if (dx_vtable(dou._do)->do_resume) {
+		dx_vtable(dou._do)->do_resume(dou._do, true);
+	}
+}
+
+void
 dispatch_suspend(dispatch_object_t dou)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_suspend, dou);
-	if (slowpath(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) ||
-			slowpath(dx_type(dou._do) == DISPATCH_QUEUE_ROOT_TYPE)) {
-		return;
+	if (dx_vtable(dou._do)->do_suspend) {
+		dx_vtable(dou._do)->do_suspend(dou._do);
 	}
-	// rdar://8181908 explains why we need to do an internal retain at every
-	// suspension.
-	(void)dispatch_atomic_add2o(dou._do, do_suspend_cnt,
-			DISPATCH_OBJECT_SUSPEND_INTERVAL, acquire);
-	_dispatch_retain(dou._do);
-}
-
-DISPATCH_NOINLINE
-static void
-_dispatch_resume_slow(dispatch_object_t dou)
-{
-	_dispatch_wakeup(dou._do);
-	// Balancing the retain() done in suspend() for rdar://8181908
-	_dispatch_release(dou._do);
 }
 
 void
 dispatch_resume(dispatch_object_t dou)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_resume, dou);
-	// Global objects cannot be suspended or resumed. This also has the
-	// side effect of saturating the suspend count of an object and
-	// guarding against resuming due to overflow.
-	if (slowpath(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) ||
-			slowpath(dx_type(dou._do) == DISPATCH_QUEUE_ROOT_TYPE)) {
-		return;
+	if (dx_vtable(dou._do)->do_resume) {
+		dx_vtable(dou._do)->do_resume(dou._do, false);
 	}
-	// Check the previous value of the suspend count. If the previous
-	// value was a single suspend interval, the object should be resumed.
-	// If the previous value was less than the suspend interval, the object
-	// has been over-resumed.
-	unsigned int suspend_cnt = dispatch_atomic_sub_orig2o(dou._do,
-			 do_suspend_cnt, DISPATCH_OBJECT_SUSPEND_INTERVAL, release);
-	if (fastpath(suspend_cnt > DISPATCH_OBJECT_SUSPEND_INTERVAL)) {
-		// Balancing the retain() done in suspend() for rdar://8181908
-		return _dispatch_release(dou._do);
-	}
-	if (fastpath(suspend_cnt == DISPATCH_OBJECT_SUSPEND_INTERVAL)) {
-		return _dispatch_resume_slow(dou);
-	}
-	DISPATCH_CLIENT_CRASH("Over-resume of an object");
 }
 
 size_t
 _dispatch_object_debug_attr(dispatch_object_t dou, char* buf, size_t bufsiz)
 {
-	return dsnprintf(buf, bufsiz, "xrefcnt = 0x%x, refcnt = 0x%x, "
-			"suspend_cnt = 0x%x, locked = %d, ", dou._do->do_xref_cnt + 1,
-			dou._do->do_ref_cnt + 1,
-			dou._do->do_suspend_cnt / DISPATCH_OBJECT_SUSPEND_INTERVAL,
-			dou._do->do_suspend_cnt & 1);
+	return dsnprintf(buf, bufsiz, "xrefcnt = 0x%x, refcnt = 0x%x, ",
+			dou._do->do_xref_cnt + 1, dou._do->do_ref_cnt + 1);
 }

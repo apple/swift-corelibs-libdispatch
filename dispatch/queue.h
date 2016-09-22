@@ -26,6 +26,12 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+#if __has_include(<sys/qos.h>)
+#include <sys/qos.h>
+#endif
+
+DISPATCH_ASSUME_NONNULL_BEGIN
+
 /*!
  * @header
  *
@@ -131,7 +137,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_async_f(dispatch_queue_t queue,
-	void *context,
+	void *_Nullable context,
 	dispatch_function_t work);
 
 /*!
@@ -168,7 +174,7 @@ dispatch_async_f(dispatch_queue_t queue,
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
-dispatch_sync(dispatch_queue_t queue, dispatch_block_t block);
+dispatch_sync(dispatch_queue_t queue, DISPATCH_NOESCAPE dispatch_block_t block);
 #endif
 
 /*!
@@ -197,7 +203,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_sync_f(dispatch_queue_t queue,
-	void *context,
+	void *_Nullable context,
 	dispatch_function_t work);
 
 /*!
@@ -230,7 +236,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_apply(size_t iterations, dispatch_queue_t queue,
-		void (^block)(size_t));
+		DISPATCH_NOESCAPE void (^block)(size_t));
 #endif
 
 /*!
@@ -263,8 +269,8 @@ __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_NONNULL4 DISPATCH_NOTHROW
 void
 dispatch_apply_f(size_t iterations, dispatch_queue_t queue,
-	void *context,
-	void (*work)(void *, size_t));
+	void *_Nullable context,
+	void (*work)(void *_Nullable, size_t));
 
 /*!
  * @function dispatch_get_current_queue
@@ -288,7 +294,7 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t queue,
  * When dispatch_get_current_queue() is called on the main thread, it may
  * or may not return the same value as dispatch_get_main_queue(). Comparing
  * the two is not a valid way to test whether code is executing on the
- * main thread.
+ * main thread (see dispatch_assert_queue() and dispatch_assert_queue_not()).
  *
  * This function is deprecated and will be removed in a future release.
  *
@@ -365,7 +371,6 @@ typedef long dispatch_queue_priority_t;
  * Alias for qos_class_t type.
  */
 #if __has_include(<sys/qos.h>)
-#include <sys/qos.h>
 typedef qos_class_t dispatch_qos_class_t;
 #else
 typedef unsigned int dispatch_qos_class_t;
@@ -425,12 +430,24 @@ DISPATCH_DECL(dispatch_queue_attr);
 
 /*!
  * @const DISPATCH_QUEUE_SERIAL
+ *
  * @discussion A dispatch queue that invokes blocks serially in FIFO order.
  */
 #define DISPATCH_QUEUE_SERIAL NULL
 
 /*!
+ * @const DISPATCH_QUEUE_SERIAL_INACTIVE
+ *
+ * @discussion
+ * A dispatch queue that invokes blocks serially in FIFO order, and that is
+ * created initially inactive. See dispatch_queue_attr_make_initially_inactive().
+ */
+#define DISPATCH_QUEUE_SERIAL_INACTIVE \
+		dispatch_queue_attr_make_initially_inactive(DISPATCH_QUEUE_SERIAL)
+
+/*!
  * @const DISPATCH_QUEUE_CONCURRENT
+ *
  * @discussion A dispatch queue that may invoke blocks concurrently and supports
  * barrier blocks submitted with the dispatch barrier API.
  */
@@ -442,11 +459,172 @@ DISPATCH_EXPORT
 struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent;
 
 /*!
+ * @const DISPATCH_QUEUE_CONCURRENT_INACTIVE
+ *
+ * @discussion
+ * A dispatch queue that may invoke blocks concurrently and supports barrier
+ * blocks submitted with the dispatch barrier API, and that is created initially
+ * inactive. See dispatch_queue_attr_make_initially_inactive().
+ */
+#define DISPATCH_QUEUE_CONCURRENT_INACTIVE \
+		dispatch_queue_attr_make_initially_inactive(DISPATCH_QUEUE_CONCURRENT)
+
+/*!
+ * @function dispatch_queue_attr_make_initially_inactive
+ *
+ * @abstract
+ * Returns an attribute value which may be provided to dispatch_queue_create()
+ * or dispatch_queue_create_with_target(), in order to make the created queue
+ * initially inactive.
+ *
+ * @discussion
+ * Dispatch queues may be created in an inactive state. Queues in this state
+ * have to be activated before any blocks associated with them will be invoked.
+ *
+ * A queue in inactive state cannot be deallocated, dispatch_activate() must be
+ * called before the last reference to a queue created with this attribute is
+ * released.
+ *
+ * The target queue of a queue in inactive state can be changed using
+ * dispatch_set_target_queue(). Change of target queue is no longer permitted
+ * once an initially inactive queue has been activated.
+ *
+ * @param attr
+ * A queue attribute value to be combined with the initially inactive attribute.
+ *
+ * @return
+ * Returns an attribute value which may be provided to dispatch_queue_create()
+ * and dispatch_queue_create_with_target().
+ * The new value combines the attributes specified by the 'attr' parameter with
+ * the initially inactive attribute.
+ */
+__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
+__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
+dispatch_queue_attr_t
+dispatch_queue_attr_make_initially_inactive(
+		dispatch_queue_attr_t _Nullable attr);
+
+/*!
+ * @const DISPATCH_QUEUE_SERIAL_WITH_AUTORELEASE_POOL
+ *
+ * @discussion
+ * A dispatch queue created with this attribute invokes blocks serially in FIFO
+ * order, and surrounds execution of any block submitted asynchronously to it
+ * with the equivalent of a individual Objective-C <code>@autoreleasepool</code>
+ * scope.
+ *
+ * See dispatch_queue_attr_make_with_autorelease_frequency().
+ */
+#define DISPATCH_QUEUE_SERIAL_WITH_AUTORELEASE_POOL \
+		dispatch_queue_attr_make_with_autorelease_frequency(\
+				DISPATCH_QUEUE_SERIAL, DISPATCH_AUTORELEASE_FREQUENCY_WORK_ITEM)
+
+/*!
+ * @const DISPATCH_QUEUE_CONCURRENT_WITH_AUTORELEASE_POOL
+ *
+ * @discussion
+ * A dispatch queue created with this attribute may invokes blocks concurrently
+ * and supports barrier blocks submitted with the dispatch barrier API. It also
+ * surrounds execution of any block submitted asynchronously to it with the
+ * equivalent of a individual Objective-C <code>@autoreleasepool</code>
+ *
+ * See dispatch_queue_attr_make_with_autorelease_frequency().
+ */
+#define DISPATCH_QUEUE_CONCURRENT_WITH_AUTORELEASE_POOL \
+		dispatch_queue_attr_make_with_autorelease_frequency(\
+				DISPATCH_QUEUE_CONCURRENT, DISPATCH_AUTORELEASE_FREQUENCY_WORK_ITEM)
+
+/*!
+ * @typedef dispatch_autorelease_frequency_t
+ * Values to pass to the dispatch_queue_attr_make_with_autorelease_frequency()
+ * function.
+ *
+ * @const DISPATCH_AUTORELEASE_FREQUENCY_INHERIT
+ * Dispatch queues with this autorelease frequency inherit the behavior from
+ * their target queue. This is the default behavior for manually created queues.
+ *
+ * @const DISPATCH_AUTORELEASE_FREQUENCY_WORK_ITEM
+ * Dispatch queues with this autorelease frequency push and pop an autorelease
+ * pool around the execution of every block that was submitted to it
+ * asynchronously.
+ * @see dispatch_queue_attr_make_with_autorelease_frequency().
+ *
+ * @const DISPATCH_AUTORELEASE_FREQUENCY_NEVER
+ * Dispatch queues with this autorelease frequency never set up an individual
+ * autorelease pool around the execution of a block that is submitted to it
+ * asynchronously. This is the behavior of the global concurrent queues.
+ */
+DISPATCH_ENUM(dispatch_autorelease_frequency, unsigned long,
+	DISPATCH_AUTORELEASE_FREQUENCY_INHERIT
+			DISPATCH_ENUM_AVAILABLE(OSX, 10.12)
+			DISPATCH_ENUM_AVAILABLE(IOS, 10.0)
+			DISPATCH_ENUM_AVAILABLE(TVOS, 10.0)
+			DISPATCH_ENUM_AVAILABLE(WATCHOS, 3.0) = 0,
+	DISPATCH_AUTORELEASE_FREQUENCY_WORK_ITEM
+			DISPATCH_ENUM_AVAILABLE(OSX, 10.12)
+			DISPATCH_ENUM_AVAILABLE(IOS, 10.0)
+			DISPATCH_ENUM_AVAILABLE(TVOS, 10.0)
+			DISPATCH_ENUM_AVAILABLE(WATCHOS, 3.0) = 1,
+	DISPATCH_AUTORELEASE_FREQUENCY_NEVER
+			DISPATCH_ENUM_AVAILABLE(OSX, 10.12)
+			DISPATCH_ENUM_AVAILABLE(IOS, 10.0)
+			DISPATCH_ENUM_AVAILABLE(TVOS, 10.0)
+			DISPATCH_ENUM_AVAILABLE(WATCHOS, 3.0) = 2,
+);
+
+/*!
+ * @function dispatch_queue_attr_make_with_autorelease_frequency
+ *
+ * @abstract
+ * Returns a dispatch queue attribute value with the autorelease frequency
+ * set to the specified value.
+ *
+ * @discussion
+ * When a queue uses the per-workitem autorelease frequency (either directly
+ * or inherithed from its target queue), any block submitted asynchronously to
+ * this queue (via dispatch_async(), dispatch_barrier_async(),
+ * dispatch_group_notify(), etc...) is executed as if surrounded by a individual
+ * Objective-C <code>@autoreleasepool</code> scope.
+ *
+ * Autorelease frequency has no effect on blocks that are submitted
+ * synchronously to a queue (via dispatch_sync(), dispatch_barrier_sync()).
+ *
+ * The global concurrent queues have the DISPATCH_AUTORELEASE_FREQUENCY_NEVER
+ * behavior. Manually created dispatch queues use
+ * DISPATCH_AUTORELEASE_FREQUENCY_INHERIT by default.
+ *
+ * Queues created with this attribute cannot change target queues after having
+ * been activated. See dispatch_set_target_queue() and dispatch_activate().
+ *
+ * @param attr
+ * A queue attribute value to be combined with the specified autorelease
+ * frequency or NULL.
+ *
+ * @param frequency
+ * The requested autorelease frequency.
+ *
+ * @return
+ * Returns an attribute value which may be provided to dispatch_queue_create()
+ * or NULL if an invalid autorelease frequency was requested.
+ * This new value combines the attributes specified by the 'attr' parameter and
+ * the chosen autorelease frequency.
+ */
+__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
+__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
+dispatch_queue_attr_t
+dispatch_queue_attr_make_with_autorelease_frequency(
+		dispatch_queue_attr_t _Nullable attr,
+		dispatch_autorelease_frequency_t frequency);
+
+/*!
  * @function dispatch_queue_attr_make_with_qos_class
  *
  * @abstract
  * Returns an attribute value which may be provided to dispatch_queue_create()
- * in order to assign a QOS class and relative priority to the queue.
+ * or dispatch_queue_create_with_target(), in order to assign a QOS class and
+ * relative priority to the queue.
  *
  * @discussion
  * When specified in this manner, the QOS class and relative priority take
@@ -487,16 +665,85 @@ struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent;
  * results in NULL being returned.
  *
  * @return
- * Returns an attribute value which may be provided to dispatch_queue_create(),
- * or NULL if an invalid QOS class was requested.
+ * Returns an attribute value which may be provided to dispatch_queue_create()
+ * and dispatch_queue_create_with_target(), or NULL if an invalid QOS class was
+ * requested.
  * The new value combines the attributes specified by the 'attr' parameter and
  * the new QOS class and relative priority.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
 dispatch_queue_attr_t
-dispatch_queue_attr_make_with_qos_class(dispatch_queue_attr_t attr,
+dispatch_queue_attr_make_with_qos_class(dispatch_queue_attr_t _Nullable attr,
 		dispatch_qos_class_t qos_class, int relative_priority);
+
+/*!
+ * @const DISPATCH_TARGET_QUEUE_DEFAULT
+ * @discussion Constant to pass to the dispatch_queue_create_with_target(),
+ * dispatch_set_target_queue() and dispatch_source_create() functions to
+ * indicate that the default target queue for the object type in question
+ * should be used.
+ */
+#define DISPATCH_TARGET_QUEUE_DEFAULT NULL
+
+/*!
+ * @function dispatch_queue_create_with_target
+ *
+ * @abstract
+ * Creates a new dispatch queue with a specified target queue.
+ *
+ * @discussion
+ * Dispatch queues created with the DISPATCH_QUEUE_SERIAL or a NULL attribute
+ * invoke blocks serially in FIFO order.
+ *
+ * Dispatch queues created with the DISPATCH_QUEUE_CONCURRENT attribute may
+ * invoke blocks concurrently (similarly to the global concurrent queues, but
+ * potentially with more overhead), and support barrier blocks submitted with
+ * the dispatch barrier API, which e.g. enables the implementation of efficient
+ * reader-writer schemes.
+ *
+ * When a dispatch queue is no longer needed, it should be released with
+ * dispatch_release(). Note that any pending blocks submitted to a queue will
+ * hold a reference to that queue. Therefore a queue will not be deallocated
+ * until all pending blocks have finished.
+ *
+ * When using a dispatch queue attribute @a attr specifying a QoS class (derived
+ * from the result of dispatch_queue_attr_make_with_qos_class()), passing the
+ * result of dispatch_get_global_queue() in @a target will ignore the QoS class
+ * of that global queue and will use the global queue with the QoS class
+ * specified by attr instead.
+ *
+ * Queues created with dispatch_queue_create_with_target() cannot have their
+ * target queue changed, unless created inactive (See
+ * dispatch_queue_attr_make_initially_inactive()), in which case the target
+ * queue can be changed until the newly created queue is activated with
+ * dispatch_activate().
+ *
+ * @param label
+ * A string label to attach to the queue.
+ * This parameter is optional and may be NULL.
+ *
+ * @param attr
+ * A predefined attribute such as DISPATCH_QUEUE_SERIAL,
+ * DISPATCH_QUEUE_CONCURRENT, or the result of a call to
+ * a dispatch_queue_attr_make_with_* function.
+ *
+ * @param target
+ * The target queue for the newly created queue. The target queue is retained.
+ * If this parameter is DISPATCH_TARGET_QUEUE_DEFAULT, sets the queue's target
+ * queue to the default target queue for the given queue type.
+ *
+ * @result
+ * The newly created dispatch queue.
+ */
+__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
+__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
+DISPATCH_NOTHROW
+dispatch_queue_t
+dispatch_queue_create_with_target(const char *_Nullable label,
+	dispatch_queue_attr_t _Nullable attr, dispatch_queue_t _Nullable target)
+	DISPATCH_ALIAS_V2(dispatch_queue_create_with_target);
 
 /*!
  * @function dispatch_queue_create
@@ -534,8 +781,9 @@ dispatch_queue_attr_make_with_qos_class(dispatch_queue_attr_t attr,
  * This parameter is optional and may be NULL.
  *
  * @param attr
- * DISPATCH_QUEUE_SERIAL, DISPATCH_QUEUE_CONCURRENT, or the result of a call to
- * the function dispatch_queue_attr_make_with_qos_class().
+ * A predefined attribute such as DISPATCH_QUEUE_SERIAL,
+ * DISPATCH_QUEUE_CONCURRENT, or the result of a call to
+ * a dispatch_queue_attr_make_with_* function.
  *
  * @result
  * The newly created dispatch queue.
@@ -544,7 +792,8 @@ __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
-dispatch_queue_create(const char *label, dispatch_queue_attr_t attr);
+dispatch_queue_create(const char *_Nullable label,
+		dispatch_queue_attr_t _Nullable attr);
 
 /*!
  * @const DISPATCH_CURRENT_QUEUE_LABEL
@@ -572,7 +821,7 @@ dispatch_queue_create(const char *label, dispatch_queue_attr_t attr);
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
 DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 const char *
-dispatch_queue_get_label(dispatch_queue_t queue);
+dispatch_queue_get_label(dispatch_queue_t _Nullable queue);
 
 /*!
  * @function dispatch_queue_get_qos_class
@@ -612,15 +861,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 dispatch_qos_class_t
 dispatch_queue_get_qos_class(dispatch_queue_t queue,
-		int *relative_priority_ptr);
-
-/*!
- * @const DISPATCH_TARGET_QUEUE_DEFAULT
- * @discussion Constant to pass to the dispatch_set_target_queue() and
- * dispatch_source_create() functions to indicate that the default target queue
- * for the given object type should be used.
- */
-#define DISPATCH_TARGET_QUEUE_DEFAULT NULL
+		int *_Nullable relative_priority_ptr);
 
 /*!
  * @function dispatch_set_target_queue
@@ -657,6 +898,20 @@ dispatch_queue_get_qos_class(dispatch_queue_t queue,
  * For all other dispatch object types, the only function of the target queue
  * is to determine where an object's finalizer function is invoked.
  *
+ * In general, changing the target queue of an object is an asynchronous
+ * operation that doesn't take effect immediately, and doesn't affect blocks
+ * already associated with the specified object.
+ *
+ * However, if an object is inactive at the time dispatch_set_target_queue() is
+ * called, then the target queue change takes effect immediately, and will
+ * affect blocks already associated with the specified object. After an
+ * initially inactive object has been activated, calling
+ * dispatch_set_target_queue() results in an assertion and the process being
+ * terminated.
+ *
+ * If a dispatch queue is active and targeted by other dispatch objects,
+ * changing its target queue results in undefined behavior.
+ *
  * @param object
  * The object to modify.
  * The result of passing NULL in this parameter is undefined.
@@ -668,9 +923,10 @@ dispatch_queue_get_qos_class(dispatch_queue_t queue,
  * to the default target queue for the given object type.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NOTHROW // DISPATCH_NONNULL1
+DISPATCH_EXPORT DISPATCH_NOTHROW
 void
-dispatch_set_target_queue(dispatch_object_t object, dispatch_queue_t queue);
+dispatch_set_target_queue(dispatch_object_t object,
+		dispatch_queue_t _Nullable queue);
 
 /*!
  * @function dispatch_main
@@ -751,7 +1007,7 @@ DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NONNULL4 DISPATCH_NOTHROW
 void
 dispatch_after_f(dispatch_time_t when,
 	dispatch_queue_t queue,
-	void *context,
+	void *_Nullable context,
 	dispatch_function_t work);
 
 /*!
@@ -831,7 +1087,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_barrier_async_f(dispatch_queue_t queue,
-	void *context,
+	void *_Nullable context,
 	dispatch_function_t work);
 
 /*!
@@ -858,7 +1114,8 @@ dispatch_barrier_async_f(dispatch_queue_t queue,
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
-dispatch_barrier_sync(dispatch_queue_t queue, dispatch_block_t block);
+dispatch_barrier_sync(dispatch_queue_t queue,
+		DISPATCH_NOESCAPE dispatch_block_t block);
 #endif
 
 /*!
@@ -890,7 +1147,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_barrier_sync_f(dispatch_queue_t queue,
-	void *context,
+	void *_Nullable context,
 	dispatch_function_t work);
 
 /*!
@@ -920,7 +1177,7 @@ dispatch_barrier_sync_f(dispatch_queue_t queue,
  * The key to set the context for, typically a pointer to a static variable
  * specific to the subsystem. Keys are only compared as pointers and never
  * dereferenced. Passing a string constant directly is not recommended.
- * The NULL key is reserved and attemps to set a context for it are ignored.
+ * The NULL key is reserved and attempts to set a context for it are ignored.
  *
  * @param context
  * The new subsystem-specific context for the object. This may be NULL.
@@ -933,7 +1190,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_queue_set_specific(dispatch_queue_t queue, const void *key,
-	void *context, dispatch_function_t destructor);
+	void *_Nullable context, dispatch_function_t _Nullable destructor);
 
 /*!
  * @function dispatch_queue_get_specific
@@ -961,7 +1218,7 @@ dispatch_queue_set_specific(dispatch_queue_t queue, const void *key,
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_PURE DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
-void *
+void *_Nullable
 dispatch_queue_get_specific(dispatch_queue_t queue, const void *key);
 
 /*!
@@ -987,9 +1244,128 @@ dispatch_queue_get_specific(dispatch_queue_t queue, const void *key);
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
 DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
-void *
+void *_Nullable
 dispatch_get_specific(const void *key);
 
+/*!
+ * @functiongroup Dispatch assertion API
+ *
+ * This API asserts at runtime that code is executing in (or out of) the context
+ * of a given queue. It can be used to check that a block accessing a resource
+ * does so from the proper queue protecting the resource. It also can be used
+ * to verify that a block that could cause a deadlock if run on a given queue
+ * never executes on that queue.
+ */
+
+/*!
+ * @function dispatch_assert_queue
+ *
+ * @abstract
+ * Verifies that the current block is executing on a given dispatch queue.
+ *
+ * @discussion
+ * Some code expects to be run on a specific dispatch queue. This function
+ * verifies that that expectation is true.
+ *
+ * If the currently executing block was submitted to the specified queue or to
+ * any queue targeting it (see dispatch_set_target_queue()), this function
+ * returns.
+ *
+ * If the currently executing block was submitted with a synchronous API
+ * (dispatch_sync(), dispatch_barrier_sync(), ...), the context of the
+ * submitting block is also evaluated (recursively).
+ * If a synchronously submitting block is found that was itself submitted to
+ * the specified queue or to any queue targeting it, this function returns.
+ *
+ * Otherwise this function asserts: it logs an explanation to the system log and
+ * terminates the application.
+ *
+ * Passing the result of dispatch_get_main_queue() to this function verifies
+ * that the current block was submitted to the main queue, or to a queue
+ * targeting it, or is running on the main thread (in any context).
+ *
+ * When dispatch_assert_queue() is called outside of the context of a
+ * submitted block (for example from the context of a thread created manually
+ * with pthread_create()) then this function will also assert and terminate
+ * the application.
+ *
+ * The variant dispatch_assert_queue_debug() is compiled out when the
+ * preprocessor macro NDEBUG is defined. (See also assert(3)).
+ *
+ * @param queue
+ * The dispatch queue that the current block is expected to run on.
+ * The result of passing NULL in this parameter is undefined.
+ */
+__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
+__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+DISPATCH_EXPORT DISPATCH_NONNULL1
+void
+dispatch_assert_queue(dispatch_queue_t queue)
+	DISPATCH_ALIAS_V2(dispatch_assert_queue);
+
+/*!
+ * @function dispatch_assert_queue_barrier
+ *
+ * @abstract
+ * Verifies that the current block is executing on a given dispatch queue,
+ * and that the block acts as a barrier on that queue.
+ *
+ * @discussion
+ * This behaves exactly like dispatch_assert_queue(), with the additional check
+ * that the current block acts as a barrier on the specified queue, which is
+ * always true if the specified queue is serial (see DISPATCH_BLOCK_BARRIER or
+ * dispatch_barrier_async() for details).
+ *
+ * The variant dispatch_assert_queue_barrier_debug() is compiled out when the
+ * preprocessor macro NDEBUG is defined. (See also assert()).
+ *
+ * @param queue
+ * The dispatch queue that the current block is expected to run as a barrier on.
+ * The result of passing NULL in this parameter is undefined.
+ */
+__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
+__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+DISPATCH_EXPORT DISPATCH_NONNULL1
+void
+dispatch_assert_queue_barrier(dispatch_queue_t queue);
+
+/*!
+ * @function dispatch_assert_queue_not
+ *
+ * @abstract
+ * Verifies that the current block is not executing on a given dispatch queue.
+ *
+ * @discussion
+ * This function is the equivalent of dispatch_queue_assert() with the test for
+ * equality inverted. That means that it will terminate the application when
+ * dispatch_queue_assert() would return, and vice-versa. See discussion there.
+ *
+ * The variant dispatch_assert_queue_not_debug() is compiled out when the
+ * preprocessor macro NDEBUG is defined. (See also assert(3)).
+ *
+ * @param queue
+ * The dispatch queue that the current block is expected not to run on.
+ * The result of passing NULL in this parameter is undefined.
+ */
+__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
+__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+DISPATCH_EXPORT DISPATCH_NONNULL1
+void
+dispatch_assert_queue_not(dispatch_queue_t queue)
+	DISPATCH_ALIAS_V2(dispatch_assert_queue_not);
+
+#ifdef NDEBUG
+#define dispatch_assert_queue_debug(q) ((void)(0 && (q)))
+#define dispatch_assert_queue_barrier_debug(q) ((void)(0 && (q)))
+#define dispatch_assert_queue_not_debug(q) ((void)(0 && (q)))
+#else
+#define dispatch_assert_queue_debug(q) dispatch_assert_queue(q)
+#define dispatch_assert_queue_barrier_debug(q) dispatch_assert_queue_barrier(q)
+#define dispatch_assert_queue_not_debug(q) dispatch_assert_queue_not(q)
+#endif
+
 __END_DECLS
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif

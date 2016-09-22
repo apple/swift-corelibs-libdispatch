@@ -33,7 +33,7 @@
 #if DISPATCH_HW_CONFIG_UP
 #define _dispatch_wait_until(c) do { \
 		int _spins = 0; \
-		while (!(c)) { \
+		while (!fastpath(c)) { \
 			_spins++; \
 			_dispatch_preemption_yield(_spins); \
 		} } while (0)
@@ -44,7 +44,7 @@
 #endif
 #define _dispatch_wait_until(c) do { \
 		int _spins = -(DISPATCH_WAIT_SPINS); \
-		while (!(c)) { \
+		while (!fastpath(c)) { \
 			if (slowpath(_spins++ >= 0)) { \
 				_dispatch_preemption_yield(_spins); \
 			} else { \
@@ -53,7 +53,7 @@
 		} } while (0)
 #else
 #define _dispatch_wait_until(c) do { \
-		while (!(c)) { \
+		while (!fastpath(c)) { \
 			dispatch_hardware_pause(); \
 		} } while (0)
 #endif
@@ -109,16 +109,18 @@
 #pragma mark _dispatch_preemption_yield
 
 #if HAVE_MACH
-#if defined(SWITCH_OPTION_OSLOCK_DEPRESS) && !(TARGET_IPHONE_SIMULATOR && \
-		IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 1090)
+#if defined(SWITCH_OPTION_OSLOCK_DEPRESS)
 #define DISPATCH_YIELD_THREAD_SWITCH_OPTION SWITCH_OPTION_OSLOCK_DEPRESS
 #else
 #define DISPATCH_YIELD_THREAD_SWITCH_OPTION SWITCH_OPTION_DEPRESS
 #endif
-#define _dispatch_preemption_yield(n) _dispatch_thread_switch(MACH_PORT_NULL, \
+#define _dispatch_preemption_yield(n) thread_switch(MACH_PORT_NULL, \
+		DISPATCH_YIELD_THREAD_SWITCH_OPTION, (mach_msg_timeout_t)(n))
+#define _dispatch_preemption_yield_to(th, n) thread_switch(th, \
 		DISPATCH_YIELD_THREAD_SWITCH_OPTION, (mach_msg_timeout_t)(n))
 #else
 #define _dispatch_preemption_yield(n) pthread_yield_np()
+#define _dispatch_preemption_yield_to(th, n) pthread_yield_np()
 #endif // HAVE_MACH
 
 #pragma mark -
@@ -132,25 +134,15 @@
 #endif
 
 #if HAVE_MACH
-#if defined(SWITCH_OPTION_DISPATCH_CONTENTION) && !(TARGET_IPHONE_SIMULATOR && \
-		IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 1090)
-#define _dispatch_contention_usleep(u) _dispatch_thread_switch(MACH_PORT_NULL, \
+#if defined(SWITCH_OPTION_DISPATCH_CONTENTION)
+#define _dispatch_contention_usleep(u) thread_switch(MACH_PORT_NULL, \
 		SWITCH_OPTION_DISPATCH_CONTENTION, (u))
 #else
-#define _dispatch_contention_usleep(u) _dispatch_thread_switch(MACH_PORT_NULL, \
+#define _dispatch_contention_usleep(u) thread_switch(MACH_PORT_NULL, \
 		SWITCH_OPTION_WAIT, (((u)-1)/1000)+1)
 #endif
 #else
 #define _dispatch_contention_usleep(u) usleep((u))
-#endif // HAVE_MACH
-
-#pragma mark -
-#pragma mark _dispatch_thread_switch
-
-#if HAVE_MACH
-#define _dispatch_thread_switch(thread_name, option, option_time) \
-		thread_switch((thread_name), (option), (option_time))
-
 #endif // HAVE_MACH
 
 #endif // __DISPATCH_SHIMS_YIELD__

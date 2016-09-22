@@ -81,6 +81,15 @@ static inline uint32_t
 _dispatch_hw_get_config(_dispatch_hw_config_t c)
 {
 	uint32_t val = 1;
+#if defined(__linux__) && HAVE_SYSCONF
+	switch (c) {
+	case _dispatch_hw_config_logical_cpus:
+	case _dispatch_hw_config_physical_cpus:
+		return sysconf(_SC_NPROCESSORS_CONF);
+	case _dispatch_hw_config_active_cpus:
+		return sysconf(_SC_NPROCESSORS_ONLN);
+	}
+#else
 	const char *name = NULL;
 	int r;
 #if defined(__APPLE__)
@@ -106,6 +115,7 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 		if (r > 0) val = (uint32_t)r;
 #endif
 	}
+#endif
 	return val;
 }
 

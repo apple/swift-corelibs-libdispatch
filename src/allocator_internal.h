@@ -33,14 +33,8 @@
 #endif
 #endif
 
-#if TARGET_IPHONE_SIMULATOR && IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 1090
-#undef DISPATCH_USE_NANOZONE
-#define DISPATCH_USE_NANOZONE 0
-#endif
 #ifndef DISPATCH_USE_NANOZONE
-#if TARGET_OS_MAC && defined(__LP64__) && \
-		(__MAC_OS_X_VERSION_MIN_REQUIRED >= 1090 || \
-		__IPHONE_OS_VERSION_MIN_REQUIRED >= 70000)
+#if TARGET_OS_MAC && defined(__LP64__)
 #define DISPATCH_USE_NANOZONE 1
 #endif
 #endif
@@ -218,7 +212,7 @@ struct dispatch_magazine_header_s {
 	// Link to the next heap in the chain. Only used in magazine 0's header
 	dispatch_heap_t dh_next;
 
-	// Points to the first bitmap in the page where this CPU succesfully
+	// Points to the first bitmap in the page where this CPU successfully
 	// allocated a continuation last time. Only used in the first heap.
 	bitmap_t *last_found_page;
 };

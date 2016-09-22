@@ -38,6 +38,7 @@
 #define DISPATCH_EVFILT_MACH_NOTIFICATION	(-EVFILT_SYSCOUNT - 4)
 #define DISPATCH_EVFILT_SYSCOUNT	( EVFILT_SYSCOUNT + 4)
 
+#if HAVE_MACH
 // NOTE: dispatch_source_mach_send_flags_t and dispatch_source_mach_recv_flags_t
 //       bit values must not overlap as they share the same kevent fflags !
 
@@ -68,28 +69,32 @@ enum {
 	DISPATCH_MACH_RECV_MESSAGE_DIRECT_ONCE = 0x20,
 	DISPATCH_MACH_RECV_NO_SENDERS = 0x40,
 };
+#endif // HAVE_MACH
 
 enum {
+	/* DISPATCH_TIMER_STRICT 0x1 */
+	/* DISPATCH_TIMER_BACKGROUND = 0x2, */
 	DISPATCH_TIMER_WALL_CLOCK = 0x4,
 	DISPATCH_TIMER_INTERVAL = 0x8,
 	DISPATCH_TIMER_WITH_AGGREGATE = 0x10,
+	/* DISPATCH_INTERVAL_UI_ANIMATION = 0x20 */
+	DISPATCH_TIMER_AFTER = 0x40,
 };
 
-// low bits are timer QoS class
 #define DISPATCH_TIMER_QOS_NORMAL 0u
 #define DISPATCH_TIMER_QOS_CRITICAL 1u
 #define DISPATCH_TIMER_QOS_BACKGROUND 2u
 #define DISPATCH_TIMER_QOS_COUNT (DISPATCH_TIMER_QOS_BACKGROUND + 1)
-#define DISPATCH_TIMER_QOS(tidx) ((uintptr_t)(tidx) & 0x3ul)
+#define DISPATCH_TIMER_QOS(tidx) (((uintptr_t)(tidx) >> 1) & 0x3ul)
 
 #define DISPATCH_TIMER_KIND_WALL 0u
 #define DISPATCH_TIMER_KIND_MACH 1u
 #define DISPATCH_TIMER_KIND_COUNT (DISPATCH_TIMER_KIND_MACH + 1)
-#define DISPATCH_TIMER_KIND(tidx) (((uintptr_t)(tidx) >> 2) & 0x1ul)
+#define DISPATCH_TIMER_KIND(tidx) ((uintptr_t)(tidx) & 0x1ul)
 
-#define DISPATCH_TIMER_INDEX(kind, qos) (((kind) << 2) | (qos))
+#define DISPATCH_TIMER_INDEX(kind, qos) ((qos) << 1 | (kind))
 #define DISPATCH_TIMER_INDEX_DISARM \
-		DISPATCH_TIMER_INDEX(DISPATCH_TIMER_KIND_COUNT, 0)
+		DISPATCH_TIMER_INDEX(0, DISPATCH_TIMER_QOS_COUNT)
 #define DISPATCH_TIMER_INDEX_COUNT (DISPATCH_TIMER_INDEX_DISARM + 1)
 #define DISPATCH_TIMER_IDENT(flags) ({ unsigned long f = (flags); \
 		DISPATCH_TIMER_INDEX(f & DISPATCH_TIMER_WALL_CLOCK ? \
@@ -105,6 +110,11 @@ struct dispatch_kevent_s {
 };
 
 typedef struct dispatch_kevent_s *dispatch_kevent_t;
+
+typedef typeof(((dispatch_kevent_t)NULL)->dk_kevent.udata) _dispatch_kevent_qos_udata_t;
+
+#define DISPATCH_KEV_CUSTOM_ADD ((dispatch_kevent_t)DISPATCH_EVFILT_CUSTOM_ADD)
+#define DISPATCH_KEV_CUSTOM_OR  ((dispatch_kevent_t)DISPATCH_EVFILT_CUSTOM_OR)
 
 struct dispatch_source_type_s {
 	_dispatch_kevent_qos_s ke;
@@ -134,7 +144,7 @@ enum {
 typedef struct dispatch_source_refs_s {
 	TAILQ_ENTRY(dispatch_source_refs_s) dr_list;
 	uintptr_t dr_source_wref; // "weak" backref to dispatch_source_t
-	dispatch_continuation_t ds_handler[3];
+	dispatch_continuation_t volatile ds_handler[3];
 } *dispatch_source_refs_t;
 
 typedef struct dispatch_timer_source_refs_s {
@@ -165,42 +175,43 @@ _dispatch_source_timer_idx(dispatch_source_refs_t dr)
 	return DISPATCH_TIMER_IDENT(ds_timer(dr).flags);
 }
 
-// ds_atomic_flags bits
-#define DSF_CANCELED 1u // cancellation has been requested
-#define DSF_ARMED 2u // source is armed
-#define DSF_DELETED 4u // source received EV_DELETE event
-#define DSF_ONESHOT 8u // source received EV_ONESHOT event
-
-#define DISPATCH_SOURCE_HEADER(refs) \
-	dispatch_kevent_t ds_dkev; \
-	dispatch_##refs##_refs_t ds_refs; \
-	unsigned int ds_atomic_flags; \
+#define _DISPATCH_SOURCE_HEADER(refs) \
+	DISPATCH_QUEUE_HEADER(refs); \
+	/* LP64: fills 32bit hole in QUEUE_HEADER */ \
 	unsigned int \
 		ds_is_level:1, \
 		ds_is_adder:1, \
 		ds_is_installed:1, \
 		ds_is_direct_kevent:1, \
+		ds_is_custom_source:1, \
 		ds_needs_rearm:1, \
-		ds_pending_delete:1, \
-		ds_needs_mgr:1, \
 		ds_is_timer:1, \
 		ds_vmpressure_override:1, \
-		ds_memorystatus_override:1, \
+		ds_memorypressure_override:1, \
 		dm_handler_is_block:1, \
 		dm_connect_handler_called:1, \
 		dm_cancel_handler_called:1; \
+	dispatch_kevent_t ds_dkev; \
+	dispatch_##refs##_refs_t ds_refs; \
 	unsigned long ds_pending_data_mask;
 
-DISPATCH_CLASS_DECL(source);
+#define DISPATCH_SOURCE_HEADER(refs) \
+	struct dispatch_source_s _as_ds[0]; \
+	_DISPATCH_SOURCE_HEADER(refs)
+
+DISPATCH_CLASS_DECL_BARE(source);
+_OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL(dispatch_source, dispatch_object);
+
+#if DISPATCH_PURE_C
 struct dispatch_source_s {
-	DISPATCH_STRUCT_HEADER(source);
-	DISPATCH_QUEUE_HEADER;
-	DISPATCH_SOURCE_HEADER(source);
+	_DISPATCH_SOURCE_HEADER(source);
 	unsigned long ds_ident_hack;
 	unsigned long ds_data;
 	unsigned long ds_pending_data;
-};
+} DISPATCH_QUEUE_ALIGN;
+#endif
 
+#if HAVE_MACH
 // Mach channel state which may contain references to the channel object
 // layout must match dispatch_source_refs_s
 struct dispatch_mach_refs_s {
@@ -216,19 +227,39 @@ struct dispatch_mach_reply_refs_s {
 	uintptr_t dr_source_wref; // "weak" backref to dispatch_mach_t
 	dispatch_kevent_t dmr_dkev;
 	void *dmr_ctxt;
-	pthread_priority_t dmr_priority;
+	mach_port_t dmr_reply;
+	dispatch_priority_t dmr_priority;
 	voucher_t dmr_voucher;
 	TAILQ_ENTRY(dispatch_mach_reply_refs_s) dmr_list;
 };
 typedef struct dispatch_mach_reply_refs_s *dispatch_mach_reply_refs_t;
+
+#define _DISPATCH_MACH_STATE_UNUSED_MASK_2       0xff00000000000000ull
+#define DISPATCH_MACH_STATE_OVERRIDE_MASK        0x00ffff0000000000ull
+#define _DISPATCH_MACH_STATE_UNUSED_MASK_1       0x000000f000000000ull
+#define DISPATCH_MACH_STATE_DIRTY                0x0000000800000000ull
+#define DISPATCH_MACH_STATE_RECEIVED_OVERRIDE    0x0000000400000000ull
+#define _DISPATCH_MACH_STATE_UNUSED_MASK_0       0x0000000200000000ull
+#define DISPATCH_MACH_STATE_PENDING_BARRIER      0x0000000100000000ull
+#define DISPATCH_MACH_STATE_UNLOCK_MASK          0x00000000ffffffffull
 
 struct dispatch_mach_send_refs_s {
 	TAILQ_ENTRY(dispatch_mach_send_refs_s) dr_list;
 	uintptr_t dr_source_wref; // "weak" backref to dispatch_mach_t
 	dispatch_mach_msg_t dm_checkin;
 	TAILQ_HEAD(, dispatch_mach_reply_refs_s) dm_replies;
+	dispatch_unfair_lock_s dm_replies_lock;
+#define DISPATCH_MACH_DISCONNECT_MAGIC_BASE (0x80000000)
+#define DISPATCH_MACH_NEVER_INSTALLED (DISPATCH_MACH_DISCONNECT_MAGIC_BASE + 0)
+#define DISPATCH_MACH_NEVER_CONNECTED (DISPATCH_MACH_DISCONNECT_MAGIC_BASE + 1)
 	uint32_t volatile dm_disconnect_cnt;
-	uint32_t volatile dm_sending;
+	union {
+		uint64_t volatile dm_state;
+		DISPATCH_STRUCT_LITTLE_ENDIAN_2(
+			dispatch_unfair_lock_s dm_state_lock,
+			uint32_t dm_state_bits
+		);
+	};
 	unsigned int dm_needs_mgr:1;
 	struct dispatch_object_s *volatile dm_tail;
 	struct dispatch_object_s *volatile dm_head;
@@ -237,17 +268,21 @@ struct dispatch_mach_send_refs_s {
 typedef struct dispatch_mach_send_refs_s *dispatch_mach_send_refs_t;
 
 DISPATCH_CLASS_DECL(mach);
+#if DISPATCH_PURE_C
 struct dispatch_mach_s {
-	DISPATCH_STRUCT_HEADER(mach);
-	DISPATCH_QUEUE_HEADER;
 	DISPATCH_SOURCE_HEADER(mach);
 	dispatch_kevent_t dm_dkev;
 	dispatch_mach_send_refs_t dm_refs;
-};
+} DISPATCH_QUEUE_ALIGN;
+#endif
 
 DISPATCH_CLASS_DECL(mach_msg);
 struct dispatch_mach_msg_s {
-	DISPATCH_STRUCT_HEADER(mach_msg);
+	DISPATCH_OBJECT_HEADER(mach_msg);
+	union {
+		mach_msg_option_t dmsg_options;
+		mach_error_t dmsg_error;
+	};
 	mach_port_t dmsg_reply;
 	pthread_priority_t dmsg_priority;
 	voucher_t dmsg_voucher;
@@ -258,6 +293,9 @@ struct dispatch_mach_msg_s {
 		char dmsg_buf[0];
 	};
 };
+#endif // HAVE_MACH
+
+extern const struct dispatch_source_type_s _dispatch_source_type_after;
 
 #if TARGET_OS_EMBEDDED
 #define DSL_HASH_SIZE  64u // must be a power of two
@@ -265,31 +303,49 @@ struct dispatch_mach_msg_s {
 #define DSL_HASH_SIZE 256u // must be a power of two
 #endif
 
+dispatch_source_t
+_dispatch_source_create_mach_msg_direct_recv(mach_port_t recvp,
+		const struct dispatch_continuation_s *dc);
 void _dispatch_source_xref_dispose(dispatch_source_t ds);
 void _dispatch_source_dispose(dispatch_source_t ds);
-void _dispatch_source_invoke(dispatch_source_t ds, dispatch_object_t dou,
-		dispatch_invoke_flags_t flags);
-unsigned long _dispatch_source_probe(dispatch_source_t ds);
+void _dispatch_source_finalize_activation(dispatch_source_t ds);
+void _dispatch_source_invoke(dispatch_source_t ds, dispatch_invoke_flags_t flags);
+void _dispatch_source_wakeup(dispatch_source_t ds, pthread_priority_t pp,
+		dispatch_wakeup_flags_t flags);
 size_t _dispatch_source_debug(dispatch_source_t ds, char* buf, size_t bufsiz);
 void _dispatch_source_set_interval(dispatch_source_t ds, uint64_t interval);
-void _dispatch_source_set_event_handler_with_context_f(dispatch_source_t ds,
-		void *ctxt, dispatch_function_t handler);
+void _dispatch_source_set_event_handler_continuation(dispatch_source_t ds,
+		dispatch_continuation_t dc);
+DISPATCH_EXPORT // for firehose server
+void _dispatch_source_merge_data(dispatch_source_t ds, pthread_priority_t pp,
+		unsigned long val);
 
+#if HAVE_MACH
 void _dispatch_mach_dispose(dispatch_mach_t dm);
-void _dispatch_mach_invoke(dispatch_mach_t dm, dispatch_object_t dou,
-		dispatch_invoke_flags_t flags);
-unsigned long _dispatch_mach_probe(dispatch_mach_t dm);
+void _dispatch_mach_finalize_activation(dispatch_mach_t dm);
+void _dispatch_mach_invoke(dispatch_mach_t dm, dispatch_invoke_flags_t flags);
+void _dispatch_mach_wakeup(dispatch_mach_t dm, pthread_priority_t pp,
+		dispatch_wakeup_flags_t flags);
 size_t _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz);
 
 void _dispatch_mach_msg_dispose(dispatch_mach_msg_t dmsg);
-void _dispatch_mach_msg_invoke(dispatch_mach_msg_t dmsg, dispatch_object_t dou,
+void _dispatch_mach_msg_invoke(dispatch_mach_msg_t dmsg,
 		dispatch_invoke_flags_t flags);
-size_t _dispatch_mach_msg_debug(dispatch_mach_msg_t dmsg, char* buf, size_t bufsiz);
+size_t _dispatch_mach_msg_debug(dispatch_mach_msg_t dmsg, char* buf,
+		size_t bufsiz);
 
-void _dispatch_mach_barrier_invoke(void *ctxt);
-
-unsigned long _dispatch_mgr_wakeup(dispatch_queue_t dq);
-void _dispatch_mgr_thread(dispatch_queue_t dq, dispatch_object_t dou,
+void _dispatch_mach_send_barrier_drain_invoke(dispatch_continuation_t dc,
 		dispatch_invoke_flags_t flags);
+void _dispatch_mach_barrier_invoke(dispatch_continuation_t dc,
+		dispatch_invoke_flags_t flags);
+#endif // HAVE_MACH
+
+void _dispatch_mgr_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
+		dispatch_wakeup_flags_t flags);
+void _dispatch_mgr_thread(dispatch_queue_t dq, dispatch_invoke_flags_t flags);
+#if DISPATCH_USE_KEVENT_WORKQUEUE
+void _dispatch_kevent_worker_thread(_dispatch_kevent_qos_s **events,
+		int *nevents);
+#endif
 
 #endif /* __DISPATCH_SOURCE_INTERNAL__ */

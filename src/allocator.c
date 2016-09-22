@@ -35,7 +35,7 @@
 // once to non-zero. They are not marked volatile. There is a small risk that
 // some thread may see a stale 0 value and enter try_create_heap. It will
 // waste some time in an allocate syscall, but eventually it will try to
-// cmpxchg, expecting to overwite 0 with an address. This will fail
+// cmpxchg, expecting to overwrite 0 with an address. This will fail
 // (because another thread already did this), the thread will deallocate the
 // unused allocated memory, and continue with the new value.
 //
@@ -178,11 +178,11 @@ madvisable_page_base_for_continuation(dispatch_continuation_t c)
 #if DISPATCH_DEBUG
 	struct dispatch_magazine_s *m = magazine_for_continuation(c);
 	if (slowpath(page_base < (void *)&m->conts)) {
-		DISPATCH_CRASH("madvisable continuation too low");
+		DISPATCH_INTERNAL_CRASH(page_base, "madvisable continuation too low");
 	}
 	if (slowpath(page_base > (void *)&m->conts[SUPERMAPS_PER_MAGAZINE-1]
 			[BITMAPS_PER_SUPERMAP-1][CONTINUATIONS_PER_BITMAP-1])) {
-		DISPATCH_CRASH("madvisable continuation too high");
+		DISPATCH_INTERNAL_CRASH(page_base, "madvisable continuation too high");
 	}
 #endif
 	return page_base;
@@ -228,7 +228,7 @@ bitmap_set_first_unset_bit_upto_index(volatile bitmap_t *bitmap,
 	// load from it before storing, so we don't need to guard
 	// against reordering those loads.
 	dispatch_assert(sizeof(*bitmap) == sizeof(unsigned long));
-	return dispatch_atomic_set_first_bit(bitmap,max_index);
+	return os_atomic_set_first_bit(bitmap, max_index);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -255,12 +255,13 @@ bitmap_clear_bit(volatile bitmap_t *bitmap, unsigned int index,
 
 	if (exclusively == CLEAR_EXCLUSIVELY) {
 		if (slowpath((*bitmap & mask) == 0)) {
-			DISPATCH_CRASH("Corruption: failed to clear bit exclusively");
+			DISPATCH_CLIENT_CRASH(*bitmap,
+					"Corruption: failed to clear bit exclusively");
 		}
 	}
 
 	// and-and-fetch
-	b = dispatch_atomic_and(bitmap, ~mask, release);
+	b = os_atomic_and(bitmap, ~mask, release);
 	return b == 0;
 }
 
@@ -284,7 +285,7 @@ mark_bitmap_as_full_if_still_full(volatile bitmap_t *supermap,
 		// don't protect access to other memory.
 		s = s_new;
 		s_masked = s | mask;
-		if (dispatch_atomic_cmpxchgvw(supermap, s, s_masked, &s_new, relaxed) ||
+		if (os_atomic_cmpxchgvw(supermap, s, s_masked, &s_new, relaxed) ||
 				!bitmap_is_full(*bitmap)) {
 			return;
 		}
@@ -358,8 +359,7 @@ _dispatch_alloc_try_create_heap(dispatch_heap_t *heap_ptr)
 			MEMORY_OBJECT_NULL, 0, FALSE, VM_PROT_DEFAULT, VM_PROT_ALL,
 			VM_INHERIT_DEFAULT))) {
 		if (kr != KERN_NO_SPACE) {
-			(void)dispatch_assume_zero(kr);
-			DISPATCH_CLIENT_CRASH("Could not allocate heap");
+			DISPATCH_CLIENT_CRASH(kr, "Could not allocate heap");
 		}
 		_dispatch_temporary_resource_shortage();
 		vm_addr = vm_page_size;
@@ -422,7 +422,7 @@ _dispatch_alloc_try_create_heap(dispatch_heap_t *heap_ptr)
 #endif // DISPATCH_DEBUG
 #endif // HAVE_MACH
 
-	if (!dispatch_atomic_cmpxchg(heap_ptr, NULL, (void *)aligned_region,
+	if (!os_atomic_cmpxchg(heap_ptr, NULL, (void *)aligned_region,
 			relaxed)) {
 		// If we lost the race to link in the new region, unmap the whole thing.
 #if DISPATCH_DEBUG
@@ -550,7 +550,7 @@ _dispatch_alloc_maybe_madvise_page(dispatch_continuation_t c)
 	// take ownership of them all.
 	int last_locked = 0;
 	do {
-		if (!dispatch_atomic_cmpxchg(&page_bitmaps[last_locked], BITMAP_C(0),
+		if (!os_atomic_cmpxchg(&page_bitmaps[last_locked], BITMAP_C(0),
 				BITMAP_ALL_ONES, relaxed)) {
 			// We didn't get one; since there is a cont allocated in
 			// the page, we can't madvise. Give up and unlock all.
@@ -573,7 +573,7 @@ unlock:
 		page_bitmaps[--last_locked] = BITMAP_C(0);
 	}
 	if (last_locked) {
-		dispatch_atomic_store(&page_bitmaps[0], BITMAP_C(0), relaxed);
+		os_atomic_store(&page_bitmaps[0], BITMAP_C(0), relaxed);
 	}
 	return;
 }
@@ -676,7 +676,7 @@ _dispatch_malloc_init(void)
 	malloc_set_zone_name(_dispatch_ccache_zone, "DispatchContinuations");
 }
 #else
-static inline void _dispatch_malloc_init(void) {}
+#define _dispatch_malloc_init() ((void)0)
 #endif // DISPATCH_USE_MALLOCZONE
 
 static dispatch_continuation_t
@@ -769,4 +769,3 @@ _dispatch_continuation_free_to_heap(dispatch_continuation_t c)
 	return _dispatch_malloc_continuation_free(c);
 #endif
 }
-

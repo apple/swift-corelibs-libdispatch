@@ -21,16 +21,33 @@
 #ifndef __OS_VOUCHER_PRIVATE__
 #define __OS_VOUCHER_PRIVATE__
 
+#ifndef __linux__
 #include <os/base.h>
+#endif
+#if __has_include(<mach/mach.h>)
 #include <os/object.h>
+#include <mach/mach.h>
+#endif
+#if __has_include(<bank/bank_types.h>)
+#include <bank/bank_types.h>
+#endif
+#if __has_include(<sys/persona.h>)
+#include <sys/persona.h>
+#endif
 
-#define OS_VOUCHER_SPI_VERSION 20141203
+#ifndef __DISPATCH_BUILDING_DISPATCH__
+#include <dispatch/dispatch.h>
+#endif /* !__DISPATCH_BUILDING_DISPATCH__ */
+
+#define OS_VOUCHER_SPI_VERSION 20150630
 
 #if OS_VOUCHER_WEAK_IMPORT
 #define OS_VOUCHER_EXPORT OS_EXPORT OS_WEAK_IMPORT
 #else
 #define OS_VOUCHER_EXPORT OS_EXPORT
 #endif
+
+DISPATCH_ASSUME_NONNULL_BEGIN
 
 __BEGIN_DECLS
 
@@ -50,11 +67,18 @@ __BEGIN_DECLS
  * Voucher objects are os_objects (c.f. <os/object.h>). They are memory-managed
  * with the os_retain()/os_release() functions or -[retain]/-[release] methods.
  */
-#if OS_OBJECT_USE_OBJC
-OS_OBJECT_DECL(voucher);
-#else
-typedef struct voucher_s *voucher_t;
-#endif
+OS_OBJECT_DECL_CLASS(voucher);
+
+/*!
+ * @const VOUCHER_NULL
+ * Represents the empty base voucher with no attributes.
+ */
+#define VOUCHER_NULL		((voucher_t)0)
+/*!
+ * @const VOUCHER_INVALID
+ * Represents an invalid voucher
+ */
+#define VOUCHER_INVALID		((voucher_t)-1)
 
 /*!
  * @function voucher_adopt
@@ -79,8 +103,8 @@ typedef struct voucher_s *voucher_t;
 __OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT_NEEDS_RELEASE
 OS_NOTHROW
-voucher_t
-voucher_adopt(voucher_t voucher OS_OBJECT_CONSUMED);
+voucher_t _Nullable
+voucher_adopt(voucher_t _Nullable voucher OS_OBJECT_CONSUMED);
 
 /*!
  * @function voucher_copy
@@ -94,7 +118,7 @@ voucher_adopt(voucher_t voucher OS_OBJECT_CONSUMED);
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
-voucher_t
+voucher_t _Nullable
 voucher_copy(void);
 
 /*!
@@ -113,7 +137,7 @@ voucher_copy(void);
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
-voucher_t
+voucher_t _Nullable
 voucher_copy_without_importance(void);
 
 /*!
@@ -151,22 +175,18 @@ voucher_replace_default_voucher(void);
  *
  * @discussion
  * This is only intended for use by CoreFoundation to explicitly manage the
- * App Nap state of an application following receiption of a de-nap IPC message.
+ * App Nap state of an application following reception of a de-nap IPC message.
  *
  * CAUTION: Do NOT use this SPI without contacting the Darwin Runtime team.
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
 OS_VOUCHER_EXPORT OS_NOTHROW
 void
-voucher_decrement_importance_count4CF(voucher_t voucher);
+voucher_decrement_importance_count4CF(voucher_t _Nullable voucher);
 
 /*!
  * @group Voucher dispatch block SPI
  */
-
-#ifndef __DISPATCH_BUILDING_DISPATCH__
-#include <dispatch/dispatch.h>
-#endif /* !__DISPATCH_BUILDING_DISPATCH__ */
 
 /*!
  * @typedef dispatch_block_flags_t
@@ -248,7 +268,7 @@ DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_RETURNS_RETAINED_BLOCK
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_block_t
 dispatch_block_create_with_voucher(dispatch_block_flags_t flags,
-		voucher_t voucher, dispatch_block_t block);
+		voucher_t _Nullable voucher, dispatch_block_t block);
 
 /*!
  * @function dispatch_block_create_with_voucher_and_qos_class
@@ -331,7 +351,7 @@ DISPATCH_EXPORT DISPATCH_NONNULL5 DISPATCH_RETURNS_RETAINED_BLOCK
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_block_t
 dispatch_block_create_with_voucher_and_qos_class(dispatch_block_flags_t flags,
-		voucher_t voucher, dispatch_qos_class_t qos_class,
+		voucher_t _Nullable voucher, dispatch_qos_class_t qos_class,
 		int relative_priority, dispatch_block_t block);
 
 /*!
@@ -391,16 +411,17 @@ __OSX_AVAILABLE_STARTING(__MAC_10_11,__IPHONE_9_0)
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
-dispatch_queue_create_with_accounting_override_voucher(const char *label,
-	dispatch_queue_attr_t attr, voucher_t voucher);
+dispatch_queue_create_with_accounting_override_voucher(
+		const char *_Nullable label,
+		dispatch_queue_attr_t _Nullable attr,
+		voucher_t _Nullable voucher);
 
+#if __has_include(<mach/mach.h>)
 /*!
  * @group Voucher Mach SPI
  * SPI intended for clients that need to interact with mach messages or mach
  * voucher ports directly.
  */
-
-#include <mach/mach.h>
 
 /*!
  * @function voucher_create_with_mach_msg
@@ -421,15 +442,100 @@ dispatch_queue_create_with_accounting_override_voucher(const char *label,
  */
 __OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
-voucher_t
+voucher_t _Nullable
 voucher_create_with_mach_msg(mach_msg_header_t *msg);
+
+/*!
+ * @group Voucher Persona SPI
+ * SPI intended for clients that need to interact with personas.
+ */
+
+struct proc_persona_info;
+
+/*!
+ * @function voucher_get_current_persona
+ *
+ * @abstract
+ * Retrieve the persona identifier of the 'originator' process for the current
+ * voucher.
+ *
+ * @discussion
+ * Retrieve the persona identifier of the ’originator’ process possibly stored
+ * in the PERSONA_TOKEN attribute of the currently adopted voucher.
+ *
+ * If the thread has not adopted a voucher, or the current voucher does not
+ * contain a PERSONA_TOKEN attribute, this function returns the persona
+ * identifier of the current process.
+ *
+ * If the process is not running under a persona, then this returns
+ * PERSONA_ID_NONE.
+ *
+ * @result
+ * The persona identifier of the 'originator' process for the current voucher,
+ * or the persona identifier of the current process
+ * or PERSONA_ID_NONE
+ */
+__OSX_AVAILABLE_STARTING(__MAC_NA,__IPHONE_9_2)
+OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW
+uid_t
+voucher_get_current_persona(void);
+
+/*!
+ * @function voucher_get_current_persona_originator_info
+ *
+ * @abstract
+ * Retrieve the ’originator’ process persona info for the currently adopted
+ * voucher.
+ *
+ * @discussion
+ * If there is no currently adopted voucher, or no PERSONA_TOKEN attribute
+ * in that voucher, this function fails.
+ *
+ * @param persona_info
+ * The proc_persona_info structure to fill in case of success
+ *
+ * @result
+ * 0 on success: currently adopted voucher has a PERSONA_TOKEN
+ * -1 on failure: persona_info is untouched/uninitialized
+ */
+__OSX_AVAILABLE_STARTING(__MAC_NA,__IPHONE_9_2)
+OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL1
+int
+voucher_get_current_persona_originator_info(
+	struct proc_persona_info *persona_info);
+
+/*!
+ * @function voucher_get_current_persona_proximate_info
+ *
+ * @abstract
+ * Retrieve the ’proximate’ process persona info for the currently adopted
+ * voucher.
+ *
+ * @discussion
+ * If there is no currently adopted voucher, or no PERSONA_TOKEN attribute
+ * in that voucher, this function fails.
+ *
+ * @param persona_info
+ * The proc_persona_info structure to fill in case of success
+ *
+ * @result
+ * 0 on success: currently adopted voucher has a PERSONA_TOKEN
+ * -1 on failure: persona_info is untouched/uninitialized
+ */
+__OSX_AVAILABLE_STARTING(__MAC_NA,__IPHONE_9_2)
+OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL1
+int
+voucher_get_current_persona_proximate_info(
+	struct proc_persona_info *persona_info);
+
+#endif // __has_include(<mach/mach.h>)
 
 __END_DECLS
 
+DISPATCH_ASSUME_NONNULL_END
+
 #endif // __OS_VOUCHER_PRIVATE__
 
-#if (OS_VOUCHER_ACTIVITY_SPI || OS_VOUCHER_ACTIVITY_BUFFER_SPI) && \
-		!defined(__DISPATCH_BUILDING_DISPATCH__) && \
-		!defined(__OS_VOUCHER_ACTIVITY_PRIVATE__)
-#include <os/voucher_activity_private.h>
+#if OS_VOUCHER_ACTIVITY_SPI
+#include "voucher_activity_private.h"
 #endif

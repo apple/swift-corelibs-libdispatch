@@ -29,65 +29,56 @@
 
 struct dispatch_queue_s;
 
-DISPATCH_CLASS_DECL(semaphore);
-struct dispatch_semaphore_s {
-	DISPATCH_STRUCT_HEADER(semaphore);
 #if USE_MACH_SEM
-	semaphore_t dsema_port;
+#define DISPATCH_OS_SEMA_FIELD(base)	semaphore_t base##_port
 #elif USE_POSIX_SEM
-	sem_t dsema_sem;
+#define DISPATCH_OS_SEMA_FIELD(base)	sem_t base##_sem
 #elif USE_WIN32_SEM
-	HANDLE dsema_handle;
+#define DISPATCH_OS_SEMA_FIELD(base)	HANDLE base##_handle
 #else
 #error "No supported semaphore type"
 #endif
+
+#define DISPATCH_SEMAPHORE_HEADER(cls, ns) \
+	DISPATCH_OBJECT_HEADER(cls); \
+	long volatile ns##_value; \
+	DISPATCH_OS_SEMA_FIELD(ns)
+
+struct dispatch_semaphore_header_s {
+	DISPATCH_SEMAPHORE_HEADER(semaphore, dsema);
+};
+
+DISPATCH_CLASS_DECL(semaphore);
+struct dispatch_semaphore_s {
+	DISPATCH_SEMAPHORE_HEADER(semaphore, dsema);
 	long dsema_orig;
-	long volatile dsema_value;
-	union {
-		long volatile dsema_sent_ksignals;
-		long volatile dsema_group_waiters;
-	};
-	struct dispatch_continuation_s *volatile dsema_notify_head;
-	struct dispatch_continuation_s *volatile dsema_notify_tail;
 };
 
 DISPATCH_CLASS_DECL(group);
+struct dispatch_group_s {
+	DISPATCH_SEMAPHORE_HEADER(group, dg);
+	int volatile dg_waiters;
+	struct dispatch_continuation_s *volatile dg_notify_head;
+	struct dispatch_continuation_s *volatile dg_notify_tail;
+};
+
+typedef union {
+	struct dispatch_semaphore_header_s *_dsema_hdr;
+	struct dispatch_semaphore_s *_dsema;
+	struct dispatch_group_s *_dg;
+#if USE_OBJC
+	dispatch_semaphore_t _objc_dsema;
+	dispatch_group_t _objc_dg;
+#endif
+} dispatch_semaphore_class_t __attribute__((__transparent_union__));
 
 dispatch_group_t _dispatch_group_create_and_enter(void);
+void _dispatch_group_dispose(dispatch_object_t dou);
+size_t _dispatch_group_debug(dispatch_object_t dou, char *buf,
+		size_t bufsiz);
+
 void _dispatch_semaphore_dispose(dispatch_object_t dou);
 size_t _dispatch_semaphore_debug(dispatch_object_t dou, char *buf,
 		size_t bufsiz);
-
-typedef uintptr_t _dispatch_thread_semaphore_t;
-
-_dispatch_thread_semaphore_t _dispatch_thread_semaphore_create(void);
-void _dispatch_thread_semaphore_dispose(_dispatch_thread_semaphore_t);
-void _dispatch_thread_semaphore_wait(_dispatch_thread_semaphore_t);
-void _dispatch_thread_semaphore_signal(_dispatch_thread_semaphore_t);
-
-DISPATCH_ALWAYS_INLINE
-static inline _dispatch_thread_semaphore_t
-_dispatch_get_thread_semaphore(void)
-{
-	_dispatch_thread_semaphore_t sema = (_dispatch_thread_semaphore_t)
-			_dispatch_thread_getspecific(dispatch_sema4_key);
-	if (slowpath(!sema)) {
-		return _dispatch_thread_semaphore_create();
-	}
-	_dispatch_thread_setspecific(dispatch_sema4_key, NULL);
-	return sema;
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_put_thread_semaphore(_dispatch_thread_semaphore_t sema)
-{
-	_dispatch_thread_semaphore_t old_sema = (_dispatch_thread_semaphore_t)
-			_dispatch_thread_getspecific(dispatch_sema4_key);
-	_dispatch_thread_setspecific(dispatch_sema4_key, (void*)sema);
-	if (slowpath(old_sema)) {
-		return _dispatch_thread_semaphore_dispose(old_sema);
-	}
-}
 
 #endif

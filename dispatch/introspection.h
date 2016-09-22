@@ -23,6 +23,8 @@
 
 #include <dispatch/dispatch.h>
 
+DISPATCH_ASSUME_NONNULL_BEGIN
+
 /*!
  * @header
  *
@@ -152,7 +154,7 @@ __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
 DISPATCH_EXPORT
 void
 dispatch_introspection_hook_queue_callout_begin(dispatch_queue_t queue,
-		void *context, dispatch_function_t function);
+		void *_Nullable context, dispatch_function_t function);
 
 /*!
  * @function dispatch_introspection_hook_queue_callout_end
@@ -177,8 +179,10 @@ __OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
 DISPATCH_EXPORT
 void
 dispatch_introspection_hook_queue_callout_end(dispatch_queue_t queue,
-		void *context, dispatch_function_t function);
+		void *_Nullable context, dispatch_function_t function);
 
 __END_DECLS
+
+DISPATCH_ASSUME_NONNULL_END
 
 #endif
