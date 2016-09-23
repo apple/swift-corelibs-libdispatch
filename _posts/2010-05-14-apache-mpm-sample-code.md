@@ -15,9 +15,11 @@ Please see the implementation notes below before attempting to use this software
 
 ## Patches
 
-```20100421a-apache-gcdmpm.diff``` is the April 21 2010(a) version of the Apache GCD MPM patch. The patch is relative to Apache httpd-trunk r895969 (5 January 2010) and apr r886734 (1 December 2009).
+[```20100421a-apache-gcdmpm.diff```](https://raw.githubusercontent.com/apple/swift-corelibs-libdispatch/macosforge/trac/attachment/wiki/apache/20100421a-apache-gcdmpm.diff) is the April 21 2010(a) version of the Apache GCD MPM patch. 
 
-```20100506-apr-buildconf.diff``` is a tweak to apr r886734's buildconf required on Mac OS X for the 20100421a release of the GCD MPM.
+The patch is relative to Apache httpd-trunk r895969 (5 January 2010) and apr r886734 (1 December 2009).
+
+[```20100506-apr-buildconf.diff```](https://raw.githubusercontent.com/apple/swift-corelibs-libdispatch/macosforge/trac/attachment/wiki/apache/20100506-apr-buildconf.diff) is a tweak to apr r886734's buildconf required on Mac OS X for the 20100421a release of the GCD MPM.
 
 ## Implementation notes
 
