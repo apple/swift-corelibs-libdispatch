@@ -169,7 +169,8 @@ if DISPATCH_ENABLE_OPTIMIZATION
 SWIFTC_FLAGS+=-O
 endif
 
-$(abs_builddir)/swift/%.o:	$(abs_srcdir)/swift/%.swift
+$(abs_builddir)/swift/%.o:	$(abs_srcdir)/swift/%.swift $(SWIFTC)
+	@rm -f $@
 	$(SWIFTC) -frontend -c $(SWIFT_ABS_SRC_FILES) -primary-file $< \
 	$(SWIFTC_FLAGS) -module-name Dispatch -module-link-name dispatch \
 	-o $@ -emit-module-path $@.~partial.swiftmodule \
@@ -177,7 +178,8 @@ $(abs_builddir)/swift/%.o:	$(abs_srcdir)/swift/%.swift
 	-emit-reference-dependencies-path $@.swiftdeps \
 	-module-cache-path $(top_builddir)
 
-$(abs_builddir)/swift/Dispatch.swiftmodule: $(SWIFT_ABS_SRC_FILES)
+$(abs_builddir)/swift/Dispatch.swiftmodule: $(SWIFT_ABS_SRC_FILES) $(SWIFTC)
+	@rm -f $@
 	$(SWIFTC) -frontend -emit-module $(SWIFT_OBJ_FILES:%=%.~partial.swiftmodule) \
 	$(SWIFTC_FLAGS) -module-cache-path $(top_builddir) -module-link-name dispatch \
 	-o $@ -emit-module-doc-path $(@:%.swiftmodule=%.swiftdoc)
