@@ -105,10 +105,6 @@ public class DispatchIO : DispatchObject {
 		__wrapped = dispatch_io_create_with_io(__type, io.__wrapped, queue.__wrapped, handler)
 	}
 
-	internal init(queue:dispatch_queue_t) {
-		__wrapped = queue
-	}
-
 	deinit {
 		_swift_dispatch_release(wrapped())
 	}
