@@ -40,8 +40,8 @@ On FreeBSD, begin by installing the libdispatch port. Its configure scripts will
 First, download the Apache GCD MPM patch. Mac OS X:
 
 ```
-% curl -O http://libdispatch.macosforge.org/trac/raw-attachment/wiki/apache/20100421a-apache-gcdmpm.diff
-% curl -O http://libdispatch.macosforge.org/trac/raw-attachment/wiki/apache/20100506-apr-buildconf.diff
+% curl -OL http://libdispatch.macosforge.org/trac/raw-attachment/wiki/apache/20100421a-apache-gcdmpm.diff
+% curl -OL http://libdispatch.macosforge.org/trac/raw-attachment/wiki/apache/20100506-apr-buildconf.diff
 ```
 
 FreeBSD:
