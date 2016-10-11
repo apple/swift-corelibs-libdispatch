@@ -51,9 +51,9 @@ test_timer(void)
 		struct timeval end_time;
 		gettimeofday(&end_time, NULL);
 		// Make sure we actually managed to adjust the interval
-		// duration.  Seven one second ticks would blow past
+		// duration.  Fifteen one second ticks would blow past
 		// this.
-		test_long_less_than("total duration", end_time.tv_sec - start_time.tv_sec, 3);
+		test_long_less_than("total duration", end_time.tv_sec - start_time.tv_sec, 10);
 		test_stop();
 
 		dispatch_release(s);
@@ -61,7 +61,7 @@ test_timer(void)
 
 	dispatch_source_set_event_handler(s, ^{
 		fprintf(stderr, "%d\n", ++i);
-		if (i >= 7) {
+		if (i >= 15) {
 			dispatch_source_cancel(s);
 		} else if (i == 1) {
 			dispatch_source_set_timer(s, dispatch_time(DISPATCH_TIME_NOW, 0), NSEC_PER_SEC / 10, 0);
