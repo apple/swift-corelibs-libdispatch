@@ -86,7 +86,7 @@ public struct DispatchData : RandomAccessCollection {
 	}
 
 	public func enumerateBytes(
-		block: @noescape (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void) 
+		block: @noescape (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void)
 	{
 		_swift_dispatch_data_apply(__wrapped.__wrapped) { (data: dispatch_data_t, offset: Int, ptr: UnsafeRawPointer, size: Int) in
 			let bytePtr = ptr.bindMemory(to: UInt8.self, capacity: size)
