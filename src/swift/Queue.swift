@@ -114,7 +114,7 @@ public extension DispatchQueue {
 		internal func _attr(attr: dispatch_queue_attr_t?) -> dispatch_queue_attr_t? {
 			if #available(OSX 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *) {
 				switch self {
-				case .inherit: 
+				case .inherit:
 					// DISPATCH_AUTORELEASE_FREQUENCY_INHERIT
 					return CDispatch.dispatch_queue_attr_make_with_autorelease_frequency(attr, dispatch_autorelease_frequency_t(0))
 				case .workItem:
@@ -183,8 +183,8 @@ public extension DispatchQueue {
 		target: DispatchQueue? = nil)
 	{
 		var attr = attributes._attr()
-		if autoreleaseFrequency != .inherit { 
-			attr = autoreleaseFrequency._attr(attr: attr) 
+		if autoreleaseFrequency != .inherit {
+			attr = autoreleaseFrequency._attr(attr: attr)
 		}
 		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified {
 			attr = CDispatch.dispatch_queue_attr_make_with_qos_class(attr, qos.qosClass.rawValue.rawValue, Int32(qos.relativePriority))
@@ -218,10 +218,10 @@ public extension DispatchQueue {
 	}
 
 	public func async(
-		group: DispatchGroup? = nil, 
-		qos: DispatchQoS = .unspecified, 
-		flags: DispatchWorkItemFlags = [], 
-		execute work: @escaping @convention(block) () -> Void) 
+		group: DispatchGroup? = nil,
+		qos: DispatchQoS = .unspecified,
+		flags: DispatchWorkItemFlags = [],
+		execute work: @escaping @convention(block) () -> Void)
 	{
 		if group == nil && qos == .unspecified && flags.isEmpty {
 			// Fast-path route for the most common API usage
@@ -247,8 +247,8 @@ public extension DispatchQueue {
 	}
 
 	private func _syncHelper<T>(
-		fn: (@noescape () -> ()) -> (), 
-		execute work: @noescape () throws -> T, 
+		fn: (@noescape () -> ()) -> (),
+		execute work: @noescape () throws -> T,
 		rescue: ((Swift.Error) throws -> (T))) rethrows -> T
 	{
 		var result: T?
@@ -269,7 +269,7 @@ public extension DispatchQueue {
 
 	@available(OSX 10.10, iOS 8.0, *)
 	private func _syncHelper<T>(
-		fn: (DispatchWorkItem) -> (), 
+		fn: (DispatchWorkItem) -> (),
 		flags: DispatchWorkItemFlags,
 		execute work: @noescape () throws -> T,
 		rescue: ((Swift.Error) throws -> (T))) rethrows -> T
@@ -280,7 +280,7 @@ public extension DispatchQueue {
 			do {
 				result = try work()
 			} catch let e {
-				error = e 
+				error = e
 			}
 		})
 		fn(workItem)
@@ -306,10 +306,10 @@ public extension DispatchQueue {
 	}
 
 	public func asyncAfter(
-		deadline: DispatchTime, 
-		qos: DispatchQoS = .unspecified, 
-		flags: DispatchWorkItemFlags = [], 
-		execute work: @escaping @convention(block) () -> Void) 
+		deadline: DispatchTime,
+		qos: DispatchQoS = .unspecified,
+		flags: DispatchWorkItemFlags = [],
+		execute work: @escaping @convention(block) () -> Void)
 	{
 		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: work)
@@ -321,9 +321,9 @@ public extension DispatchQueue {
 
 	public func asyncAfter(
 		wallDeadline: DispatchWallTime,
-		qos: DispatchQoS = .unspecified, 
-		flags: DispatchWorkItemFlags = [], 
-		execute work: @escaping @convention(block) () -> Void) 
+		qos: DispatchQoS = .unspecified,
+		flags: DispatchWorkItemFlags = [],
+		execute work: @escaping @convention(block) () -> Void)
 	{
 		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: work)
