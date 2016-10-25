@@ -20,28 +20,6 @@
 
 #include "internal.h"
 
-uint64_t
-_dispatch_get_nanoseconds(void)
-{
-#if !TARGET_OS_WIN32
-	struct timeval now;
-	int r = gettimeofday(&now, NULL);
-	dispatch_assert_zero(r);
-	dispatch_assert(sizeof(NSEC_PER_SEC) == 8);
-	dispatch_assert(sizeof(NSEC_PER_USEC) == 8);
-	return (uint64_t)now.tv_sec * NSEC_PER_SEC +
-			(uint64_t)now.tv_usec * NSEC_PER_USEC;
-#else /* TARGET_OS_WIN32 */
-	// FILETIME is 100-nanosecond intervals since January 1, 1601 (UTC).
-	FILETIME ft;
-	ULARGE_INTEGER li;
-	GetSystemTimeAsFileTime(&ft);
-	li.LowPart = ft.dwLowDateTime;
-	li.HighPart = ft.dwHighDateTime;
-	return li.QuadPart * 100ull;
-#endif /* TARGET_OS_WIN32 */
-}
-
 #if !(defined(__i386__) || defined(__x86_64__) || !HAVE_MACH_ABSOLUTE_TIME) \
 		|| TARGET_OS_WIN32
 DISPATCH_CACHELINE_ALIGN _dispatch_host_time_data_s _dispatch_host_time_data = {
@@ -115,7 +93,7 @@ dispatch_walltime(const struct timespec *inval, int64_t delta)
 {
 	int64_t nsec;
 	if (inval) {
-		nsec = inval->tv_sec * 1000000000ll + inval->tv_nsec;
+		nsec = (int64_t)_dispatch_timespec_to_nano(*inval);
 	} else {
 		nsec = (int64_t)_dispatch_get_nanoseconds();
 	}

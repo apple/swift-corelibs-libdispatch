@@ -129,7 +129,6 @@ _dispatch_introspection_non_barrier_sync_begin(dispatch_queue_t dq,
 
 #define _dispatch_introspection_init()
 #define _dispatch_introspection_thread_add()
-#define _dispatch_introspection_thread_remove()
 
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_queue_t

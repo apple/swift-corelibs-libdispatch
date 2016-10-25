@@ -9,38 +9,45 @@ else
 lib_LTLIBRARIES=libdispatch.la
 endif
 
-libdispatch_la_SOURCES=		\
-	allocator.c				\
-	apply.c					\
-	benchmark.c				\
-	data.c					\
+libdispatch_la_SOURCES=			\
+	allocator.c			\
+	apply.c				\
+	benchmark.c			\
+	data.c				\
+	init.c				\
 	introspection.c			\
-	init.c					\
-	io.c					\
-	object.c				\
-	once.c					\
-	queue.c					\
-	semaphore.c				\
-	source.c				\
-	time.c					\
-	transform.c				\
-	voucher.c				\
+	io.c				\
+	mach.c				\
+	object.c			\
+	once.c				\
+	queue.c				\
+	semaphore.c			\
+	source.c			\
+	time.c				\
+	transform.c			\
+	voucher.c			\
 	protocol.defs			\
-	provider.d				\
-	allocator_internal.h	\
+	provider.d			\
+	allocator_internal.h		\
 	data_internal.h			\
 	inline_internal.h		\
-	internal.h				\
+	internal.h			\
 	introspection_internal.h	\
 	io_internal.h			\
+	mach_internal.h			\
 	object_internal.h		\
 	queue_internal.h		\
-	semaphore_internal.h	\
-	shims.h					\
+	semaphore_internal.h		\
+	shims.h				\
 	source_internal.h		\
-	trace.h					\
+	trace.h				\
 	voucher_internal.h		\
-	firehose/firehose_internal.h \
+	event/event.c			\
+	event/event_config.h		\
+	event/event_epoll.c		\
+	event/event_internal.h		\
+	event/event_kevent.c		\
+	firehose/firehose_internal.h	\
 	shims/android_stubs.h	\
 	shims/atomic.h			\
 	shims/atomic_sfb.h		\
@@ -52,7 +59,7 @@ libdispatch_la_SOURCES=		\
 	shims/lock.h			\
 	shims/perfmon.h			\
 	shims/time.h			\
-	shims/tsd.h				\
+	shims/tsd.h			\
 	shims/yield.h
 
 EXTRA_libdispatch_la_SOURCES=
@@ -65,9 +72,9 @@ DISPATCH_CFLAGS=-Wall $(VISIBILITY_FLAGS) $(OMIT_LEAF_FP_FLAGS) \
 if DISPATCH_ENABLE_ASSERTS
 DISPATCH_CFLAGS+=-DDISPATCH_DEBUG=1
 endif
-AM_CFLAGS= $(KQUEUE_CFLAGS) $(PTHREAD_WORKQUEUE_CFLAGS) $(DISPATCH_CFLAGS) $(CBLOCKS_FLAGS)
+AM_CFLAGS= $(PTHREAD_WORKQUEUE_CFLAGS) $(DISPATCH_CFLAGS) $(CBLOCKS_FLAGS)
 AM_OBJCFLAGS=$(DISPATCH_CFLAGS) $(CBLOCKS_FLAGS)
-AM_CXXFLAGS=$(KQUEUE_CFLAGS) $(PTHREAD_WORKQUEUE_CFLAGS) $(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
+AM_CXXFLAGS=$(PTHREAD_WORKQUEUE_CFLAGS) $(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 AM_OBJCXXFLAGS=$(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 
 if BUILD_OWN_KQUEUES
@@ -94,7 +101,7 @@ endif
 endif
 
 libdispatch_la_LDFLAGS=-avoid-version
-libdispatch_la_LIBADD=$(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS) $(BLOCKS_RUNTIME_LIBS)
+libdispatch_la_LIBADD=$(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS) $(BLOCKS_RUNTIME_LIBS)
 
 if HAVE_DARWIN_LD
 libdispatch_la_LDFLAGS+=-Wl,-compatibility_version,1 \

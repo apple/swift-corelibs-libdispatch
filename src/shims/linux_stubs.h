@@ -39,35 +39,15 @@ typedef uint32_t mach_port_t;
 
 typedef uint32_t mach_error_t;
 
-typedef uint32_t mach_vm_size_t;
-
 typedef uint32_t mach_msg_return_t;
 
 typedef uint32_t mach_msg_bits_t;
 
-typedef uintptr_t mach_vm_address_t;
+typedef void *dispatch_mach_msg_t;
 
-typedef uint32_t dispatch_mach_msg_t;
+typedef uint64_t firehose_activity_id_t;
 
-typedef uint32_t dispatch_mach_t;
-
-typedef uint32_t dispatch_mach_reason_t;
-
-typedef uint32_t voucher_activity_mode_t;
-
-typedef uint32_t voucher_activity_trace_id_t;
-
-typedef uint32_t voucher_activity_id_t;
-
-typedef uint32_t voucher_activity_flag_t;
-
-typedef struct { } mach_msg_header_t;
-
-
-typedef void (*dispatch_mach_handler_function_t)(void*, dispatch_mach_reason_t,
-						 dispatch_mach_msg_t, mach_error_t);
-
-typedef void (*dispatch_mach_msg_destructor_t)(void*);
+typedef void *mach_msg_header_t;
 
 // Print a warning when an unported code path executes.
 #define LINUX_PORT_ERROR()  do { \
@@ -78,38 +58,9 @@ typedef void (*dispatch_mach_msg_destructor_t)(void*);
  * Stub out defines for other missing types
  */
 
-#if __linux__
-// we fall back to use kevent
-#define kevent64_s kevent
-#define kevent64(kq,cl,nc,el,ne,f,to)  kevent(kq,cl,nc,el,ne,to)
-#endif
-
 // SIZE_T_MAX should not be hardcoded like this here.
 #ifndef SIZE_T_MAX
 #define SIZE_T_MAX (~(size_t)0)
 #endif
-
-// Define to 0 the NOTE_ values that are not present on Linux.
-// Revisit this...would it be better to ifdef out the uses instead??
-
-// The following values are passed as part of the EVFILT_TIMER requests
-
-#define IGNORE_KEVENT64_EXT   /* will force the kevent64_s.ext[] to not be used -> leeway ignored */
-
-#ifndef NOTE_SECONDS
-#define NOTE_SECONDS	0x01
-#define NOTE_USECONDS	0x02
-#define NOTE_NSECONDS	0x04
-#define NOTE_ABSOLUTE	0x08
-#define KEVENT_NSEC_NOT_SUPPORTED
-#endif
-#define NOTE_CRITICAL	0x10
-#define NOTE_BACKGROUND	0x20
-#define NOTE_LEEWAY	0x40
-
-// need to catch the following usage if it happens ..
-// we simply return '0' as a value probably not correct
-
-#define NOTE_VM_PRESSURE ({LINUX_PORT_ERROR(); 0;})
 
 #endif

@@ -48,19 +48,19 @@
 #if TARGET_OS_MAC_DESKTOP
 #  define DISPATCH_HOST_SUPPORTS_OSX(x) \
 		(__MAC_OS_X_VERSION_MIN_REQUIRED >= (x))
-#  if !DISPATCH_HOST_SUPPORTS_OSX(101000)
-#    error "OS X hosts older than OS X 10.10 aren't supported anymore"
+#  if !DISPATCH_HOST_SUPPORTS_OSX(101100)
+#    error "OS X hosts older than OS X 10.11 aren't supported anymore"
 #  endif // !DISPATCH_HOST_SUPPORTS_OSX(101000)
 #elif TARGET_OS_SIMULATOR
 #  define DISPATCH_HOST_SUPPORTS_OSX(x) \
 		(IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED >= (x))
-#  if !DISPATCH_HOST_SUPPORTS_OSX(101000)
-#    error "Simulator hosts older than OS X 10.10 aren't supported anymore"
+#  if !DISPATCH_HOST_SUPPORTS_OSX(101100)
+#    error "Simulator hosts older than OS X 10.11 aren't supported anymore"
 #  endif // !DISPATCH_HOST_SUPPORTS_OSX(101000)
 #else
 #  define DISPATCH_HOST_SUPPORTS_OSX(x) 1
-#  if __IPHONE_OS_VERSION_MIN_REQUIRED < 70000
-#    error "iOS hosts older than iOS 7.0 aren't supported anymore"
+#  if __IPHONE_OS_VERSION_MIN_REQUIRED < 90000
+#    error "iOS hosts older than iOS 9.0 aren't supported anymore"
 #  endif
 #endif
 
@@ -243,7 +243,6 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #include <sys/stat.h>
 
 #if !TARGET_OS_WIN32
-#include <sys/event.h>
 #include <sys/mount.h>
 #include <sys/queue.h>
 #ifdef __ANDROID__
@@ -255,9 +254,6 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #include <sys/time.h>
 #include <sys/mman.h>
 #include <netinet/in.h>
-#endif
-#if defined(__linux__)
-#include <sys/eventfd.h>
 #endif
 
 #ifdef __BLOCKS__
@@ -309,6 +305,31 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #define DISPATCH_CONCAT(x,y) DISPATCH_CONCAT1(x,y)
 #define DISPATCH_CONCAT1(x,y) x ## y
 
+#define DISPATCH_COUNT_ARGS(...) DISPATCH_COUNT_ARGS1(, ## __VA_ARGS__, \
+		_8, _7, _6, _5, _4, _3, _2, _1, _0)
+#define DISPATCH_COUNT_ARGS1(z, a, b, c, d, e, f, g, h, cnt, ...) cnt
+
+#if BYTE_ORDER == LITTLE_ENDIAN
+#define DISPATCH_STRUCT_LE_2(a, b)        struct { a; b; }
+#define DISPATCH_STRUCT_LE_3(a, b, c)     struct { a; b; c; }
+#define DISPATCH_STRUCT_LE_4(a, b, c, d)  struct { a; b; c; d; }
+#else
+#define DISPATCH_STRUCT_LE_2(a, b)        struct { b; a; }
+#define DISPATCH_STRUCT_LE_3(a, b, c)     struct { c; b; a; }
+#define DISPATCH_STRUCT_LE_4(a, b, c, d)  struct { d; c; b; a; }
+#endif
+#if __has_feature(c_startic_assert)
+#define DISPATCH_UNION_ASSERT(alias, st) \
+		_Static_assert(sizeof(struct { alias; }) == sizeof(st), "bogus union");
+#else
+#define DISPATCH_UNION_ASSERT(alias, st)
+#endif
+#define DISPATCH_UNION_LE(alias, ...) \
+		DISPATCH_UNION_ASSERT(alias, DISPATCH_CONCAT(DISPATCH_STRUCT_LE, \
+				DISPATCH_COUNT_ARGS(__VA_ARGS__))(__VA_ARGS__)) \
+		union { alias; DISPATCH_CONCAT(DISPATCH_STRUCT_LE, \
+				DISPATCH_COUNT_ARGS(__VA_ARGS__))(__VA_ARGS__); }
+
 // workaround 6368156
 #ifdef NSEC_PER_SEC
 #undef NSEC_PER_SEC
@@ -339,16 +360,6 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #define likely(x) (!!(x))
 #define unlikely(x) (!!(x))
 #endif // __GNUC__
-
-#if BYTE_ORDER == LITTLE_ENDIAN
-#define DISPATCH_STRUCT_LITTLE_ENDIAN_2(a, b)        struct { a; b; }
-#define DISPATCH_STRUCT_LITTLE_ENDIAN_3(a, b, c)     struct { a; b; c; }
-#define DISPATCH_STRUCT_LITTLE_ENDIAN_4(a, b, c, d)  struct { a; b; c; d; }
-#else
-#define DISPATCH_STRUCT_LITTLE_ENDIAN_2(a, b)        struct { b; a; }
-#define DISPATCH_STRUCT_LITTLE_ENDIAN_3(a, b, c)     struct { c; b; a; }
-#define DISPATCH_STRUCT_LITTLE_ENDIAN_4(a, b, c, d)  struct { d; c; b; a; }
-#endif
 
 #define _TAILQ_IS_ENQUEUED(elm, field) \
 		((elm)->field.tqe_prev != NULL)
@@ -558,13 +569,6 @@ static inline long _dispatch_assume_zero(long e, long line) {
 } while (0)
 
 #if DISPATCH_DEBUG
-#if HAVE_MACH
-DISPATCH_NOINLINE DISPATCH_USED
-void dispatch_debug_machport(mach_port_t name, const char* str);
-#endif
-#endif
-
-#if DISPATCH_DEBUG
 /* This is the private version of the deprecated dispatch_debug() */
 DISPATCH_NONNULL2 DISPATCH_NOTHROW
 __attribute__((__format__(printf,2,3)))
@@ -612,8 +616,14 @@ _dispatch_fork_becomes_unsafe(void)
 	}
 }
 
+#if DISPATCH_INTROSPECTION
+#undef DISPATCH_PERF_MON
+#define DISPATCH_PERF_MON 0
+#endif
+
 /* #includes dependent on internal.h */
 #include "shims.h"
+#include "event/event_internal.h"
 
 // Older Mac OS X and iOS Simulator fallbacks
 
@@ -645,124 +655,24 @@ typedef pthread_worqueue_function_kevent_t pthread_workqueue_function_kevent_t;
 #endif
 #endif // PTHREAD_WORKQUEUE_RESETS_VOUCHER_AND_PRIORITY_ON_PARK
 
-#if HAVE_MACH
-#if !defined(MACH_NOTIFY_SEND_POSSIBLE)
-#undef MACH_NOTIFY_SEND_POSSIBLE
-#define MACH_NOTIFY_SEND_POSSIBLE MACH_NOTIFY_DEAD_NAME
-#endif
-#endif // HAVE_MACH
-
 #ifdef EVFILT_MEMORYSTATUS
 #ifndef DISPATCH_USE_MEMORYSTATUS
 #define DISPATCH_USE_MEMORYSTATUS 1
 #endif
 #endif // EVFILT_MEMORYSTATUS
 
-#if defined(EVFILT_VM) && !DISPATCH_USE_MEMORYSTATUS
-#ifndef DISPATCH_USE_VM_PRESSURE
-#define DISPATCH_USE_VM_PRESSURE 1
-#endif
-#endif // EVFILT_VM
-
 #if TARGET_OS_SIMULATOR
 #undef DISPATCH_USE_MEMORYPRESSURE_SOURCE
 #define DISPATCH_USE_MEMORYPRESSURE_SOURCE 0
-#undef DISPATCH_USE_VM_PRESSURE_SOURCE
-#define DISPATCH_USE_VM_PRESSURE_SOURCE 0
 #endif // TARGET_OS_SIMULATOR
 #if !defined(DISPATCH_USE_MEMORYPRESSURE_SOURCE) && DISPATCH_USE_MEMORYSTATUS
 #define DISPATCH_USE_MEMORYPRESSURE_SOURCE 1
-#elif !defined(DISPATCH_USE_VM_PRESSURE_SOURCE) && DISPATCH_USE_VM_PRESSURE
-#define DISPATCH_USE_VM_PRESSURE_SOURCE 1
 #endif
 #if DISPATCH_USE_MEMORYPRESSURE_SOURCE
 extern bool _dispatch_memory_warn;
 #endif
 
-#if !defined(NOTE_LEEWAY)
-#undef NOTE_LEEWAY
-#define NOTE_LEEWAY 0
-#undef NOTE_CRITICAL
-#define NOTE_CRITICAL 0
-#undef NOTE_BACKGROUND
-#define NOTE_BACKGROUND 0
-#endif // NOTE_LEEWAY
-
-#if !defined(NOTE_FUNLOCK)
-#define NOTE_FUNLOCK 0x00000100
-#endif
-
-#if !defined(NOTE_MACH_CONTINUOUS_TIME)
-#define NOTE_MACH_CONTINUOUS_TIME 0
-#endif // NOTE_MACH_CONTINUOUS_TIME
-
-#if !defined(HOST_NOTIFY_CALENDAR_SET)
-#define HOST_NOTIFY_CALENDAR_SET HOST_NOTIFY_CALENDAR_CHANGE
-#endif // HOST_NOTIFY_CALENDAR_SET
-
-#if !defined(HOST_CALENDAR_SET_REPLYID)
-#define HOST_CALENDAR_SET_REPLYID 951
-#endif // HOST_CALENDAR_SET_REPLYID
-
-#if HAVE_DECL_NOTE_REAP
-#if defined(NOTE_REAP) && defined(__APPLE__)
-#undef NOTE_REAP
-#define NOTE_REAP 0x10000000 // <rdar://problem/13338526>
-#endif
-#endif // HAVE_DECL_NOTE_REAP
-
-#ifndef VQ_QUOTA
-#undef HAVE_DECL_VQ_QUOTA // rdar://problem/24160982
-#endif // VQ_QUOTA
-
-#if !defined(NOTE_MEMORYSTATUS_PROC_LIMIT_WARN) || \
-		!DISPATCH_HOST_SUPPORTS_OSX(101200)
-#undef NOTE_MEMORYSTATUS_PROC_LIMIT_WARN
-#define NOTE_MEMORYSTATUS_PROC_LIMIT_WARN 0
-#endif // NOTE_MEMORYSTATUS_PROC_LIMIT_WARN
-
-#if !defined(NOTE_MEMORYSTATUS_PROC_LIMIT_CRITICAL) || \
-		!DISPATCH_HOST_SUPPORTS_OSX(101200)
-#undef NOTE_MEMORYSTATUS_PROC_LIMIT_CRITICAL
-#define NOTE_MEMORYSTATUS_PROC_LIMIT_CRITICAL 0
-#endif // NOTE_MEMORYSTATUS_PROC_LIMIT_CRITICAL
-
-#if !defined(EV_UDATA_SPECIFIC) || !DISPATCH_HOST_SUPPORTS_OSX(101100)
-#undef DISPATCH_USE_EV_UDATA_SPECIFIC
-#define DISPATCH_USE_EV_UDATA_SPECIFIC 0
-#elif !defined(DISPATCH_USE_EV_UDATA_SPECIFIC)
-#define DISPATCH_USE_EV_UDATA_SPECIFIC 1
-#endif // EV_UDATA_SPECIFIC
-
-#if !DISPATCH_USE_EV_UDATA_SPECIFIC
-#undef EV_UDATA_SPECIFIC
-#define EV_UDATA_SPECIFIC 0
-#undef EV_VANISHED
-#define EV_VANISHED 0
-#endif // !DISPATCH_USE_EV_UDATA_SPECIFIC
-
-#ifndef EV_VANISHED
-#define EV_VANISHED 0x0200
-#endif
-
-#ifndef DISPATCH_KEVENT_TREAT_ENOENT_AS_EINPROGRESS
-#if TARGET_OS_MAC && !DISPATCH_HOST_SUPPORTS_OSX(101200)
-// deferred delete can return bogus ENOENTs on older kernels
-#define DISPATCH_KEVENT_TREAT_ENOENT_AS_EINPROGRESS 1
-#else
-#define DISPATCH_KEVENT_TREAT_ENOENT_AS_EINPROGRESS 0
-#endif
-#endif
-
-#if !defined(EV_SET_QOS) || !DISPATCH_HOST_SUPPORTS_OSX(101100)
-#undef DISPATCH_USE_KEVENT_QOS
-#define DISPATCH_USE_KEVENT_QOS 0
-#elif !defined(DISPATCH_USE_KEVENT_QOS)
-#define DISPATCH_USE_KEVENT_QOS 1
-#endif // EV_SET_QOS
-
 #if HAVE_PTHREAD_WORKQUEUE_KEVENT && defined(KEVENT_FLAG_WORKQ) && \
-		DISPATCH_USE_EV_UDATA_SPECIFIC && DISPATCH_USE_KEVENT_QOS && \
 		DISPATCH_HOST_SUPPORTS_OSX(101200) && \
 		!defined(DISPATCH_USE_KEVENT_WORKQUEUE)
 #define DISPATCH_USE_KEVENT_WORKQUEUE 1
@@ -774,47 +684,16 @@ extern bool _dispatch_memory_warn;
 #define DISPATCH_USE_MGR_THREAD 1
 #endif
 
-#if DISPATCH_USE_KEVENT_WORKQUEUE && DISPATCH_USE_EV_UDATA_SPECIFIC && \
+#if DISPATCH_USE_KEVENT_WORKQUEUE && \
 		DISPATCH_HOST_SUPPORTS_OSX(101200) && \
 		!defined(DISPATCH_USE_EVFILT_MACHPORT_DIRECT)
 #define DISPATCH_USE_EVFILT_MACHPORT_DIRECT 1
 #endif
 
-#ifndef MACH_SEND_OVERRIDE
-#define MACH_SEND_OVERRIDE 0x00000020
-typedef unsigned int mach_msg_priority_t;
-#define MACH_MSG_PRIORITY_UNSPECIFIED ((mach_msg_priority_t)0)
-#endif // MACH_SEND_OVERRIDE
-
-
 #if (!DISPATCH_USE_EVFILT_MACHPORT_DIRECT || DISPATCH_DEBUG) && \
 		!defined(DISPATCH_EVFILT_MACHPORT_PORTSET_FALLBACK)
 #define DISPATCH_EVFILT_MACHPORT_PORTSET_FALLBACK 1
 #endif
-
-#if DISPATCH_USE_KEVENT_QOS
-typedef struct kevent_qos_s _dispatch_kevent_qos_s;
-typedef typeof(((struct kevent_qos_s*)NULL)->qos) _dispatch_kevent_priority_t;
-#else // DISPATCH_USE_KEVENT_QOS
-#ifndef KEVENT_FLAG_IMMEDIATE
-#define KEVENT_FLAG_NONE 0x00
-#define KEVENT_FLAG_IMMEDIATE 0x01
-#define KEVENT_FLAG_ERROR_EVENTS 0x02
-#endif // KEVENT_FLAG_IMMEDIATE
-typedef struct kevent64_s _dispatch_kevent_qos_s;
-#define kevent_qos(_kq, _changelist, _nchanges, _eventlist, _nevents, \
-		_data_out, _data_available, _flags) \
-		({ unsigned int _f = (_flags); _dispatch_kevent_qos_s _kev_copy; \
-		const _dispatch_kevent_qos_s *_cl = (_changelist); \
-		int _n = (_nchanges); const struct timespec _timeout_immediately = {}; \
-		dispatch_static_assert(!(_data_out) && !(_data_available)); \
-		if (_f & KEVENT_FLAG_ERROR_EVENTS) { \
-			dispatch_static_assert(_n == 1); \
-			_kev_copy = *_cl; _kev_copy.flags |= EV_RECEIPT; } \
-		kevent64((_kq), _f & KEVENT_FLAG_ERROR_EVENTS ? &_kev_copy : _cl, _n, \
-			(_eventlist), (_nevents), 0, \
-			_f & KEVENT_FLAG_IMMEDIATE ? &_timeout_immediately : NULL); })
-#endif // DISPATCH_USE_KEVENT_QOS
 
 #if defined(F_SETNOSIGPIPE) && defined(F_GETNOSIGPIPE)
 #ifndef DISPATCH_USE_SETNOSIGPIPE
@@ -845,10 +724,6 @@ typedef struct kevent64_s _dispatch_kevent_qos_s;
 #ifndef DISPATCH_USE_GUARDED_FD
 #define DISPATCH_USE_GUARDED_FD 1
 #endif
-// change_fdguard_np() requires GUARD_DUP <rdar://problem/11814513>
-#if DISPATCH_USE_GUARDED_FD && RDAR_11814513
-#define DISPATCH_USE_GUARDED_FD_CHANGE_FDGUARD 1
-#endif
 #endif // HAVE_SYS_GUARDED_H
 
 
@@ -859,9 +734,15 @@ typedef struct kevent64_s _dispatch_kevent_qos_s;
 #endif
 #ifndef KDBG_CODE
 #define KDBG_CODE(...) 0
+#define DBG_FUNC_START 0
+#define DBG_FUNC_END 0
 #endif
 #define DISPATCH_CODE(subclass, code) \
 		KDBG_CODE(DBG_DISPATCH, DISPATCH_TRACE_SUBCLASS_##subclass, code)
+#define DISPATCH_CODE_START(subclass, code) \
+		(DISPATCH_CODE(subclass, code) | DBG_FUNC_START)
+#define DISPATCH_CODE_END(subclass, code) \
+		(DISPATCH_CODE(subclass, code) | DBG_FUNC_END)
 #ifdef ARIADNEDBG_CODE
 #define ARIADNE_ENTER_DISPATCH_MAIN_CODE ARIADNEDBG_CODE(220, 2)
 #else
@@ -875,14 +756,20 @@ typedef struct kevent64_s _dispatch_kevent_qos_s;
 #define DISPATCH_TRACE_SUBCLASS_VOUCHER 1
 #define DISPATCH_TRACE_SUBCLASS_PERF 2
 #define DISPATCH_TRACE_SUBCLASS_MACH_MSG 3
+#define DISPATCH_TRACE_SUBCLASS_PERF_MON 4
 
 #define DISPATCH_PERF_non_leaf_retarget DISPATCH_CODE(PERF, 1)
 #define DISPATCH_PERF_post_activate_retarget DISPATCH_CODE(PERF, 2)
 #define DISPATCH_PERF_post_activate_mutation DISPATCH_CODE(PERF, 3)
 #define DISPATCH_PERF_delayed_registration DISPATCH_CODE(PERF, 4)
 #define DISPATCH_PERF_mutable_target DISPATCH_CODE(PERF, 5)
+#define DISPATCH_PERF_strict_bg_timer DISPATCH_CODE(PERF, 6)
 
 #define DISPATCH_MACH_MSG_hdr_move DISPATCH_CODE(MACH_MSG, 1)
+
+#define DISPATCH_PERF_MON_worker_thread_start DISPATCH_CODE_START(PERF_MON, 1)
+#define DISPATCH_PERF_MON_worker_thread_end DISPATCH_CODE_END(PERF_MON, 1)
+#define DISPATCH_PERF_MON_worker_useless DISPATCH_CODE(PERF_MON, 2)
 
 DISPATCH_ALWAYS_INLINE
 static inline void
@@ -930,15 +817,11 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 #define MACH_SEND_INVALID_VOUCHER 0x10000005
 #endif
 
-#if TARGET_OS_SIMULATOR && IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED < 101100
-#undef VOUCHER_USE_MACH_VOUCHER
-#define VOUCHER_USE_MACH_VOUCHER 0
-#endif
 #ifndef VOUCHER_USE_MACH_VOUCHER
 #if __has_include(<mach/mach_voucher.h>)
 #define VOUCHER_USE_MACH_VOUCHER 1
 #endif
-#endif
+#endif // VOUCHER_USE_MACH_VOUCHER
 
 #if RDAR_24272659 // FIXME: <rdar://problem/24272659>
 #if !VOUCHER_USE_MACH_VOUCHER || !DISPATCH_HOST_SUPPORTS_OSX(101200)
@@ -1066,8 +949,7 @@ extern int _dispatch_set_qos_class_enabled;
 #endif
 #endif // HAVE_PTHREAD_WORKQUEUE_QOS
 #if DISPATCH_USE_KEVENT_WORKQUEUE
-#if !HAVE_PTHREAD_WORKQUEUE_QOS || !DISPATCH_USE_KEVENT_QOS || \
-		!DISPATCH_USE_EV_UDATA_SPECIFIC
+#if !HAVE_PTHREAD_WORKQUEUE_QOS || !EV_UDATA_SPECIFIC
 #error Invalid build configuration
 #endif
 #if DISPATCH_USE_MGR_THREAD
@@ -1075,10 +957,12 @@ extern int _dispatch_kevent_workqueue_enabled;
 #else
 #define _dispatch_kevent_workqueue_enabled (1)
 #endif
+#else
+#define _dispatch_kevent_workqueue_enabled (0)
 #endif // DISPATCH_USE_KEVENT_WORKQUEUE
 
 #if DISPATCH_USE_EVFILT_MACHPORT_DIRECT
-#if !DISPATCH_USE_KEVENT_WORKQUEUE || !DISPATCH_USE_EV_UDATA_SPECIFIC
+#if !DISPATCH_USE_KEVENT_WORKQUEUE || !EV_UDATA_SPECIFIC
 #error Invalid build configuration
 #endif
 #if DISPATCH_EVFILT_MACHPORT_PORTSET_FALLBACK
@@ -1097,6 +981,7 @@ extern int _dispatch_evfilt_machport_direct_enabled;
 #include "introspection_internal.h"
 #include "queue_internal.h"
 #include "source_internal.h"
+#include "mach_internal.h"
 #include "voucher_internal.h"
 #include "data_internal.h"
 #if !TARGET_OS_WIN32

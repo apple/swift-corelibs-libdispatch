@@ -26,6 +26,7 @@
 #include <stdint.h>
 #else
 #include <os/base.h>
+#include <os/availability.h>
 #include <os/base_private.h>
 #include <dispatch/dispatch.h>
 #endif
@@ -38,38 +39,8 @@
  * Layout of structs is subject to change without notice
  */
 
-#define FIREHOSE_BUFFER_CHUNK_SIZE				4096ul
 #define FIREHOSE_BUFFER_LIBTRACE_HEADER_SIZE	2048ul
 #define FIREHOSE_BUFFER_KERNEL_CHUNK_COUNT		16
-
-typedef union {
-	uint64_t fbc_atomic_pos;
-#define FIREHOSE_BUFFER_POS_ENTRY_OFFS_INC		(1ULL <<  0)
-#define FIREHOSE_BUFFER_POS_PRIVATE_OFFS_INC	(1ULL << 16)
-#define FIREHOSE_BUFFER_POS_REFCNT_INC			(1ULL << 32)
-#define FIREHOSE_BUFFER_POS_FULL_BIT			(1ULL << 56)
-#define FIREHOSE_BUFFER_POS_USABLE_FOR_STREAM(pos, stream) \
-		((((pos).fbc_atomic_pos >> 48) & 0x1ff) == (uint16_t)stream)
-	struct {
-		uint16_t fbc_next_entry_offs;
-		uint16_t fbc_private_offs;
-		uint8_t  fbc_refcnt;
-		uint8_t  fbc_qos_bits;
-		uint8_t  fbc_stream;
-		uint8_t  fbc_flag_full : 1;
-		uint8_t  fbc_flag_io : 1;
-		uint8_t  _fbc_flag_unused : 6;
-	};
-} firehose_buffer_pos_u;
-
-typedef struct firehose_buffer_chunk_s {
-	uint8_t  fbc_start[0];
-	firehose_buffer_pos_u volatile fbc_pos;
-	uint64_t fbc_timestamp;
-	uint8_t  fbc_data[FIREHOSE_BUFFER_CHUNK_SIZE
-			- sizeof(firehose_buffer_pos_u)
-			- sizeof(uint64_t)];
-} __attribute__((aligned(8))) *firehose_buffer_chunk_t;
 
 typedef struct firehose_buffer_range_s {
 	uint16_t fbr_offset; // offset from the start of the buffer
@@ -77,6 +48,8 @@ typedef struct firehose_buffer_range_s {
 } *firehose_buffer_range_t;
 
 #ifdef KERNEL
+
+typedef struct firehose_chunk_s *firehose_chunk_t;
 
 // implemented by the kernel
 extern void __firehose_buffer_push_to_logd(firehose_buffer_t fb, bool for_io);
@@ -89,18 +62,9 @@ firehose_tracepoint_t
 __firehose_buffer_tracepoint_reserve(uint64_t stamp, firehose_stream_t stream,
 		uint16_t pubsize, uint16_t privsize, uint8_t **privptr);
 
-firehose_tracepoint_t
-__firehose_buffer_tracepoint_reserve_with_chunk(firehose_buffer_chunk_t fbc,
-		uint64_t stamp, firehose_stream_t stream,
-		uint16_t pubsize, uint16_t privsize, uint8_t **privptr);
-
 void
 __firehose_buffer_tracepoint_flush(firehose_tracepoint_t vat,
 		firehose_tracepoint_id_u vatid);
-
-void
-__firehose_buffer_tracepoint_flush_chunk(firehose_buffer_chunk_t fbc,
-		firehose_tracepoint_t vat, firehose_tracepoint_id_u vatid);
 
 firehose_buffer_t
 __firehose_buffer_create(size_t *size);
@@ -118,13 +82,12 @@ const uint32_t _firehose_spi_version;
 
 OS_ALWAYS_INLINE
 static inline const uint8_t *
-_firehose_tracepoint_reader_init(firehose_buffer_chunk_t fbc,
-		const uint8_t **endptr)
+_firehose_tracepoint_reader_init(firehose_chunk_t fc, const uint8_t **endptr)
 {
-	const uint8_t *start = fbc->fbc_data;
-	const uint8_t *end = fbc->fbc_start + fbc->fbc_pos.fbc_next_entry_offs;
+	const uint8_t *start = fc->fc_data;
+	const uint8_t *end = fc->fc_start + fc->fc_pos.fcp_next_entry_offs;
 
-	if (end > fbc->fbc_start + FIREHOSE_BUFFER_CHUNK_SIZE) {
+	if (end > fc->fc_start + FIREHOSE_CHUNK_SIZE) {
 		end = start;
 	}
 	*endptr = end;
@@ -165,13 +128,13 @@ _firehose_tracepoint_reader_next(const uint8_t **ptr, const uint8_t *end)
 
 OS_ALWAYS_INLINE
 static inline bool
-firehose_buffer_range_validate(firehose_buffer_chunk_t fbc,
-		firehose_tracepoint_t ft, firehose_buffer_range_t range)
+firehose_buffer_range_validate(firehose_chunk_t fc, firehose_tracepoint_t ft,
+		firehose_buffer_range_t range)
 {
-	if (range->fbr_offset + range->fbr_length > FIREHOSE_BUFFER_CHUNK_SIZE) {
+	if (range->fbr_offset + range->fbr_length > FIREHOSE_CHUNK_SIZE) {
 		return false;
 	}
-	if (fbc->fbc_start + range->fbr_offset < ft->ft_data + ft->ft_length) {
+	if (fc->fc_start + range->fbr_offset < ft->ft_data + ft->ft_length) {
 		return false;
 	}
 	return true;

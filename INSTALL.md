@@ -159,7 +159,7 @@ on Ubuntu; currently supported versions are 14.04, 15.10 and 16.04.
     `sudo apt-get install systemtap-sdt-dev`
 
  1c. Install additional libdispatch dependencies
-    `sudo apt-get install libblocksruntime-dev libkqueue-dev libbsd-dev`
+    `sudo apt-get install libblocksruntime-dev libbsd-dev`
 
     Note: compiling libdispatch requires clang 3.8 or better and
 the gold linker. If the default clang on your Ubuntu version is

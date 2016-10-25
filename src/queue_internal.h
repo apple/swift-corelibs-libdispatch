@@ -49,16 +49,17 @@
 #pragma mark dispatch_queue_t
 
 DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
-	DQF_NONE				= 0x0000,
-	DQF_AUTORELEASE_ALWAYS	= 0x0001,
-	DQF_AUTORELEASE_NEVER	= 0x0002,
-#define _DQF_AUTORELEASE_MASK 0x0003
-	DQF_THREAD_BOUND		= 0x0004, // queue is bound to a thread
-	DQF_BARRIER_BIT			= 0x0008, // queue is a barrier on its target
-	DQF_TARGETED			= 0x0010, // queue is targeted by another object
-	DQF_LABEL_NEEDS_FREE	= 0x0020, // queue label was strduped; need to free it
-	DQF_CANNOT_TRYSYNC		= 0x0040,
-	DQF_RELEASED			= 0x0080, // xref_cnt == -1
+	DQF_NONE                = 0x00000000,
+	DQF_AUTORELEASE_ALWAYS  = 0x00010000,
+	DQF_AUTORELEASE_NEVER   = 0x00020000,
+#define _DQF_AUTORELEASE_MASK 0x00030000
+	DQF_THREAD_BOUND        = 0x00040000, // queue is bound to a thread
+	DQF_BARRIER_BIT         = 0x00080000, // queue is a barrier on its target
+	DQF_TARGETED            = 0x00100000, // queue is targeted by another object
+	DQF_LABEL_NEEDS_FREE    = 0x00200000, // queue label was strduped; need to free it
+	DQF_CANNOT_TRYSYNC      = 0x00400000,
+	DQF_RELEASED            = 0x00800000, // xref_cnt == -1
+	DQF_LEGACY              = 0x01000000,
 
 	// only applies to sources
 	//
@@ -77,65 +78,59 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
 	//    will be -p-.
 	//
 	// -pd
-	//    Received EV_DELETE (from ap-), needs to free `ds_dkev`, the knote is
-	//    gone from the kernel, but ds_dkev lives. Next state will be --d.
+	//    Received EV_DELETE (from ap-), needs to unregister ds_refs, the muxnote
+	//    is gone from the kernel. Next state will be --d.
 	//
 	// -p-
 	//    Received an EV_ONESHOT event (from a--), or the delivery of an event
 	//    causing the cancellation to fail with EINPROGRESS was delivered
-	//    (from ap-). The knote still lives, next state will be --d.
+	//    (from ap-). The muxnote still lives, next state will be --d.
 	//
 	// --d
-	//    Final state of the source, the knote is gone from the kernel and
-	//    ds_dkev is freed. The source can safely be released.
+	//    Final state of the source, the muxnote is gone from the kernel and
+	//    ds_refs is unregistered. The source can safely be released.
 	//
 	// a-d (INVALID)
 	// apd (INVALID)
 	//    Setting DSF_DELETED should also always atomically clear DSF_ARMED. If
-	//    the knote is gone from the kernel, it makes no sense whatsoever to
+	//    the muxnote is gone from the kernel, it makes no sense whatsoever to
 	//    have it armed. And generally speaking, once `d` or `p` has been set,
 	//    `a` cannot do a cleared -> set transition anymore
 	//    (see _dispatch_source_try_set_armed).
 	//
-	DSF_CANCEL_WAITER		= 0x0800, // synchronous waiters for cancel
-	DSF_CANCELED			= 0x1000, // cancellation has been requested
-	DSF_ARMED				= 0x2000, // source is armed
-	DSF_DEFERRED_DELETE		= 0x4000, // source is pending delete
-	DSF_DELETED				= 0x8000, // source knote is deleted
+	DSF_CANCEL_WAITER       = 0x08000000, // synchronous waiters for cancel
+	DSF_CANCELED            = 0x10000000, // cancellation has been requested
+	DSF_ARMED               = 0x20000000, // source is armed
+	DSF_DEFERRED_DELETE     = 0x40000000, // source is pending delete
+	DSF_DELETED             = 0x80000000, // source muxnote is deleted
 #define DSF_STATE_MASK (DSF_ARMED | DSF_DEFERRED_DELETE | DSF_DELETED)
 
-	DQF_WIDTH_MASK			= 0xffff0000,
-#define DQF_WIDTH_SHIFT		16
+#define DQF_FLAGS_MASK        ((dispatch_queue_flags_t)0xffff0000)
+#define DQF_WIDTH_MASK        ((dispatch_queue_flags_t)0x0000ffff)
+#define DQF_WIDTH(n)          ((dispatch_queue_flags_t)(uint16_t)(n))
 );
 
 #define _DISPATCH_QUEUE_HEADER(x) \
 	struct os_mpsc_queue_s _as_oq[0]; \
 	DISPATCH_OBJECT_HEADER(x); \
 	_OS_MPSC_QUEUE_FIELDS(dq, dq_state); \
-	dispatch_queue_t dq_specific_q; \
-	union {	\
-		uint32_t volatile dq_atomic_flags; \
-		DISPATCH_STRUCT_LITTLE_ENDIAN_2( \
-			uint16_t dq_atomic_bits, \
-			uint16_t dq_width \
-		); \
-	}; \
+	DISPATCH_UNION_LE(uint32_t volatile dq_atomic_flags, \
+		const uint16_t dq_width, \
+		const uint16_t __dq_unused \
+	); \
 	uint32_t dq_side_suspend_cnt; \
-	DISPATCH_INTROSPECTION_QUEUE_HEADER; \
-	dispatch_unfair_lock_s dq_sidelock
-	/* LP64: 32bit hole on LP64 */
+	dispatch_unfair_lock_s dq_sidelock; \
+	union { \
+		dispatch_queue_t dq_specific_q; \
+		struct dispatch_source_refs_s *ds_refs; \
+		struct dispatch_timer_source_refs_s *ds_timer_refs; \
+		struct dispatch_mach_recv_refs_s *dm_recv_refs; \
+	}; \
+	DISPATCH_INTROSPECTION_QUEUE_HEADER
 
 #define DISPATCH_QUEUE_HEADER(x) \
 	struct dispatch_queue_s _as_dq[0]; \
 	_DISPATCH_QUEUE_HEADER(x)
-
-#define DISPATCH_QUEUE_ALIGN  __attribute__((aligned(8)))
-
-#define DISPATCH_QUEUE_WIDTH_POOL 0x7fff
-#define DISPATCH_QUEUE_WIDTH_MAX  0x7ffe
-#define DISPATCH_QUEUE_USES_REDIRECTION(width) \
-		({ uint16_t _width = (width); \
-		_width > 1 && _width < DISPATCH_QUEUE_WIDTH_POOL; })
 
 #define DISPATCH_QUEUE_CACHELINE_PADDING \
 		char _dq_pad[DISPATCH_QUEUE_CACHELINE_PAD]
@@ -206,10 +201,15 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
  *    the full width of the queue is used or reserved (depending on the context)
  *    In other words that the queue has reached or overflown its capacity.
  */
-#define DISPATCH_QUEUE_WIDTH_FULL_BIT			0x0010000000000000ull
-#define DISPATCH_QUEUE_WIDTH_FULL				0x8000ull
+#define DISPATCH_QUEUE_WIDTH_FULL_BIT		0x0010000000000000ull
+#define DISPATCH_QUEUE_WIDTH_FULL			0x1000ull
+#define DISPATCH_QUEUE_WIDTH_POOL (DISPATCH_QUEUE_WIDTH_FULL - 1)
+#define DISPATCH_QUEUE_WIDTH_MAX  (DISPATCH_QUEUE_WIDTH_FULL - 2)
+#define DISPATCH_QUEUE_USES_REDIRECTION(width) \
+		({ uint16_t _width = (width); \
+		_width > 1 && _width < DISPATCH_QUEUE_WIDTH_POOL; })
 /*
- * w:  width (bits 51 - 37)
+ * w:  width (bits 51 - 40)
  *    This encodes how many work items are in flight. Barriers hold `dq_width`
  *    of them while they run. This is encoded as a signed offset with respect,
  *    to full use, where the negative values represent how many available slots
@@ -218,19 +218,29 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
  *
  *    When this value is positive, then `wo` is always set to 1.
  */
-#define DISPATCH_QUEUE_WIDTH_INTERVAL		0x0000002000000000ull
-#define DISPATCH_QUEUE_WIDTH_MASK			0x001fffe000000000ull
-#define DISPATCH_QUEUE_WIDTH_SHIFT			37
+#define DISPATCH_QUEUE_WIDTH_INTERVAL		0x0000010000000000ull
+#define DISPATCH_QUEUE_WIDTH_MASK			0x001fff0000000000ull
+#define DISPATCH_QUEUE_WIDTH_SHIFT			40
 /*
- * pb: pending barrier (bit 36)
+ * pb: pending barrier (bit 39)
  *    Drainers set this bit when they couldn't run the next work item and it is
  *    a barrier. When this bit is set, `dq_width - 1` work item slots are
  *    reserved so that no wakeup happens until the last work item in flight
  *    completes.
  */
-#define DISPATCH_QUEUE_PENDING_BARRIER		0x0000001000000000ull
+#define DISPATCH_QUEUE_PENDING_BARRIER		0x0000008000000000ull
 /*
- * d: dirty bit (bit 35)
+ * p: pended bit (bit 38)
+ *    Set when a drain lock has been pended. When this bit is set,
+ *    the drain lock is taken and ENQUEUED is never set.
+ *
+ *    This bit marks a queue that needs further processing but was kept pended
+ *    by an async drainer (not reenqueued) in the hope of being able to drain
+ *    it further later.
+ */
+#define DISPATCH_QUEUE_DRAIN_PENDED			0x0000004000000000ull
+/*
+ * d: dirty bit (bit 37)
  *    This bit is set when a queue transitions from empty to not empty.
  *    This bit is set before dq_items_head is set, with appropriate barriers.
  *    Any thread looking at a queue head is responsible for unblocking any
@@ -342,50 +352,31 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
  *
  *    So on the async "acquire" side, there is no subtlety at all.
  */
-#define DISPATCH_QUEUE_DIRTY				0x0000000800000000ull
+#define DISPATCH_QUEUE_DIRTY				0x0000002000000000ull
 /*
- * qo: (bit 34)
- *    Set when a queue has a useful override set.
- *    This bit is only cleared when the final drain_try_unlock() succeeds.
- *
- *    When the queue dq_override is touched (overrides or-ed in), usually with
- *    _dispatch_queue_override_priority(), then the HAS_OVERRIDE bit is set
- *    with a release barrier and one of these three things happen next:
- *
- *    - the queue is enqueued, which will cause it to be drained, and the
- *      override to be handled by _dispatch_queue_drain_try_unlock().
- *      In rare cases it could cause the queue to be queued while empty though.
- *
- *    - the DIRTY bit is also set with a release barrier, which pairs with
- *      the handling of these bits by _dispatch_queue_drain_try_unlock(),
- *      so that dq_override is reset properly.
- *
- *    - the queue was suspended, and _dispatch_queue_resume() will handle the
- *      override as part of its wakeup sequence.
- */
-#define DISPATCH_QUEUE_HAS_OVERRIDE			0x0000000400000000ull
-/*
- * p: pended bit (bit 33)
- *    Set when a drain lock has been pended. When this bit is set,
- *    the drain lock is taken and ENQUEUED is never set.
- *
- *    This bit marks a queue that needs further processing but was kept pended
- *    by an async drainer (not reenqueued) in the hope of being able to drain
- *    it further later.
- */
-#define DISPATCH_QUEUE_DRAIN_PENDED			0x0000000200000000ull
-/*
- * e: enqueued bit (bit 32)
+ * e: enqueued bit (bit 36)
  *    Set when a queue is enqueued on its target queue
  */
-#define DISPATCH_QUEUE_ENQUEUED				0x0000000100000000ull
+#define DISPATCH_QUEUE_ENQUEUED				0x0000001000000000ull
+/*
+ * o: has override (bits 34)
+ *    Set when a queue has received a QOS override and needs to reset it.
+ *    This bit is only cleared when the final drain_try_unlock() succeeds.
+ */
+#define DISPATCH_QUEUE_RECEIVED_OVERRIDE	0x0000000800000000ull
+/*
+ * max_qos: max qos (bits 34 - 32)
+ *   This is the maximum qos that has been enqueued on the queue
+ */
+#define DISPATCH_QUEUE_MAX_QOS_MASK			0x0000000700000000ull
+#define DISPATCH_QUEUE_MAX_QOS_SHIFT		32
 /*
  * dl: drain lock (bits 31-0)
  *    This is used by the normal drain to drain exlusively relative to other
  *    drain stealers (like the QoS Override codepath). It holds the identity
  *    (thread port) of the current drainer.
  */
-#define DISPATCH_QUEUE_DRAIN_UNLOCK_MASK	0x00000002ffffffffull
+#define DISPATCH_QUEUE_DRAIN_UNLOCK_MASK	(DISPATCH_QUEUE_DRAIN_PENDED | ~0u)
 #ifdef DLOCK_NOWAITERS_BIT
 #define DISPATCH_QUEUE_DRAIN_OWNER_MASK \
 		((uint64_t)(DLOCK_OWNER_MASK | DLOCK_NOFAILED_TRYLOCK_BIT))
@@ -393,7 +384,7 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
 		(((v) & ~(DISPATCH_QUEUE_DRAIN_PENDED|DISPATCH_QUEUE_DRAIN_OWNER_MASK))\
 				^ DLOCK_NOWAITERS_BIT)
 #define DISPATCH_QUEUE_DRAIN_PRESERVED_BITS_MASK \
-		(DISPATCH_QUEUE_ENQUEUED | DISPATCH_QUEUE_HAS_OVERRIDE | \
+		(DISPATCH_QUEUE_ENQUEUED | DISPATCH_QUEUE_MAX_QOS_MASK | \
 				DLOCK_NOWAITERS_BIT)
 #else
 #define DISPATCH_QUEUE_DRAIN_OWNER_MASK \
@@ -401,7 +392,7 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
 #define DISPATCH_QUEUE_DRAIN_UNLOCK_PRESERVE_WAITERS_BIT(v) \
 		((v) & ~(DISPATCH_QUEUE_DRAIN_PENDED|DISPATCH_QUEUE_DRAIN_OWNER_MASK))
 #define DISPATCH_QUEUE_DRAIN_PRESERVED_BITS_MASK \
-		(DISPATCH_QUEUE_ENQUEUED | DISPATCH_QUEUE_HAS_OVERRIDE | \
+		(DISPATCH_QUEUE_ENQUEUED | DISPATCH_QUEUE_MAX_QOS_MASK | \
 				DLOCK_WAITERS_BIT)
 #endif
 /*
@@ -497,12 +488,12 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
 		(DISPATCH_QUEUE_IN_BARRIER | DISPATCH_QUEUE_WIDTH_INTERVAL)
 
 DISPATCH_CLASS_DECL(queue);
-#if !(defined(__cplusplus) && DISPATCH_INTROSPECTION)
+#if !defined(__cplusplus) || !DISPATCH_INTROSPECTION
 struct dispatch_queue_s {
 	_DISPATCH_QUEUE_HEADER(queue);
 	DISPATCH_QUEUE_CACHELINE_PADDING; // for static queues only
-} DISPATCH_QUEUE_ALIGN;
-#endif // !(defined(__cplusplus) && DISPATCH_INTROSPECTION)
+} DISPATCH_ATOMIC64_ALIGN;
+#endif // !defined(__cplusplus) || !DISPATCH_INTROSPECTION
 
 DISPATCH_INTERNAL_SUBCLASS_DECL(queue_serial, queue);
 DISPATCH_INTERNAL_SUBCLASS_DECL(queue_concurrent, queue);
@@ -520,14 +511,12 @@ typedef union {
 	struct dispatch_source_s *_ds;
 	struct dispatch_mach_s *_dm;
 	struct dispatch_queue_specific_queue_s *_dqsq;
-	struct dispatch_timer_aggregate_s *_dta;
 #if USE_OBJC
 	os_mpsc_queue_t _ojbc_oq;
 	dispatch_queue_t _objc_dq;
 	dispatch_source_t _objc_ds;
 	dispatch_mach_t _objc_dm;
 	dispatch_queue_specific_queue_t _objc_dqsq;
-	dispatch_timer_aggregate_t _objc_dta;
 #endif
 } dispatch_queue_class_t __attribute__((__transparent_union__));
 
@@ -555,9 +544,11 @@ DISPATCH_ENUM(dispatch_queue_wakeup_target, long,
 	DISPATCH_QUEUE_WAKEUP_MGR,
 );
 
+void _dispatch_queue_class_wakeup_with_override(dispatch_queue_t dq,
+		dispatch_qos_t qos, dispatch_wakeup_flags_t flags, uint64_t dq_state);
 void _dispatch_queue_class_override_drainer(dispatch_queue_t dqu,
-		pthread_priority_t pp, dispatch_wakeup_flags_t flags);
-void _dispatch_queue_class_wakeup(dispatch_queue_t dqu, pthread_priority_t pp,
+		dispatch_qos_t qos, dispatch_wakeup_flags_t flags);
+void _dispatch_queue_class_wakeup(dispatch_queue_t dqu, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags, dispatch_queue_wakeup_target_t target);
 
 void _dispatch_queue_destroy(dispatch_queue_t dq);
@@ -569,9 +560,9 @@ void _dispatch_queue_finalize_activation(dispatch_queue_t dq);
 void _dispatch_queue_invoke(dispatch_queue_t dq, dispatch_invoke_flags_t flags);
 void _dispatch_queue_push_list_slow(dispatch_queue_t dq, unsigned int n);
 void _dispatch_queue_push(dispatch_queue_t dq, dispatch_object_t dou,
-		pthread_priority_t pp);
+		dispatch_qos_t qos);
 void _dispatch_try_lock_transfer_or_wakeup(dispatch_queue_t dq);
-void _dispatch_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
+void _dispatch_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
 dispatch_queue_t _dispatch_queue_serial_drain(dispatch_queue_t dq,
 		dispatch_invoke_flags_t flags, uint64_t *owned,
@@ -581,14 +572,15 @@ void _dispatch_queue_drain_deferred_invoke(dispatch_queue_t dq,
 		struct dispatch_object_s *dc);
 void _dispatch_queue_specific_queue_dispose(dispatch_queue_specific_queue_t
 		dqsq);
-void _dispatch_root_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
+void _dispatch_root_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
 void _dispatch_root_queue_drain_deferred_item(dispatch_queue_t dq,
-		struct dispatch_object_s *dou, pthread_priority_t pp);
+		struct dispatch_object_s *dou, dispatch_qos_t qos
+		DISPATCH_PERF_MON_ARGS_PROTO);
 void _dispatch_pthread_root_queue_dispose(dispatch_queue_t dq);
-void _dispatch_main_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
+void _dispatch_main_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
-void _dispatch_runloop_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
+void _dispatch_runloop_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
 void _dispatch_runloop_queue_xref_dispose(dispatch_queue_t dq);
 void _dispatch_runloop_queue_dispose(dispatch_queue_t dq);
@@ -622,10 +614,9 @@ size_t dispatch_queue_debug(dispatch_queue_t dq, char* buf, size_t bufsiz);
 size_t _dispatch_queue_debug_attr(dispatch_queue_t dq, char* buf,
 		size_t bufsiz);
 
-#define DISPATCH_QUEUE_QOS_COUNT 6
-#define DISPATCH_ROOT_QUEUE_COUNT (DISPATCH_QUEUE_QOS_COUNT * 2)
+#define DISPATCH_ROOT_QUEUE_COUNT (DISPATCH_QOS_MAX * 2)
 
-// must be in lowest to highest qos order (as encoded in pthread_priority_t)
+// must be in lowest to highest qos order (as encoded in dispatch_qos_t)
 // overcommit qos index values need bit 1 set
 enum {
 	DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS = 0,
@@ -648,12 +639,12 @@ extern struct dispatch_queue_s _dispatch_root_queues[];
 extern struct dispatch_queue_s _dispatch_mgr_q;
 void _dispatch_root_queues_init(void);
 
-#if HAVE_PTHREAD_WORKQUEUE_QOS
-extern pthread_priority_t _dispatch_background_priority;
-extern pthread_priority_t _dispatch_user_initiated_priority;
+#if DISPATCH_DEBUG
+#define DISPATCH_ASSERT_ON_MANAGER_QUEUE() \
+       dispatch_assert_queue(&_dispatch_mgr_q)
+#else
+#define DISPATCH_ASSERT_ON_MANAGER_QUEUE()
 #endif
-
-typedef uint8_t _dispatch_qos_class_t;
 
 #pragma mark -
 #pragma mark dispatch_queue_attr_t
@@ -667,8 +658,7 @@ typedef enum {
 DISPATCH_CLASS_DECL(queue_attr);
 struct dispatch_queue_attr_s {
 	OS_OBJECT_STRUCT_HEADER(dispatch_queue_attr);
-	_dispatch_qos_class_t dqa_qos_class;
-	int8_t   dqa_relative_priority;
+	dispatch_priority_requested_t dqa_qos_and_relpri;
 	uint16_t dqa_overcommit:2;
 	uint16_t dqa_autorelease_frequency:2;
 	uint16_t dqa_concurrent:1;
@@ -920,7 +910,13 @@ void _dispatch_set_priority_and_mach_voucher_slow(pthread_priority_t pri,
 		mach_voucher_t kv);
 voucher_t _dispatch_set_priority_and_voucher_slow(pthread_priority_t pri,
 		voucher_t voucher, _dispatch_thread_set_self_t flags);
-
+#else
+static inline void
+_dispatch_set_priority_and_mach_voucher_slow(pthread_priority_t pri,
+		mach_voucher_t kv)
+{
+	(void)pri; (void)kv;
+}
 #endif
 #pragma mark -
 #pragma mark dispatch_apply_t

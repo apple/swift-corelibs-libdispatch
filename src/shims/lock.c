@@ -49,6 +49,264 @@ _dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
 }
 #endif
 
+#pragma mark - semaphores
+
+#if USE_MACH_SEM
+#if __has_include(<os/semaphore_private.h>)
+#include <os/semaphore_private.h>
+#define DISPATCH_USE_OS_SEMAPHORE_CACHE 1
+#else
+#define DISPATCH_USE_OS_SEMAPHORE_CACHE 0
+#endif
+
+#define DISPATCH_SEMAPHORE_VERIFY_KR(x) do { \
+		DISPATCH_VERIFY_MIG(x); \
+		if (unlikely((x) == KERN_INVALID_NAME)) { \
+			DISPATCH_CLIENT_CRASH((x), "Use-after-free of dispatch_semaphore_t"); \
+		} else if (unlikely(x)) { \
+			DISPATCH_INTERNAL_CRASH((x), "mach semaphore API failure"); \
+		} \
+	} while (0)
+
+void
+_dispatch_sema4_create_slow(_dispatch_sema4_t *s4, int policy)
+{
+	semaphore_t tmp = MACH_PORT_NULL;
+
+	_dispatch_fork_becomes_unsafe();
+
+	// lazily allocate the semaphore port
+
+	// Someday:
+	// 1) Switch to a doubly-linked FIFO in user-space.
+	// 2) User-space timers for the timeout.
+
+#if DISPATCH_USE_OS_SEMAPHORE_CACHE
+	if (policy == _DSEMA4_POLICY_FIFO) {
+		tmp = (_dispatch_sema4_t)os_get_cached_semaphore();
+		if (!os_atomic_cmpxchg(s4, MACH_PORT_NULL, tmp, relaxed)) {
+			os_put_cached_semaphore((os_semaphore_t)tmp);
+		}
+		return;
+	}
+#endif
+
+	kern_return_t kr = semaphore_create(mach_task_self(), &tmp, policy, 0);
+	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
+
+	if (!os_atomic_cmpxchg(s4, MACH_PORT_NULL, tmp, relaxed)) {
+		kr = semaphore_destroy(mach_task_self(), tmp);
+		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
+	}
+}
+
+void
+_dispatch_sema4_dispose_slow(_dispatch_sema4_t *sema, int policy)
+{
+	semaphore_t sema_port = *sema;
+	*sema = MACH_PORT_DEAD;
+#if DISPATCH_USE_OS_SEMAPHORE_CACHE
+	if (policy == _DSEMA4_POLICY_FIFO) {
+		return os_put_cached_semaphore((os_semaphore_t)sema_port);
+	}
+#endif
+	kern_return_t kr = semaphore_destroy(mach_task_self(), sema_port);
+	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
+}
+
+void
+_dispatch_sema4_signal(_dispatch_sema4_t *sema, long count)
+{
+	do {
+		kern_return_t kr = semaphore_signal(*sema);
+		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
+	} while (--count);
+}
+
+void
+_dispatch_sema4_wait(_dispatch_sema4_t *sema)
+{
+	kern_return_t kr;
+	do {
+		kr = semaphore_wait(*sema);
+	} while (kr == KERN_ABORTED);
+	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
+}
+
+bool
+_dispatch_sema4_timedwait(_dispatch_sema4_t *sema, dispatch_time_t timeout)
+{
+	mach_timespec_t _timeout;
+	kern_return_t kr;
+
+	do {
+		uint64_t nsec = _dispatch_timeout(timeout);
+		_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
+		_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
+		kr = slowpath(semaphore_timedwait(*sema, _timeout));
+	} while (kr == KERN_ABORTED);
+
+	if (kr == KERN_OPERATION_TIMED_OUT) {
+		return true;
+	}
+	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
+	return false;
+}
+#elif USE_POSIX_SEM
+#define DISPATCH_SEMAPHORE_VERIFY_RET(x) do { \
+		if (unlikely((x) == -1)) { \
+			DISPATCH_INTERNAL_CRASH(errno, "POSIX semaphore API failure"); \
+		} \
+	} while (0)
+
+void
+_dispatch_sema4_init(_dispatch_sema4_t *sema, int policy DISPATCH_UNUSED)
+{
+	int rc = sem_init(sema, 0, 0);
+	DISPATCH_SEMAPHORE_VERIFY_RET(rc);
+}
+
+void
+_dispatch_sema4_dispose_slow(_dispatch_sema4_t *sema, int policy DISPATCH_UNUSED)
+{
+	int rc = sem_destroy(sema);
+	DISPATCH_SEMAPHORE_VERIFY_RET(rc);
+}
+
+void
+_dispatch_sema4_signal(_dispatch_sema4_t *sema, long count)
+{
+	do {
+		int ret = sem_post(sema);
+		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
+	} while (--count);
+}
+
+void
+_dispatch_sema4_wait(_dispatch_sema4_t *sema)
+{
+	int ret = sem_wait(sema);
+	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
+}
+
+bool
+_dispatch_sema4_timedwait(_dispatch_sema4_t *sema, dispatch_time_t timeout)
+{
+	struct timespec _timeout;
+	int ret;
+
+	do {
+		uint64_t nsec = _dispatch_time_nanoseconds_since_epoch(timeout);
+		_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
+		_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
+		ret = slowpath(sem_timedwait(sema, &_timeout));
+	} while (ret == -1 && errno == EINTR);
+
+	if (ret == -1 && errno == ETIMEDOUT) {
+		return true;
+	}
+	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
+	return false;
+}
+#elif USE_WIN32_SEM
+// rdar://problem/8428132
+static DWORD best_resolution = 1; // 1ms
+
+static DWORD
+_push_timer_resolution(DWORD ms)
+{
+	MMRESULT res;
+	static dispatch_once_t once;
+
+	if (ms > 16) {
+		// only update timer resolution if smaller than default 15.6ms
+		// zero means not updated
+		return 0;
+	}
+
+	// aim for the best resolution we can accomplish
+	dispatch_once(&once, ^{
+		TIMECAPS tc;
+		MMRESULT res;
+		res = timeGetDevCaps(&tc, sizeof(tc));
+		if (res == MMSYSERR_NOERROR) {
+			best_resolution = min(max(tc.wPeriodMin, best_resolution),
+					tc.wPeriodMax);
+		}
+	});
+
+	res = timeBeginPeriod(best_resolution);
+	if (res == TIMERR_NOERROR) {
+		return best_resolution;
+	}
+	// zero means not updated
+	return 0;
+}
+
+// match ms parameter to result from _push_timer_resolution
+DISPATCH_ALWAYS_INLINE
+static inline void
+_pop_timer_resolution(DWORD ms)
+{
+	if (ms) timeEndPeriod(ms);
+}
+
+void
+_dispatch_sema4_create_slow(_dispatch_sema4_t *s4, int policy DISPATCH_UNUSED)
+{
+	HANDLE tmp;
+
+	// lazily allocate the semaphore port
+
+	while (!dispatch_assume(tmp = CreateSemaphore(NULL, 0, LONG_MAX, NULL))) {
+		_dispatch_temporary_resource_shortage();
+	}
+
+	if (!os_atomic_cmpxchg(s4, 0, tmp, relaxed)) {
+		CloseHandle(tmp);
+	}
+}
+
+void
+_dispatch_sema4_dispose_slow(_dispatch_sema4_t *sema, int policy DISPATCH_UNUSED)
+{
+	HANDLE sema_handle = *sema;
+	CloseHandle(sema_handle);
+	*sema = 0;
+}
+
+void
+_dispatch_sema4_signal(_dispatch_sema4_t *sema, long count)
+{
+	int ret = ReleaseSemaphore(*sema, count, NULL);
+	dispatch_assume(ret);
+}
+
+void
+_dispatch_sema4_wait(_dispatch_sema4_t *sema)
+{
+	WaitForSingleObject(*sema, INFINITE);
+}
+
+bool
+_dispatch_sema4_timedwait(_dispatch_sema4_t *sema, dispatch_time_t timeout)
+{
+	uint64_t nsec;
+	DWORD msec;
+	DWORD resolution;
+	DWORD wait_result;
+
+	nsec = _dispatch_timeout(timeout);
+	msec = (DWORD)(nsec / (uint64_t)1000000);
+	resolution = _push_timer_resolution(msec);
+	wait_result = WaitForSingleObject(dsema->dsema_handle, msec);
+	_pop_timer_resolution(resolution);
+	return wait_result == WAIT_TIMEOUT;
+}
+#else
+#error "port has to implement _dispatch_sema4_t"
+#endif
+
 #pragma mark - ulock wrappers
 #if HAVE_UL_COMPARE_AND_WAIT
 
@@ -210,36 +468,12 @@ _dispatch_wake_by_address(uint32_t volatile *address)
 
 #pragma mark - thread event
 
-#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
-semaphore_t
-_dispatch_thread_semaphore_create(void)
-{
-	semaphore_t s4;
-	kern_return_t kr;
-	while (unlikely(kr = semaphore_create(mach_task_self(), &s4,
-			SYNC_POLICY_FIFO, 0))) {
-		DISPATCH_VERIFY_MIG(kr);
-		_dispatch_temporary_resource_shortage();
-	}
-	return s4;
-}
-
-void
-_dispatch_thread_semaphore_dispose(void *ctxt)
-{
-	semaphore_t s4 = (semaphore_t)(uintptr_t)ctxt;
-	kern_return_t kr = semaphore_destroy(mach_task_self(), s4);
-	DISPATCH_VERIFY_MIG(kr);
-	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
-}
-#endif
-
 void
 _dispatch_thread_event_signal_slow(dispatch_thread_event_t dte)
 {
 #if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
 	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
-		kern_return_t kr = semaphore_signal(dte->dte_semaphore);
+		kern_return_t kr = semaphore_signal(dte->dte_sema);
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 		return;
 	}
@@ -248,9 +482,8 @@ _dispatch_thread_event_signal_slow(dispatch_thread_event_t dte)
 	_dispatch_ulock_wake(&dte->dte_value, 0);
 #elif HAVE_FUTEX
 	_dispatch_futex_wake(&dte->dte_value, 1, FUTEX_PRIVATE_FLAG);
-#elif USE_POSIX_SEM
-	int rc = sem_post(&dte->dte_sem);
-	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
+#else
+	_dispatch_sema4_signal(&dte->dte_sema, 1);
 #endif
 }
 
@@ -261,7 +494,7 @@ _dispatch_thread_event_wait_slow(dispatch_thread_event_t dte)
 	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
 		kern_return_t kr;
 		do {
-			kr = semaphore_wait(dte->dte_semaphore);
+			kr = semaphore_wait(dte->dte_sema);
 		} while (unlikely(kr == KERN_ABORTED));
 		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
 		return;
@@ -282,12 +515,8 @@ _dispatch_thread_event_wait_slow(dispatch_thread_event_t dte)
 				NULL, FUTEX_PRIVATE_FLAG);
 #endif
 	}
-#elif USE_POSIX_SEM
-	int rc;
-	do {
-		rc = sem_wait(&dte->dte_sem);
-	} while (unlikely(rc != 0));
-	DISPATCH_SEMAPHORE_VERIFY_RET(rc);
+#else
+	_dispatch_sema4_wait(&dte->dte_sema);
 #endif
 }
 

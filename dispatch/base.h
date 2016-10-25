@@ -204,10 +204,8 @@
 #endif
 
 #if __has_feature(enumerator_attributes)
-#define DISPATCH_ENUM_AVAILABLE_STARTING __OSX_AVAILABLE_STARTING
-#define DISPATCH_ENUM_AVAILABLE(os, version) __##os##_AVAILABLE(version)
+#define DISPATCH_ENUM_AVAILABLE(...) API_AVAILABLE(__VA_ARGS__)
 #else
-#define DISPATCH_ENUM_AVAILABLE_STARTING(...)
 #define DISPATCH_ENUM_AVAILABLE(...)
 #endif
 

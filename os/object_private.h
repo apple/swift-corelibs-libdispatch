@@ -31,8 +31,8 @@
 #include <stddef.h>
 #include <os/object.h>
 
-#ifndef __OSX_AVAILABLE_STARTING
-#define __OSX_AVAILABLE_STARTING(x, y)
+#ifndef API_AVAILABLE
+#define API_AVAILABLE(...)
 #endif
 
 #if __GNUC__
@@ -112,7 +112,7 @@ typedef OS_OBJECT_CLASS(object) *_os_object_t;
 #define _OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL(name, super) \
 		OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL(name, super)
 #elif OS_OBJECT_USE_OBJC
-__OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 OS_OBJECT_EXPORT
 @interface OS_OBJECT_CLASS(object) : NSObject
 - (void)_xref_dispose;
@@ -136,48 +136,48 @@ __BEGIN_DECLS
 
 #if !_OS_OBJECT_OBJC_ARC
 
-__OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 OS_OBJECT_EXPORT OS_OBJECT_MALLOC OS_OBJECT_WARN_RESULT OS_OBJECT_NOTHROW
 OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 _os_object_t
 _os_object_alloc(const void *cls, size_t size);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 OS_OBJECT_EXPORT OS_OBJECT_MALLOC OS_OBJECT_WARN_RESULT OS_OBJECT_NOTHROW
 OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 _os_object_t
 _os_object_alloc_realized(const void *cls, size_t size);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
 OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 void _os_object_dealloc(_os_object_t object);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
 OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 _os_object_t
 _os_object_retain(_os_object_t object);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_11,__IPHONE_9_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
 OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 _os_object_t
 _os_object_retain_with_resurrect(_os_object_t obj);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
 OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 void
 _os_object_release(_os_object_t object);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
 OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 _os_object_t
 _os_object_retain_internal(_os_object_t object);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
 OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 void

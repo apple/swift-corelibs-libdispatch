@@ -29,20 +29,10 @@
 
 struct dispatch_queue_s;
 
-#if USE_MACH_SEM
-#define DISPATCH_OS_SEMA_FIELD(base)	semaphore_t base##_port
-#elif USE_POSIX_SEM
-#define DISPATCH_OS_SEMA_FIELD(base)	sem_t base##_sem
-#elif USE_WIN32_SEM
-#define DISPATCH_OS_SEMA_FIELD(base)	HANDLE base##_handle
-#else
-#error "No supported semaphore type"
-#endif
-
 #define DISPATCH_SEMAPHORE_HEADER(cls, ns) \
 	DISPATCH_OBJECT_HEADER(cls); \
 	long volatile ns##_value; \
-	DISPATCH_OS_SEMA_FIELD(ns)
+	_dispatch_sema4_t ns##_sema
 
 struct dispatch_semaphore_header_s {
 	DISPATCH_SEMAPHORE_HEADER(semaphore, dsema);
