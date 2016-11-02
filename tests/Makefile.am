@@ -20,24 +20,36 @@ check_PROGRAMS=					\
 
 noinst_SCRIPTS=leaks-wrapper.sh
 
+# Tests that have not been ported to Linux
+# because they test unsupported functionality.
 UNPORTED_TESTS=					\
 	dispatch_deadname			\
 	dispatch_proc				\
 	dispatch_vm					\
 	dispatch_vnode
 
-# Tests that have been disabled as they dont' reliably
-# pass or fail (so can't succeed, or run as XFAIL tests)
-DISABLED_TESTS=					\
+# Tests that usually pass, but occasionally fail
+# and are therefore not suitable for general CI usage.
+UNRELIABLE_TESTS=				\
 	dispatch_priority			\
 	dispatch_priority2			\
+	dispatch_concur				\
 	dispatch_read				\
 	dispatch_read2				\
+	dispatch_suspend_timer		\
 	dispatch_pingpong			\
 	dispatch_drift				\
+	dispatch_readsync			\
 	dispatch_cascade			\
 	dispatch_io
 
+if EXTENDED_TEST_SUITE
+ADDITIONAL_TESTS= $(UNRELIABLE_TESTS)
+else
+ADDITIONAL_TESTS=
+endif
+
+# The set of tests that will be run by 'make check'
 TESTS=							\
 	dispatch_apply				\
 	dispatch_api				\
@@ -53,58 +65,15 @@ TESTS=							\
 	dispatch_timer_short		\
 	dispatch_timer_timeout		\
 	dispatch_sema				\
-	dispatch_suspend_timer		\
 	dispatch_timer_bit31		\
 	dispatch_timer_bit63		\
 	dispatch_timer_set_time		\
 	dispatch_starfish			\
 	dispatch_data				\
 	dispatch_io_net				\
-	dispatch_select
+	dispatch_select				\
+	$(ADDITIONAL_TESTS)
 
-# List tests that are expected to fail here.
-# Currently dispatch_concur fails occasionally, but passes more often than fails. 
-XFAIL_TESTS =					\
-	dispatch_concur				\
-	dispatch_readsync
-
-ORIGINAL_LIST_OF_TESTS=			\
-	dispatch_apply				\
-	dispatch_api				\
-	dispatch_c99				\
-	dispatch_deadname			\
-	dispatch_debug				\
-	dispatch_queue_finalizer	\
-	dispatch_group				\
-	dispatch_overcommit			\
-	dispatch_pingpong			\
-	dispatch_plusplus			\
-	dispatch_priority			\
-	dispatch_priority2			\
-	dispatch_concur				\
-	dispatch_context_for_key	\
-	dispatch_proc				\
-	dispatch_read				\
-	dispatch_read2				\
-	dispatch_after				\
-	dispatch_timer				\
-	dispatch_timer_short		\
-	dispatch_timer_timeout		\
-	dispatch_sema				\
-	dispatch_suspend_timer		\
-	dispatch_timer_bit31		\
-	dispatch_timer_bit63		\
-	dispatch_timer_set_time		\
-	dispatch_starfish			\
-	dispatch_cascade			\
-	dispatch_drift				\
-	dispatch_readsync			\
-	dispatch_data				\
-	dispatch_io					\
-	dispatch_io_net				\
-	dispatch_vm					\
-	dispatch_vnode				\
-	dispatch_select
 
 dispatch_c99_CFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CBLOCKS_FLAGS) $(KQUEUE_CFLAGS) -std=c99
 dispatch_plusplus_SOURCES=dispatch_plusplus.cpp

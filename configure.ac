@@ -175,6 +175,18 @@ AC_CHECK_PROG(use_gold_linker, ld.gold, true, false)
 AM_CONDITIONAL(USE_GOLD_LINKER, $use_gold_linker)
 
 #
+# Enable an extended test suite that includes
+# tests that are too unreliable to be enabled by
+# default in the Swift CI environment, but are still
+# useful for libdispatch developers to be able to run.
+#
+AC_ARG_ENABLE([extended-test-suite],
+  [AS_HELP_STRING([--enable-extended-test-suite],
+    [Include additional test cases that may fail intermittently])]
+)
+AM_CONDITIONAL(EXTENDED_TEST_SUITE, test "x$enable_extended_test_suite" = "xyes")
+
+#
 # Enable __thread based TSD on platforms where it is efficient
 # Allow override based on command line argument to configure
 #
