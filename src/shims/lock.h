@@ -146,7 +146,7 @@ _dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
 #endif
 
 #ifndef HAVE_UL_COMPARE_AND_WAIT
-#if defined(UL_COMPARE_AND_WAIT) && DISPATCH_HOST_SUPPORTS_OSX(101200)
+#if defined(UL_COMPARE_AND_WAIT) && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
 #  define HAVE_UL_COMPARE_AND_WAIT 1
 #else
 #  define HAVE_UL_COMPARE_AND_WAIT 0
@@ -154,7 +154,7 @@ _dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
 #endif // HAVE_UL_COMPARE_AND_WAIT
 
 #ifndef HAVE_UL_UNFAIR_LOCK
-#if defined(UL_UNFAIR_LOCK) && DISPATCH_HOST_SUPPORTS_OSX(101200)
+#if defined(UL_UNFAIR_LOCK) && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
 #  define HAVE_UL_UNFAIR_LOCK 1
 #else
 #  define HAVE_UL_UNFAIR_LOCK 0

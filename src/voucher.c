@@ -1096,6 +1096,13 @@ _firehose_task_buffer_init(void *ctx OS_UNUSED)
 		// firehose_buffer_create always consumes the send-right
 		_firehose_task_buffer = firehose_buffer_create(logd_port,
 				_voucher_unique_pid, flags);
+		if (_voucher_libtrace_hooks->vah_version >= 4 &&
+				_voucher_libtrace_hooks->vah_metadata_init) {
+			firehose_buffer_t fb = _firehose_task_buffer;
+			size_t meta_sz = FIREHOSE_BUFFER_LIBTRACE_HEADER_SIZE;
+			void *meta = (void *)((uintptr_t)(&fb->fb_header + 1) - meta_sz);
+			_voucher_libtrace_hooks->vah_metadata_init(meta, meta_sz);
+		}
 	}
 }
 
@@ -1217,6 +1224,7 @@ voucher_activity_create_with_location(firehose_tracepoint_id_t *trace_id,
 			&loc, sizeof(loc));
 }
 
+#if OS_VOUCHER_ACTIVITY_GENERATE_SWAPS
 void
 _voucher_activity_swap(firehose_activity_id_t old_id,
 		firehose_activity_id_t new_id)
@@ -1253,6 +1261,7 @@ _voucher_activity_swap(firehose_activity_id_t old_id,
 	if (new_id) pubptr = _dispatch_memappend(pubptr, &new_id);
 	_voucher_activity_tracepoint_flush(ft, ftid);
 }
+#endif
 
 firehose_activity_id_t
 voucher_get_activity_id_and_creator(voucher_t v, uint64_t *creator_pid,
@@ -1640,6 +1649,16 @@ voucher_activity_trace_with_private_strings(firehose_stream_t stream,
 {
 	(void)stream; (void)trace_id; (void)timestamp;
 	(void)pubdata; (void)publen; (void)privdata; (void)privlen;
+	return 0;
+}
+
+firehose_tracepoint_id_t
+voucher_activity_trace_v(firehose_stream_t stream,
+		firehose_tracepoint_id_t trace_id, uint64_t timestamp,
+		const struct iovec *iov, size_t publen, size_t privlen)
+{
+	(void)stream; (void)trace_id; (void)timestamp;
+	(void)iov; (void)publen; (void)privlen;
 	return 0;
 }
 

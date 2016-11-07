@@ -74,7 +74,7 @@ firehose_client_notify(firehose_client_t fc, mach_port_t reply_port)
 	firehose_atomic_max2o(fc, fc_io_sent_flushed_pos,
 			push_reply.fpr_io_flushed_pos, relaxed);
 
-	if (fc->fc_is_kernel) {
+	if (!fc->fc_pid) {
 		if (ioctl(server_config.fs_kernel_fd, LOGFLUSHED, &push_reply) < 0) {
 			dispatch_assume_zero(errno);
 		}
@@ -209,7 +209,7 @@ firehose_client_drain(firehose_client_t fc, mach_port_t port, uint32_t flags)
 			ref = (flushed + count) & FIREHOSE_RING_POS_IDX_MASK;
 			ref = os_atomic_load(&fbh_ring[ref], relaxed);
 			ref &= FIREHOSE_RING_POS_IDX_MASK;
-		} while (fc->fc_is_kernel && !ref);
+		} while (!fc->fc_pid && !ref);
 		count++;
 		if (!ref) {
 			_dispatch_debug("Ignoring invalid page reference in ring: %d", ref);
@@ -217,9 +217,16 @@ firehose_client_drain(firehose_client_t fc, mach_port_t port, uint32_t flags)
 		}
 
 		fbc = firehose_buffer_ref_to_chunk(fb, ref);
+		if (fbc->fc_pos.fcp_stream == firehose_stream_metadata) {
+			// serialize with firehose_client_metadata_stream_peek
+			os_unfair_lock_lock(&fc->fc_lock);
+		}
 		server_config.fs_handler(fc, evt, fbc);
 		if (slowpath(snapshot)) {
 			snapshot->handler(fc, evt, fbc);
+		}
+		if (fbc->fc_pos.fcp_stream == firehose_stream_metadata) {
+			os_unfair_lock_unlock(&fc->fc_lock);
 		}
 		// clients not using notifications (single threaded) always drain fully
 		// because they use all their limit, always
@@ -238,7 +245,7 @@ firehose_client_drain(firehose_client_t fc, mach_port_t port, uint32_t flags)
 			client_flushed = os_atomic_load2o(&fb->fb_header,
 				fbh_ring_tail.frp_mem_flushed, relaxed);
 		}
-		if (fc->fc_is_kernel) {
+		if (!fc->fc_pid) {
 			// will fire firehose_client_notify() because port is MACH_PORT_DEAD
 			port = fc->fc_sendp;
 		} else if (!port && client_flushed == sent_flushed && fc->fc_use_notifs) {
@@ -253,7 +260,7 @@ firehose_client_drain(firehose_client_t fc, mach_port_t port, uint32_t flags)
 	if (port) {
 		firehose_client_notify(fc, port);
 	}
-	if (fc->fc_is_kernel) {
+	if (!fc->fc_pid) {
 		if (!(flags & FIREHOSE_DRAIN_POLL)) {
 			// see firehose_client_kernel_source_handle_event
 			dispatch_resume(fc->fc_kernel_source);
@@ -283,7 +290,7 @@ corrupt:
 	// from now on all IO/mem drains depending on `for_io` will be no-op
 	// (needs_<for_io>_snapshot: false, memory_corrupted: true). we can safely
 	// silence the corresponding source of drain wake-ups.
-	if (!fc->fc_is_kernel) {
+	if (fc->fc_pid) {
 		dispatch_source_cancel(for_io ? fc->fc_io_source : fc->fc_mem_source);
 	}
 }
@@ -502,7 +509,7 @@ firehose_client_resume(firehose_client_t fc,
 	dispatch_assert_queue(server_config.fs_io_drain_queue);
 	TAILQ_INSERT_TAIL(&server_config.fs_clients, fc, fc_entry);
 	server_config.fs_handler(fc, FIREHOSE_EVENT_CLIENT_CONNECTED, (void *)fcci);
-	if (fc->fc_is_kernel) {
+	if (!fc->fc_pid) {
 		dispatch_activate(fc->fc_kernel_source);
 	} else {
 		dispatch_mach_connect(fc->fc_mach_channel,
@@ -553,7 +560,7 @@ _firehose_client_create(firehose_buffer_t fb)
 }
 
 static firehose_client_t
-firehose_client_create(firehose_buffer_t fb,
+firehose_client_create(firehose_buffer_t fb, pid_t pid,
 		mach_port_t comm_recvp, mach_port_t comm_sendp)
 {
 	uint64_t unique_pid = fb->fb_header.fbh_uniquepid;
@@ -561,6 +568,7 @@ firehose_client_create(firehose_buffer_t fb,
 	dispatch_mach_t dm;
 	dispatch_source_t ds;
 
+	fc->fc_pid = pid;
 	ds = dispatch_source_create(DISPATCH_SOURCE_TYPE_DATA_OR, 0, 0,
 			server_config.fs_mem_drain_queue);
 	_os_object_retain_internal_inline(&fc->fc_as_os_object);
@@ -622,7 +630,6 @@ firehose_kernel_client_create(void)
 	}
 
 	fc = _firehose_client_create((firehose_buffer_t)(uintptr_t)fb_map.fbmi_addr);
-	fc->fc_is_kernel = true;
 	ds = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, (uintptr_t)fd, 0,
 			fs->fs_ipc_queue);
 	dispatch_set_context(ds, fc);
@@ -663,12 +670,9 @@ uint64_t
 firehose_client_get_unique_pid(firehose_client_t fc, pid_t *pid_out)
 {
 	firehose_buffer_header_t fbh = &fc->fc_buffer->fb_header;
-	if (fc->fc_is_kernel) {
-		if (pid_out) *pid_out = 0;
-		return 0;
-	}
-	if (pid_out) *pid_out = fbh->fbh_pid ?: ~(pid_t)0;
-	return fbh->fbh_uniquepid ?: ~0ull;
+	if (pid_out) *pid_out = fc->fc_pid;
+	if (!fc->fc_pid) return 0;
+	return fbh->fbh_uniquepid ? fbh->fbh_uniquepid : ~0ull;
 }
 
 void *
@@ -800,47 +804,42 @@ firehose_server_copy_queue(firehose_server_queue_t which)
 
 void
 firehose_client_metadata_stream_peek(firehose_client_t fc,
-		firehose_event_t context, bool (^peek_should_start)(void),
+		OS_UNUSED firehose_event_t context, bool (^peek_should_start)(void),
 		bool (^peek)(firehose_chunk_t fbc))
 {
-	if (context != FIREHOSE_EVENT_MEM_BUFFER_RECEIVED) {
-		return dispatch_sync(server_config.fs_mem_drain_queue, ^{
-			firehose_client_metadata_stream_peek(fc,
-					FIREHOSE_EVENT_MEM_BUFFER_RECEIVED, peek_should_start, peek);
-		});
-	}
+	os_unfair_lock_lock(&fc->fc_lock);
 
-	if (peek_should_start && !peek_should_start()) {
-		return;
-	}
+	if (peek_should_start && peek_should_start()) {
+		firehose_buffer_t fb = fc->fc_buffer;
+		firehose_buffer_header_t fbh = &fb->fb_header;
+		uint64_t bitmap = fbh->fbh_bank.fbb_metadata_bitmap;
 
-	firehose_buffer_t fb = fc->fc_buffer;
-	firehose_buffer_header_t fbh = &fb->fb_header;
-	uint64_t bitmap = fbh->fbh_bank.fbb_metadata_bitmap;
+		while (bitmap) {
+			uint16_t ref = firehose_bitmap_first_set(bitmap);
+			firehose_chunk_t fbc = firehose_buffer_ref_to_chunk(fb, ref);
+			uint16_t fbc_length = fbc->fc_pos.fcp_next_entry_offs;
 
-	while (bitmap) {
-		uint16_t ref = firehose_bitmap_first_set(bitmap);
-		firehose_chunk_t fbc = firehose_buffer_ref_to_chunk(fb, ref);
-		uint16_t fbc_length = fbc->fc_pos.fcp_next_entry_offs;
-
-		bitmap &= ~(1ULL << ref);
-		if (fbc->fc_start + fbc_length <= fbc->fc_data) {
-			// this page has its "recycle-requeue" done, but hasn't gone
-			// through "recycle-reuse", or it has no data, ditch it
-			continue;
-		}
-		if (!((firehose_tracepoint_t)fbc->fc_data)->ft_length) {
-			// this thing has data, but the first tracepoint is unreadable
-			// so also just ditch it
-			continue;
-		}
-		if (fbc->fc_pos.fcp_stream != firehose_stream_metadata) {
-			continue;
-		}
-		if (!peek(fbc)) {
-			break;
+			bitmap &= ~(1ULL << ref);
+			if (fbc->fc_start + fbc_length <= fbc->fc_data) {
+				// this page has its "recycle-requeue" done, but hasn't gone
+				// through "recycle-reuse", or it has no data, ditch it
+				continue;
+			}
+			if (!((firehose_tracepoint_t)fbc->fc_data)->ft_length) {
+				// this thing has data, but the first tracepoint is unreadable
+				// so also just ditch it
+				continue;
+			}
+			if (fbc->fc_pos.fcp_stream != firehose_stream_metadata) {
+				continue;
+			}
+			if (!peek(fbc)) {
+				break;
+			}
 		}
 	}
+
+	os_unfair_lock_unlock(&fc->fc_lock);
 }
 
 OS_NOINLINE OS_COLD
@@ -925,7 +924,7 @@ firehose_snapshot_start(void *ctxt)
 	// 1. mark all the clients participating in the current snapshot
 	//    and enter the group for each bit set
 	TAILQ_FOREACH(fci, &server_config.fs_clients, fc_entry) {
-		if (fci->fc_is_kernel) {
+		if (!fci->fc_pid) {
 #if TARGET_OS_SIMULATOR
 			continue;
 #endif
@@ -965,7 +964,7 @@ firehose_snapshot_start(void *ctxt)
 			//    were removed from the list have already left the group
 			//    (see firehose_client_finalize())
 			TAILQ_FOREACH(fcj, &server_config.fs_clients, fc_entry) {
-				if (fcj->fc_is_kernel) {
+				if (!fcj->fc_pid) {
 #if !TARGET_OS_SIMULATOR
 					firehose_client_kernel_source_handle_event(fcj);
 #endif
@@ -1028,7 +1027,8 @@ kern_return_t
 firehose_server_register(mach_port_t server_port OS_UNUSED,
 		mach_port_t mem_port, mach_vm_size_t mem_size,
 		mach_port_t comm_recvp, mach_port_t comm_sendp,
-		mach_port_t extra_info_port, mach_vm_size_t extra_info_size)
+		mach_port_t extra_info_port, mach_vm_size_t extra_info_size,
+		audit_token_t atoken)
 {
 	mach_vm_address_t base_addr = 0;
 	firehose_client_t fc = NULL;
@@ -1077,7 +1077,9 @@ firehose_server_register(mach_port_t server_port OS_UNUSED,
 		fcci.fcci_size = (size_t)extra_info_size;
 	}
 
-	fc = firehose_client_create((firehose_buffer_t)base_addr,
+	pid_t pid = (pid_t)atoken.val[5]; // same as audit_token_to_pid()
+	if (pid == 0) pid = ~0;
+	fc = firehose_client_create((firehose_buffer_t)base_addr, pid,
 			comm_recvp, comm_sendp);
 	dispatch_async(server_config.fs_io_drain_queue, ^{
 		firehose_client_resume(fc, &fcci);

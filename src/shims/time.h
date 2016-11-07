@@ -123,7 +123,7 @@ _dispatch_get_nanoseconds(void)
 	dispatch_static_assert(sizeof(NSEC_PER_SEC) == 8);
 	dispatch_static_assert(sizeof(USEC_PER_SEC) == 8);
 
-#if TARGET_OS_MAC && DISPATCH_HOST_SUPPORTS_OSX(101200)
+#if TARGET_OS_MAC && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
 	return clock_gettime_nsec_np(CLOCK_REALTIME);
 #elif HAVE_DECL_CLOCK_REALTIME
 	struct timespec ts;

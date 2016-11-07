@@ -90,7 +90,7 @@ voucher_get_mach_voucher(voucher_t voucher);
 void _voucher_init(void);
 void _voucher_atfork_child(void);
 void _voucher_activity_debug_channel_init(void);
-#if OS_VOUCHER_ACTIVITY_SPI
+#if OS_VOUCHER_ACTIVITY_SPI && OS_VOUCHER_ACTIVITY_GENERATE_SWAPS
 void _voucher_activity_swap(firehose_activity_id_t old_id,
 		firehose_activity_id_t new_id);
 #endif
@@ -318,9 +318,11 @@ _voucher_swap_and_get_mach_voucher(voucher_t ov, voucher_t voucher)
 	_dispatch_thread_setspecific(dispatch_voucher_key, voucher);
 	mach_voucher_t kv = voucher ? voucher->v_kvoucher : MACH_VOUCHER_NULL;
 	mach_voucher_t okv = ov ? ov->v_kvoucher : MACH_VOUCHER_NULL;
+#if OS_VOUCHER_ACTIVITY_GENERATE_SWAPS
 	firehose_activity_id_t aid = voucher ? voucher->v_activity : 0;
 	firehose_activity_id_t oaid = ov ? ov->v_activity : 0;
 	if (aid != oaid) _voucher_activity_swap(aid, oaid);
+#endif
 	return (kv != okv) ? kv : VOUCHER_NO_MACH_VOUCHER;
 }
 

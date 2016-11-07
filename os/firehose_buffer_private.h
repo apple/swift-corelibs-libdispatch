@@ -99,27 +99,29 @@ static inline firehose_tracepoint_t
 _firehose_tracepoint_reader_next(const uint8_t **ptr, const uint8_t *end)
 {
 	const uint16_t ft_size = offsetof(struct firehose_tracepoint_s, ft_data);
-	firehose_tracepoint_t ft;
+	struct ft_unaligned_s {
+		struct firehose_tracepoint_s ft;
+	} __attribute__((packed, aligned(1))) *uft;
 
 	do {
-		ft = (firehose_tracepoint_t)*ptr;
-		if (ft->ft_data >= end) {
+		uft = (struct ft_unaligned_s *)*ptr;
+		if (uft->ft.ft_data >= end) {
 			// reached the end
 			return NULL;
 		}
-		if (!ft->ft_length) {
+		if (!uft->ft.ft_length) {
 			// tracepoint write didn't even start
 			return NULL;
 		}
-		if (ft->ft_length > end - ft->ft_data) {
+		if (uft->ft.ft_length > end - uft->ft.ft_data) {
 			// invalid length
 			return NULL;
 		}
-		*ptr += roundup(ft_size + ft->ft_length, 8);
+		*ptr += roundup(ft_size + uft->ft.ft_length, 8);
 		// test whether write of the tracepoint was finished
-	} while (os_unlikely(ft->ft_id.ftid_value == 0));
+	} while (os_unlikely(uft->ft.ft_id.ftid_value == 0));
 
-	return ft;
+	return (firehose_tracepoint_t)uft;
 }
 
 #define firehose_tracepoint_foreach(ft, fbc) \
