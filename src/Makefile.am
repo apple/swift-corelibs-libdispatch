@@ -146,7 +146,18 @@ SWIFT_SRC_FILES=\
 	swift/Wrapper.swift
 
 SWIFT_ABS_SRC_FILES = $(SWIFT_SRC_FILES:%=$(abs_srcdir)/%)
-SWIFT_OBJ_FILES = $(SWIFT_SRC_FILES:%.swift=$(abs_builddir)/%.o)
+SWIFT_OBJ_FILES = $(abs_builddir)/swift/swift_overlay.o
+
+SWIFTC_FLAGS = -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.modulemap -I$(abs_top_srcdir) -Xcc -fblocks
+if DISPATCH_ENABLE_OPTIMIZATION
+SWIFTC_FLAGS+=-O
+endif
+
+$(abs_builddir)/swift/swift_overlay.o:	$(SWIFT_ABS_SRC_FILES) $(SWIFTC)
+	@rm -f $@
+	$(SWIFTC) -whole-module-optimization -emit-library -c $(SWIFT_ABS_SRC_FILES) \
+	$(SWIFTC_FLAGS) -module-name Dispatch -module-link-name dispatch \
+	-o $@ -emit-module-path $(abs_builddir)/swift/Dispatch.swiftmodule
 
 libdispatch_la_SOURCES+=swift/DispatchStubs.cc
 EXTRA_libdispatch_la_SOURCES+=$(SWIFT_SRC_FILES)
@@ -157,38 +168,12 @@ libdispatch_la_LIBADD+=$(SWIFT_OBJ_FILES)
 SWIFT_GEN_FILES=	\
 	$(abs_builddir)/swift/Dispatch.swiftmodule \
 	$(abs_builddir)/swift/Dispatch.swiftdoc \
-	$(SWIFT_OBJ_FILES) \
-	$(SWIFT_OBJ_FILES:%=%.d) \
-	$(SWIFT_OBJ_FILES:%=%.swiftdeps) \
-	$(SWIFT_OBJ_FILES:%=%.~partial.swiftmodule) \
-	$(SWIFT_OBJ_FILES:%=%.~partial.swiftdoc) \
-	$(SWIFT_OBJ_FILES:%=%.~partial.swiftdeps)
-
-SWIFTC_FLAGS = -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.modulemap -I$(abs_top_srcdir) -Xcc -fblocks
-if DISPATCH_ENABLE_OPTIMIZATION
-SWIFTC_FLAGS+=-O
-endif
-
-$(abs_builddir)/swift/%.o:	$(abs_srcdir)/swift/%.swift $(SWIFTC)
-	@rm -f $@
-	$(SWIFTC) -frontend -c $(SWIFT_ABS_SRC_FILES) -primary-file $< \
-	$(SWIFTC_FLAGS) -module-name Dispatch -module-link-name dispatch \
-	-o $@ -emit-module-path $@.~partial.swiftmodule \
-	-emit-module-doc-path $@.~partial.swiftdoc -emit-dependencies-path $@.d \
-	-emit-reference-dependencies-path $@.swiftdeps \
-	-module-cache-path $(top_builddir)
-
-$(abs_builddir)/swift/Dispatch.swiftmodule: $(SWIFT_ABS_SRC_FILES) $(SWIFTC)
-	@rm -f $@
-	$(SWIFTC) -frontend -emit-module $(SWIFT_OBJ_FILES:%=%.~partial.swiftmodule) \
-	$(SWIFTC_FLAGS) -module-cache-path $(top_builddir) -module-link-name dispatch \
-	-o $@ -emit-module-doc-path $(@:%.swiftmodule=%.swiftdoc)
+	$(SWIFT_OBJ_FILES)
 
 swiftmoddir=${prefix}/lib/swift/linux/${build_cpu}
 swiftmod_HEADERS=\
 	$(abs_builddir)/swift/Dispatch.swiftmodule \
 	$(abs_builddir)/swift/Dispatch.swiftdoc
-
 endif
 
 BUILT_SOURCES=$(MIG_SOURCES) $(DTRACE_SOURCES)
