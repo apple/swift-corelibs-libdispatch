@@ -41,6 +41,7 @@ libdispatch_la_SOURCES=		\
 	trace.h					\
 	voucher_internal.h		\
 	firehose/firehose_internal.h \
+	shims/android_stubs.h	\
 	shims/atomic.h			\
 	shims/atomic_sfb.h		\
 	shims/getprogname.h		\
@@ -148,7 +149,7 @@ SWIFT_SRC_FILES=\
 SWIFT_ABS_SRC_FILES = $(SWIFT_SRC_FILES:%=$(abs_srcdir)/%)
 SWIFT_OBJ_FILES = $(abs_builddir)/swift/swift_overlay.o
 
-SWIFTC_FLAGS = -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.modulemap -I$(abs_top_srcdir) -Xcc -fblocks
+SWIFTC_FLAGS+= -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.modulemap -I$(abs_top_srcdir) -Xcc -fblocks
 if DISPATCH_ENABLE_OPTIMIZATION
 SWIFTC_FLAGS+=-O
 endif
@@ -180,4 +181,3 @@ BUILT_SOURCES=$(MIG_SOURCES) $(DTRACE_SOURCES)
 nodist_libdispatch_la_SOURCES=$(BUILT_SOURCES)
 CLEANFILES=$(BUILT_SOURCES) $(SWIFT_GEN_FILES)
 DISTCLEANFILES=pthread_machdep.h pthread System mach objc
-

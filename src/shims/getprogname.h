@@ -23,11 +23,18 @@
 #define __DISPATCH_SHIMS_GETPROGNAME__
 
 #if !HAVE_GETPROGNAME
+
+#ifdef __ANDROID__
+extern const char *__progname;
+#endif /* __ANDROID */)
+
 static inline char *
 getprogname(void)
 {
 # if HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME
 	return program_invocation_short_name;
+# elif defined(__ANDROID__)
+	return __progname;
 # else
 #   error getprogname(3) is not available on this platform
 # endif

@@ -11,6 +11,10 @@ AC_CONFIG_MACRO_DIR([m4])
 ac_clean_files=a.out.dSYM
 AM_MAINTAINER_MODE
 
+AC_CANONICAL_BUILD
+AC_CANONICAL_HOST
+AC_CANONICAL_TARGET
+
 #
 # Command line argument to specify build variant (default to release).
 # Impacts default value of CFLAGS et al. so must come before AC_PROG_CC
@@ -55,6 +59,53 @@ AC_PROG_CC([clang gcc cc])
 AC_PROG_CXX([clang++ g++ c++])
 AC_PROG_OBJC([clang gcc cc])
 AC_PROG_OBJCXX([clang++ g++ c++])
+
+#
+# Android cross-compilation support
+#
+AC_ARG_WITH([android-ndk],
+  [AS_HELP_STRING([--with-android-ndk],
+    [Android NDK location])], [
+  android_ndk=${withval}
+])
+AC_ARG_WITH([android-ndk-gcc-version],
+  [AS_HELP_STRING([--with-android-ndk-gcc-version],
+    [Android NDK GCC version [defaults=4.9]])],
+  [android_ndk_gcc_version=${withval}], [android_ndk_gcc_version=4.9])
+AC_ARG_WITH([android-api-level],
+  [AS_HELP_STRING([--with-android-api-level],
+    [Android API level to link with])], [
+  android_api_level=${withval}
+])
+AC_ARG_ENABLE([android],
+  [AS_HELP_STRING([--enable-android],
+    [Compile for Android])], [
+  android=true
+
+  # Override values until there's real support for multiple Android platforms
+  host=armv7-none-linux-androideabi
+  host_alias=arm-linux-androideabi
+  host_cpu=armv7
+  host_os=linux-androideabi
+  host_vendor=unknown
+  arch=arm
+
+  sysroot=${android_ndk}/platforms/android-${android_api_level}/arch-${arch}
+  toolchain=${android_ndk}/toolchains/${host_alias}-${android_ndk_gcc_version}/prebuilt/linux-${build_cpu}
+
+  CFLAGS="$CFLAGS -target ${host_alias} --sysroot=${sysroot} -B${toolchain}/${host_alias}/bin"
+  CXXFLAGS="$CXXFLAGS -target ${host_alias} --sysroot=${sysroot} -B${toolchain}/${host_alias}/bin"
+  SWIFTC_FLAGS="-target ${host} -sdk ${sysroot} -L${toolchain}/lib/gcc/${host_alias}/${android_ndk_gcc_version}.x"
+  LIBS="$LIBS -L${toolchain}/lib/gcc/${host_alias}/${android_ndk_gcc_version}.x"
+  LDFLAGS="$LDFLAGS -Wc,'-target','${host_alias}','-B${toolchain}/${host_alias}/bin'"
+
+  # FIXME: empty CFLAGS and CXXFLAGS are assumed for this to work.
+  # FIXME: there should be a more elegant way to do this
+  ac_configure_args=`echo $ac_configure_args | sed -e "s/ 'CFLAGS='//" -e "s/ 'CXXFLAGS='//"`
+  # CFLAGS, CXXFLAGS and LIBS needs to be passed to libkqueue and libpwq
+  ac_configure_args="$ac_configure_args --enable-bionic-libc 'CFLAGS=$CFLAGS' 'CXXFLAGS=$CXXFLAGS' 'LIBS=$LIBS'"
+], [android=false])
+AM_CONDITIONAL(ANDROID, $android)
 
 #
 # On Mac OS X, some required header files come from other source packages;
@@ -134,8 +185,6 @@ AS_IF([test "x$enable_apple_tsd_optimizations" = "xyes"],
     [Define to use non-portable pthread TSD optimizations for Mac OS X)])]
 )
 
-AC_CANONICAL_TARGET
-
 #
 # Enable building Swift overlay support into libdispatch
 #
@@ -164,6 +213,7 @@ AC_ARG_WITH([swift-toolchain],
 )
 AM_CONDITIONAL(HAVE_SWIFT, $have_swift)
 AC_SUBST([SWIFTC])
+AC_SUBST([SWIFTC_FLAGS])
 AC_SUBST([SWIFT_LIBDIR])
 
 #
@@ -472,6 +522,13 @@ AC_COMPILE_IFELSE(
   [AC_LANG_PROGRAM([void __attribute__((__noreturn__)) temp(void) { __builtin_trap(); }], [])],
   [AC_DEFINE(HAVE_NORETURN_BUILTIN_TRAP, 1, [Define if __builtin_trap marked noreturn])]
 )
+
+#
+# Add option to avoid building tests
+#
+AC_ARG_ENABLE([build-tests],
+  [AS_HELP_STRING([--disable-build-tests], [Disable tests compilation])])
+AM_CONDITIONAL(BUILD_TESTS, [test "x$enable_build_tests" != "xno"])
 
 #
 # Generate Makefiles.

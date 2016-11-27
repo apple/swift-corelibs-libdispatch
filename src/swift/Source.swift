@@ -112,7 +112,7 @@ public extension DispatchSource {
 	}
 #endif
 
-#if !os(Linux)
+#if !os(Linux) && !os(Android)
 	public struct ProcessEvent : OptionSet, RawRepresentable {
 		public let rawValue: UInt
 		public init(rawValue: UInt) { self.rawValue = rawValue }
@@ -170,7 +170,7 @@ public extension DispatchSource {
 	}
 #endif
 
-#if !os(Linux)
+#if !os(Linux) && !os(Android)
 	public class func makeProcessSource(identifier: pid_t, eventMask: ProcessEvent, queue: DispatchQueue? = nil) -> DispatchSourceProcess {
 		let source = dispatch_source_create(_swift_dispatch_source_type_proc(), UInt(identifier), eventMask.rawValue, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceProcess
@@ -202,7 +202,7 @@ public extension DispatchSource {
 		return DispatchSource(source: source) as DispatchSourceUserDataOr
 	}
 
-#if !os(Linux)
+#if !os(Linux) && !os(Android)
 	public class func makeFileSystemObjectSource(fileDescriptor: Int32, eventMask: FileSystemEvent, queue: DispatchQueue? = nil) -> DispatchSourceFileSystemObject {
 		let source = dispatch_source_create(_swift_dispatch_source_type_vnode(), UInt(fileDescriptor), eventMask.rawValue, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceFileSystemObject
@@ -255,7 +255,7 @@ public extension DispatchSourceMemoryPressure {
 }
 #endif
 
-#if !os(Linux)
+#if !os(Linux) && !os(Android)
 public extension DispatchSourceProcess {
 	public var handle: pid_t {
 		return pid_t(dispatch_source_get_handle(self as! DispatchSource))
@@ -299,7 +299,7 @@ public extension DispatchSourceTimer {
 	}
 }
 
-#if !os(Linux)
+#if !os(Linux) && !os(Android)
 public extension DispatchSourceFileSystemObject {
 	public var handle: Int32 {
 		return Int32(dispatch_source_get_handle((self as! DispatchSource).__wrapped))
@@ -368,7 +368,7 @@ internal func _swift_dispatch_source_type_mach_recv() -> dispatch_source_type_t
 internal func _swift_dispatch_source_type_memorypressure() -> dispatch_source_type_t
 #endif
 
-#if !os(Linux)
+#if !os(Linux) && !os(Android)
 @_silgen_name("_swift_dispatch_source_type_PROC")
 internal func _swift_dispatch_source_type_proc() -> dispatch_source_type_t
 #endif
@@ -382,7 +382,7 @@ internal func _swift_dispatch_source_type_signal() -> dispatch_source_type_t
 @_silgen_name("_swift_dispatch_source_type_TIMER")
 internal func _swift_dispatch_source_type_timer() -> dispatch_source_type_t
 
-#if !os(Linux)
+#if !os(Linux) && !os(Android)
 @_silgen_name("_swift_dispatch_source_type_VNODE")
 internal func _swift_dispatch_source_type_vnode() -> dispatch_source_type_t
 #endif

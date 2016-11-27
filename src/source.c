@@ -2034,8 +2034,10 @@ _dispatch_kevent_qos_s _dispatch_kevent_timeout[] = {
 };
 #define DISPATCH_KEVENT_TIMEOUT_COUNT \
 		((sizeof(_dispatch_kevent_timeout) / sizeof(_dispatch_kevent_timeout[0])))
-static_assert(DISPATCH_KEVENT_TIMEOUT_COUNT == DISPATCH_TIMER_INDEX_COUNT - 1,
+#if __has_feature(c_static_assert)
+_Static_assert(DISPATCH_KEVENT_TIMEOUT_COUNT == DISPATCH_TIMER_INDEX_COUNT - 1,
 		"should have a kevent for everything but disarm (ddt assumes this)");
+#endif
 
 #define DISPATCH_KEVENT_COALESCING_WINDOW_INIT(qos, ms) \
 		[DISPATCH_TIMER_QOS_##qos] = 2ull * (ms) * NSEC_PER_MSEC

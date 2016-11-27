@@ -22,7 +22,11 @@
 #include <dispatch/private.h>
 #include <stdlib.h>
 #include <unistd.h>
+#ifdef __ANDROID__
+#include <linux/sysctl.h>
+#else
 #include <sys/sysctl.h>
+#endif /* __ANDROID__ */
 #include <assert.h>
 
 #include <bsdtests.h>
