@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 import CDispatch
+import _SwiftDispatchOverlayShims
 
 // This file contains declarations that are provided by the
 // importer via Dispatch.apinote when the platform has Objective-C support
@@ -335,9 +336,3 @@ internal enum _OSQoSClass : UInt32  {
 		}
 	}
 }
-
-@_silgen_name("_swift_dispatch_release")
-internal func _swift_dispatch_release(_ obj: dispatch_object_t) -> Void
-
-@_silgen_name("_swift_dispatch_retain")
-internal func _swift_dispatch_retain(_ obj: dispatch_object_t) -> Void
