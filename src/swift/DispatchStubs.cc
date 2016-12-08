@@ -142,12 +142,6 @@ _swift_dispatch_block_testcancel(dispatch_block_t block) {
 }
 
 SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
-extern "C" bool
-_swift_dispatch_data_apply(dispatch_data_t data, bool (^applier)(dispatch_data_t, size_t, const void *, size_t)) {
-  return dispatch_data_apply(data, applier);
-}
-
-SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
 extern "C" void
 _swift_dispatch_async(dispatch_queue_t queue, dispatch_block_t block) {
   dispatch_async(queue, block);

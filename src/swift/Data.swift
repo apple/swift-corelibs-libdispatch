@@ -91,11 +91,13 @@ public struct DispatchData : RandomAccessCollection {
 	public func enumerateBytes(
 		block: (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void) 
 	{
-		_swift_dispatch_data_apply(__wrapped.__wrapped) { (_, offset: Int, ptr: UnsafeRawPointer, size: Int) in
+		// FIXME: When SR-2313 (withoutActuallyEscaping) is implemented, use it to replace unsafeBitCast
+		let nonEscapingBlock = unsafeBitCast(block, to: _enumerateBytesBlock.self)
+		_ = CDispatch.dispatch_data_apply(__wrapped.__wrapped) { (_, offset: Int, ptr: UnsafeRawPointer, size: Int) in
 			let bytePtr = ptr.bindMemory(to: UInt8.self, capacity: size)
 			let bp = UnsafeBufferPointer(start: bytePtr, count: size)
 			var stop = false
-			block(bp, offset, &stop)
+			nonEscapingBlock(bp, offset, &stop)
 			return !stop
 		}
 	}
@@ -271,10 +273,7 @@ public struct DispatchDataIterator : IteratorProtocol, Sequence {
 	internal var _position: DispatchData.Index
 }
 
-typealias _swift_data_applier = @convention(block) (dispatch_data_t, Int, UnsafeRawPointer, Int) -> Bool
-
-@_silgen_name("_swift_dispatch_data_apply")
-internal func _swift_dispatch_data_apply(_ data: dispatch_data_t, _ block: _swift_data_applier)
+typealias _enumerateBytesBlock = (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void
 
 @_silgen_name("_swift_dispatch_data_empty")
 internal func _swift_dispatch_data_empty() -> dispatch_data_t
