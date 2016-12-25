@@ -197,10 +197,10 @@ SOURCE(VNODE)
 SOURCE(WRITE)
 
 // See comment in CFFuntime.c explaining why objc_retainAutoreleasedReturnValue is needed.
-extern "C" void swift_release(void *);
+extern "C" void swift_retain(void *);
 extern "C" void * objc_retainAutoreleasedReturnValue(void *obj) {
     if (obj) {
-        swift_release(obj);
+        swift_retain(obj);
         return obj;
     }
     else return NULL;
