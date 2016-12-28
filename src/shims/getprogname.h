@@ -26,7 +26,7 @@
 
 #ifdef __ANDROID__
 extern const char *__progname;
-#endif /* __ANDROID */)
+#endif /* __ANDROID */
 
 static inline char *
 getprogname(void)

@@ -5148,6 +5148,7 @@ _dispatch_trystash_to_deferred_items(dispatch_queue_t dq, dispatch_object_t dou,
 }
 #endif
 
+#if HAVE_PTHREAD_WORKQUEUE_QOS
 DISPATCH_NOINLINE
 static void
 _dispatch_queue_push_slow(dispatch_queue_t dq, dispatch_object_t dou,
@@ -5157,6 +5158,7 @@ _dispatch_queue_push_slow(dispatch_queue_t dq, dispatch_object_t dou,
 			_dispatch_root_queues_init_once);
 	_dispatch_queue_push(dq, dou, pp);
 }
+#endif
 
 DISPATCH_NOINLINE
 void
