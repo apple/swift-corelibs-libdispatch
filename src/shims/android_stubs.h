@@ -27,8 +27,10 @@
             	(var) = (tvar))
 #endif /* TAILQ_FOREACH_SAFE */
 
+#if DISPATCH_DEBUG
 #ifndef TRASHIT
 #	define TRASHIT(x)      do {(x) = (void *)-1;} while (0)
 #endif /* TRASHIT */
+#endif
 
 #endif /* __DISPATCH__ANDROID__STUBS__INTERNAL */
