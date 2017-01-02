@@ -3,7 +3,7 @@
 #
 
 if HAVE_SWIFT
-swiftlibdir=${prefix}/lib/swift/linux
+swiftlibdir=${prefix}/lib/swift/${OS_STRING}
 swiftlib_LTLIBRARIES=libdispatch.la
 else
 lib_LTLIBRARIES=libdispatch.la
@@ -171,7 +171,7 @@ SWIFT_GEN_FILES=	\
 	$(abs_builddir)/swift/Dispatch.swiftdoc \
 	$(SWIFT_OBJ_FILES)
 
-swiftmoddir=${prefix}/lib/swift/linux/${build_cpu}
+swiftmoddir=${prefix}/lib/swift/${OS_STRING}/${host_cpu}
 swiftmod_HEADERS=\
 	$(abs_builddir)/swift/Dispatch.swiftmodule \
 	$(abs_builddir)/swift/Dispatch.swiftdoc

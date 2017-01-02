@@ -218,6 +218,7 @@ AM_CONDITIONAL(HAVE_SWIFT, $have_swift)
 AC_SUBST([SWIFTC])
 AC_SUBST([SWIFTC_FLAGS])
 AC_SUBST([SWIFT_LIBDIR])
+AC_SUBST([OS_STRING], ["$os_string"])
 
 #
 # Enable use of gold linker when building the Swift overlay
