@@ -194,6 +194,9 @@ AC_ARG_WITH([swift-toolchain],
    AC_DEFINE(HAVE_SWIFT, 1, [Define if building for Swift])
    SWIFTC="$swift_toolchain_path/bin/swiftc"
    case $target_os in
+      *android*)
+	    os_string="android"
+	    ;;
       linux*)
 	    os_string="linux"
 	    case $target_cpu in
