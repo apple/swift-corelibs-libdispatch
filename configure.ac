@@ -194,6 +194,9 @@ AC_ARG_WITH([swift-toolchain],
    AC_DEFINE(HAVE_SWIFT, 1, [Define if building for Swift])
    SWIFTC="$swift_toolchain_path/bin/swiftc"
    case $target_os in
+      *android*)
+	    os_string="android"
+	    ;;
       linux*)
 	    os_string="linux"
 	    case $target_cpu in
@@ -215,6 +218,7 @@ AM_CONDITIONAL(HAVE_SWIFT, $have_swift)
 AC_SUBST([SWIFTC])
 AC_SUBST([SWIFTC_FLAGS])
 AC_SUBST([SWIFT_LIBDIR])
+AC_SUBST([OS_STRING], ["$os_string"])
 
 #
 # Enable use of gold linker when building the Swift overlay
