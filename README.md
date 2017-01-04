@@ -18,3 +18,7 @@ We are currently early in the development of this project. We began with a mirro
 ## Build and Install
 
 For detailed instructions on building and installing libdispatch, see [INSTALL.md](INSTALL.md)
+
+## Testing
+
+For detailed instructions on testing libdispatch, see [TESTING.md](TESTING.md)
