@@ -91,14 +91,18 @@ public struct DispatchData : RandomAccessCollection {
 	public func enumerateBytes(
 		block: (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void) 
 	{
-		// FIXME: When SR-2313 (withoutActuallyEscaping) is implemented, use it to replace unsafeBitCast
-		let nonEscapingBlock = unsafeBitCast(block, to: _enumerateBytesBlock.self)
-		_ = CDispatch.dispatch_data_apply(__wrapped.__wrapped) { (_, offset: Int, ptr: UnsafeRawPointer, size: Int) in
-			let bytePtr = ptr.bindMemory(to: UInt8.self, capacity: size)
-			let bp = UnsafeBufferPointer(start: bytePtr, count: size)
-			var stop = false
-			nonEscapingBlock(bp, offset, &stop)
-			return !stop
+		// we know that capturing block in the closure being created/passed to dispatch_data_apply
+		// does not cause block to escape because dispatch_data_apply does not allow its
+		// block argument to escape.  Therefore, the usage of withoutActuallyEscaping to
+		// bypass the Swift type system is safe.
+		withoutActuallyEscaping(block) { escapableBlock in
+			_ = CDispatch.dispatch_data_apply(__wrapped.__wrapped) { (_, offset: Int, ptr: UnsafeRawPointer, size: Int) in
+				let bytePtr = ptr.bindMemory(to: UInt8.self, capacity: size)
+				let bp = UnsafeBufferPointer(start: bytePtr, count: size)
+				var stop = false
+				escapableBlock(bp, offset, &stop)
+				return !stop
+			}
 		}
 	}
 
@@ -272,8 +276,6 @@ public struct DispatchDataIterator : IteratorProtocol, Sequence {
 	internal var _count: Int
 	internal var _position: DispatchData.Index
 }
-
-typealias _enumerateBytesBlock = (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void
 
 @_silgen_name("_swift_dispatch_data_empty")
 internal func _swift_dispatch_data_empty() -> dispatch_data_t
