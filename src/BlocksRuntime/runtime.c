@@ -12,8 +12,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#if HAVE_OBJC
 #define __USE_GNU
 #include <dlfcn.h>
+#endif
 #if __has_include(<os/assumes.h>)
 #include <os/assumes.h>
 #else
@@ -202,6 +204,7 @@ static void (*_Block_memmove)(void *dest, void *src, unsigned long size) = _Bloc
 static void (*_Block_destructInstance) (const void *aBlock) = _Block_destructInstance_default;
 
 
+#if HAVE_OBJC
 /**************************************************************************
 GC support SPI functions - called from ObjC runtime and CoreFoundation
 ***************************************************************************/
@@ -252,6 +255,7 @@ void _Block_use_RR( void (*retain)(const void *),
     _Block_release_object = release;
     _Block_destructInstance = dlsym(RTLD_DEFAULT, "objc_destructInstance");
 }
+#endif // HAVE_OBJC
 
 // Called from CF to indicate MRR. Newer version uses a versioned structure, so we can add more functions
 // without defining a new entry point.
