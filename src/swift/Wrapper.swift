@@ -188,7 +188,6 @@ extension DispatchSource : DispatchSourceProcess,
 
 internal class __DispatchData : DispatchObject {
 	internal let __wrapped:dispatch_data_t
-	internal let __owned:Bool
 
 	final internal override func wrapped() -> dispatch_object_t {
 		return unsafeBitCast(__wrapped, to: dispatch_object_t.self)
@@ -196,13 +195,13 @@ internal class __DispatchData : DispatchObject {
 
 	internal init(data:dispatch_data_t, owned:Bool) {
 		__wrapped = data
-		__owned = owned
+		if !owned {
+			_swift_dispatch_retain(unsafeBitCast(data, to: dispatch_object_t.self))
+		}
 	}
 
 	deinit {
-		if __owned {
-			_swift_dispatch_release(wrapped())
-		}
+		_swift_dispatch_release(wrapped())
 	}
 }
 
@@ -335,3 +334,6 @@ internal enum _OSQoSClass : UInt32  {
 
 @_silgen_name("_swift_dispatch_release")
 internal func _swift_dispatch_release(_ obj: dispatch_object_t) -> Void
+
+@_silgen_name("_swift_dispatch_retain")
+internal func _swift_dispatch_retain(_ obj: dispatch_object_t) -> Void
