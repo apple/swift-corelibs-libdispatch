@@ -159,11 +159,11 @@ static inline void
 _dispatch_apply_f2(dispatch_queue_t dq, dispatch_apply_t da,
 		dispatch_function_t func)
 {
-	uint32_t i = 0;
+	int32_t i = 0;
 	dispatch_continuation_t head = NULL, tail = NULL;
 
 	// The current thread does not need a continuation
-	uint32_t continuation_cnt = da->da_thr_cnt - 1;
+	int32_t continuation_cnt = da->da_thr_cnt - 1;
 
 	dispatch_assert(continuation_cnt);
 
@@ -192,14 +192,14 @@ static void
 _dispatch_apply_redirect(void *ctxt)
 {
 	dispatch_apply_t da = (dispatch_apply_t)ctxt;
-	uint32_t da_width = da->da_thr_cnt - 1;
+	int32_t da_width = da->da_thr_cnt - 1;
 	dispatch_queue_t dq = da->da_dc->dc_data, rq = dq, tq;
 
 	do {
-		uint32_t width = _dispatch_queue_try_reserve_apply_width(rq, da_width);
+		int32_t width = _dispatch_queue_try_reserve_apply_width(rq, da_width);
 
 		if (slowpath(da_width > width)) {
-			uint32_t excess = da_width - width;
+			int32_t excess = da_width - width;
 			for (tq = dq; tq != rq; tq = tq->do_targetq) {
 				_dispatch_queue_relinquish_width(tq, excess);
 			}
@@ -234,7 +234,7 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 	if (slowpath(iterations == 0)) {
 		return;
 	}
-	uint32_t thr_cnt = dispatch_hw_config(active_cpus);
+	int32_t thr_cnt = dispatch_hw_config(active_cpus);
 	dispatch_thread_context_t dtctxt = _dispatch_thread_context_find(_dispatch_apply_key);
 	size_t nested = dtctxt ? dtctxt->dtc_apply_nesting : 0;
 	dispatch_queue_t old_dq = _dispatch_queue_get_current();
@@ -247,7 +247,7 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 				? nested * iterations : DISPATCH_APPLY_MAX;
 	}
 	if (iterations < thr_cnt) {
-		thr_cnt = (uint32_t)iterations;
+		thr_cnt = iterations;
 	}
 	if (slowpath(dq == DISPATCH_APPLY_CURRENT_ROOT_QUEUE)) {
 		dq = old_dq ? old_dq : _dispatch_get_root_queue(

@@ -563,7 +563,7 @@ void _dispatch_queue_resume(dispatch_queue_t dq, bool activate);
 void _dispatch_queue_finalize_activation(dispatch_queue_t dq);
 void _dispatch_queue_invoke(dispatch_queue_t dq,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
-void _dispatch_global_queue_poke(dispatch_queue_t dq, unsigned int n);
+void _dispatch_global_queue_poke(dispatch_queue_t dq, int n, int floor);
 void _dispatch_queue_push(dispatch_queue_t dq, dispatch_object_t dou,
 		dispatch_qos_t qos);
 void _dispatch_try_lock_transfer_or_wakeup(dispatch_queue_t dq);
@@ -948,7 +948,7 @@ struct dispatch_apply_s {
 	dispatch_continuation_t da_dc;
 	dispatch_thread_event_s da_event;
 	dispatch_invoke_flags_t da_flags;
-	uint32_t da_thr_cnt;
+	int32_t da_thr_cnt;
 };
 typedef struct dispatch_apply_s *dispatch_apply_t;
 

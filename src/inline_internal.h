@@ -1479,7 +1479,7 @@ _dispatch_root_queue_push_inline(dispatch_queue_t dq, dispatch_object_t _head,
 	struct dispatch_object_s *head = _head._do, *tail = _tail._do;
 	if (unlikely(_dispatch_queue_push_update_tail_list(dq, head, tail))) {
 		_dispatch_queue_push_update_head(dq, head);
-		return _dispatch_global_queue_poke(dq, n);
+		return _dispatch_global_queue_poke(dq, n, 0);
 	}
 }
 

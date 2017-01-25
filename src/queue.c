@@ -23,7 +23,7 @@
 #include "protocol.h" // _dispatch_send_wakeup_runloop_thread
 #endif
 
-#if (!HAVE_PTHREAD_WORKQUEUES || DISPATCH_DEBUG) && \
+#if (!HAVE_PTHREAD_WORKQUEUES || DISPATCH_DEBUG || DISPATCH_USE_INTERNAL_WORKQUEUE) && \
 		!defined(DISPATCH_ENABLE_THREAD_POOL)
 #define DISPATCH_ENABLE_THREAD_POOL 1
 #endif
@@ -32,6 +32,7 @@
 #endif
 #if HAVE_PTHREAD_WORKQUEUES && (!HAVE_PTHREAD_WORKQUEUE_QOS || DISPATCH_DEBUG) && \
 		!HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP && \
+		!DISPATCH_USE_INTERNAL_WORKQUEUE && \
 		!defined(DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK)
 #define DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK 1
 #endif
@@ -143,12 +144,14 @@ static struct dispatch_pthread_root_queue_context_s
 };
 #endif
 
-#define MAX_PTHREAD_COUNT 255
+#ifndef DISPATCH_WORKQ_MAX_PTHREAD_COUNT
+#define DISPATCH_WORKQ_MAX_PTHREAD_COUNT 255
+#endif
 
 struct dispatch_root_queue_context_s {
 	union {
 		struct {
-			unsigned int volatile dgq_pending;
+			int volatile dgq_pending;
 #if HAVE_PTHREAD_WORKQUEUES
 			qos_class_t dgq_qos;
 			int dgq_wq_priority, dgq_wq_options;
@@ -158,7 +161,7 @@ struct dispatch_root_queue_context_s {
 #endif // HAVE_PTHREAD_WORKQUEUES
 #if DISPATCH_USE_PTHREAD_POOL
 			void *dgq_ctxt;
-			uint32_t volatile dgq_thread_pool_size;
+			int32_t volatile dgq_thread_pool_size;
 #endif
 		};
 		char _dgq_pad[DISPATCH_CACHELINE_SIZE];
@@ -663,7 +666,15 @@ _dispatch_root_queues_init_workq(int *wq_supported)
 				result = result || dispatch_assume(pwq);
 			}
 #endif // DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK
-			qc->dgq_kworkqueue = pwq ? pwq : (void*)(~0ul);
+			if (pwq) {
+				qc->dgq_kworkqueue = pwq;
+			} else {
+				qc->dgq_kworkqueue = (void*)(~0ul);
+				// because the fastpath of _dispatch_global_queue_poke didn't
+				// know yet that we're using the internal pool implementation
+				// we have to undo its setting of dgq_pending
+				qc->dgq_pending = 0;
+			}
 		}
 #if DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK
 		if (!disable_wq) {
@@ -680,10 +691,10 @@ _dispatch_root_queues_init_workq(int *wq_supported)
 #if DISPATCH_USE_PTHREAD_POOL
 static inline void
 _dispatch_root_queue_init_pthread_pool(dispatch_root_queue_context_t qc,
-		uint8_t pool_size, bool overcommit)
+		int32_t pool_size, bool overcommit)
 {
 	dispatch_pthread_root_queue_context_t pqc = qc->dgq_ctxt;
-	uint32_t thread_pool_size = overcommit ? MAX_PTHREAD_COUNT :
+	int32_t thread_pool_size = overcommit ? DISPATCH_WORKQ_MAX_PTHREAD_COUNT :
 			dispatch_hw_config(active_cpus);
 	if (slowpath(pool_size) && pool_size < thread_pool_size) {
 		thread_pool_size = pool_size;
@@ -716,7 +727,7 @@ _dispatch_root_queues_init_once(void *context DISPATCH_UNUSED)
 		size_t i;
 		for (i = 0; i < DISPATCH_ROOT_QUEUE_COUNT; i++) {
 			bool overcommit = true;
-#if TARGET_OS_EMBEDDED
+#if TARGET_OS_EMBEDDED || (DISPATCH_USE_INTERNAL_WORKQUEUE && HAVE_DISPATCH_WORKQ_MONITORING)
 			// some software hangs if the non-overcommitting queues do not
 			// overcommit when threads block. Someday, this behavior should
 			// apply to all platforms
@@ -1979,8 +1990,8 @@ _dispatch_pthread_root_queue_create(const char *label, unsigned long flags,
 	dispatch_pthread_root_queue_context_t pqc;
 	dispatch_queue_flags_t dqf = 0;
 	size_t dqs;
-	uint8_t pool_size = flags & _DISPATCH_PTHREAD_ROOT_QUEUE_FLAG_POOL_SIZE ?
-			(uint8_t)(flags & ~_DISPATCH_PTHREAD_ROOT_QUEUE_FLAG_POOL_SIZE) : 0;
+	int32_t pool_size = flags & _DISPATCH_PTHREAD_ROOT_QUEUE_FLAG_POOL_SIZE ?
+			(int8_t)(flags & ~_DISPATCH_PTHREAD_ROOT_QUEUE_FLAG_POOL_SIZE) : 0;
 
 	dqs = sizeof(struct dispatch_queue_s) - DISPATCH_QUEUE_CACHELINE_PAD;
 	dqs = roundup(dqs, _Alignof(struct dispatch_root_queue_context_s));
@@ -3945,10 +3956,10 @@ no_change:
 
 DISPATCH_NOINLINE
 static void
-_dispatch_global_queue_poke_slow(dispatch_queue_t dq, unsigned int n)
+_dispatch_global_queue_poke_slow(dispatch_queue_t dq, int n, int floor)
 {
 	dispatch_root_queue_context_t qc = dq->do_ctxt;
-	uint32_t i = n;
+	int remaining = n;
 	int r = ENOSYS;
 
 	_dispatch_root_queues_init();
@@ -3968,16 +3979,16 @@ _dispatch_global_queue_poke_slow(dispatch_queue_t dq, unsigned int n)
 				r = pthread_workqueue_additem_np(qc->dgq_kworkqueue,
 						_dispatch_worker_thread4, dq, &wh, &gen_cnt);
 				(void)dispatch_assume_zero(r);
-			} while (--i);
+			} while (--remaining);
 			return;
 		}
 #endif // DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK
 #if HAVE_PTHREAD_WORKQUEUE_QOS
-		r = _pthread_workqueue_addthreads((int)i,
+		r = _pthread_workqueue_addthreads(remaining,
 				_dispatch_priority_to_pp(dq->dq_priority));
 #elif HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP
 		r = pthread_workqueue_addthreads_np(qc->dgq_wq_priority,
-				qc->dgq_wq_options, (int)i);
+				qc->dgq_wq_options, remaining);
 #endif
 		(void)dispatch_assume_zero(r);
 		return;
@@ -3987,23 +3998,43 @@ _dispatch_global_queue_poke_slow(dispatch_queue_t dq, unsigned int n)
 	dispatch_pthread_root_queue_context_t pqc = qc->dgq_ctxt;
 	if (fastpath(pqc->dpq_thread_mediator.do_vtable)) {
 		while (dispatch_semaphore_signal(&pqc->dpq_thread_mediator)) {
-			if (!--i) {
+			_dispatch_root_queue_debug("signaled sleeping worker for "
+					"global queue: %p", dq);
+			if (!--remaining) {
 				return;
 			}
 		}
 	}
-	uint32_t j, t_count;
+
+	bool overcommit = dq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT;
+	if (overcommit) {
+		os_atomic_add2o(qc, dgq_pending, remaining, relaxed);
+	} else {
+		if (!os_atomic_cmpxchg2o(qc, dgq_pending, 0, remaining, relaxed)) {
+			_dispatch_root_queue_debug("worker thread request still pending for "
+					"global queue: %p", dq);
+			return;
+		}
+	}
+
+	int32_t can_request, t_count;
 	// seq_cst with atomic store to tail <rdar://problem/16932833>
 	t_count = os_atomic_load2o(qc, dgq_thread_pool_size, ordered);
 	do {
-		if (!t_count) {
+		can_request = t_count < floor ? 0 : t_count - floor;
+		if (remaining > can_request) {
+			_dispatch_root_queue_debug("pthread pool reducing request from %d to %d",
+					remaining, can_request);
+			os_atomic_sub2o(qc, dgq_pending, remaining - can_request, relaxed);
+			remaining = can_request;
+		}
+		if (remaining == 0) {
 			_dispatch_root_queue_debug("pthread pool is full for root queue: "
 					"%p", dq);
 			return;
 		}
-		j = i > t_count ? t_count : i;
 	} while (!os_atomic_cmpxchgvw2o(qc, dgq_thread_pool_size, t_count,
-			t_count - j, &t_count, acquire));
+			t_count - remaining, &t_count, acquire));
 
 	pthread_attr_t *attr = &pqc->dpq_thread_attr;
 	pthread_t tid, *pthr = &tid;
@@ -4020,13 +4051,13 @@ _dispatch_global_queue_poke_slow(dispatch_queue_t dq, unsigned int n)
 			}
 			_dispatch_temporary_resource_shortage();
 		}
-	} while (--j);
+	} while (--remaining);
 #endif // DISPATCH_USE_PTHREAD_POOL
 }
 
 DISPATCH_NOINLINE
 void
-_dispatch_global_queue_poke(dispatch_queue_t dq, unsigned int n)
+_dispatch_global_queue_poke(dispatch_queue_t dq, int n, int floor)
 {
 	if (!_dispatch_queue_class_probe(dq)) {
 		return;
@@ -4043,7 +4074,7 @@ _dispatch_global_queue_poke(dispatch_queue_t dq, unsigned int n)
 		return;
 	}
 #endif // HAVE_PTHREAD_WORKQUEUES
-	return _dispatch_global_queue_poke_slow(dq, n);
+	return _dispatch_global_queue_poke_slow(dq, n, floor);
 }
 
 #pragma mark -
@@ -5248,7 +5279,7 @@ out:
 		(void)os_atomic_dec2o(qc, dgq_pending, relaxed);
 	}
 	if (!available) {
-		_dispatch_global_queue_poke(dq, 1);
+		_dispatch_global_queue_poke(dq, 1, 0);
 	}
 	return available;
 }
@@ -5315,7 +5346,7 @@ start:
 	}
 
 	os_atomic_store2o(dq, dq_items_head, next, relaxed);
-	_dispatch_global_queue_poke(dq, 1);
+	_dispatch_global_queue_poke(dq, 1, 0);
 out:
 	return head;
 }
@@ -5412,7 +5443,7 @@ _dispatch_worker_thread4(void *context)
 	dispatch_root_queue_context_t qc = dq->do_ctxt;
 
 	_dispatch_introspection_thread_add();
-	int pending = (int)os_atomic_dec2o(qc, dgq_pending, relaxed);
+	int pending = os_atomic_dec2o(qc, dgq_pending, relaxed);
 	dispatch_assert(pending >= 0);
 	_dispatch_root_queue_drain(dq, _dispatch_get_priority());
 	_dispatch_voucher_debug("root queue clear", NULL);
@@ -5458,6 +5489,11 @@ _dispatch_worker_thread(void *context)
 	dispatch_root_queue_context_t qc = dq->do_ctxt;
 	dispatch_pthread_root_queue_context_t pqc = qc->dgq_ctxt;
 
+	int pending = os_atomic_dec2o(qc, dgq_pending, relaxed);
+	if (unlikely(pending < 0)) {
+		DISPATCH_INTERNAL_CRASH(pending, "Pending thread request underflow");
+	}
+
 	if (pqc->dpq_observer_hooks.queue_will_execute) {
 		_dispatch_set_pthread_root_queue_observer_hooks(
 				&pqc->dpq_observer_hooks);
@@ -5475,6 +5511,15 @@ _dispatch_worker_thread(void *context)
 	(void)dispatch_assume_zero(r);
 	_dispatch_introspection_thread_add();
 
+#if DISPATCH_USE_INTERNAL_WORKQUEUE
+	bool overcommit = (qc->dgq_wq_options & WORKQ_ADDTHREADS_OPTION_OVERCOMMIT);
+	bool manager = (dq == &_dispatch_mgr_root_queue);
+	bool monitored = !(overcommit || manager);
+	if (monitored) {
+		_dispatch_workq_worker_register(dq, qc->dgq_wq_priority);
+	}
+#endif
+
 	const int64_t timeout = 5ull * NSEC_PER_SEC;
 	pthread_priority_t old_pri = _dispatch_get_priority();
 	do {
@@ -5483,8 +5528,13 @@ _dispatch_worker_thread(void *context)
 	} while (dispatch_semaphore_wait(&pqc->dpq_thread_mediator,
 			dispatch_time(0, timeout)) == 0);
 
+#if DISPATCH_USE_INTERNAL_WORKQUEUE
+	if (monitored) {
+		_dispatch_workq_worker_unregister(dq,  qc->dgq_wq_priority);
+	}
+#endif
 	(void)os_atomic_inc2o(qc, dgq_thread_pool_size, release);
-	_dispatch_global_queue_poke(dq, 1);
+	_dispatch_global_queue_poke(dq, 1, 0);
 	_dispatch_release(dq);
 
 	return NULL;
