@@ -110,7 +110,7 @@ public func dispatch_data_copy_region(_ data: dispatch_data_t, _ location: Int, 
 	fatalError()
 }
 
-@available(*, unavailable, renamed:"DispatchQueue.asynchronously(self:group:qos:flags:execute:)")
+@available(*, unavailable, renamed:"DispatchQueue.async(self:group:qos:flags:execute:)")
 public func dispatch_group_async(_ group: DispatchGroup, _ queue: DispatchQueue, _ block: @escaping () -> Void)
 {
 	fatalError()
@@ -146,7 +146,7 @@ public func dispatch_apply(_ iterations: Int, _ queue: DispatchQueue, _ block: (
 	fatalError()
 }
 
-@available(*, unavailable, renamed:"DispatchQueue.asynchronously(self:execute:)")
+@available(*, unavailable, renamed:"DispatchQueue.async(self:execute:)")
 public func dispatch_async(_ queue: DispatchQueue, _ block: @escaping () -> Void)
 {
 	fatalError()
