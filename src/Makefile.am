@@ -9,6 +9,12 @@ else
 lib_LTLIBRARIES=libdispatch.la
 endif
 
+if DISPATCH_USE_INTERNAL_WORKQUEUE
+INTERNAL_WORKQUEUE_SOURCES= 	\
+	event/workqueue.c		\
+	event/workqueue_internal.h
+endif
+
 libdispatch_la_SOURCES=			\
 	allocator.c			\
 	apply.c				\
@@ -60,7 +66,8 @@ libdispatch_la_SOURCES=			\
 	shims/perfmon.h			\
 	shims/time.h			\
 	shims/tsd.h			\
-	shims/yield.h
+	shims/yield.h			\
+	$(INTERNAL_WORKQUEUE_SOURCES)
 
 EXTRA_libdispatch_la_SOURCES=
 EXTRA_libdispatch_la_DEPENDENCIES=
@@ -77,12 +84,13 @@ AM_OBJCFLAGS=$(DISPATCH_CFLAGS) $(CBLOCKS_FLAGS)
 AM_CXXFLAGS=$(PTHREAD_WORKQUEUE_CFLAGS) $(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 AM_OBJCXXFLAGS=$(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 
-if BUILD_OWN_PTHREAD_WORKQUEUES
-  PTHREAD_WORKQUEUE_LIBS=$(top_builddir)/libpwq/libpthread_workqueue.la
-  PTHREAD_WORKQUEUE_CFLAGS=-I$(top_srcdir)/libpwq/include
+if DISPATCH_USE_INTERNAL_WORKQUEUE
+  PTHREAD_WORKQUEUE_LIBS=
+  PTHREAD_WORKQUEUE_CFLAGS=
 else
 if HAVE_PTHREAD_WORKQUEUES
   PTHREAD_WORKQUEUE_LIBS=-lpthread_workqueue
+  PTHREAD_WORKQUEUE_CFLAGS=
 endif
 endif
 

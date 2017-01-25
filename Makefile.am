@@ -4,17 +4,12 @@
 
 ACLOCAL_AMFLAGS = -I m4
 
-if BUILD_OWN_PTHREAD_WORKQUEUES
-  MAYBE_PTHREAD_WORKQUEUES = libpwq
-endif
-
 if BUILD_TESTS
   MAYBE_TESTS = tests
 endif
 
 SUBDIRS=						\
 	dispatch					\
-	$(MAYBE_PTHREAD_WORKQUEUES)	\
 	man							\
 	os							\
 	private						\
