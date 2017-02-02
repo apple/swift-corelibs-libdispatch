@@ -50,9 +50,7 @@ public struct DispatchData : RandomAccessCollection {
 	///
 	/// - parameter bytes: A pointer to the memory. It will be copied.
 	public init(bytes buffer: UnsafeBufferPointer<UInt8>) {
-		let d = buffer.baseAddress == nil ? _swift_dispatch_data_empty()
-					: dispatch_data_create(buffer.baseAddress!, buffer.count, nil,
-							_dispatch_data_destructor_default())
+		let d = dispatch_data_create(buffer.baseAddress!, buffer.count, nil, _dispatch_data_destructor_default())
 		self.init(data: d)
 	}
 
@@ -62,8 +60,7 @@ public struct DispatchData : RandomAccessCollection {
 	/// - parameter deallocator: Specifies the mechanism to free the indicated buffer.
 	public init(bytesNoCopy bytes: UnsafeBufferPointer<UInt8>, deallocator: Deallocator = .free) {
 		let (q, b) = deallocator._deallocator
-		let d = bytes.baseAddress == nil ? _swift_dispatch_data_empty()
-					: dispatch_data_create(bytes.baseAddress!, bytes.count, q?.__wrapped, b)
+		let d = dispatch_data_create(bytes.baseAddress!, bytes.count, q?.__wrapped, b)
 		self.init(data: d)
 	}
 
