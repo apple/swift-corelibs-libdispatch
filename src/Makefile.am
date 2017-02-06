@@ -148,11 +148,21 @@ SWIFT_SRC_FILES=\
 
 SWIFT_ABS_SRC_FILES = $(SWIFT_SRC_FILES:%=$(abs_srcdir)/%)
 SWIFT_OBJ_FILES = $(abs_builddir)/swift/swift_overlay.o
+SWIFT_LIBTOOL_OBJ_FILES = $(abs_builddir)/swift/swift_overlay.lo
 
 SWIFTC_FLAGS+= -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.modulemap -I$(abs_top_srcdir) -Xcc -fblocks
 if DISPATCH_ENABLE_OPTIMIZATION
 SWIFTC_FLAGS+=-O
 endif
+
+# this saves the object file, then tricks libtool into generating a .lo file and
+# then moves the object file back in the places libtool expects them to be for
+# the PIC and non-PIC case.
+$(abs_builddir)/swift/swift_overlay.lo:	$(abs_builddir)/swift/swift_overlay.o
+	mv $(abs_builddir)/swift/swift_overlay.o $(abs_builddir)/swift/.libs/swift_overlay.o.save
+	$(LIBTOOL) --mode=compile --tag=CC true -o $< -c /dev/null
+	cp $(abs_builddir)/swift/.libs/swift_overlay.o.save $(abs_builddir)/swift/.libs/swift_overlay.o
+	mv $(abs_builddir)/swift/.libs/swift_overlay.o.save $(abs_builddir)/swift/swift_overlay.o
 
 $(abs_builddir)/swift/swift_overlay.o:	$(SWIFT_ABS_SRC_FILES) $(SWIFTC)
 	@rm -f $@
@@ -163,8 +173,8 @@ $(abs_builddir)/swift/swift_overlay.o:	$(SWIFT_ABS_SRC_FILES) $(SWIFTC)
 libdispatch_la_SOURCES+=swift/DispatchStubs.cc
 EXTRA_libdispatch_la_SOURCES+=$(SWIFT_SRC_FILES)
 
-EXTRA_libdispatch_la_DEPENDENCIES+=$(SWIFT_OBJ_FILES) $(abs_builddir)/swift/Dispatch.swiftmodule
-libdispatch_la_LIBADD+=$(SWIFT_OBJ_FILES)
+EXTRA_libdispatch_la_DEPENDENCIES+=$(SWIFT_OBJ_FILES) $(SWIFT_LIBTOOL_OBJ_FILES) $(abs_builddir)/swift/Dispatch.swiftmodule
+libdispatch_la_LIBADD+=$(SWIFT_LIBTOOL_OBJ_FILES)
 
 SWIFT_GEN_FILES=	\
 	$(abs_builddir)/swift/Dispatch.swiftmodule \
