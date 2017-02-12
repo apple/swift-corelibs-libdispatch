@@ -26,7 +26,11 @@
 #include <libkern/OSAtomic.h>
 #endif
 #include <assert.h>
+#ifdef __ANDROID__
+#include <linux/sysctl.h>
+#else
 #include <sys/sysctl.h>
+#endif /* __ANDROID__ */
 #include <stdarg.h>
 #include <time.h>
 

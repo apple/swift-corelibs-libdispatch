@@ -36,13 +36,13 @@ public extension DispatchIO {
 
 	public class func read(fromFileDescriptor: Int32, maxLength: Int, runningHandlerOn queue: DispatchQueue, handler: @escaping (_ data: DispatchData, _ error: Int32) -> Void) {
 		dispatch_read(fromFileDescriptor, maxLength, queue.__wrapped) { (data: dispatch_data_t, error: Int32) in
-			handler(DispatchData(data: data), error)
+			handler(DispatchData(borrowedData: data), error)
 		}
 	}
 
 	public class func write(toFileDescriptor: Int32, data: DispatchData, runningHandlerOn queue: DispatchQueue, handler: @escaping (_ data: DispatchData?, _ error: Int32) -> Void) {
 		dispatch_write(toFileDescriptor, data.__wrapped.__wrapped, queue.__wrapped) { (data: dispatch_data_t?, error: Int32) in
-			handler(data.flatMap { DispatchData(data: $0) }, error)
+			handler(data.flatMap { DispatchData(borrowedData: $0) }, error)
 		}
 	}
 
@@ -77,18 +77,18 @@ public extension DispatchIO {
 
 	public func read(offset: off_t, length: Int, queue: DispatchQueue, ioHandler: @escaping (_ done: Bool, _ data: DispatchData?, _ error: Int32) -> Void) {
 		dispatch_io_read(self.__wrapped, offset, length, queue.__wrapped) { (done: Bool, data: dispatch_data_t?, error: Int32) in
-			ioHandler(done, data.flatMap { DispatchData(data: $0) }, error)
+			ioHandler(done, data.flatMap { DispatchData(borrowedData: $0) }, error)
 		}
 	}
 
 	public func write(offset: off_t, data: DispatchData, queue: DispatchQueue, ioHandler: @escaping (_ done: Bool, _ data: DispatchData?, _ error: Int32) -> Void) {
 		dispatch_io_write(self.__wrapped, offset, data.__wrapped.__wrapped, queue.__wrapped) { (done: Bool, data: dispatch_data_t?, error: Int32) in
-			ioHandler(done, data.flatMap { DispatchData(data: $0) }, error)
+			ioHandler(done, data.flatMap { DispatchData(borrowedData: $0) }, error)
 		}
 	}
 
 	public func setInterval(interval: DispatchTimeInterval, flags: IntervalFlags = []) {
-		dispatch_io_set_interval(self.__wrapped, interval.rawValue, flags.rawValue)
+		dispatch_io_set_interval(self.__wrapped, UInt64(interval.rawValue), flags.rawValue)
 	}
 
 	public func close(flags: CloseFlags = []) {

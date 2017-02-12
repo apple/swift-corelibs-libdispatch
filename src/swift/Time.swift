@@ -37,6 +37,12 @@ public struct DispatchTime : Comparable {
 	///   - uptimeNanoseconds: The number of nanoseconds since boot, excluding
 	///                        time the system spent asleep
 	/// - Returns: A new `DispatchTime`
+	/// - Discussion: This clock is the same as the value returned by
+	///               `mach_absolute_time` when converted into nanoseconds.
+	///               Note that `DispatchTime(uptimeNanoseconds: 0)` is
+	///               equivalent to `DispatchTime.now()`, that is, its value
+	///               represents the number of nanoseconds since boot (excluding
+	///               system sleep time), not zero nanoseconds since boot.
 	public init(uptimeNanoseconds: UInt64) {
 		self.rawValue = dispatch_time_t(uptimeNanoseconds)
 	}
@@ -89,52 +95,60 @@ public enum DispatchTimeInterval {
 	case microseconds(Int)
 	case nanoseconds(Int)
 
-	internal var rawValue: UInt64 {
+	internal var rawValue: Int64 {
 		switch self {
-		case .seconds(let s): return UInt64(s) * NSEC_PER_SEC
-		case .milliseconds(let ms): return UInt64(ms) * NSEC_PER_MSEC
-		case .microseconds(let us): return UInt64(us) * NSEC_PER_USEC
-		case .nanoseconds(let ns): return UInt64(ns)
+		case .seconds(let s): return Int64(s) * Int64(NSEC_PER_SEC)
+		case .milliseconds(let ms): return Int64(ms) * Int64(NSEC_PER_MSEC)
+		case .microseconds(let us): return Int64(us) * Int64(NSEC_PER_USEC)
+		case .nanoseconds(let ns): return Int64(ns)
 		}
 	}
 }
 
 public func +(time: DispatchTime, interval: DispatchTimeInterval) -> DispatchTime {
-	let t = CDispatch.dispatch_time(time.rawValue, Int64(interval.rawValue))
+	let t = CDispatch.dispatch_time(time.rawValue, interval.rawValue)
 	return DispatchTime(rawValue: t)
 }
 
 public func -(time: DispatchTime, interval: DispatchTimeInterval) -> DispatchTime {
-	let t = CDispatch.dispatch_time(time.rawValue, -Int64(interval.rawValue))
+	let t = CDispatch.dispatch_time(time.rawValue, -interval.rawValue)
 	return DispatchTime(rawValue: t)
 }
 
 public func +(time: DispatchTime, seconds: Double) -> DispatchTime {
-	let t = CDispatch.dispatch_time(time.rawValue, Int64(seconds * Double(NSEC_PER_SEC)))
+	let interval = seconds * Double(NSEC_PER_SEC)
+	let t = CDispatch.dispatch_time(time.rawValue,
+		interval.isInfinite || interval.isNaN ? Int64.max : Int64(interval))
 	return DispatchTime(rawValue: t)
 }
 
 public func -(time: DispatchTime, seconds: Double) -> DispatchTime {
-	let t = CDispatch.dispatch_time(time.rawValue, Int64(-seconds * Double(NSEC_PER_SEC)))
+	let interval = -seconds * Double(NSEC_PER_SEC)
+	let t = CDispatch.dispatch_time(time.rawValue,
+		interval.isInfinite || interval.isNaN ? Int64.min : Int64(interval))
 	return DispatchTime(rawValue: t)
 }
 
 public func +(time: DispatchWallTime, interval: DispatchTimeInterval) -> DispatchWallTime {
-	let t = CDispatch.dispatch_time(time.rawValue, Int64(interval.rawValue))
+	let t = CDispatch.dispatch_time(time.rawValue, interval.rawValue)
 	return DispatchWallTime(rawValue: t)
 }
 
 public func -(time: DispatchWallTime, interval: DispatchTimeInterval) -> DispatchWallTime {
-	let t = CDispatch.dispatch_time(time.rawValue, -Int64(interval.rawValue))
+	let t = CDispatch.dispatch_time(time.rawValue, -interval.rawValue)
 	return DispatchWallTime(rawValue: t)
 }
 
 public func +(time: DispatchWallTime, seconds: Double) -> DispatchWallTime {
-	let t = CDispatch.dispatch_time(time.rawValue, Int64(seconds * Double(NSEC_PER_SEC)))
+	let interval = seconds * Double(NSEC_PER_SEC)
+	let t = CDispatch.dispatch_time(time.rawValue,
+		interval.isInfinite || interval.isNaN ? Int64.max : Int64(interval))
 	return DispatchWallTime(rawValue: t)
 }
 
 public func -(time: DispatchWallTime, seconds: Double) -> DispatchWallTime {
-	let t = CDispatch.dispatch_time(time.rawValue, Int64(-seconds * Double(NSEC_PER_SEC)))
+	let interval = seconds * Double(NSEC_PER_SEC)
+	let t = CDispatch.dispatch_time(time.rawValue,
+		interval.isInfinite || interval.isNaN ? Int64.min : Int64(interval))
 	return DispatchWallTime(rawValue: t)
 }

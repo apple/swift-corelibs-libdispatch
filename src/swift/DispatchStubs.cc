@@ -142,12 +142,6 @@ _swift_dispatch_block_testcancel(dispatch_block_t block) {
 }
 
 SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
-extern "C" bool
-_swift_dispatch_data_apply(dispatch_data_t data, bool (^applier)(dispatch_data_t, size_t, const void *, size_t)) {
-  return dispatch_data_apply(data, applier);
-}
-
-SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
 extern "C" void
 _swift_dispatch_async(dispatch_queue_t queue, dispatch_block_t block) {
   dispatch_async(queue, block);
@@ -169,6 +163,12 @@ SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
 extern "C" void
 _swift_dispatch_release(dispatch_object_t obj) {
   dispatch_release(obj);
+}
+
+SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
+extern "C" void
+_swift_dispatch_retain(dispatch_object_t obj) {
+  dispatch_retain(obj);
 }
 
 // DISPATCH_RUNTIME_STDLIB_INTERFACE
@@ -203,10 +203,10 @@ SOURCE(VNODE)
 SOURCE(WRITE)
 
 // See comment in CFFuntime.c explaining why objc_retainAutoreleasedReturnValue is needed.
-extern "C" void swift_release(void *);
+extern "C" void swift_retain(void *);
 extern "C" void * objc_retainAutoreleasedReturnValue(void *obj) {
     if (obj) {
-        swift_release(obj);
+        swift_retain(obj);
         return obj;
     }
     else return NULL;

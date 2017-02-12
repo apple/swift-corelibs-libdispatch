@@ -12,6 +12,10 @@ if BUILD_OWN_KQUEUES
   MAYBE_KQUEUES = libkqueue
 endif
 
+if BUILD_TESTS
+  MAYBE_TESTS = tests
+endif
+
 SUBDIRS=						\
 	dispatch					\
 	$(MAYBE_PTHREAD_WORKQUEUES)	\
@@ -20,7 +24,7 @@ SUBDIRS=						\
 	os							\
 	private						\
 	src							\
-	tests
+	$(MAYBE_TESTS)
 
 EXTRA_DIST=					\
 	README.md				\

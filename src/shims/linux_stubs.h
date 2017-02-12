@@ -16,6 +16,18 @@
 #ifndef __DISPATCH__STUBS__INTERNAL
 #define __DISPATCH__STUBS__INTERNAL
 
+#ifndef TAILQ_FOREACH_SAFE
+#define TAILQ_FOREACH_SAFE(var, head, field, temp)                             \
+	for ((var) = TAILQ_FIRST((head));                                      \
+		(var) && ((temp) = TAILQ_NEXT((var), field), 1); (var) = (temp))
+#endif
+
+#if DISPATCH_DEBUG
+#ifndef TRASHIT
+#define TRASHIT(x) do { (x) = (void *)-1; } while (0)
+#endif
+#endif
+
 /*
  * Stub out defines for some mach types and related macros
  */
@@ -71,7 +83,9 @@ typedef void (*dispatch_mach_msg_destructor_t)(void*);
 #endif
 
 // SIZE_T_MAX should not be hardcoded like this here.
-#define SIZE_T_MAX (0x7fffffff)
+#ifndef SIZE_T_MAX
+#define SIZE_T_MAX (~(size_t)0)
+#endif
 
 // Define to 0 the NOTE_ values that are not present on Linux.
 // Revisit this...would it be better to ifdef out the uses instead??

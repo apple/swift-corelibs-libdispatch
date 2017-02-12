@@ -976,6 +976,7 @@ _dispatch_get_mach_host_port(void)
 #include <unistd.h>
 #include <sys/syscall.h>
 
+#ifndef __ANDROID__
 #ifdef SYS_gettid
 DISPATCH_ALWAYS_INLINE
 static inline pid_t
@@ -985,7 +986,8 @@ gettid(void)
 }
 #else
 #error "SYS_gettid unavailable on this system"
-#endif
+#endif /* SYS_gettid */
+#endif /* ! __ANDROID__ */
 
 #define _tsd_call_cleanup(k, f)  do { \
 		if ((f) && tsd->k) ((void(*)(void*))(f))(tsd->k); \
@@ -5146,6 +5148,7 @@ _dispatch_trystash_to_deferred_items(dispatch_queue_t dq, dispatch_object_t dou,
 }
 #endif
 
+#if HAVE_PTHREAD_WORKQUEUE_QOS
 DISPATCH_NOINLINE
 static void
 _dispatch_queue_push_slow(dispatch_queue_t dq, dispatch_object_t dou,
@@ -5155,6 +5158,7 @@ _dispatch_queue_push_slow(dispatch_queue_t dq, dispatch_object_t dou,
 			_dispatch_root_queues_init_once);
 	_dispatch_queue_push(dq, dou, pp);
 }
+#endif
 
 DISPATCH_NOINLINE
 void

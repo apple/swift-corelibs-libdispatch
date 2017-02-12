@@ -87,7 +87,17 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 	case _dispatch_hw_config_physical_cpus:
 		return sysconf(_SC_NPROCESSORS_CONF);
 	case _dispatch_hw_config_active_cpus:
-		return sysconf(_SC_NPROCESSORS_ONLN);
+		{
+#ifdef __USE_GNU
+			// Prefer pthread_getaffinity_np because it considers
+			// scheduler cpu affinity.  This matters if the program
+			// is restricted to a subset of the online cpus (eg via numactl).
+			cpu_set_t cpuset;
+			if (pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) == 0)
+				return CPU_COUNT(&cpuset);
+#endif
+			return sysconf(_SC_NPROCESSORS_ONLN);
+		}
 	}
 #else
 	const char *name = NULL;

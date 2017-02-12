@@ -97,6 +97,10 @@ typedef unsigned long pthread_priority_t;
 #include "shims/linux_stubs.h"
 #endif
 
+#ifdef __ANDROID__
+#include "shims/android_stubs.h"
+#endif
+
 typedef uint32_t dispatch_priority_t;
 #define DISPATCH_SATURATED_OVERRIDE ((dispatch_priority_t)UINT32_MAX)
 

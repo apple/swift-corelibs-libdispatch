@@ -105,10 +105,6 @@ public class DispatchIO : DispatchObject {
 		__wrapped = dispatch_io_create_with_io(__type, io.__wrapped, queue.__wrapped, handler)
 	}
 
-	internal init(queue:dispatch_queue_t) {
-		__wrapped = queue
-	}
-
 	deinit {
 		_swift_dispatch_release(wrapped())
 	}
@@ -153,7 +149,7 @@ public class DispatchQueue : DispatchObject {
 		_swift_dispatch_release(wrapped())
 	}
 
-	public func sync(execute workItem: @noescape ()->()) {
+	public func sync(execute workItem: ()->()) {
 		dispatch_sync(self.__wrapped, workItem)
 	}
 }
@@ -184,7 +180,7 @@ extension DispatchSource : DispatchSourceMachSend,
 }
 #endif
 
-#if !os(Linux)
+#if !os(Linux) && !os(Android)
 extension DispatchSource : DispatchSourceProcess,
 	DispatchSourceFileSystemObject {
 }
@@ -197,8 +193,11 @@ internal class __DispatchData : DispatchObject {
 		return unsafeBitCast(__wrapped, to: dispatch_object_t.self)
 	}
 
-	internal init(data:dispatch_data_t) {
+	internal init(data:dispatch_data_t, owned:Bool) {
 		__wrapped = data
+		if !owned {
+			_swift_dispatch_retain(unsafeBitCast(data, to: dispatch_object_t.self))
+		}
 	}
 
 	deinit {
@@ -268,7 +267,7 @@ public protocol DispatchSourceMemoryPressure : DispatchSourceProtocol {
 }
 #endif
 
-#if !os(Linux)
+#if !os(Linux) && !os(Android)
 public protocol DispatchSourceProcess : DispatchSourceProtocol {
 	var handle: pid_t { get }
 
@@ -298,7 +297,7 @@ public protocol DispatchSourceTimer : DispatchSourceProtocol {
 	func scheduleRepeating(wallDeadline: DispatchWallTime, interval: Double, leeway: DispatchTimeInterval)
 }
 
-#if !os(Linux)
+#if !os(Linux) && !os(Android)
 public protocol DispatchSourceFileSystemObject : DispatchSourceProtocol {
 	var handle: Int32 { get }
 
@@ -335,3 +334,6 @@ internal enum _OSQoSClass : UInt32  {
 
 @_silgen_name("_swift_dispatch_release")
 internal func _swift_dispatch_release(_ obj: dispatch_object_t) -> Void
+
+@_silgen_name("_swift_dispatch_retain")
+internal func _swift_dispatch_retain(_ obj: dispatch_object_t) -> Void

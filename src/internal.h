@@ -155,6 +155,7 @@
 #endif
 
 /* private.h must be included last to avoid picking up installed headers. */
+#include <pthread.h>
 #include "os/object_private.h"
 #include "queue_private.h"
 #include "source_private.h"
@@ -245,7 +246,11 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #include <sys/event.h>
 #include <sys/mount.h>
 #include <sys/queue.h>
+#ifdef __ANDROID__
+#include <linux/sysctl.h>
+#else
 #include <sys/sysctl.h>
+#endif /* __ANDROID__ */
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/mman.h>

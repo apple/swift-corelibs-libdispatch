@@ -20,7 +20,11 @@
 
 #include <Foundation/Foundation.h>
 #include <libkern/OSAtomic.h>
+#ifdef __ANDROID__
+#include <linux/sysctl.h>
+#else
 #include <sys/sysctl.h>
+#endif /* __ANDROID__ */
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <stdio.h>
