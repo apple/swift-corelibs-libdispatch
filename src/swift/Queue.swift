@@ -160,10 +160,19 @@ public extension DispatchQueue {
 		return String(validatingUTF8: dispatch_queue_get_label(self.__wrapped))!
 	}
 
-	@available(OSX 10.10, iOS 8.0, *)
-	public func sync(execute workItem: DispatchWorkItem) {
-		CDispatch.dispatch_sync(self.__wrapped, workItem._block)
-	}
+    class func currentQueueName() -> String? {
+        let name = __dispatch_queue_get_label(nil)
+        return String(cString: name, encoding: .utf8)
+    }
+    
+    @available(OSX 10.10, iOS 8.0, *)
+    public func sync(execute workItem: DispatchWorkItem) {
+        if self.label == DispatchQueue.currentQueueName() {
+            workItem._block()
+        } else {
+            CDispatch.dispatch_sync(self.__wrapped, workItem._block)
+        }
+    }
 
 	@available(OSX 10.10, iOS 8.0, *)
 	public func async(execute workItem: DispatchWorkItem) {
