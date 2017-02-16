@@ -13,7 +13,6 @@
 #ifndef __OS_LINUX_BASE__
 #define __OS_LINUX_BASE__
 
-#include <sys/user.h>
 #include <sys/param.h>
 
 #if __GNUC__
