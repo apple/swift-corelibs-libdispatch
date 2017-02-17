@@ -16,21 +16,4 @@
 #ifndef __DISPATCH__ANDROID__STUBS__INTERNAL
 #define __DISPATCH__ANDROID__STUBS__INTERNAL
 
-/*
- * Missing sys/queue.h macro stubs
- */
-
-#ifndef TAILQ_FOREACH_SAFE
-#	define TAILQ_FOREACH_SAFE(var, head, field, tvar)                      \
-			for ((var) = TAILQ_FIRST((head));                              \
-				(var) && ((tvar) = TAILQ_NEXT((var), field), 1);           \
-				(var) = (tvar))
-#endif /* TAILQ_FOREACH_SAFE */
-
-#if DISPATCH_DEBUG
-#ifndef TRASHIT
-#	define TRASHIT(x)      do {(x) = (void *)-1;} while (0)
-#endif /* TRASHIT */
-#endif
-
 #endif /* __DISPATCH__ANDROID__STUBS__INTERNAL */
