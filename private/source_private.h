@@ -102,6 +102,7 @@ DISPATCH_SOURCE_TYPE_DECL(memorystatus);
 API_AVAILABLE(macos(10.8), ios(6.0)) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(sock);
 
+
 __END_DECLS
 
 /*!
@@ -165,6 +166,16 @@ enum {
 };
 
 /*!
+ * @enum dispatch_source_nw_channel_flags_t
+ *
+ * @constant DISPATCH_NW_CHANNEL_FLOW_ADV_UPDATE
+ * Received network channel flow advisory.
+ */
+enum {
+	DISPATCH_NW_CHANNEL_FLOW_ADV_UPDATE = 0x00000001,
+};
+
+/*!
  * @enum dispatch_source_vfs_flags_t
  *
  * @constant DISPATCH_VFS_NOTRESP
@@ -199,6 +210,12 @@ enum {
  *
  * @constant DISPATCH_VFS_QUOTA
  * We hit a user quota (quotactl) for this filesystem.
+ *
+ * @constant DISPATCH_VFS_NEARLOWDISK
+ * Filesystem is nearly full (below NEARLOWDISK level).
+ *
+ * @constant DISPATCH_VFS_DESIREDDISK
+ * Filesystem has exceeded the DESIREDDISK level
  */
 enum {
 	DISPATCH_VFS_NOTRESP = 0x0001,
@@ -212,6 +229,8 @@ enum {
 	DISPATCH_VFS_UPDATE = 0x0100,
 	DISPATCH_VFS_VERYLOWDISK = 0x0200,
 	DISPATCH_VFS_QUOTA = 0x1000,
+	DISPATCH_VFS_NEARLOWDISK = 0x2000,
+	DISPATCH_VFS_DESIREDDISK = 0x4000,
 };
 
 /*!
@@ -254,10 +273,20 @@ enum {
  * @constant DISPATCH_PROC_REAP
  * The process has been reaped by the parent process via wait*().
  * This flag is deprecated and will be removed in a future release.
+ *
+ * @constant DISPATCH_PROC_EXIT_STATUS
+ * The process has exited. Specifying this flag allows the process exit status
+ * to be retrieved from the source's status value, as returned by the
+ * dispatch_source_get_extended_data() function. The macros
+ * DISPATCH_PROC_EXIT_STATUS_EXITED(), DISPATCH_PROC_EXIT_STATUS_CODE(),
+ * DISPATCH_PROC_EXIT_STATUS_SIGNALED(), DISPATCH_PROC_EXIT_STATUS_TERMSIG() and
+ * DISPATCH_PROC_EXIT_STATUS_CORE_DUMPED() can be used to examine the status
+ * value.
  */
 enum {
-	DISPATCH_PROC_REAP API_DEPRECATED("unsupported flag",
+	DISPATCH_PROC_REAP DISPATCH_ENUM_API_DEPRECATED("unsupported flag",
 			macos(10.6,10.9), ios(4.0,7.0)) = 0x10000000,
+	DISPATCH_PROC_EXIT_STATUS DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(2.0)) = 0x04000000,
 };
 
 /*!
@@ -268,9 +297,8 @@ enum {
  */
 
 enum {
-	DISPATCH_VM_PRESSURE
-			API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_MEMORYPRESSURE_WARN",
-					macos(10.7, 10.10), ios(4.3, 8.0)) = 0x80000000,
+	DISPATCH_VM_PRESSURE DISPATCH_ENUM_API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_MEMORYPRESSURE_WARN", macos(10.7, 10.10), ios(4.3, 8.0))
+			= 0x80000000,
 };
 
 /*!
@@ -282,8 +310,7 @@ enum {
  * Restricted to the root user.
  */
 enum {
-	DISPATCH_MEMORYPRESSURE_LOW_SWAP
-			DISPATCH_ENUM_AVAILABLE(macos(10.10), ios(8.0)) = 0x08,
+	DISPATCH_MEMORYPRESSURE_LOW_SWAP DISPATCH_ENUM_API_AVAILABLE(macos(10.10), ios(8.0)) = 0x08,
 };
 
 /*!
@@ -291,14 +318,18 @@ enum {
  * @warning Deprecated, see DISPATCH_MEMORYPRESSURE_*
  */
 enum {
-	DISPATCH_MEMORYSTATUS_PRESSURE_NORMAL API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_MEMORYPRESSURE_NORMAL", macos(10.9, 10.12), ios(6.0, 10.0),
-			tvos(6.0, 10.0), watchos(1.0, 3.0)) = 0x01,
-	DISPATCH_MEMORYSTATUS_PRESSURE_WARN API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_MEMORYPRESSURE_WARN", macos(10.9, 10.12), ios(6.0, 10.0),
-			tvos(6.0, 10.0), watchos(1.0, 3.0)) = 0x02,
-	DISPATCH_MEMORYSTATUS_PRESSURE_CRITICAL API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_MEMORYPRESSURE_CRITICAL", macos(10.9, 10.12), ios(6.0, 10.0),
-			tvos(6.0, 10.0), watchos(1.0, 3.0)) = 0x04,
-	DISPATCH_MEMORYSTATUS_LOW_SWAP API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_MEMORYPRESSURE_LOW_SWAP", macos(10.9, 10.12), ios(6.0, 10.0),
-			tvos(6.0, 10.0), watchos(1.0, 3.0)) = 0x08,
+	DISPATCH_MEMORYSTATUS_PRESSURE_NORMAL
+			DISPATCH_ENUM_API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_MEMORYPRESSURE_NORMAL", macos(10.9, 10.12),
+			ios(6.0, 10.0), tvos(6.0, 10.0), watchos(1.0, 3.0)) = 0x01,
+	DISPATCH_MEMORYSTATUS_PRESSURE_WARN
+			DISPATCH_ENUM_API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_MEMORYPRESSURE_WARN", macos(10.9, 10.12),
+			ios(6.0, 10.0), tvos(6.0, 10.0), watchos(1.0, 3.0)) = 0x02,
+	DISPATCH_MEMORYSTATUS_PRESSURE_CRITICAL
+			DISPATCH_ENUM_API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_MEMORYPRESSURE_CRITICAL", macos(10.9, 10.12),
+			ios(6.0, 10.0), tvos(6.0, 10.0), watchos(1.0, 3.0)) = 0x04,
+	DISPATCH_MEMORYSTATUS_LOW_SWAP
+			DISPATCH_ENUM_API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_MEMORYPRESSURE_LOW_SWAP", macos(10.9, 10.12),
+			ios(6.0, 10.0), tvos(6.0, 10.0), watchos(1.0, 3.0)) = 0x08,
 };
 
 /*!
@@ -312,11 +343,34 @@ enum {
  * The memory of the process has reached 100% of its high watermark limit.
  */
 enum {
-	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_WARN DISPATCH_ENUM_AVAILABLE(macos(10.12), ios(10.10), tvos(10.10), watchos(3.0)) = 0x10,
+	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_WARN DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.10), tvos(10.10), watchos(3.0)) = 0x10,
 
-	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_CRITICAL DISPATCH_ENUM_AVAILABLE(macos(10.12), ios(10.10), tvos(10.10), watchos(3.0)) = 0x20,
+	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_CRITICAL DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.10), tvos(10.10), watchos(3.0)) = 0x20,
 };
 
+/*!
+ * Macros to check the exit status obtained from the status field of the
+ * structure returned by the dispatch_source_get_extended_data() function for a
+ * source of type DISPATCH_SOURCE_TYPE_PROC when DISPATCH_PROC_EXIT_STATUS has
+ * been requested.
+ *
+ * DISPATCH_PROC_EXIT_STATUS_EXITED returns whether the process exited. If this
+ * is true, the exit status can be obtained from DISPATCH_PROC_EXIT_STATUS_CODE.
+ *
+ * DISPATCH_PROC_EXIT_STATUS_SIGNALED returns whether the process was terminated
+ * by a signal.
+ *
+ * DISPATCH_PROC_EXIT_STATUS_TERMSIG returns the signal that caused the process
+ * to terminate, or 0 if the process was not terminated by a signal.
+ *
+ * DISPATCH_PROC_EXIT_STATUS_CORE_DUMPED returns whether a core dump of the
+ * process was created.
+ */
+#define DISPATCH_PROC_EXIT_STATUS_EXITED(status) ((bool)WIFEXITED(status))
+#define DISPATCH_PROC_EXIT_STATUS_CODE(status) ((int)WEXITSTATUS(status))
+#define DISPATCH_PROC_EXIT_STATUS_SIGNALED(status) ((bool)WIFSIGNALED(status))
+#define DISPATCH_PROC_EXIT_STATUS_TERMSIG(status) ((int)WTERMSIG(status))
+#define DISPATCH_PROC_EXIT_STATUS_CORE_DUMPED(status) ((bool)WCOREDUMP(status))
 
 __BEGIN_DECLS
 
@@ -470,6 +524,59 @@ DISPATCH_NOTHROW
 void *_Nullable
 dispatch_mach_msg_get_context(mach_msg_header_t *msg);
 #endif
+
+/*!
+ * @typedef dispatch_source_extended_data_t
+ *
+ * @abstract
+ * Type used by dispatch_source_get_extended_data() to return a consistent
+ * snapshot of the data and status of a dispatch source.
+ */
+typedef struct dispatch_source_extended_data_s {
+    unsigned long data;
+    unsigned long status;
+} *dispatch_source_extended_data_t;
+
+/*!
+ * @function dispatch_source_get_extended_data
+ *
+ * @abstract
+ * Returns the current data and status values for a dispatch source.
+ *
+ * @discussion
+ * This function is intended to be called from within the event handler block.
+ * The result of calling this function outside of the event handler callback is
+ * undefined.
+ *
+ * @param source
+ * The result of passing NULL in this parameter is undefined.
+ *
+ * @param data
+ * A pointer to a dispatch_source_extended_data_s in which the data and status
+ * will be returned. The data field is populated with the value that would be
+ * returned by dispatch_source_get_data(). The value of the status field should
+ * be interpreted according to the type of the dispatch source:
+ *
+ *  DISPATCH_SOURCE_TYPE_PROC:            dispatch_source_proc_exit_flags_t
+ *
+ * If called from the event handler of a data source type not listed above, the
+ * status value is undefined.
+ *
+ * @param size
+ * The size of the specified structure. Should be set to
+ * sizeof(dispatch_source_extended_data_s).
+ *
+ * @result
+ * The size of the structure returned in *data, which will never be greater than
+ * the value of the size argument. If this is less than the value of the size
+ * argument, the remaining space in data will have been populated with zeroes.
+ */
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
+DISPATCH_NOTHROW
+size_t
+dispatch_source_get_extended_data(dispatch_source_t source,
+		dispatch_source_extended_data_t data, size_t size);
 
 __END_DECLS
 

@@ -193,7 +193,7 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 		case DC_OVERRIDE_STEALING_TYPE:
 		case DC_OVERRIDE_OWNING_TYPE:
 			dc = dc->dc_data;
-			if (_dispatch_object_has_vtable(dc)) {
+			if (!_dispatch_object_is_continuation(dc)) {
 				// these really wrap queues so we should hide the continuation type
 				dq = (dispatch_queue_t)dc;
 				diqi->type = dispatch_introspection_queue_item_type_queue;
@@ -204,6 +204,8 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 #endif
 		case DC_ASYNC_REDIRECT_TYPE:
 			DISPATCH_INTERNAL_CRASH(0, "Handled by the caller");
+		case DC_MACH_ASYNC_REPLY_TYPE:
+			break;
 		case DC_MACH_SEND_BARRRIER_DRAIN_TYPE:
 			break;
 		case DC_MACH_SEND_BARRIER_TYPE:
@@ -211,23 +213,17 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 			flags = (uintptr_t)dc->dc_data;
 			dq = dq->do_targetq;
 			break;
+		default:
+			DISPATCH_INTERNAL_CRASH(dc->do_vtable, "Unknown dc vtable type");
 		}
 	} else {
-		if (flags & DISPATCH_OBJ_SYNC_SLOW_BIT) {
+		if (flags & DISPATCH_OBJ_SYNC_WAITER_BIT) {
+			dispatch_sync_context_t dsc = (dispatch_sync_context_t)dc;
 			waiter = pthread_from_mach_thread_np((mach_port_t)dc->dc_data);
-			if (flags & DISPATCH_OBJ_BARRIER_BIT) {
-				dc = dc->dc_ctxt;
-				dq = dc->dc_data;
-			}
-			ctxt = dc->dc_ctxt;
-			func = dc->dc_func;
+			ctxt = dsc->dsc_ctxt;
+			func = dsc->dsc_func;
 		}
-		if (func == _dispatch_sync_recurse_invoke) {
-			dc = dc->dc_ctxt;
-			dq = dc->dc_data;
-			ctxt = dc->dc_ctxt;
-			func = dc->dc_func;
-		} else if (func == _dispatch_apply_invoke ||
+		if (func == _dispatch_apply_invoke ||
 				func == _dispatch_apply_redirect_invoke) {
 			dispatch_apply_t da = ctxt;
 			if (da->da_todo) {
@@ -252,7 +248,7 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 		.function = func,
 		.waiter = waiter,
 		.barrier = (flags & DISPATCH_OBJ_BARRIER_BIT) || dq->dq_width == 1,
-		.sync = flags & DISPATCH_OBJ_SYNC_SLOW_BIT,
+		.sync = flags & DISPATCH_OBJ_SYNC_WAITER_BIT,
 		.apply = apply,
 	};
 	if (flags & DISPATCH_OBJ_GROUP_BIT) {

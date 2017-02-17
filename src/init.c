@@ -47,12 +47,29 @@ DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 dispatch_atfork_prepare(void)
 {
+	_os_object_atfork_prepare();
 }
 
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 dispatch_atfork_parent(void)
 {
+	_os_object_atfork_parent();
+}
+
+DISPATCH_EXPORT DISPATCH_NOTHROW
+void
+dispatch_atfork_child(void)
+{
+	_os_object_atfork_child();
+	_voucher_atfork_child();
+	_dispatch_event_loop_atfork_child();
+	if (_dispatch_is_multithreaded_inline()) {
+		_dispatch_child_of_unsafe_fork = true;
+	}
+	_dispatch_queue_atfork_child();
+	// clear the _PROHIBIT and _MULTITHREADED bits if set
+	_dispatch_unsafe_fork = 0;
 }
 
 #pragma mark -
@@ -82,6 +99,7 @@ pthread_key_t dispatch_introspection_key;
 #elif DISPATCH_PERF_MON
 pthread_key_t dispatch_bcounter_key;
 #endif
+pthread_key_t dispatch_wlh_key;
 pthread_key_t dispatch_voucher_key;
 pthread_key_t dispatch_deferred_items_key;
 #endif // !DISPATCH_USE_DIRECT_TSD && !DISPATCH_USE_THREAD_LOCAL_STORAGE
@@ -200,81 +218,89 @@ struct dispatch_queue_s _dispatch_main_q = {
 	.dq_state = DISPATCH_QUEUE_STATE_INIT_VALUE(1),
 	.dq_label = "com.apple.main-thread",
 	.dq_atomic_flags = DQF_THREAD_BOUND | DQF_CANNOT_TRYSYNC | DQF_WIDTH(1),
-	.dq_override_voucher = DISPATCH_NO_VOUCHER,
+	.dq_wlh = DISPATCH_WLH_GLOBAL, // TODO: main thread wlh
 	.dq_serialnum = 1,
 };
 
 #pragma mark -
 #pragma mark dispatch_queue_attr_t
 
-#define DISPATCH_QUEUE_ATTR_INIT(qos, prio, overcommit, freq, concurrent, inactive) \
-		{ \
-			DISPATCH_GLOBAL_OBJECT_HEADER(queue_attr), \
-			.dqa_qos_and_relpri = (_dispatch_priority_make(qos, prio) & \
-					DISPATCH_PRIORITY_REQUESTED_MASK), \
-			.dqa_overcommit = _dispatch_queue_attr_overcommit_##overcommit, \
-			.dqa_autorelease_frequency = DISPATCH_AUTORELEASE_FREQUENCY_##freq, \
-			.dqa_concurrent = (concurrent), \
-			.dqa_inactive = (inactive), \
-		}
+#define DISPATCH_QUEUE_ATTR_INIT(qos, prio, overcommit, freq, concurrent, \
+			inactive) \
+	{ \
+		DISPATCH_GLOBAL_OBJECT_HEADER(queue_attr), \
+		.dqa_qos_and_relpri = (_dispatch_priority_make(qos, prio) & \
+				DISPATCH_PRIORITY_REQUESTED_MASK), \
+		.dqa_overcommit = _dispatch_queue_attr_overcommit_##overcommit, \
+		.dqa_autorelease_frequency = DISPATCH_AUTORELEASE_FREQUENCY_##freq, \
+		.dqa_concurrent = (concurrent), \
+		.dqa_inactive = (inactive), \
+	}
 
-#define DISPATCH_QUEUE_ATTR_ACTIVE_INIT(qos, prio, overcommit, freq, concurrent) \
-		{ \
-			[DQA_INDEX_ACTIVE] = DISPATCH_QUEUE_ATTR_INIT(\
-					qos, prio, overcommit, freq, concurrent, false), \
-			[DQA_INDEX_INACTIVE] = DISPATCH_QUEUE_ATTR_INIT(\
-					qos, prio, overcommit, freq, concurrent, true), \
-		}
+#define DISPATCH_QUEUE_ATTR_ACTIVE_INIT(qos, prio, overcommit, freq, \
+			concurrent) \
+	{ \
+		[DQA_INDEX_ACTIVE] = DISPATCH_QUEUE_ATTR_INIT( \
+				qos, prio, overcommit, freq, concurrent, false), \
+		[DQA_INDEX_INACTIVE] = DISPATCH_QUEUE_ATTR_INIT( \
+				qos, prio, overcommit, freq, concurrent, true), \
+	}
 
 #define DISPATCH_QUEUE_ATTR_OVERCOMMIT_INIT(qos, prio, overcommit) \
-		{ \
-			[DQA_INDEX_AUTORELEASE_FREQUENCY_INHERIT][DQA_INDEX_CONCURRENT] = \
-					DISPATCH_QUEUE_ATTR_ACTIVE_INIT(qos, prio, overcommit, INHERIT, 1), \
-			[DQA_INDEX_AUTORELEASE_FREQUENCY_INHERIT][DQA_INDEX_SERIAL] = \
-					DISPATCH_QUEUE_ATTR_ACTIVE_INIT(qos, prio, overcommit, INHERIT, 0), \
-			[DQA_INDEX_AUTORELEASE_FREQUENCY_WORK_ITEM][DQA_INDEX_CONCURRENT] = \
-					DISPATCH_QUEUE_ATTR_ACTIVE_INIT(qos, prio, overcommit, WORK_ITEM, 1), \
-			[DQA_INDEX_AUTORELEASE_FREQUENCY_WORK_ITEM][DQA_INDEX_SERIAL] = \
-					DISPATCH_QUEUE_ATTR_ACTIVE_INIT(qos, prio, overcommit, WORK_ITEM, 0), \
-			[DQA_INDEX_AUTORELEASE_FREQUENCY_NEVER][DQA_INDEX_CONCURRENT] = \
-					DISPATCH_QUEUE_ATTR_ACTIVE_INIT(qos, prio, overcommit, NEVER, 1), \
-			[DQA_INDEX_AUTORELEASE_FREQUENCY_NEVER][DQA_INDEX_SERIAL] = \
-					DISPATCH_QUEUE_ATTR_ACTIVE_INIT(qos, prio, overcommit, NEVER, 0), \
-		}
+	{ \
+		[DQA_INDEX_AUTORELEASE_FREQUENCY_INHERIT][DQA_INDEX_CONCURRENT] = \
+				DISPATCH_QUEUE_ATTR_ACTIVE_INIT( \
+						qos, prio, overcommit, INHERIT, 1), \
+		[DQA_INDEX_AUTORELEASE_FREQUENCY_INHERIT][DQA_INDEX_SERIAL] = \
+				DISPATCH_QUEUE_ATTR_ACTIVE_INIT( \
+						qos, prio, overcommit, INHERIT, 0), \
+		[DQA_INDEX_AUTORELEASE_FREQUENCY_WORK_ITEM][DQA_INDEX_CONCURRENT] = \
+				DISPATCH_QUEUE_ATTR_ACTIVE_INIT( \
+						qos, prio, overcommit, WORK_ITEM, 1), \
+		[DQA_INDEX_AUTORELEASE_FREQUENCY_WORK_ITEM][DQA_INDEX_SERIAL] = \
+				DISPATCH_QUEUE_ATTR_ACTIVE_INIT( \
+						qos, prio, overcommit, WORK_ITEM, 0), \
+		[DQA_INDEX_AUTORELEASE_FREQUENCY_NEVER][DQA_INDEX_CONCURRENT] = \
+				DISPATCH_QUEUE_ATTR_ACTIVE_INIT( \
+						qos, prio, overcommit, NEVER, 1), \
+		[DQA_INDEX_AUTORELEASE_FREQUENCY_NEVER][DQA_INDEX_SERIAL] = \
+				DISPATCH_QUEUE_ATTR_ACTIVE_INIT(\
+						qos, prio, overcommit, NEVER, 0), \
+	}
 
 #define DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, prio) \
-		[prio] = { \
-			[DQA_INDEX_UNSPECIFIED_OVERCOMMIT] = \
-					DISPATCH_QUEUE_ATTR_OVERCOMMIT_INIT(qos, -(prio), unspecified), \
-			[DQA_INDEX_NON_OVERCOMMIT] = \
-					DISPATCH_QUEUE_ATTR_OVERCOMMIT_INIT(qos, -(prio), disabled), \
-			[DQA_INDEX_OVERCOMMIT] = \
-					DISPATCH_QUEUE_ATTR_OVERCOMMIT_INIT(qos, -(prio), enabled), \
-		}
+	[prio] = { \
+		[DQA_INDEX_UNSPECIFIED_OVERCOMMIT] = \
+				DISPATCH_QUEUE_ATTR_OVERCOMMIT_INIT(qos, -(prio), unspecified),\
+		[DQA_INDEX_NON_OVERCOMMIT] = \
+				DISPATCH_QUEUE_ATTR_OVERCOMMIT_INIT(qos, -(prio), disabled), \
+		[DQA_INDEX_OVERCOMMIT] = \
+				DISPATCH_QUEUE_ATTR_OVERCOMMIT_INIT(qos, -(prio), enabled), \
+	}
 
 #define DISPATCH_QUEUE_ATTR_PRIO_INIT(qos) \
-		{ \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 0), \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 1), \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 2), \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 3), \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 4), \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 5), \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 6), \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 7), \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 8), \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 9), \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 10), \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 11), \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 12), \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 13), \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 14), \
-			DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 15), \
-		}
+	{ \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 0), \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 1), \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 2), \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 3), \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 4), \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 5), \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 6), \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 7), \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 8), \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 9), \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 10), \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 11), \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 12), \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 13), \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 14), \
+		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 15), \
+	}
 
 #define DISPATCH_QUEUE_ATTR_QOS_INITIALIZER(qos) \
-		[DQA_INDEX_QOS_CLASS_##qos] = \
-				DISPATCH_QUEUE_ATTR_PRIO_INIT(DISPATCH_QOS_##qos)
+	[DQA_INDEX_QOS_CLASS_##qos] = \
+			DISPATCH_QUEUE_ATTR_PRIO_INIT(DISPATCH_QOS_##qos)
 
 // DISPATCH_QUEUE_CONCURRENT resp. _dispatch_queue_attr_concurrent is aliased
 // to array member [0][0][0][0][0][0] and their properties must match!
@@ -331,6 +357,7 @@ DISPATCH_VTABLE_INSTANCE(queue,
 	.do_dispose = _dispatch_queue_dispose,
 	.do_suspend = _dispatch_queue_suspend,
 	.do_resume = _dispatch_queue_resume,
+	.do_push = _dispatch_queue_push,
 	.do_invoke = _dispatch_queue_invoke,
 	.do_wakeup = _dispatch_queue_wakeup,
 	.do_debug = dispatch_queue_debug,
@@ -344,6 +371,7 @@ DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_serial, queue,
 	.do_suspend = _dispatch_queue_suspend,
 	.do_resume = _dispatch_queue_resume,
 	.do_finalize_activation = _dispatch_queue_finalize_activation,
+	.do_push = _dispatch_queue_push,
 	.do_invoke = _dispatch_queue_invoke,
 	.do_wakeup = _dispatch_queue_wakeup,
 	.do_debug = dispatch_queue_debug,
@@ -357,6 +385,7 @@ DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_concurrent, queue,
 	.do_suspend = _dispatch_queue_suspend,
 	.do_resume = _dispatch_queue_resume,
 	.do_finalize_activation = _dispatch_queue_finalize_activation,
+	.do_push = _dispatch_queue_push,
 	.do_invoke = _dispatch_queue_invoke,
 	.do_wakeup = _dispatch_queue_wakeup,
 	.do_debug = dispatch_queue_debug,
@@ -368,6 +397,7 @@ DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_root, queue,
 	.do_type = DISPATCH_QUEUE_GLOBAL_ROOT_TYPE,
 	.do_kind = "global-queue",
 	.do_dispose = _dispatch_pthread_root_queue_dispose,
+	.do_push = _dispatch_root_queue_push,
 	.do_wakeup = _dispatch_root_queue_wakeup,
 	.do_debug = dispatch_queue_debug,
 );
@@ -377,6 +407,7 @@ DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_main, queue,
 	.do_kind = "main-queue",
 	.do_dispose = _dispatch_queue_dispose,
 	.do_invoke = _dispatch_queue_invoke,
+	.do_push = _dispatch_queue_push,
 	.do_wakeup = _dispatch_main_queue_wakeup,
 	.do_debug = dispatch_queue_debug,
 );
@@ -386,6 +417,7 @@ DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_runloop, queue,
 	.do_kind = "runloop-queue",
 	.do_dispose = _dispatch_runloop_queue_dispose,
 	.do_invoke = _dispatch_queue_invoke,
+	.do_push = _dispatch_queue_push,
 	.do_wakeup = _dispatch_runloop_queue_wakeup,
 	.do_debug = dispatch_queue_debug,
 );
@@ -394,6 +426,7 @@ DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_mgr, queue,
 	.do_type = DISPATCH_QUEUE_MGR_TYPE,
 	.do_kind = "mgr-queue",
 	.do_invoke = _dispatch_mgr_thread,
+	.do_push = _dispatch_queue_push,
 	.do_wakeup = _dispatch_mgr_queue_wakeup,
 	.do_debug = dispatch_queue_debug,
 );
@@ -419,6 +452,7 @@ DISPATCH_VTABLE_INSTANCE(source,
 	.do_suspend = (void *)_dispatch_queue_suspend,
 	.do_resume = (void *)_dispatch_queue_resume,
 	.do_finalize_activation = _dispatch_source_finalize_activation,
+	.do_push = (void *)_dispatch_queue_push,
 	.do_invoke = _dispatch_source_invoke,
 	.do_wakeup = _dispatch_source_wakeup,
 	.do_debug = _dispatch_source_debug,
@@ -433,6 +467,7 @@ DISPATCH_VTABLE_INSTANCE(mach,
 	.do_suspend = (void *)_dispatch_queue_suspend,
 	.do_resume = (void *)_dispatch_queue_resume,
 	.do_finalize_activation = _dispatch_mach_finalize_activation,
+	.do_push = (void *)_dispatch_queue_push,
 	.do_invoke = _dispatch_mach_invoke,
 	.do_wakeup = _dispatch_mach_wakeup,
 	.do_debug = _dispatch_mach_debug,
@@ -935,6 +970,22 @@ _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 }
 
 #if HAVE_MACH
+
+#undef _dispatch_client_callout3
+DISPATCH_NOINLINE
+void
+_dispatch_client_callout3(void *ctxt, dispatch_mach_reason_t reason,
+		dispatch_mach_msg_t dmsg, dispatch_mach_async_reply_callback_t f)
+{
+	_dispatch_get_tsd_base();
+	void *u = _dispatch_get_unwind_tsd();
+	if (fastpath(!u)) return f(ctxt, reason, dmsg);
+	_dispatch_set_unwind_tsd(NULL);
+	f(ctxt, reason, dmsg);
+	_dispatch_free_unwind_tsd();
+	_dispatch_set_unwind_tsd(u);
+}
+
 #undef _dispatch_client_callout4
 void
 _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
@@ -1028,6 +1079,24 @@ os_release(void *obj)
 	if (fastpath(obj)) {
 		return _os_object_release(obj);
 	}
+}
+
+void
+_os_object_atfork_prepare(void)
+{
+	return;
+}
+
+void
+_os_object_atfork_parent(void)
+{
+	return;
+}
+
+void
+_os_object_atfork_child(void)
+{
+	return;
 }
 
 #pragma mark -

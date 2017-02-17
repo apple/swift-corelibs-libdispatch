@@ -113,6 +113,8 @@ DISPATCH_SOURCE_TYPE_DATA_ADD
 .It
 DISPATCH_SOURCE_TYPE_DATA_OR
 .It
+DISPATCH_SOURCE_TYPE_DATA_REPLACE
+.It
 DISPATCH_SOURCE_TYPE_MACH_SEND
 .It
 DISPATCH_SOURCE_TYPE_MACH_RECV
@@ -168,12 +170,34 @@ The result of calling this function from any other context is undefined.
 The
 .Fn dispatch_source_merge_data
 function is intended for use with the
-.Vt DISPATCH_SOURCE_TYPE_DATA_ADD
-and
+.Vt DISPATCH_SOURCE_TYPE_DATA_ADD ,
 .Vt DISPATCH_SOURCE_TYPE_DATA_OR
+and
+.Vt DISPATCH_SOURCE_TYPE_DATA_REPLACE
 source types. The result of using this function with any other source type is
-undefined. Calling this function will atomically add or bitwise OR the data
-into the source's data, and trigger the delivery of the source's event handler.
+undefined. Data merging is performed according to the source type:
+.Bl -tag -width "XXDISPATCH_SOURCE_TYPE_DATA_REPLACE" -compact -offset indent
+.It \(bu DISPATCH_SOURCE_TYPE_DATA_ADD
+.Vt data
+is atomically added to the source's data
+.It \(bu DISPATCH_SOURCE_TYPE_DATA_OR
+.Vt data
+is atomically bitwise ORed into the source's data
+.It \(bu DISPATCH_SOURCE_TYPE_DATA_REPLACE
+.Vt data
+atomically replaces the source's data.
+.El
+.Pp
+If the source data value resulting from the merge operation is 0, the source
+handler will not be invoked. This can happen if:
+.Bl -bullet -compact -offset indent
+.It
+the atomic addition wraps for sources of type
+.Vt DISPATCH_SOURCE_TYPE_DATA_ADD ,
+.It
+0 is merged for sources of type
+.Vt DISPATCH_SOURCE_TYPE_DATA_REPLACE .
+.El
 .Pp
 .Sh SOURCE EVENT HANDLERS
 In order to receive events from the dispatch source, an event handler should be
@@ -265,14 +289,15 @@ The following section contains a summary of supported dispatch event types and
 the interpretation of their parameters and returned data.
 .Pp
 .Vt DISPATCH_SOURCE_TYPE_DATA_ADD ,
-.Vt DISPATCH_SOURCE_TYPE_DATA_OR
+.Vt DISPATCH_SOURCE_TYPE_DATA_OR ,
+.Vt DISPATCH_SOURCE_TYPE_DATA_REPLACE
 .Pp
 Sources of this type allow applications to manually trigger the source's event
 handler via a call to
 .Fn dispatch_source_merge_data .
 The data will be merged with the source's pending data via an atomic add or
-atomic bitwise OR (based on the source's type), and the event handler block will
-be submitted to the source's target queue. The
+atomic bitwise OR, or direct replacement (based on the source's type), and the
+event handler block will be submitted to the source's target queue. The
 .Fa data
 is application defined. These sources have no
 .Fa handle
@@ -498,19 +523,6 @@ was created with
 .Xr dispatch_walltime 3 ,
 the timer is based on
 .Xr gettimeofday 3 .
-.Pp
-.Em Note :
-Under the C language, untyped numbers default to the
-.Vt int
-type. This can lead to truncation bugs when arithmetic operations with other
-numbers are expected to generate a
-.Vt uint64_t
-sized result. When in doubt, use
-.Vt ull
-as a suffix. For example:
-.Bd -literal -offset indent
-3ull * NSEC_PER_SEC
-.Ed
 .Pp
 .Vt DISPATCH_SOURCE_TYPE_VNODE
 .Pp

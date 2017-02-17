@@ -250,7 +250,8 @@ typedef bool (^dispatch_data_applier_t)(dispatch_data_t region,
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 bool
-dispatch_data_apply(dispatch_data_t data, dispatch_data_applier_t applier);
+dispatch_data_apply(dispatch_data_t data,
+	DISPATCH_NOESCAPE dispatch_data_applier_t applier);
 #endif /* __BLOCKS__ */
 
 /*!

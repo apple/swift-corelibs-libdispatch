@@ -34,11 +34,25 @@
 typedef struct dispatch_muxnote_s {
 	TAILQ_ENTRY(dispatch_muxnote_s) dmn_list;
 	TAILQ_HEAD(, dispatch_unote_linkage_s) dmn_unotes_head;
+	dispatch_wlh_t dmn_wlh;
 	dispatch_kevent_s dmn_kev;
 } *dispatch_muxnote_t;
 
 static int _dispatch_kq = -1;
-static dispatch_once_t _dispatch_muxnotes_pred;
+static struct {
+	dispatch_once_t pred;
+	dispatch_unfair_lock_s lock;
+} _dispatch_muxnotes;
+#if !DISPATCH_USE_KEVENT_WORKQUEUE
+#define _dispatch_muxnotes_lock() \
+		_dispatch_unfair_lock_lock(&_dispatch_muxnotes.lock)
+#define _dispatch_muxnotes_unlock() \
+		_dispatch_unfair_lock_unlock(&_dispatch_muxnotes.lock)
+#else
+#define _dispatch_muxnotes_lock()
+#define _dispatch_muxnotes_unlock()
+#endif // !DISPATCH_USE_KEVENT_WORKQUEUE
+
 DISPATCH_CACHELINE_ALIGN
 static TAILQ_HEAD(dispatch_muxnote_bucket_s, dispatch_muxnote_s)
 _dispatch_sources[DSL_HASH_SIZE];
@@ -63,6 +77,7 @@ static const uint32_t _dispatch_timer_index_to_fflags[] = {
 };
 
 static void _dispatch_kevent_timer_drain(dispatch_kevent_t ke);
+static void _dispatch_kevent_poke_drain(dispatch_kevent_t ke);
 
 #pragma mark -
 #pragma mark kevent debug
@@ -99,6 +114,7 @@ _evfiltstr(short filt)
 	_evfilt2(DISPATCH_EVFILT_TIMER);
 	_evfilt2(DISPATCH_EVFILT_CUSTOM_ADD);
 	_evfilt2(DISPATCH_EVFILT_CUSTOM_OR);
+	_evfilt2(DISPATCH_EVFILT_CUSTOM_REPLACE);
 	default:
 		return "EVFILT_missing";
 	}
@@ -346,7 +362,7 @@ _dispatch_kevent_print_error(dispatch_kevent_t ke)
 	} else if (ke->udata & DISPATCH_KEVENT_MUXED_MARKER) {
 		ke->flags |= _dispatch_kevent_get_muxnote(ke)->dmn_kev.flags;
 	} else if (ke->udata) {
-		if (!_dispatch_kevent_get_unote(ke)._du->du_registered) {
+		if (!_dispatch_unote_registered(_dispatch_kevent_get_unote(ke))) {
 			ke->flags |= EV_ADD;
 		}
 	}
@@ -376,11 +392,13 @@ static void
 _dispatch_kevent_merge(dispatch_unote_t du, dispatch_kevent_t ke)
 {
 	uintptr_t data;
+	uintptr_t status = 0;
 	pthread_priority_t pp = 0;
 #if DISPATCH_USE_KEVENT_QOS
 	pp = ((pthread_priority_t)ke->qos) & ~_PTHREAD_PRIORITY_FLAGS_MASK;
 #endif
-	if (du._du->du_is_level) {
+	dispatch_unote_action_t action = du._du->du_data_action;
+	if (action == DISPATCH_UNOTE_ACTION_DATA_SET) {
 		// ke->data is signed and "negative available data" makes no sense
 		// zero bytes happens when EV_EOF is set
 		dispatch_assert(ke->data >= 0l);
@@ -389,12 +407,17 @@ _dispatch_kevent_merge(dispatch_unote_t du, dispatch_kevent_t ke)
 	} else if (du._du->du_filter == EVFILT_MACHPORT) {
 		data = DISPATCH_MACH_RECV_MESSAGE;
 #endif
-	} else if (du._du->du_is_adder) {
+	} else if (action == DISPATCH_UNOTE_ACTION_DATA_ADD) {
 		data = (unsigned long)ke->data;
-	} else {
+	} else if (action == DISPATCH_UNOTE_ACTION_DATA_OR) {
 		data = ke->fflags & du._du->du_fflags;
+	} else if (action == DISPATCH_UNOTE_ACTION_DATA_OR_STATUS_SET) {
+		data = ke->fflags & du._du->du_fflags;
+		status = (unsigned long)ke->data;
+	} else {
+		DISPATCH_INTERNAL_CRASH(action, "Corrupt unote action");
 	}
-	return dux_merge_evt(du._du, ke->flags, data, pp);
+	return dux_merge_evt(du._du, ke->flags, data, status, pp);
 }
 
 DISPATCH_NOINLINE
@@ -415,7 +438,7 @@ _dispatch_kevent_drain(dispatch_kevent_t ke)
 {
 	if (ke->filter == EVFILT_USER) {
 		_dispatch_kevent_mgr_debug("received", ke);
-		return;
+		return _dispatch_kevent_poke_drain(ke);
 	}
 	_dispatch_kevent_debug("received", ke);
 	if (unlikely(ke->flags & EV_ERROR)) {
@@ -468,6 +491,7 @@ _dispatch_kq_create(const void *guard_ptr)
 		.ident = 1,
 		.filter = EVFILT_USER,
 		.flags = EV_ADD|EV_CLEAR,
+		.udata = (uintptr_t)DISPATCH_WLH_MANAGER,
 	};
 	int kqfd;
 
@@ -516,21 +540,24 @@ _dispatch_kq_init(void *context DISPATCH_UNUSED)
 	_dispatch_kevent_workqueue_init();
 	if (_dispatch_kevent_workqueue_enabled) {
 		int r;
+		int kqfd = _dispatch_kq;
 		const dispatch_kevent_s kev[] = {
 			[0] = {
 				.ident = 1,
 				.filter = EVFILT_USER,
 				.flags = EV_ADD|EV_CLEAR,
 				.qos = _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG,
+				.udata = (uintptr_t)DISPATCH_WLH_MANAGER,
 			},
 			[1] = {
 				.ident = 1,
 				.filter = EVFILT_USER,
 				.fflags = NOTE_TRIGGER,
+				.udata = (uintptr_t)DISPATCH_WLH_MANAGER,
 			},
 		};
 retry:
-		r = kevent_qos(-1, kev, 2, NULL, 0, NULL, NULL,
+		r = kevent_qos(kqfd, kev, 2, NULL, 0, NULL, NULL,
 				KEVENT_FLAG_WORKQ|KEVENT_FLAG_IMMEDIATE);
 		if (unlikely(r == -1)) {
 			int err = errno;
@@ -548,45 +575,69 @@ retry:
 #endif // DISPATCH_USE_KEVENT_WORKQUEUE
 #if DISPATCH_USE_MGR_THREAD
 	_dispatch_kq = _dispatch_kq_create(&_dispatch_mgr_q);
-	_dispatch_queue_push(_dispatch_mgr_q.do_targetq, &_dispatch_mgr_q, 0);
+	dx_push(_dispatch_mgr_q.do_targetq, &_dispatch_mgr_q, 0);
 #endif // DISPATCH_USE_MGR_THREAD
 }
 
 DISPATCH_NOINLINE
 static int
-_dispatch_kq_update(dispatch_kevent_t ke, int n)
+_dispatch_kq_update(dispatch_wlh_t wlh, dispatch_kevent_t ke, int n,
+		uint32_t flags)
 {
 	static dispatch_once_t pred;
 	dispatch_once_f(&pred, NULL, _dispatch_kq_init);
 
-	dispatch_kevent_s kev_error[n];
-	int i, r;
-	int kqfd = _dispatch_kq;
+	dispatch_kevent_s ke_out[DISPATCH_DEFERRED_ITEMS_EVENT_COUNT];
+	int i, out_n = countof(ke_out), r = 0;
+#if DISPATCH_USE_KEVENT_QOS
+	size_t size, *avail = NULL;
+	void *buf = NULL;
+#endif
 
 #if DISPATCH_DEBUG
+	dispatch_assert(wlh);
+	dispatch_assert((size_t)n <= countof(ke_out));
 	for (i = 0; i < n; i++) {
 		if (ke[i].filter != EVFILT_USER || DISPATCH_MGR_QUEUE_DEBUG) {
 			_dispatch_kevent_debug_n(NULL, ke + i, i, n);
 		}
 	}
 #endif
-#if DISPATCH_USE_KEVENT_QOS
-	unsigned int flags = KEVENT_FLAG_ERROR_EVENTS;
-	if (_dispatch_kevent_workqueue_enabled) {
-		flags |= KEVENT_FLAG_WORKQ;
-	}
-#else
-	for (i = 0; i < n; i++) {
+
+	wlh = DISPATCH_WLH_GLOBAL;
+
+	if (flags & KEVENT_FLAG_ERROR_EVENTS) {
+#if !DISPATCH_USE_KEVENT_QOS
 		// emulate KEVENT_FLAG_ERROR_EVENTS
-		ke[i].flags |= EV_RECEIPT;
-	}
+		for (i = 0; i < n; i++) {
+			ke[i].flags |= EV_RECEIPT;
+		}
+		out_n = n;
 #endif
-retry:
+	} else {
 #if DISPATCH_USE_KEVENT_QOS
-	r = kevent_qos(kqfd, ke, n, kev_error, n, NULL, NULL, flags);
-#else
-	r = kevent(kqfd, ke, n, kev_error, n, NULL);
+		size = DISPATCH_MACH_RECEIVE_MAX_INLINE_MESSAGE_SIZE +
+				DISPATCH_MACH_TRAILER_SIZE;
+		buf = alloca(size);
+		avail = &size;
 #endif
+	}
+
+retry:
+	_dispatch_clear_return_to_kernel();
+	if (wlh == DISPATCH_WLH_GLOBAL) {
+		int kqfd = _dispatch_kq;
+#if DISPATCH_USE_KEVENT_QOS
+		if (_dispatch_kevent_workqueue_enabled) {
+			flags |= KEVENT_FLAG_WORKQ;
+		}
+		r = kevent_qos(kqfd, ke, n, ke_out, out_n, buf, avail, flags);
+#else
+		const struct timespec timeout_immediately = {}, *timeout = NULL;
+		if (flags & KEVENT_FLAG_IMMEDIATE) timeout = &timeout_immediately;
+		r = kevent(kqfd, ke, n, ke_out, out_n, timeout);
+#endif
+	}
 	if (unlikely(r == -1)) {
 		int err = errno;
 		switch (err) {
@@ -602,9 +653,15 @@ retry:
 		return err;
 	}
 
-	for (i = 0, n = r, r = 0; i < n; i++) {
-		if ((kev_error[i].flags & EV_ERROR) && (r = (int)kev_error[i].data)) {
-			_dispatch_kevent_drain(&kev_error[i]);
+	if (flags & KEVENT_FLAG_ERROR_EVENTS) {
+		for (i = 0, n = r, r = 0; i < n; i++) {
+			if ((ke_out[i].flags & EV_ERROR) && (r = (int)ke_out[i].data)) {
+				_dispatch_kevent_drain(&ke_out[i]);
+			}
+		}
+	} else {
+		for (i = 0, n = r, r = 0; i < n; i++) {
+			_dispatch_kevent_drain(&ke_out[i]);
 		}
 	}
 	return r;
@@ -612,16 +669,18 @@ retry:
 
 DISPATCH_ALWAYS_INLINE
 static inline int
-_dispatch_kq_update_one(dispatch_kevent_t ke)
+_dispatch_kq_update_one(dispatch_wlh_t wlh, dispatch_kevent_t ke)
 {
-	return _dispatch_kq_update(ke, 1);
+	return _dispatch_kq_update(wlh, ke, 1,
+			KEVENT_FLAG_IMMEDIATE | KEVENT_FLAG_ERROR_EVENTS);
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_kq_update_all(dispatch_kevent_t ke, int n)
+_dispatch_kq_update_all(dispatch_wlh_t wlh, dispatch_kevent_t ke, int n)
 {
-	(void)_dispatch_kq_update(ke, n);
+	(void)_dispatch_kq_update(wlh, ke, n,
+			KEVENT_FLAG_IMMEDIATE | KEVENT_FLAG_ERROR_EVENTS);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -669,13 +728,15 @@ _dispatch_kq_deferred_find_slot(dispatch_deferred_items_t ddi,
 
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_kevent_t
-_dispatch_kq_deferred_reuse_slot(dispatch_deferred_items_t ddi, int slot)
+_dispatch_kq_deferred_reuse_slot(dispatch_wlh_t wlh,
+		dispatch_deferred_items_t ddi, int slot)
 {
-	if (unlikely(slot == ddi->ddi_maxevents)) {
-		_dispatch_deferred_items_set(NULL);
-		_dispatch_kq_update_all(ddi->ddi_eventlist, ddi->ddi_nevents);
-		_dispatch_deferred_items_set(ddi);
+	if (wlh != DISPATCH_WLH_GLOBAL) _dispatch_set_return_to_kernel();
+	if (unlikely(slot == countof(ddi->ddi_eventlist))) {
+		int nevents = ddi->ddi_nevents;
 		ddi->ddi_nevents = 1;
+		_dispatch_kq_update_all(wlh, ddi->ddi_eventlist, nevents);
+		dispatch_assert(ddi->ddi_nevents == 1);
 		slot = 0;
 	} else if (slot == ddi->ddi_nevents) {
 		ddi->ddi_nevents++;
@@ -697,50 +758,53 @@ _dispatch_kq_deferred_discard_slot(dispatch_deferred_items_t ddi, int slot)
 
 DISPATCH_NOINLINE
 static void
-_dispatch_kq_deferred_update(dispatch_kevent_t ke)
+_dispatch_kq_deferred_update(dispatch_wlh_t wlh, dispatch_kevent_t ke)
 {
 	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
 
-	if (ddi) {
-		int slot = _dispatch_kq_deferred_find_slot(ddi,
-				ke->filter, ke->ident, ke->udata);
-		*_dispatch_kq_deferred_reuse_slot(ddi, slot) = *ke;
+	if (ddi && wlh == _dispatch_get_wlh()) {
+		int slot = _dispatch_kq_deferred_find_slot(ddi, ke->filter, ke->ident,
+				ke->udata);
+		dispatch_kevent_t dk = _dispatch_kq_deferred_reuse_slot(wlh, ddi, slot);
+		*dk = *ke;
 		if (ke->filter != EVFILT_USER || DISPATCH_MGR_QUEUE_DEBUG) {
 			_dispatch_kevent_debug("deferred", ke);
 		}
 	} else {
-		_dispatch_kq_update_one(ke);
+		_dispatch_kq_update_one(wlh, ke);
 	}
 }
 
 DISPATCH_NOINLINE
 static int
-_dispatch_kq_immediate_update(dispatch_kevent_t ke)
+_dispatch_kq_immediate_update(dispatch_wlh_t wlh, dispatch_kevent_t ke)
 {
 	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
-	if (ddi) {
-		int slot = _dispatch_kq_deferred_find_slot(ddi,
-				ke->filter, ke->ident, ke->udata);
+	if (ddi && wlh == _dispatch_get_wlh()) {
+		int slot = _dispatch_kq_deferred_find_slot(ddi, ke->filter, ke->ident,
+				ke->udata);
 		_dispatch_kq_deferred_discard_slot(ddi, slot);
 	}
-	return _dispatch_kq_update_one(ke);
+	return _dispatch_kq_update_one(wlh, ke);
 }
 
 DISPATCH_NOINLINE
 static bool
-_dispatch_kq_unote_update(dispatch_unote_t _du, uint16_t action_flags)
+_dispatch_kq_unote_update(dispatch_wlh_t wlh, dispatch_unote_t _du,
+		uint16_t action_flags)
 {
 	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
 	dispatch_unote_class_t du = _du._du;
+	dispatch_kevent_t ke;
 	int r = 0;
 
 	if (action_flags & EV_ADD) {
 		// as soon as we register we may get an event delivery and it has to
 		// see this bit already set, else it will not unregister the kevent
-		du->du_registered = true;
+		du->du_wlh = wlh;
 	}
 
-	if (ddi) {
+	if (ddi && wlh == _dispatch_get_wlh()) {
 		int slot = _dispatch_kq_deferred_find_slot(ddi,
 				du->du_filter, du->du_ident, (uintptr_t)du);
 		if (slot < ddi->ddi_nevents) {
@@ -751,7 +815,7 @@ _dispatch_kq_unote_update(dispatch_unote_t _du, uint16_t action_flags)
 
 		if (!(action_flags & EV_ADD) && (action_flags & EV_ENABLE)) {
 			// can be deferred, so do it!
-			dispatch_kevent_t ke = _dispatch_kq_deferred_reuse_slot(ddi, slot);
+			ke = _dispatch_kq_deferred_reuse_slot(wlh, ddi, slot);
 			_dispatch_kq_unote_set_kevent(du, ke, action_flags);
 			_dispatch_kevent_debug("deferred", ke);
 			goto done;
@@ -764,13 +828,13 @@ _dispatch_kq_unote_update(dispatch_unote_t _du, uint16_t action_flags)
 	if (action_flags) {
 		dispatch_kevent_s dk;
 		_dispatch_kq_unote_set_kevent(du, &dk, action_flags);
-		r = _dispatch_kq_update_one(&dk);
+		r = _dispatch_kq_update_one(wlh, &dk);
 	}
 
 done:
 	if (action_flags & EV_ADD) {
 		if (unlikely(r)) {
-			du->du_registered = false;
+			du->du_wlh = NULL;
 		}
 		return r == 0;
 	}
@@ -783,7 +847,7 @@ done:
 			return false;
 #endif
 		}
-		du->du_registered = false;
+		du->du_wlh = NULL;
 	}
 
 	dispatch_assume_zero(r);
@@ -818,7 +882,7 @@ _dispatch_muxnote_bucket(uint64_t ident, int16_t filter)
 		break;
 	}
 
-	dispatch_once_f(&_dispatch_muxnotes_pred, NULL, _dispatch_muxnotes_init);
+	dispatch_once_f(&_dispatch_muxnotes.pred, NULL, _dispatch_muxnotes_init);
 	return &_dispatch_sources[DSL_HASH((uintptr_t)ident)];
 }
 #define _dispatch_unote_muxnote_bucket(du) \
@@ -827,18 +891,21 @@ _dispatch_muxnote_bucket(uint64_t ident, int16_t filter)
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_muxnote_t
 _dispatch_muxnote_find(struct dispatch_muxnote_bucket_s *dmb,
-		uint64_t ident, int16_t filter)
+		dispatch_wlh_t wlh, uint64_t ident, int16_t filter)
 {
 	dispatch_muxnote_t dmn;
+	_dispatch_muxnotes_lock();
 	TAILQ_FOREACH(dmn, dmb, dmn_list) {
-		if (dmn->dmn_kev.ident == ident && dmn->dmn_kev.filter == filter) {
+		if (dmn->dmn_wlh == wlh && dmn->dmn_kev.ident == ident &&
+				dmn->dmn_kev.filter == filter) {
 			break;
 		}
 	}
+	_dispatch_muxnotes_unlock();
 	return dmn;
 }
-#define _dispatch_unote_muxnote_find(dmb, du) \
-	_dispatch_muxnote_find(dmb, du._du->du_ident, du._du->du_filter)
+#define _dispatch_unote_muxnote_find(dmb, du, wlh) \
+		_dispatch_muxnote_find(dmb, wlh, du._du->du_ident, du._du->du_filter)
 
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_muxnote_t
@@ -846,17 +913,18 @@ _dispatch_mach_muxnote_find(mach_port_t name, int16_t filter)
 {
 	struct dispatch_muxnote_bucket_s *dmb;
 	dmb = _dispatch_muxnote_bucket(name, filter);
-	return _dispatch_muxnote_find(dmb, name, filter);
+	return _dispatch_muxnote_find(dmb, DISPATCH_WLH_GLOBAL, name, filter);
 }
 
 DISPATCH_NOINLINE
 static bool
-_dispatch_unote_register_muxed(dispatch_unote_t du)
+_dispatch_unote_register_muxed(dispatch_unote_t du, dispatch_wlh_t wlh)
 {
 	struct dispatch_muxnote_bucket_s *dmb = _dispatch_unote_muxnote_bucket(du);
-	dispatch_muxnote_t dmn = _dispatch_unote_muxnote_find(dmb, du);
+	dispatch_muxnote_t dmn;
 	bool installed = true;
 
+	dmn = _dispatch_unote_muxnote_find(dmb, du, wlh);
 	if (dmn) {
 		uint32_t flags = du._du->du_fflags & ~dmn->dmn_kev.fflags;
 		if (flags) {
@@ -864,7 +932,8 @@ _dispatch_unote_register_muxed(dispatch_unote_t du)
 			if (unlikely(du._du->du_type->dst_update_mux)) {
 				installed = du._du->du_type->dst_update_mux(dmn);
 			} else {
-				installed = _dispatch_kq_immediate_update(&dmn->dmn_kev) == 0;
+				installed = !_dispatch_kq_immediate_update(dmn->dmn_wlh,
+						&dmn->dmn_kev);
 			}
 			if (!installed) dmn->dmn_kev.fflags &= ~flags;
 		}
@@ -876,14 +945,18 @@ _dispatch_unote_register_muxed(dispatch_unote_t du)
 		dmn->dmn_kev.qos = _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG;
 #endif
 		dmn->dmn_kev.udata = (uintptr_t)dmn | DISPATCH_KEVENT_MUXED_MARKER;
+		dmn->dmn_wlh = wlh;
 		if (unlikely(du._du->du_type->dst_update_mux)) {
 			installed = du._du->du_type->dst_update_mux(dmn);
 		} else {
-			installed = _dispatch_kq_immediate_update(&dmn->dmn_kev) == 0;
+			installed = !_dispatch_kq_immediate_update(dmn->dmn_wlh,
+					&dmn->dmn_kev);
 		}
 		if (installed) {
-			TAILQ_INSERT_TAIL(dmb, dmn, dmn_list);
 			dmn->dmn_kev.flags &= ~(EV_ADD | EV_VANISHED);
+			_dispatch_muxnotes_lock();
+			TAILQ_INSERT_TAIL(dmb, dmn, dmn_list);
+			_dispatch_muxnotes_unlock();
 		} else {
 			free(dmn);
 		}
@@ -896,41 +969,47 @@ _dispatch_unote_register_muxed(dispatch_unote_t du)
 
 		if (du._du->du_filter == DISPATCH_EVFILT_MACH_NOTIFICATION) {
 			bool armed = DISPATCH_MACH_NOTIFICATION_ARMED(&dmn->dmn_kev);
-			os_atomic_store2o(du._dmsr, dmsr_notification_armed, armed, relaxed);
+			os_atomic_store2o(du._dmsr, dmsr_notification_armed, armed,relaxed);
 		}
+		du._du->du_wlh = DISPATCH_WLH_GLOBAL;
 	}
-	return du._du->du_registered = installed;
+	return installed;
 }
 
 bool
-_dispatch_unote_register(dispatch_unote_t du, dispatch_priority_t pri)
+_dispatch_unote_register(dispatch_unote_t du, dispatch_wlh_t wlh,
+		dispatch_priority_t pri)
 {
-	dispatch_assert(!du._du->du_registered);
+	dispatch_assert(!_dispatch_unote_registered(du));
 	du._du->du_priority = pri;
 	switch (du._du->du_filter) {
-	case DISPATCH_EVFILT_CUSTOM_OR:
 	case DISPATCH_EVFILT_CUSTOM_ADD:
-		return du._du->du_registered = true;
+	case DISPATCH_EVFILT_CUSTOM_OR:
+	case DISPATCH_EVFILT_CUSTOM_REPLACE:
+		du._du->du_wlh = wlh;
+		return true;
 	}
 	if (!du._du->du_is_direct) {
-		return _dispatch_unote_register_muxed(du);
+		return _dispatch_unote_register_muxed(du, DISPATCH_WLH_GLOBAL);
 	}
-	return _dispatch_kq_unote_update(du, EV_ADD | EV_ENABLE);
+	return _dispatch_kq_unote_update(wlh, du, EV_ADD | EV_ENABLE);
 }
 
 void
 _dispatch_unote_resume(dispatch_unote_t du)
 {
-	dispatch_assert(du._du->du_registered);
+	dispatch_assert(_dispatch_unote_registered(du));
 
 	if (du._du->du_is_direct) {
-		_dispatch_kq_unote_update(du, EV_ENABLE);
+		dispatch_wlh_t wlh = du._du->du_wlh;
+		_dispatch_kq_unote_update(wlh, du, EV_ENABLE);
 	} else if (unlikely(du._du->du_type->dst_update_mux)) {
 		dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
 		du._du->du_type->dst_update_mux(dul->du_muxnote);
 	} else {
 		dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
-		_dispatch_kq_deferred_update(&dul->du_muxnote->dmn_kev);
+		dispatch_muxnote_t dmn = dul->du_muxnote;
+		_dispatch_kq_deferred_update(dmn->dmn_wlh, &dmn->dmn_kev);
 	}
 }
 
@@ -945,7 +1024,7 @@ _dispatch_unote_unregister_muxed(dispatch_unote_t du, uint32_t flags)
 	if (dmn->dmn_kev.filter == DISPATCH_EVFILT_MACH_NOTIFICATION) {
 		os_atomic_store2o(du._dmsr, dmsr_notification_armed, false, relaxed);
 	}
-	du._du->du_registered = false;
+	du._du->du_wlh = NULL;
 	TAILQ_REMOVE(&dmn->dmn_unotes_head, dul, du_link);
 	_TAILQ_TRASH_ENTRY(dul, du_link);
 	dul->du_muxnote = NULL;
@@ -964,18 +1043,19 @@ _dispatch_unote_unregister_muxed(dispatch_unote_t du, uint32_t flags)
 			update = true;
 		}
 	}
-
 	if (update && !(flags & DU_UNREGISTER_ALREADY_DELETED)) {
 		if (unlikely(du._du->du_type->dst_update_mux)) {
 			dispatch_assume(du._du->du_type->dst_update_mux(dmn));
 		} else {
-			_dispatch_kq_deferred_update(&dmn->dmn_kev);
+			_dispatch_kq_deferred_update(dmn->dmn_wlh, &dmn->dmn_kev);
 		}
 	}
 	if (dispose) {
 		struct dispatch_muxnote_bucket_s *dmb;
 		dmb = _dispatch_muxnote_bucket(dmn->dmn_kev.ident, dmn->dmn_kev.filter);
+		_dispatch_muxnotes_lock();
 		TAILQ_REMOVE(dmb, dmn, dmn_list);
+		_dispatch_muxnotes_unlock();
 		free(dmn);
 	}
 	return true;
@@ -985,12 +1065,14 @@ bool
 _dispatch_unote_unregister(dispatch_unote_t du, uint32_t flags)
 {
 	switch (du._du->du_filter) {
-	case DISPATCH_EVFILT_CUSTOM_OR:
 	case DISPATCH_EVFILT_CUSTOM_ADD:
-		du._du->du_registered = false;
+	case DISPATCH_EVFILT_CUSTOM_OR:
+	case DISPATCH_EVFILT_CUSTOM_REPLACE:
+		du._du->du_wlh = NULL;
 		return true;
 	}
-	if (du._du->du_registered) {
+	dispatch_wlh_t wlh = du._du->du_wlh;
+	if (wlh) {
 		if (!du._du->du_is_direct) {
 			return _dispatch_unote_unregister_muxed(du, flags);
 		}
@@ -1002,7 +1084,7 @@ _dispatch_unote_unregister(dispatch_unote_t du, uint32_t flags)
 		} else {
 			action_flags = EV_DELETE;
 		}
-		return _dispatch_kq_unote_update(du, action_flags);
+		return _dispatch_kq_unote_update(wlh, du, action_flags);
 	}
 	return true;
 }
@@ -1022,7 +1104,7 @@ _dispatch_event_loop_atfork_child(void)
 {
 #if HAVE_MACH
 	_dispatch_mach_host_port_pred = 0;
-	_dispatch_mach_host_port = MACH_VOUCHER_NULL;
+	_dispatch_mach_host_port = MACH_PORT_NULL;
 #endif
 }
 
@@ -1039,69 +1121,55 @@ _dispatch_event_loop_init(void)
 
 DISPATCH_NOINLINE
 void
-_dispatch_event_loop_poke(void)
+_dispatch_event_loop_poke(dispatch_wlh_t wlh, dispatch_priority_t pri,
+		uint32_t flags)
 {
-	dispatch_kevent_s ke = {
-		.ident  = 1,
-		.filter = EVFILT_USER,
-		.fflags = NOTE_TRIGGER,
-	};
-	_dispatch_kq_deferred_update(&ke);
+	if (wlh == DISPATCH_WLH_MANAGER) {
+		dispatch_assert(!flags);
+		dispatch_kevent_s ke = {
+			.ident  = 1,
+			.filter = EVFILT_USER,
+			.fflags = NOTE_TRIGGER,
+			.udata = (uintptr_t)DISPATCH_WLH_MANAGER,
+		};
+		return _dispatch_kq_deferred_update(DISPATCH_WLH_GLOBAL, &ke);
+	} else if (wlh && wlh != DISPATCH_WLH_GLOBAL) {
+		dispatch_assert(flags);
+		dispatch_assert(pri);
+	}
+	DISPATCH_INTERNAL_CRASH(wlh, "Unsupported wlh configuration");
 }
 
-#if DISPATCH_USE_MGR_THREAD
+DISPATCH_NOINLINE
+static void
+_dispatch_kevent_poke_drain(dispatch_kevent_t ke)
+{
+	dispatch_assert(ke->filter == EVFILT_USER);
+	dispatch_wlh_t wlh = (dispatch_wlh_t)ke->udata;
+	dispatch_assert(wlh);
+}
+
 DISPATCH_NOINLINE
 void
-_dispatch_event_loop_drain(dispatch_deferred_items_t ddi, bool poll)
+_dispatch_event_loop_drain(uint32_t flags)
 {
-	int r, n = ddi->ddi_nevents;
-	dispatch_assert((size_t)ddi->ddi_maxevents < countof(ddi->ddi_eventlist));
-	int kqfd = _dispatch_kq;
-
-#if DISPATCH_DEBUG
-	int i;
-	for (i = 0; i < n; i++) {
-		dispatch_kevent_t ke = ddi->ddi_eventlist + i;
-		if (ke[i].filter != EVFILT_USER || DISPATCH_MGR_QUEUE_DEBUG) {
-			_dispatch_kevent_debug_n(NULL, ke + i, i, n);
-		}
-	}
-#endif
-#if DISPATCH_USE_KEVENT_QOS
-	unsigned int flags = KEVENT_FLAG_NONE;
-	if (poll) flags |= KEVENT_FLAG_IMMEDIATE;
-#else
-	const struct timespec timeout_immediately = {}, *timeout = NULL;
-	if (poll) timeout = &timeout_immediately;
-#endif
- retry:
-#if DISPATCH_USE_KEVENT_QOS
-	r = kevent_qos(kqfd, ddi->ddi_eventlist, n,
-			ddi->ddi_eventlist + ddi->ddi_maxevents, 1, NULL, NULL, flags);
-#else
-	r = kevent(kqfd, ddi->ddi_eventlist, n,
-			ddi->ddi_eventlist + ddi->ddi_maxevents, 1, timeout);
-#endif
-	if (unlikely(r == -1)) {
-		int err = errno;
-		switch (err) {
-		case EINTR:
-			goto retry;
-		case EBADF:
-			DISPATCH_CLIENT_CRASH(err, "Do not close random Unix descriptors");
-			break;
-		default:
-			(void)dispatch_assume_zero(err);
-			break;
-		}
-	}
+	dispatch_wlh_t wlh = _dispatch_get_wlh();
+	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
+	int n = ddi->ddi_nevents;
 	ddi->ddi_nevents = 0;
-	if (r > 0) {
-		dispatch_kevent_t ke = ddi->ddi_eventlist + ddi->ddi_maxevents;
-		_dispatch_kevent_drain(ke);
-	}
+	_dispatch_kq_update(wlh, ddi->ddi_eventlist, n, flags);
 }
-#endif
+
+void
+_dispatch_event_loop_update(void)
+{
+	dispatch_wlh_t wlh = _dispatch_get_wlh();
+	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
+	int n = ddi->ddi_nevents;
+	ddi->ddi_nevents = 0;
+	_dispatch_kq_update_all(wlh, ddi->ddi_eventlist, n);
+	dispatch_assert(ddi->ddi_nevents == 0);
+}
 
 void
 _dispatch_event_loop_merge(dispatch_kevent_t ke, int n)
@@ -1109,12 +1177,6 @@ _dispatch_event_loop_merge(dispatch_kevent_t ke, int n)
 	while (n-- > 0) {
 		_dispatch_kevent_drain(ke++);
 	}
-}
-
-void
-_dispatch_event_loop_update(dispatch_kevent_t ke, int n)
-{
-	_dispatch_kq_update_all(ke, n);
 }
 
 #define DISPATCH_KEVENT_TIMEOUT_IDENT_MASK (~0ull << 8)
@@ -1157,7 +1219,7 @@ _dispatch_event_loop_timer_program(uint32_t tidx,
 #endif
 	};
 
-	_dispatch_kq_deferred_update(&ke);
+	_dispatch_kq_deferred_update(DISPATCH_WLH_GLOBAL, &ke);
 }
 
 void
@@ -1191,12 +1253,23 @@ _dispatch_event_loop_timer_delete(uint32_t tidx)
 
 #pragma mark kevent specific sources
 
+static dispatch_unote_t
+_dispatch_source_proc_create(dispatch_source_type_t dst DISPATCH_UNUSED,
+		uintptr_t handle, unsigned long mask DISPATCH_UNUSED)
+{
+	dispatch_unote_t du = _dispatch_unote_create_with_handle(dst, handle, mask);
+	if (du._du && (mask & DISPATCH_PROC_EXIT_STATUS)) {
+		du._du->du_data_action = DISPATCH_UNOTE_ACTION_DATA_OR_STATUS_SET;
+	}
+	return du;
+}
+
 const dispatch_source_type_s _dispatch_source_type_proc = {
 	.dst_kind       = "proc",
 	.dst_filter     = EVFILT_PROC,
 	.dst_flags      = DISPATCH_EV_DIRECT|EV_CLEAR,
 	.dst_fflags     = NOTE_EXIT, // rdar://16655831
-	.dst_mask       = NOTE_EXIT|NOTE_FORK|NOTE_EXEC
+	.dst_mask       = NOTE_EXIT|NOTE_FORK|NOTE_EXEC|NOTE_EXITSTATUS
 #if HAVE_DECL_NOTE_SIGNAL
 			|NOTE_SIGNAL
 #endif
@@ -1206,7 +1279,7 @@ const dispatch_source_type_s _dispatch_source_type_proc = {
 			,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
 
-	.dst_create     = _dispatch_unote_create_with_handle,
+	.dst_create     = _dispatch_source_proc_create,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
 };
 
@@ -1244,6 +1317,12 @@ const dispatch_source_type_s _dispatch_source_type_vfs = {
 #if HAVE_DECL_VQ_QUOTA
 			|VQ_QUOTA
 #endif
+#if HAVE_DECL_VQ_NEARLOWDISK
+			|VQ_NEARLOWDISK
+#endif
+#if HAVE_DECL_VQ_DESIRED_DISK
+			|VQ_DESIRED_DISK
+#endif
 			,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
 
@@ -1275,6 +1354,7 @@ const dispatch_source_type_s _dispatch_source_type_sock = {
 	.dst_merge_evt  = _dispatch_source_merge_evt,
 };
 #endif // EVFILT_SOCK
+
 
 #if DISPATCH_USE_MEMORYSTATUS
 
@@ -1676,7 +1756,7 @@ _dispatch_mach_notify_merge(mach_port_t name, uint32_t data, bool final)
 
 	_dispatch_debug_machport(name);
 	dmn = _dispatch_mach_muxnote_find(name, DISPATCH_EVFILT_MACH_NOTIFICATION);
-	if (!dmn) {
+	if (!dispatch_assume(dmn)) {
 		return;
 	}
 
@@ -1691,7 +1771,7 @@ _dispatch_mach_notify_merge(mach_port_t name, uint32_t data, bool final)
 	TAILQ_FOREACH_SAFE(dul, &dmn->dmn_unotes_head, du_link, dul_next) {
 		dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
 		os_atomic_store2o(du._dmsr, dmsr_notification_armed, false, relaxed);
-		dux_merge_evt(du._du, flags, (data & du._du->du_fflags), 0);
+		dux_merge_evt(du._du, flags, (data & du._du->du_fflags), 0, 0);
 		if (!dul_next || DISPATCH_MACH_NOTIFICATION_ARMED(&dmn->dmn_kev)) {
 			// current merge is last in list (dmn might have been freed)
 			// or it re-armed the notification
@@ -1748,7 +1828,7 @@ _dispatch_mach_notification_set_armed(dispatch_mach_send_refs_t dmsr)
 	dispatch_unote_linkage_t dul;
 	dispatch_unote_t du;
 
-	if (!dmsr->du_registered) {
+	if (!_dispatch_unote_registered(dmsr)) {
 		return;
 	}
 
@@ -1846,7 +1926,7 @@ _dispatch_mach_portset_init(void *context DISPATCH_UNUSED)
 		.ident  = _dispatch_mach_portset,
 		.qos    = _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG,
 	};
-	_dispatch_kq_deferred_update(&kev);
+	_dispatch_kq_deferred_update(DISPATCH_WLH_GLOBAL, &kev);
 }
 
 static bool
@@ -1949,7 +2029,8 @@ _dispatch_mach_recv_portset_init(void *context DISPATCH_UNUSED)
 	if (!_dispatch_kevent_workqueue_enabled) {
 		_dispatch_mach_recv_msg_buf_init(&_dispatch_mach_recv_kevent);
 	}
-	_dispatch_kq_deferred_update(&_dispatch_mach_recv_kevent);
+	_dispatch_kq_deferred_update(DISPATCH_WLH_GLOBAL,
+			&_dispatch_mach_recv_kevent);
 }
 
 static mach_port_t
@@ -1974,9 +2055,10 @@ _dispatch_mach_recv_direct_update_portset_mux(dispatch_muxnote_t dmn)
 static dispatch_unote_t
 _dispatch_mach_kevent_mach_recv_direct_find(mach_port_t name)
 {
-	dispatch_muxnote_t dmn = _dispatch_mach_muxnote_find(name, EVFILT_MACHPORT);
+	dispatch_muxnote_t dmn;
 	dispatch_unote_linkage_t dul;
 
+	dmn = _dispatch_mach_muxnote_find(name, EVFILT_MACHPORT);
 	TAILQ_FOREACH(dul, &dmn->dmn_unotes_head, du_link) {
 		dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
 		if (du._du->du_type->dst_fflags & MACH_RCV_MSG) {
@@ -1991,10 +2073,11 @@ static void
 _dispatch_mach_kevent_portset_merge(dispatch_kevent_t ke)
 {
 	mach_port_t name = (mach_port_name_t)ke->data;
-	dispatch_muxnote_t dmn = _dispatch_mach_muxnote_find(name, EVFILT_MACHPORT);
 	dispatch_unote_linkage_t dul, dul_next;
+	dispatch_muxnote_t dmn;
 
 	_dispatch_debug_machport(name);
+	dmn = _dispatch_mach_muxnote_find(name, EVFILT_MACHPORT);
 	if (!dispatch_assume(dmn)) {
 		return;
 	}
@@ -2003,7 +2086,7 @@ _dispatch_mach_kevent_portset_merge(dispatch_kevent_t ke)
 	TAILQ_FOREACH_SAFE(dul, &dmn->dmn_unotes_head, du_link, dul_next) {
 		dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
 		dux_merge_evt(du._du, EV_ENABLE | EV_DISPATCH,
-				DISPATCH_MACH_RECV_MESSAGE, 0);
+				DISPATCH_MACH_RECV_MESSAGE, 0, 0);
 	}
 }
 
@@ -2114,7 +2197,8 @@ out:
 
 #if DISPATCH_EVFILT_MACHPORT_PORTSET_FALLBACK
 	if (!(flags & EV_UDATA_SPECIFIC)) {
-		_dispatch_kq_deferred_update(&_dispatch_mach_recv_kevent);
+		_dispatch_kq_deferred_update(DISPATCH_WLH_GLOBAL,
+				&_dispatch_mach_recv_kevent);
 	}
 #endif
 }
@@ -2175,9 +2259,9 @@ _dispatch_source_mach_recv_direct_merge_msg(dispatch_unote_t du, uint32_t flags,
 	}
 	if ((ds->dq_atomic_flags & DSF_CANCELED) ||
 			(flags & (EV_ONESHOT | EV_DELETE))) {
-		return _dispatch_source_merge_evt(du, flags, 0, 0);
+		return _dispatch_source_merge_evt(du, flags, 0, 0, 0);
 	}
-	if (du._du->du_needs_rearm) {
+	if (_dispatch_unote_needs_rearm(du)) {
 		return _dispatch_unote_resume(du);
 	}
 }
@@ -2196,13 +2280,15 @@ _dispatch_source_mach_recv_direct_create(dispatch_source_type_t dst,
 
 static void
 _dispatch_mach_recv_direct_merge(dispatch_unote_t du,
-		uint32_t flags, uintptr_t data, pthread_priority_t pp)
+		uint32_t flags, uintptr_t data,
+		uintptr_t status DISPATCH_UNUSED,
+		pthread_priority_t pp)
 {
 	if (flags & EV_VANISHED) {
 		DISPATCH_CLIENT_CRASH(du._du->du_ident,
 				"Unexpected EV_VANISHED (do not destroy random mach ports)");
 	}
-	return _dispatch_source_merge_evt(du, flags, data, pp);
+	return _dispatch_source_merge_evt(du, flags, data, 0, pp);
 }
 
 const dispatch_source_type_s _dispatch_source_type_mach_recv_direct = {
@@ -2289,6 +2375,7 @@ DISPATCH_NORETURN
 static void
 _dispatch_mach_reply_merge_evt(dispatch_unote_t du,
 		uint32_t flags DISPATCH_UNUSED, uintptr_t data DISPATCH_UNUSED,
+		uintptr_t status DISPATCH_UNUSED,
 		pthread_priority_t pp DISPATCH_UNUSED)
 {
 	DISPATCH_INTERNAL_CRASH(du._du->du_ident, "Unexpected event");

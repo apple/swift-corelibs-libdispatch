@@ -165,24 +165,69 @@ _voucher_thread_cleanup(void *voucher)
 	_voucher_release(voucher);
 }
 
+#pragma mark -
+#pragma mark voucher_hash
+
 DISPATCH_CACHELINE_ALIGN
-static TAILQ_HEAD(, voucher_s) _vouchers[VL_HASH_SIZE];
-#define _vouchers_head(kv) (&_vouchers[VL_HASH((kv))])
-static dispatch_unfair_lock_s _vouchers_lock;
-#define _vouchers_lock_lock() _dispatch_unfair_lock_lock(&_vouchers_lock)
-#define _vouchers_lock_unlock() _dispatch_unfair_lock_unlock(&_vouchers_lock)
+static voucher_hash_head_s _voucher_hash[VL_HASH_SIZE];
+
+#define _voucher_hash_head(kv)   (&_voucher_hash[VL_HASH((kv))])
+static dispatch_unfair_lock_s _voucher_hash_lock;
+#define _voucher_hash_lock_lock() \
+		_dispatch_unfair_lock_lock(&_voucher_hash_lock)
+#define _voucher_hash_lock_unlock() \
+		_dispatch_unfair_lock_unlock(&_voucher_hash_lock)
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_voucher_hash_head_init(voucher_hash_head_s *head)
+{
+	_voucher_hash_set_next(&head->vhh_first, VOUCHER_NULL);
+	_voucher_hash_set_prev_ptr(&head->vhh_last_ptr, &head->vhh_first);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_voucher_hash_enqueue(mach_voucher_t kv, voucher_t v)
+{
+	// same as TAILQ_INSERT_TAIL
+	voucher_hash_head_s *head = _voucher_hash_head(kv);
+	uintptr_t prev_ptr = head->vhh_last_ptr;
+	_voucher_hash_set_next(&v->v_list.vhe_next, VOUCHER_NULL);
+	v->v_list.vhe_prev_ptr = prev_ptr;
+	_voucher_hash_store_to_prev_ptr(prev_ptr, v);
+	_voucher_hash_set_prev_ptr(&head->vhh_last_ptr, &v->v_list.vhe_next);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_voucher_hash_remove(mach_voucher_t kv, voucher_t v)
+{
+	// same as TAILQ_REMOVE
+	voucher_hash_head_s *head = _voucher_hash_head(kv);
+	voucher_t next = _voucher_hash_get_next(v->v_list.vhe_next);
+	uintptr_t prev_ptr = v->v_list.vhe_prev_ptr;
+	if (next) {
+		next->v_list.vhe_prev_ptr = prev_ptr;
+	} else {
+		head->vhh_last_ptr = prev_ptr;
+	}
+	_voucher_hash_store_to_prev_ptr(prev_ptr, next);
+	_voucher_hash_mark_not_enqueued(v);
+}
 
 static voucher_t
 _voucher_find_and_retain(mach_voucher_t kv)
 {
-	voucher_t v;
 	if (!kv) return NULL;
-	_vouchers_lock_lock();
-	TAILQ_FOREACH(v, _vouchers_head(kv), v_list) {
+	_voucher_hash_lock_lock();
+	voucher_hash_head_s *head = _voucher_hash_head(kv);
+	voucher_t v = _voucher_hash_get_next(head->vhh_first);
+	while (v) {
 		if (v->v_ipc_kvoucher == kv) {
 			int xref_cnt = os_atomic_inc2o(v, os_obj_xref_cnt, relaxed);
 			_dispatch_voucher_debug("retain  -> %d", v, xref_cnt + 1);
-			if (slowpath(xref_cnt < 0)) {
+			if (unlikely(xref_cnt < 0)) {
 				_dispatch_voucher_debug("over-release", v);
 				_OS_OBJECT_CLIENT_CRASH("Voucher over-release");
 			}
@@ -192,8 +237,9 @@ _voucher_find_and_retain(mach_voucher_t kv)
 			}
 			break;
 		}
+		v = _voucher_hash_get_next(v->v_list.vhe_next);
 	}
-	_vouchers_lock_unlock();
+	_voucher_hash_lock_unlock();
 	return v;
 }
 
@@ -202,34 +248,34 @@ _voucher_insert(voucher_t v)
 {
 	mach_voucher_t kv = v->v_ipc_kvoucher;
 	if (!kv) return;
-	_vouchers_lock_lock();
-	if (slowpath(_TAILQ_IS_ENQUEUED(v, v_list))) {
+	_voucher_hash_lock_lock();
+	if (unlikely(_voucher_hash_is_enqueued(v))) {
 		_dispatch_voucher_debug("corruption", v);
-		DISPATCH_CLIENT_CRASH(v->v_list.tqe_prev, "Voucher corruption");
+		DISPATCH_CLIENT_CRASH(0, "Voucher corruption");
 	}
-	TAILQ_INSERT_TAIL(_vouchers_head(kv), v, v_list);
-	_vouchers_lock_unlock();
+	_voucher_hash_enqueue(kv, v);
+	_voucher_hash_lock_unlock();
 }
 
 static void
 _voucher_remove(voucher_t v)
 {
 	mach_voucher_t kv = v->v_ipc_kvoucher;
-	if (!_TAILQ_IS_ENQUEUED(v, v_list)) return;
-	_vouchers_lock_lock();
-	if (slowpath(!kv)) {
+	if (!_voucher_hash_is_enqueued(v)) return;
+	_voucher_hash_lock_lock();
+	if (unlikely(!kv)) {
 		_dispatch_voucher_debug("corruption", v);
 		DISPATCH_CLIENT_CRASH(0, "Voucher corruption");
 	}
 	// check for resurrection race with _voucher_find_and_retain
-	if (os_atomic_load2o(v, os_obj_xref_cnt, ordered) < 0 &&
-			_TAILQ_IS_ENQUEUED(v, v_list)) {
-		TAILQ_REMOVE(_vouchers_head(kv), v, v_list);
-		_TAILQ_MARK_NOT_ENQUEUED(v, v_list);
-		v->v_list.tqe_next = (void*)~0ull;
+	if (os_atomic_load2o(v, os_obj_xref_cnt, ordered) < 0) {
+		if (_voucher_hash_is_enqueued(v)) _voucher_hash_remove(kv, v);
 	}
-	_vouchers_lock_unlock();
+	_voucher_hash_lock_unlock();
 }
+
+#pragma mark -
+#pragma mark mach_voucher_t
 
 void
 _voucher_dealloc_mach_voucher(mach_voucher_t kv)
@@ -764,11 +810,11 @@ void
 _voucher_dispose(voucher_t voucher)
 {
 	_dispatch_voucher_debug("dispose", voucher);
-	if (slowpath(_TAILQ_IS_ENQUEUED(voucher, v_list))) {
+	if (slowpath(_voucher_hash_is_enqueued(voucher))) {
 		_dispatch_voucher_debug("corruption", voucher);
-		DISPATCH_CLIENT_CRASH(voucher->v_list.tqe_prev, "Voucher corruption");
+		DISPATCH_CLIENT_CRASH(0, "Voucher corruption");
 	}
-	voucher->v_list.tqe_next = DISPATCH_OBJECT_LISTLESS;
+	_voucher_hash_mark_not_enqueued(voucher);
 	if (voucher->v_ipc_kvoucher) {
 		if (voucher->v_ipc_kvoucher != voucher->v_kvoucher) {
 			_voucher_dealloc_mach_voucher(voucher->v_ipc_kvoucher);
@@ -1004,7 +1050,7 @@ _voucher_init(void)
 	_voucher_libkernel_init();
 	unsigned int i;
 	for (i = 0; i < VL_HASH_SIZE; i++) {
-		TAILQ_INIT(&_vouchers[i]);
+		_voucher_hash_head_init(&_voucher_hash[i]);
 	}
 }
 
@@ -1051,6 +1097,12 @@ _voucher_activity_id_allocate(firehose_activity_flags_t flags)
 		}
 	});
 	return FIREHOSE_ACTIVITY_ID_MAKE(aid, flags);
+}
+
+firehose_activity_id_t
+voucher_activity_id_allocate(firehose_activity_flags_t flags)
+{
+	return _voucher_activity_id_allocate(flags);
 }
 
 #define _voucher_activity_tracepoint_reserve(stamp, stream, pub, priv, privbuf) \
@@ -1441,7 +1493,7 @@ voucher_create(voucher_recipe_t recipe)
 	(void)recipe;
 	return NULL;
 }
-#endif
+#endif // VOUCHER_ENABLE_RECIPE_OBJECTS
 
 voucher_t
 voucher_adopt(voucher_t voucher)
@@ -1540,7 +1592,7 @@ voucher_get_mach_voucher(voucher_t voucher)
 	(void)voucher;
 	return 0;
 }
-#endif
+#endif // VOUCHER_ENABLE_GET_MACH_VOUCHER
 
 void
 _voucher_xref_dispose(voucher_t voucher)
@@ -1574,7 +1626,7 @@ voucher_get_current_persona_proximate_info(struct proc_persona_info *persona_inf
 	(void)persona_info;
 	return -1;
 }
-#endif
+#endif // VOUCHER_EXPORT_PERSONA_SPI
 
 void
 _voucher_activity_debug_channel_init(void)

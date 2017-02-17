@@ -59,7 +59,7 @@ enum {
 DISPATCH_CLASS_DECL(mach);
 DISPATCH_CLASS_DECL(mach_msg);
 
-#if DISPATCH_PURE_C
+#ifndef __cplusplus
 struct dispatch_mach_s {
 	DISPATCH_SOURCE_HEADER(mach);
 	dispatch_mach_send_refs_t dm_send_refs;
@@ -82,37 +82,50 @@ struct dispatch_mach_msg_s {
 		char dmsg_buf[0];
 	};
 };
-#endif // DISPATCH_PURE_C
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_mach_xref_dispose(struct dispatch_mach_s *dm)
+{
+	if (dm->dm_is_xpc) {
+		dm->dm_recv_refs->dmrr_handler_ctxt = (void *)0xbadfeed;
+	}
+}
+#endif // __cplusplus
 
 dispatch_source_t
 _dispatch_source_create_mach_msg_direct_recv(mach_port_t recvp,
 		const struct dispatch_continuation_s *dc);
 
+void _dispatch_mach_msg_async_reply_invoke(dispatch_continuation_t dc,
+		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 void _dispatch_mach_dispose(dispatch_mach_t dm);
 void _dispatch_mach_finalize_activation(dispatch_mach_t dm);
-void _dispatch_mach_invoke(dispatch_mach_t dm, dispatch_invoke_flags_t flags);
+void _dispatch_mach_invoke(dispatch_mach_t dm, dispatch_invoke_context_t dic,
+		dispatch_invoke_flags_t flags);
 void _dispatch_mach_wakeup(dispatch_mach_t dm, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
 size_t _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz);
 void _dispatch_mach_merge_notification(dispatch_unote_t du,
-		uint32_t flags, uintptr_t data, pthread_priority_t pp);
+		uint32_t flags, uintptr_t data, uintptr_t status,
+		pthread_priority_t pp);
 void _dispatch_mach_merge_msg(dispatch_unote_t du, uint32_t flags,
 		mach_msg_header_t *msg, mach_msg_size_t msgsz);
 void _dispatch_mach_reply_merge_msg(dispatch_unote_t du, uint32_t flags,
 		mach_msg_header_t *msg, mach_msg_size_t msgsz);
 void _dispatch_xpc_sigterm_merge(dispatch_unote_t du, uint32_t flags,
-		uintptr_t data, pthread_priority_t pp);
+		uintptr_t data, uintptr_t status, pthread_priority_t pp);
 
 void _dispatch_mach_msg_dispose(dispatch_mach_msg_t dmsg);
 void _dispatch_mach_msg_invoke(dispatch_mach_msg_t dmsg,
-		dispatch_invoke_flags_t flags);
+		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 size_t _dispatch_mach_msg_debug(dispatch_mach_msg_t dmsg, char* buf,
 		size_t bufsiz);
 
 void _dispatch_mach_send_barrier_drain_invoke(dispatch_continuation_t dc,
-		dispatch_invoke_flags_t flags);
+		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 void _dispatch_mach_barrier_invoke(dispatch_continuation_t dc,
-		dispatch_invoke_flags_t flags);
+		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 
 #endif // HAVE_MACH
 #endif /* __DISPATCH_MACH_INTERNAL__ */

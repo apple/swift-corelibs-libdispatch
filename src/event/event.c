@@ -52,9 +52,7 @@ _dispatch_unote_create(dispatch_source_type_t dst,
 	if (dst->dst_flags & EV_UDATA_SPECIFIC) {
 		du->du_is_direct = true;
 	}
-	if (dst->dst_flags & (EV_DISPATCH | EV_ONESHOT)) {
-		du->du_needs_rearm = true;
-	}
+	du->du_data_action = DISPATCH_UNOTE_ACTION_DATA_OR;
 	return (dispatch_unote_t){ ._du = du };
 }
 
@@ -82,7 +80,8 @@ _dispatch_unote_create_with_fd(dispatch_source_type_t dst,
 	dispatch_unote_t du = _dispatch_unote_create(dst, handle, mask);
 	if (du._du) {
 		int16_t filter = dst->dst_filter;
-		du._du->du_is_level = (filter == EVFILT_READ || filter == EVFILT_WRITE);
+		du._du->du_data_action = (filter == EVFILT_READ||filter == EVFILT_WRITE)
+			? DISPATCH_UNOTE_ACTION_DATA_SET : DISPATCH_UNOTE_ACTION_DATA_OR;
 	}
 	return du;
 }
@@ -157,6 +156,16 @@ const dispatch_source_type_s _dispatch_source_type_data_or = {
 	.dst_merge_evt  = NULL,
 };
 
+const dispatch_source_type_s _dispatch_source_type_data_replace = {
+	.dst_kind       = "data-replace",
+	.dst_filter     = DISPATCH_EVFILT_CUSTOM_REPLACE,
+	.dst_flags      = EV_UDATA_SPECIFIC|EV_CLEAR,
+	.dst_size       = sizeof(struct dispatch_source_refs_s),
+
+	.dst_create     = _dispatch_source_data_create,
+	.dst_merge_evt  = NULL,
+};
+
 #pragma mark file descriptors
 
 const dispatch_source_type_s _dispatch_source_type_read = {
@@ -202,7 +211,7 @@ _dispatch_source_signal_create(dispatch_source_type_t dst, uintptr_t handle,
 	}
 	dispatch_unote_t du = _dispatch_unote_create_with_handle(dst, handle, mask);
 	if (du._du) {
-		du._du->du_is_adder = true;
+		du._du->du_data_action = DISPATCH_UNOTE_ACTION_DATA_ADD;
 	}
 	return du;
 }
@@ -265,8 +274,7 @@ _dispatch_source_timer_create(dispatch_source_type_t dst,
 
 	if (du._dt) {
 		du._dt->du_is_timer = true;
-		du._dt->du_is_adder = true;
-		du._dt->du_needs_rearm = true;
+		du._dt->du_data_action = DISPATCH_UNOTE_ACTION_DATA_ADD;
 		du._dt->du_fflags |= fflags;
 		du._dt->du_ident = _dispatch_source_timer_idx(du);
 		du._dt->dt_timer.target = UINT64_MAX;
@@ -279,6 +287,7 @@ _dispatch_source_timer_create(dispatch_source_type_t dst,
 const dispatch_source_type_s _dispatch_source_type_timer = {
 	.dst_kind       = "timer",
 	.dst_filter     = DISPATCH_EVFILT_TIMER,
+	.dst_flags      = EV_DISPATCH,
 	.dst_mask       = DISPATCH_TIMER_STRICT|DISPATCH_TIMER_BACKGROUND,
 	.dst_fflags     = 0,
 	.dst_size       = sizeof(struct dispatch_timer_source_refs_s),
@@ -289,6 +298,7 @@ const dispatch_source_type_s _dispatch_source_type_timer = {
 const dispatch_source_type_s _dispatch_source_type_after = {
 	.dst_kind       = "timer (after)",
 	.dst_filter     = DISPATCH_EVFILT_TIMER,
+	.dst_flags      = EV_DISPATCH,
 	.dst_mask       = 0,
 	.dst_fflags     = DISPATCH_TIMER_AFTER,
 	.dst_size       = sizeof(struct dispatch_timer_source_refs_s),
@@ -299,6 +309,7 @@ const dispatch_source_type_s _dispatch_source_type_after = {
 const dispatch_source_type_s _dispatch_source_type_interval = {
 	.dst_kind       = "timer (interval)",
 	.dst_filter     = DISPATCH_EVFILT_TIMER,
+	.dst_flags      = EV_DISPATCH,
 	.dst_mask       = DISPATCH_TIMER_STRICT|DISPATCH_TIMER_BACKGROUND
 			|DISPATCH_INTERVAL_UI_ANIMATION,
 	.dst_fflags     = DISPATCH_TIMER_INTERVAL|DISPATCH_TIMER_CLOCK_MACH,

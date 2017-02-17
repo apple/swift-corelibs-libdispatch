@@ -134,6 +134,15 @@ _pthread_qos_override_end_direct(mach_port_t thread, void *resource)
 #define _PTHREAD_SET_SELF_WQ_KEVENT_UNBIND 0
 #endif
 
+#if PTHREAD_WORKQUEUE_SPI_VERSION < 20160427
+bool
+_pthread_workqueue_should_narrow(pthread_priority_t priority)
+{
+	(void)priority;
+	return false;
+}
+#endif
+
 #if !HAVE_NORETURN_BUILTIN_TRAP
 /*
  * XXXRW: Work-around for possible clang bug in which __builtin_trap() is not

@@ -98,7 +98,7 @@ typedef union {
 	struct dispatch_io_s *_dchannel;
 	struct dispatch_operation_s *_doperation;
 	struct dispatch_disk_s *_ddisk;
-} dispatch_object_t __attribute__((__transparent_union__));
+} dispatch_object_t DISPATCH_TRANSPARENT_UNION;
 /*! @parseOnly */
 #define DISPATCH_DECL(name) typedef struct name##_s *name##_t
 /*! @parseOnly */

@@ -37,6 +37,10 @@
 #define likely(x)   __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
+#ifndef OS_FALLTHROUGH
+#define OS_FALLTHROUGH
+#endif
+
 #define DISPATCH_INTERNAL_CRASH(ac, msg) ({ panic(msg); __builtin_trap(); })
 
 #if defined(__x86_64__) || defined(__i386__)
@@ -810,7 +814,7 @@ firehose_buffer_ring_enqueue(firehose_buffer_t fb, uint16_t ref)
 	gen = head & FIREHOSE_RING_POS_GEN_MASK;
 	idx = head & FIREHOSE_RING_POS_IDX_MASK;
 
-	while (unlikely(!os_atomic_cmpxchgvw(&fbh_ring[idx], gen, gen | ref, &dummy,
+	while (unlikely(!os_atomic_cmpxchgv(&fbh_ring[idx], gen, gen | ref, &dummy,
 			relaxed))) {
 		// can only ever happen if a recycler is slow, this requires having
 		// enough cores (>5 for I/O e.g.)
@@ -850,7 +854,7 @@ firehose_buffer_ring_enqueue(firehose_buffer_t fb, uint16_t ref)
 		// a thread being preempted here for GEN_MASK worth of ring rotations,
 		// it could lead to the cmpxchg succeed, and have a bogus enqueue
 		// (confused enqueuer)
-		if (fastpath(os_atomic_cmpxchgvw(&fbh_ring[idx], gen, gen | ref, &dummy,
+		if (fastpath(os_atomic_cmpxchgv(&fbh_ring[idx], gen, gen | ref, &dummy,
 				relaxed))) {
 			if (fastpath(os_atomic_cmpxchgv(fbh_ring_head, head, head + 1,
 					&head, release))) {
@@ -878,6 +882,15 @@ firehose_buffer_ring_enqueue(firehose_buffer_t fb, uint16_t ref)
 			for_io);
 #endif
 }
+
+#ifndef KERNEL
+void
+firehose_buffer_force_connect(firehose_buffer_t fb)
+{
+	mach_port_t sendp = fb->fb_header.fbh_sendp;
+	if (sendp == MACH_PORT_NULL) firehose_client_reconnect(fb, MACH_PORT_NULL);
+}
+#endif
 
 OS_ALWAYS_INLINE
 static inline uint16_t
@@ -940,10 +953,11 @@ firehose_buffer_ring_try_recycle(firehose_buffer_t fb)
 #ifndef KERNEL
 OS_NOINLINE
 static firehose_tracepoint_t
-firehose_buffer_tracepoint_reserve_slow2(firehose_buffer_t fb,
+firehose_buffer_tracepoint_reserve_wait_for_chunks_from_logd(firehose_buffer_t fb,
 		firehose_tracepoint_query_t ask, uint8_t **privptr, uint16_t ref)
 {
 	const uint64_t bank_unavail_mask = FIREHOSE_BANK_UNAVAIL_MASK(ask->for_io);
+	const uint64_t bank_inc = FIREHOSE_BANK_INC(ask->for_io);
 	firehose_buffer_bank_t const fbb = &fb->fb_header.fbh_bank;
 	firehose_bank_state_u state;
 	uint16_t fbs_max_ref;
@@ -952,7 +966,7 @@ firehose_buffer_tracepoint_reserve_slow2(firehose_buffer_t fb,
 	if (!fastpath(ask->is_bank_ok)) {
 		state.fbs_atomic_state =
 				os_atomic_load2o(fbb, fbb_state.fbs_atomic_state, relaxed);
-		while (state.fbs_atomic_state & bank_unavail_mask) {
+		while ((state.fbs_atomic_state - bank_inc) & bank_unavail_mask) {
 			firehose_client_send_push(fb, ask->for_io, &state);
 			if (slowpath(fb->fb_header.fbh_sendp == MACH_PORT_DEAD)) {
 				// logd was unloaded, give up
@@ -1031,7 +1045,8 @@ firehose_buffer_tracepoint_reserve_slow(firehose_buffer_t fb,
 			}
 		}
 	}
-	return firehose_buffer_tracepoint_reserve_slow2(fb, ask, privptr, ref);
+	return firehose_buffer_tracepoint_reserve_wait_for_chunks_from_logd(fb, ask,
+			privptr, ref);
 #else
 	firehose_bank_state_u value;
 	ask->is_bank_ok = os_atomic_rmw_loop2o(fbb, fbb_state.fbs_atomic_state,

@@ -179,22 +179,6 @@ _dispatch_qos_is_background(dispatch_qos_t qos)
 	return qos && qos <= DISPATCH_QOS_BACKGROUND;
 }
 
-DISPATCH_ALWAYS_INLINE
-static inline bool
-_dispatch_qos_greater_than_pp(dispatch_qos_t qos, pthread_priority_t pp)
-{
-	pp &= _PTHREAD_PRIORITY_QOS_CLASS_MASK;
-	return (pp >> ((qos - 1) + _PTHREAD_PRIORITY_QOS_CLASS_SHIFT - 1)) == 0;
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline bool
-_dispatch_qos_less_than_pp(dispatch_qos_t qos, pthread_priority_t pp)
-{
-	pp &= _PTHREAD_PRIORITY_QOS_CLASS_MASK;
-	return (pp >> ((qos - 1) + _PTHREAD_PRIORITY_QOS_CLASS_SHIFT)) != 0;
-}
-
 #pragma mark dispatch_priority
 
 #define _dispatch_priority_make(qos, relpri) \

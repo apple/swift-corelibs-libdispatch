@@ -174,6 +174,21 @@ voucher_activity_create_with_location(firehose_tracepoint_id_t *trace_id,
  */
 
 /*!
+ * @function voucher_activity_id_allocate
+ *
+ * @abstract
+ * Allocate a new system-wide unique activity ID.
+ *
+ * @param flags
+ * The bottom-most 8 bits of the flags will be used to generate the ID.
+ * See firehose_activity_flags_t.
+ */
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+OS_VOUCHER_EXPORT OS_NOTHROW
+firehose_activity_id_t
+voucher_activity_id_allocate(firehose_activity_flags_t flags);
+
+/*!
  * @function voucher_activity_flush
  *
  * @abstract

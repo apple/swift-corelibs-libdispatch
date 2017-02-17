@@ -60,7 +60,7 @@ typedef union {
 	dispatch_semaphore_t _objc_dsema;
 	dispatch_group_t _objc_dg;
 #endif
-} dispatch_semaphore_class_t __attribute__((__transparent_union__));
+} dispatch_semaphore_class_t DISPATCH_TRANSPARENT_UNION;
 
 dispatch_group_t _dispatch_group_create_and_enter(void);
 void _dispatch_group_dispose(dispatch_object_t dou);

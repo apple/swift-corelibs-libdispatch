@@ -76,6 +76,9 @@
 #endif // OS_OBJECT_HAVE_OBJC_SUPPORT
 
 #if OS_OBJECT_HAVE_OBJC_SUPPORT
+#if defined(__swift__) && __swift__ && !OS_OBJECT_USE_OBJC
+#define OS_OBJECT_USE_OBJC 1
+#endif
 #ifndef OS_OBJECT_USE_OBJC
 #define OS_OBJECT_USE_OBJC 1
 #endif

@@ -140,6 +140,32 @@ uint64_t
 firehose_client_get_unique_pid(firehose_client_t client, pid_t *pid);
 
 /*!
+ * @function firehose_client_get_pid_version
+ *
+ * @abstract
+ * Returns the pid version for that client.
+ *
+ * @param client
+ * The specified client.
+ */
+OS_NOTHROW OS_NONNULL1
+int
+firehose_client_get_pid_version(firehose_client_t client);
+
+/*!
+ * @function firehose_client_get_euid
+ *
+ * @abstract
+ * Returns the EUID for that client as discovered at connect time.
+ *
+ * @param client
+ * The specified client.
+ */
+OS_NOTHROW OS_NONNULL1
+uid_t
+firehose_client_get_euid(firehose_client_t client);
+
+/*!
  * @function firehose_client_get_metadata_buffer
  *
  * @abstract
@@ -277,6 +303,20 @@ void
 firehose_server_assert_spi_version(uint32_t spi_version);
 
 /*!
+ * @function firehose_server_has_ever_flushed_pages
+ *
+ * @abstract
+ * Checks whether the firehose server has ever flushed any pages this boot.
+ *
+ * @discussion
+ * Must be called after firehose_server_init() and before calling
+ * firehose_server_resume().
+ */
+OS_NOTHROW
+bool
+firehose_server_has_ever_flushed_pages(void);
+
+/*!
  * @function firehose_server_resume
  *
  * @abstract
@@ -288,6 +328,16 @@ firehose_server_assert_spi_version(uint32_t spi_version);
 OS_NOTHROW
 void
 firehose_server_resume(void);
+
+/*!
+ * @function firehose_server_cancel
+ *
+ * @abstract
+ * Cancels the server, disconnects all clients, and prevents new connections.
+ */
+OS_NOTHROW
+void
+firehose_server_cancel(void);
 
 /*!
  * @typedef firehose_server_queue_t

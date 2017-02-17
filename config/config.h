@@ -65,6 +65,14 @@
  you don't. */
 #define HAVE_DECL_VQ_QUOTA 1
 
+/* Define to 1 if you have the declaration of `VQ_NEARLOWDISK', and to 0 if
+   you don't. */
+#define HAVE_DECL_VQ_NEARLOWDISK 1
+
+/* Define to 1 if you have the declaration of `VQ_DESIRED_DISK', and to 0 if
+ you don't. */
+#define HAVE_DECL_VQ_DESIRED_DISK 1
+
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #define HAVE_DLFCN_H 1
 

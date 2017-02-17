@@ -179,7 +179,10 @@
 #define DISPATCH_INVOKABLE_VTABLE_HEADER(x) \
 	unsigned long const do_type; \
 	const char *const do_kind; \
-	void (*const do_invoke)(struct x##_s *, dispatch_invoke_flags_t)
+	void (*const do_invoke)(struct x##_s *, dispatch_invoke_context_t, \
+			dispatch_invoke_flags_t); \
+	void (*const do_push)(struct x##_s *, dispatch_object_t, \
+			dispatch_qos_t)
 
 #define DISPATCH_QUEUEABLE_VTABLE_HEADER(x) \
 	DISPATCH_INVOKABLE_VTABLE_HEADER(x); \
@@ -203,7 +206,8 @@
 #define dx_kind(x) dx_vtable(x)->do_kind
 #define dx_debug(x, y, z) dx_vtable(x)->do_debug((x), (y), (z))
 #define dx_dispose(x) dx_vtable(x)->do_dispose(x)
-#define dx_invoke(x, z) dx_vtable(x)->do_invoke(x, z)
+#define dx_invoke(x, y, z) dx_vtable(x)->do_invoke(x, y, z)
+#define dx_push(x, y, z) dx_vtable(x)->do_push(x, y, z)
 #define dx_wakeup(x, y, z) dx_vtable(x)->do_wakeup(x, y, z)
 
 #define DISPATCH_OBJECT_GLOBAL_REFCNT		_OS_OBJECT_GLOBAL_REFCNT
@@ -226,8 +230,10 @@
 // we sign extend the 64-bit version so that a better instruction encoding is
 // generated on Intel
 #define DISPATCH_OBJECT_LISTLESS ((void *)0xffffffff89abcdef)
+#define DISPATCH_OBJECT_WLH_REQ  ((void *)0xffffffff7009cdef)
 #else
 #define DISPATCH_OBJECT_LISTLESS ((void *)0x89abcdef)
+#define DISPATCH_OBJECT_WLH_REQ  ((void *)0x7009cdef)
 #endif
 
 DISPATCH_ENUM(dispatch_wakeup_flags, uint32_t,
@@ -247,7 +253,32 @@ DISPATCH_ENUM(dispatch_wakeup_flags, uint32_t,
 
 	// This wakeup is caused by a handoff from a slow waiter.
 	DISPATCH_WAKEUP_WAITER_HANDOFF          = 0x00000008,
+
+	// This wakeup is caused by a dispatch_block_wait()
+	DISPATCH_WAKEUP_BLOCK_WAIT              = 0x00000010,
 );
+
+typedef struct dispatch_invoke_context_s {
+	struct dispatch_object_s *dic_deferred;
+#if HAVE_PTHREAD_WORKQUEUE_NARROWING
+	uint64_t dic_next_narrow_check;
+#endif
+} dispatch_invoke_context_s, *dispatch_invoke_context_t;
+
+#if HAVE_PTHREAD_WORKQUEUE_NARROWING
+#define DISPATCH_NARROW_CHECK_INTERVAL \
+		_dispatch_time_nano2mach(50 * NSEC_PER_MSEC)
+#define DISPATCH_THREAD_IS_NARROWING 1
+
+#define dispatch_with_disabled_narrowing(dic, ...) ({ \
+		uint64_t suspend_narrow_check = dic->dic_next_narrow_check; \
+		dic->dic_next_narrow_check = 0; \
+		__VA_ARGS__; \
+		dic->dic_next_narrow_check = suspend_narrow_check; \
+	})
+#else
+#define dispatch_with_disabled_narrowing(dic, ...) __VA_ARGS__
+#endif
 
 DISPATCH_ENUM(dispatch_invoke_flags, uint32_t,
 	DISPATCH_INVOKE_NONE					= 0x00000000,
@@ -264,6 +295,17 @@ DISPATCH_ENUM(dispatch_invoke_flags, uint32_t,
 	//
 	DISPATCH_INVOKE_STEALING				= 0x00000001,
 	DISPATCH_INVOKE_OVERRIDING				= 0x00000002,
+
+	// Misc flags
+	//
+	// @const DISPATCH_INVOKE_ASYNC_REPLY
+	// An asynchronous reply to a message is being handled.
+	//
+	// @const DISPATCH_INVOKE_DISALLOW_SYNC_WAITERS
+	// The next serial drain should not allow sync waiters.
+	//
+	DISPATCH_INVOKE_ASYNC_REPLY				= 0x00000004,
+	DISPATCH_INVOKE_DISALLOW_SYNC_WAITERS	= 0x00000008,
 
 	// Below this point flags are propagated to recursive calls to drain(),
 	// continuation pop() or dx_invoke().
@@ -408,7 +450,7 @@ struct dispatch_object_s {
 	struct dispatch_object_s *volatile ns##_items_head; \
 	unsigned long ns##_serialnum; \
 	const char *ns##_label; \
-	voucher_t ns##_override_voucher; \
+	dispatch_wlh_t ns##_wlh; \
 	struct dispatch_object_s *volatile ns##_items_tail; \
 	dispatch_priority_t ns##_priority
 #else
@@ -421,7 +463,7 @@ struct dispatch_object_s {
 	/* LP64 global queue cacheline boundary */ \
 	unsigned long ns##_serialnum; \
 	const char *ns##_label; \
-	voucher_t ns##_override_voucher; \
+	dispatch_wlh_t ns##_wlh; \
 	struct dispatch_object_s *volatile ns##_items_tail; \
 	dispatch_priority_t ns##_priority
 	/* LP64: 32bit hole */
@@ -593,6 +635,9 @@ size_t _dispatch_objc_debug(dispatch_object_t dou, char* buf, size_t bufsiz);
 #define _os_object_refcnt_dispose_barrier(o) \
 		_os_atomic_refcnt_dispose_barrier2o(o, os_obj_ref_cnt)
 
+void _os_object_atfork_child(void);
+void _os_object_atfork_parent(void);
+void _os_object_atfork_prepare(void);
 void _os_object_init(void);
 unsigned long _os_object_retain_count(_os_object_t obj);
 bool _os_object_retain_weak(_os_object_t obj);

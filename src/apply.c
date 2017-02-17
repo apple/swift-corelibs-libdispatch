@@ -181,9 +181,8 @@ _dispatch_apply_f2(dispatch_queue_t dq, dispatch_apply_t da,
 	}
 
 	_dispatch_thread_event_init(&da->da_event);
-
-	dispatch_qos_t qos = _dispatch_qos_from_pp(head->dc_priority);
-	_dispatch_queue_push_list(dq, head, tail, qos, continuation_cnt);
+	// FIXME: dq may not be the right queue for the priority of `head`
+	_dispatch_root_queue_push_inline(dq, head, tail, continuation_cnt);
 	// Call the first element directly
 	_dispatch_apply_invoke_and_wait(da);
 }
