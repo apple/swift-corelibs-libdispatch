@@ -343,19 +343,20 @@ test_writes_reads_eagain(void) // rdar://problem/8333366
 		test_errno("pipe", errno, 0);
 		test_stop();
 	}
-	const size_t chunks = 320;
+	const int32_t chunks = 320;
 	const size_t siz_chunk = 32, siz = siz_chunk * chunks;
 
 	dispatch_queue_t q = dispatch_get_global_queue(0,0);
 	dispatch_group_t g = dispatch_group_create();
-	__block size_t siz_acc = 0, deliveries = 0;
+	volatile __block int32_t deliveries = 0;
+	__block size_t siz_acc = 0;
 	__block void (^b)(dispatch_data_t, int);
 	b = Block_copy(^(dispatch_data_t data, int err) {
 		if (err) {
 			test_errno("dispatch_read", err, 0);
 			test_stop();
 		}
-		deliveries++;
+		OSAtomicIncrement32(&deliveries);
 		siz_acc += dispatch_data_get_size(data);
 		if (siz_acc < siz) {
 			dispatch_group_enter(g);
@@ -383,7 +384,7 @@ test_writes_reads_eagain(void) // rdar://problem/8333366
 	close(in);
 	close(*(fd+1));
 	test_group_wait(g);
-	test_long("dispatch_read deliveries", deliveries, chunks);
+	test_int32("dispatch_read deliveries", deliveries, chunks);
 	test_long("dispatch_read data size", siz_acc, siz);
 	close(*fd);
 	Block_release(b);
