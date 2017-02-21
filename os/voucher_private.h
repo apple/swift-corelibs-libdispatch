@@ -23,6 +23,7 @@
 
 #ifndef __linux__
 #include <os/base.h>
+#include <os/availability.h>
 #endif
 #if __has_include(<mach/mach.h>)
 #include <os/object.h>
@@ -100,7 +101,7 @@ OS_OBJECT_DECL_CLASS(voucher);
  * @result
  * The previously adopted voucher object.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT_NEEDS_RELEASE
 OS_NOTHROW
 voucher_t _Nullable
@@ -116,7 +117,7 @@ voucher_adopt(voucher_t _Nullable voucher OS_OBJECT_CONSUMED);
  * @result
  * The currently adopted voucher object.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t _Nullable
 voucher_copy(void);
@@ -135,7 +136,7 @@ voucher_copy(void);
  * @result
  * A copy of the currently adopted voucher object, with importance removed.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t _Nullable
 voucher_copy_without_importance(void);
@@ -161,7 +162,7 @@ voucher_copy_without_importance(void);
  *
  * CAUTION: Do NOT use this SPI without contacting the Darwin Runtime team.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_NOTHROW
 void
 voucher_replace_default_voucher(void);
@@ -179,7 +180,7 @@ voucher_replace_default_voucher(void);
  *
  * CAUTION: Do NOT use this SPI without contacting the Darwin Runtime team.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_NOTHROW
 void
 voucher_decrement_importance_count4CF(voucher_t _Nullable voucher);
@@ -263,7 +264,7 @@ voucher_decrement_importance_count4CF(voucher_t _Nullable voucher);
  * When not building with Objective-C ARC, must be released with a -[release]
  * message or the Block_release() function.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_RETURNS_RETAINED_BLOCK
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_block_t
@@ -346,7 +347,7 @@ dispatch_block_create_with_voucher(dispatch_block_flags_t flags,
  * When not building with Objective-C ARC, must be released with a -[release]
  * message or the Block_release() function.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_NONNULL5 DISPATCH_RETURNS_RETAINED_BLOCK
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_block_t
@@ -407,7 +408,7 @@ dispatch_block_create_with_voucher_and_qos_class(dispatch_block_flags_t flags,
  * @result
  * The newly created dispatch queue.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_11,__IPHONE_9_0)
+API_AVAILABLE(macos(10.11), ios(9.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
@@ -440,7 +441,7 @@ dispatch_queue_create_with_accounting_override_voucher(
  * The newly created voucher object or NULL if the message was not carrying a
  * mach voucher.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t _Nullable
 voucher_create_with_mach_msg(mach_msg_header_t *msg);
@@ -475,7 +476,7 @@ struct proc_persona_info;
  * or the persona identifier of the current process
  * or PERSONA_ID_NONE
  */
-__OSX_AVAILABLE_STARTING(__MAC_NA,__IPHONE_9_2)
+API_AVAILABLE(ios(9.2))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW
 uid_t
 voucher_get_current_persona(void);
@@ -498,7 +499,7 @@ voucher_get_current_persona(void);
  * 0 on success: currently adopted voucher has a PERSONA_TOKEN
  * -1 on failure: persona_info is untouched/uninitialized
  */
-__OSX_AVAILABLE_STARTING(__MAC_NA,__IPHONE_9_2)
+API_AVAILABLE(ios(9.2))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL1
 int
 voucher_get_current_persona_originator_info(
@@ -522,7 +523,7 @@ voucher_get_current_persona_originator_info(
  * 0 on success: currently adopted voucher has a PERSONA_TOKEN
  * -1 on failure: persona_info is untouched/uninitialized
  */
-__OSX_AVAILABLE_STARTING(__MAC_NA,__IPHONE_9_2)
+API_AVAILABLE(ios(9.2))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL1
 int
 voucher_get_current_persona_proximate_info(

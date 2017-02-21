@@ -295,7 +295,7 @@ The port's corresponding receive right has been destroyed
 .Pp
 The data returned by
 .Fn dispatch_source_get_data
-indicates which of the events in the
+is a bitmask that indicates which of the events in the
 .Fa mask
 were observed.  Note that because this source type will request notifications on
 the provided port, it should not be mixed with the use of
@@ -372,7 +372,7 @@ A signal was delivered to the process.
 .Pp
 The data returned by
 .Fn dispatch_source_get_data
-indicates which of the events in the
+is a bitmask that indicates which of the events in the
 .Fa mask
 were observed.
 .Pp
@@ -548,7 +548,7 @@ or
 .Pp
 The data returned by
 .Fn dispatch_source_get_data
-indicates which of the events in the
+is a bitmask that indicates which of the events in the
 .Fa mask
 were observed.
 .Pp

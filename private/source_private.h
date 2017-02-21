@@ -37,17 +37,6 @@ DISPATCH_ASSUME_NONNULL_BEGIN
 __BEGIN_DECLS
 
 /*!
- * @const DISPATCH_SOURCE_TYPE_TIMER_WITH_AGGREGATE
- * @discussion A dispatch timer source that is part of a timer aggregate.
- * The handle is the dispatch timer aggregate object.
- * The mask specifies which flags from dispatch_source_timer_flags_t to apply.
- */
-#define DISPATCH_SOURCE_TYPE_TIMER_WITH_AGGREGATE \
-		(&_dispatch_source_type_timer_with_aggregate)
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
-DISPATCH_SOURCE_TYPE_DECL(timer_with_aggregate);
-
-/*!
  * @const DISPATCH_SOURCE_TYPE_INTERVAL
  * @discussion A dispatch source that submits the event handler block at a
  * specified time interval, phase-aligned with all other interval sources on
@@ -69,7 +58,7 @@ DISPATCH_SOURCE_TYPE_DECL(timer_with_aggregate);
  * The mask specifies which flags from dispatch_source_timer_flags_t to apply.
  */
 #define DISPATCH_SOURCE_TYPE_INTERVAL (&_dispatch_source_type_interval)
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_SOURCE_TYPE_DECL(interval);
 
 /*!
@@ -79,8 +68,8 @@ DISPATCH_SOURCE_TYPE_DECL(interval);
  * The handle is a process identifier (pid_t).
  */
 #define DISPATCH_SOURCE_TYPE_VFS (&_dispatch_source_type_vfs)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
-DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vfs;
+API_AVAILABLE(macos(10.6), ios(4.0)) DISPATCH_LINUX_UNAVAILABLE()
+DISPATCH_SOURCE_TYPE_DECL(vfs);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_VM
@@ -89,10 +78,9 @@ DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vfs;
  * This type is deprecated, use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead.
  */
 #define DISPATCH_SOURCE_TYPE_VM (&_dispatch_source_type_vm)
-__OSX_AVAILABLE_BUT_DEPRECATED_MSG(__MAC_10_7, __MAC_10_10, __IPHONE_4_3,
-		__IPHONE_8_0, "Use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead")
-DISPATCH_LINUX_UNAVAILABLE()
-DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vm;
+API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_SOURCE_TYPE_MEMORYPRESSURE",
+		macos(10.7,10.10), ios(4.3,8.0)) DISPATCH_LINUX_UNAVAILABLE()
+DISPATCH_SOURCE_TYPE_DECL(vm);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_MEMORYSTATUS
@@ -101,21 +89,18 @@ DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_vm;
  * dispatch_source_memorystatus_flags_t.
  */
 #define DISPATCH_SOURCE_TYPE_MEMORYSTATUS (&_dispatch_source_type_memorystatus)
-__OSX_DEPRECATED(10.9, 10.12, "Use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead")
-__IOS_DEPRECATED(6.0, 10.0, "Use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead")
-__TVOS_DEPRECATED(6.0, 10.0, "Use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead")
-__WATCHOS_DEPRECATED(1.0, 3.0, "Use DISPATCH_SOURCE_TYPE_MEMORYPRESSURE instead")
+API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_SOURCE_TYPE_MEMORYPRESSURE",
+		macos(10.9, 10.12), ios(6.0, 10.0), tvos(6.0, 10.0), watchos(1.0, 3.0))
 DISPATCH_LINUX_UNAVAILABLE()
-DISPATCH_EXPORT const struct dispatch_source_type_s
-		_dispatch_source_type_memorystatus;
+DISPATCH_SOURCE_TYPE_DECL(memorystatus);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_SOCK
  * @discussion A dispatch source that monitors events on socket state changes.
  */
 #define DISPATCH_SOURCE_TYPE_SOCK (&_dispatch_source_type_sock)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0) DISPATCH_LINUX_UNAVAILABLE()
-DISPATCH_EXPORT const struct dispatch_source_type_s _dispatch_source_type_sock;
+API_AVAILABLE(macos(10.8), ios(6.0)) DISPATCH_LINUX_UNAVAILABLE()
+DISPATCH_SOURCE_TYPE_DECL(sock);
 
 __END_DECLS
 
@@ -271,8 +256,8 @@ enum {
  * This flag is deprecated and will be removed in a future release.
  */
 enum {
-	DISPATCH_PROC_REAP __OSX_AVAILABLE_BUT_DEPRECATED(
-			__MAC_10_6, __MAC_10_9, __IPHONE_4_0, __IPHONE_7_0) = 0x10000000,
+	DISPATCH_PROC_REAP API_DEPRECATED("unsupported flag",
+			macos(10.6,10.9), ios(4.0,7.0)) = 0x10000000,
 };
 
 /*!
@@ -283,9 +268,9 @@ enum {
  */
 
 enum {
-	DISPATCH_VM_PRESSURE __OSX_AVAILABLE_BUT_DEPRECATED_MSG(
-			__MAC_10_7, __MAC_10_10, __IPHONE_4_3, __IPHONE_8_0,
-			"Use DISPATCH_MEMORYPRESSURE_WARN instead") = 0x80000000,
+	DISPATCH_VM_PRESSURE
+			API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_MEMORYPRESSURE_WARN",
+					macos(10.7, 10.10), ios(4.3, 8.0)) = 0x80000000,
 };
 
 /*!
@@ -298,7 +283,7 @@ enum {
  */
 enum {
 	DISPATCH_MEMORYPRESSURE_LOW_SWAP
-			__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0) = 0x08,
+			DISPATCH_ENUM_AVAILABLE(macos(10.10), ios(8.0)) = 0x08,
 };
 
 /*!
@@ -306,30 +291,14 @@ enum {
  * @warning Deprecated, see DISPATCH_MEMORYPRESSURE_*
  */
 enum {
-	DISPATCH_MEMORYSTATUS_PRESSURE_NORMAL
-			__OSX_DEPRECATED(10.9, 10.12, "Use DISPATCH_MEMORYPRESSURE_NORMAL instead")
-			__IOS_DEPRECATED(6.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_NORMAL instead")
-			__TVOS_DEPRECATED(6.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_NORMAL instead")
-			__WATCHOS_DEPRECATED(1.0, 3.0, "Use DISPATCH_MEMORYPRESSURE_NORMAL instead")
-			= 0x01,
-	DISPATCH_MEMORYSTATUS_PRESSURE_WARN
-			__OSX_DEPRECATED(10.9, 10.12, "Use DISPATCH_MEMORYPRESSURE_WARN instead")
-			__IOS_DEPRECATED(6.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_WARN instead")
-			__TVOS_DEPRECATED(6.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_WARN instead")
-			__WATCHOS_DEPRECATED(1.0, 3.0, "Use DISPATCH_MEMORYPRESSURE_WARN instead")
-			= 0x02,
-	DISPATCH_MEMORYSTATUS_PRESSURE_CRITICAL
-			__OSX_DEPRECATED(10.9, 10.12, "Use DISPATCH_MEMORYPRESSURE_CRITICAL instead")
-			__IOS_DEPRECATED(8.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_CRITICAL instead")
-			__TVOS_DEPRECATED(8.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_CRITICAL instead")
-			__WATCHOS_DEPRECATED(1.0, 3.0, "Use DISPATCH_MEMORYPRESSURE_CRITICAL instead")
-			= 0x04,
-	DISPATCH_MEMORYSTATUS_LOW_SWAP
-			__OSX_DEPRECATED(10.10, 10.12, "Use DISPATCH_MEMORYPRESSURE_LOW_SWAP instead")
-			__IOS_DEPRECATED(8.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_LOW_SWAP instead")
-			__TVOS_DEPRECATED(8.0, 10.0, "Use DISPATCH_MEMORYPRESSURE_LOW_SWAP instead")
-			__WATCHOS_DEPRECATED(1.0, 3.0, "Use DISPATCH_MEMORYPRESSURE_LOW_SWAP instead")
-			= 0x08,
+	DISPATCH_MEMORYSTATUS_PRESSURE_NORMAL API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_MEMORYPRESSURE_NORMAL", macos(10.9, 10.12), ios(6.0, 10.0),
+			tvos(6.0, 10.0), watchos(1.0, 3.0)) = 0x01,
+	DISPATCH_MEMORYSTATUS_PRESSURE_WARN API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_MEMORYPRESSURE_WARN", macos(10.9, 10.12), ios(6.0, 10.0),
+			tvos(6.0, 10.0), watchos(1.0, 3.0)) = 0x02,
+	DISPATCH_MEMORYSTATUS_PRESSURE_CRITICAL API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_MEMORYPRESSURE_CRITICAL", macos(10.9, 10.12), ios(6.0, 10.0),
+			tvos(6.0, 10.0), watchos(1.0, 3.0)) = 0x04,
+	DISPATCH_MEMORYSTATUS_LOW_SWAP API_DEPRECATED_WITH_REPLACEMENT("DISPATCH_MEMORYPRESSURE_LOW_SWAP", macos(10.9, 10.12), ios(6.0, 10.0),
+			tvos(6.0, 10.0), watchos(1.0, 3.0)) = 0x08,
 };
 
 /*!
@@ -343,17 +312,85 @@ enum {
  * The memory of the process has reached 100% of its high watermark limit.
  */
 enum {
-	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_WARN
-			__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.10)
-			__TVOS_AVAILABLE(10.10) __WATCHOS_AVAILABLE(3.0) = 0x10,
+	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_WARN DISPATCH_ENUM_AVAILABLE(macos(10.12), ios(10.10), tvos(10.10), watchos(3.0)) = 0x10,
 
-	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_CRITICAL
-		__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.10)
-		__TVOS_AVAILABLE(10.10) __WATCHOS_AVAILABLE(3.0) = 0x20,
+	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_CRITICAL DISPATCH_ENUM_AVAILABLE(macos(10.12), ios(10.10), tvos(10.10), watchos(3.0)) = 0x20,
 };
 
 
 __BEGIN_DECLS
+
+/*!
+ * @function dispatch_source_set_mandatory_cancel_handler
+ *
+ * @abstract
+ * Sets the event handler block for the given dispatch source, and indicates
+ * that calling dispatch_source_cancel() is mandatory for this source object.
+ *
+ * @discussion
+ * The cancellation handler (if specified) will be submitted to the source's
+ * target queue in response to a call to dispatch_source_cancel() once the
+ * system has released all references to the source's underlying handle and
+ * the source's event handler block has returned.
+ *
+ * When this function has been used used to set a cancellation handler, then
+ * the following result in an assertion and the process being terminated:
+ * - releasing the last reference on the dispatch source without having
+ *   cancelled it by calling dispatch_source_cancel();
+ * - changing any handler after the source has been activated;
+ * - changing the target queue of the source after it has been activated.
+ *
+ * IMPORTANT:
+ * Source cancellation and a cancellation handler are required for file
+ * descriptor and mach port based sources in order to safely close the
+ * descriptor or destroy the port. Making the cancellation handler of such
+ * sources mandatory is strongly recommended.
+ * Closing the descriptor or port before the cancellation handler is invoked may
+ * result in a race condition. If a new descriptor is allocated with the same
+ * value as the recently closed descriptor while the source's event handler is
+ * still running, the event handler may read/write data to the wrong descriptor.
+ *
+ * @param source
+ * The dispatch source to modify.
+ * The result of passing NULL in this parameter is undefined.
+ *
+ * @param handler
+ * The cancellation handler block to submit to the source's target queue.
+ * The result of passing NULL in this parameter is undefined.
+ */
+#ifdef __BLOCKS__
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+void
+dispatch_source_set_mandatory_cancel_handler(dispatch_source_t source,
+		dispatch_block_t handler);
+#endif /* __BLOCKS__ */
+
+/*!
+ * @function dispatch_source_set_mandatory_cancel_handler_f
+ *
+ * @abstract
+ * Sets the event handler function for the given dispatch source, and causes an
+ * assertion if this source is released before having been explicitly canceled.
+ *
+ * @discussion
+ * See dispatch_source_set_mandatory_cancel_handler() for more details.
+ *
+ * @param source
+ * The dispatch source to modify.
+ * The result of passing NULL in this parameter is undefined.
+ *
+ * @param handler
+ * The cancellation handler function to submit to the source's target queue.
+ * The context parameter passed to the event handler function is the current
+ * context of the dispatch source at the time the handler call is made.
+ * The result of passing NULL in this parameter is undefined.
+ */
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+void
+dispatch_source_set_mandatory_cancel_handler_f(dispatch_source_t source,
+		dispatch_function_t handler);
 
 /*!
  * @function dispatch_source_cancel_and_wait
@@ -400,63 +437,10 @@ __BEGIN_DECLS
  * The dispatch source to be canceled.
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.10)
-__TVOS_AVAILABLE(10.10) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 dispatch_source_cancel_and_wait(dispatch_source_t source);
-
-/*!
- * @typedef dispatch_timer_aggregate_t
- *
- * @abstract
- * Dispatch timer aggregates are sets of related timers.
- */
-DISPATCH_DECL(dispatch_timer_aggregate);
-
-/*!
- * @function dispatch_timer_aggregate_create
- *
- * @abstract
- * Creates a new dispatch timer aggregate.
- *
- * @discussion
- * A dispatch timer aggregate is a set of related timers whose overall timing
- * parameters can be queried.
- *
- * Timers are added to an aggregate when a timer source is created with type
- * DISPATCH_SOURCE_TYPE_TIMER_WITH_AGGREGATE.
- *
- * @result
- * The newly created dispatch timer aggregate.
- */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
-DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
-DISPATCH_NOTHROW
-dispatch_timer_aggregate_t
-dispatch_timer_aggregate_create(void);
-
-/*!
- * @function dispatch_timer_aggregate_get_delay
- *
- * @abstract
- * Retrieves the delay until a timer in the given aggregate will next fire.
- *
- * @param aggregate
- * The dispatch timer aggregate to query.
- *
- * @param leeway_ptr
- * Optional pointer to a variable filled with the leeway (in ns) that will be
- * applied to the return value. May be NULL.
- *
- * @result
- * Delay in ns from now.
- */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
-DISPATCH_EXPORT DISPATCH_NOTHROW
-uint64_t
-dispatch_timer_aggregate_get_delay(dispatch_timer_aggregate_t aggregate,
-		uint64_t *_Nullable leeway_ptr);
 
 #if __has_include(<mach/mach.h>)
 /*!
@@ -468,7 +452,7 @@ dispatch_timer_aggregate_get_delay(dispatch_timer_aggregate_t aggregate,
 typedef boolean_t (*dispatch_mig_callback_t)(mach_msg_header_t *message,
 		mach_msg_header_t *reply);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
+API_AVAILABLE(macos(10.6), ios(4.0)) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 mach_msg_return_t
 dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
@@ -480,7 +464,7 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
  * @abstract
  * Extract the context pointer from a mach message trailer.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
+API_AVAILABLE(macos(10.6), ios(4.0)) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NONNULL_ALL
 DISPATCH_NOTHROW
 void *_Nullable

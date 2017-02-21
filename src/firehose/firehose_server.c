@@ -157,7 +157,7 @@ static void
 firehose_client_drain(firehose_client_t fc, mach_port_t port, uint32_t flags)
 {
 	firehose_buffer_t fb = fc->fc_buffer;
-	firehose_buffer_chunk_t fbc;
+	firehose_chunk_t fbc;
 	firehose_event_t evt;
 	uint16_t volatile *fbh_ring;
 	uint16_t flushed, ref, count = 0;
@@ -383,21 +383,21 @@ firehose_client_handle_death(void *ctxt)
 	// Then look at all the allocated pages not seen in the ring
 	while (bitmap) {
 		uint16_t ref = firehose_bitmap_first_set(bitmap);
-		firehose_buffer_chunk_t fbc = firehose_buffer_ref_to_chunk(fb, ref);
-		uint16_t fbc_length = fbc->fbc_pos.fbc_next_entry_offs;
+		firehose_chunk_t fbc = firehose_buffer_ref_to_chunk(fb, ref);
+		uint16_t fbc_length = fbc->fc_pos.fcp_next_entry_offs;
 
 		bitmap &= ~(1ULL << ref);
-		if (fbc->fbc_start + fbc_length <= fbc->fbc_data) {
+		if (fbc->fc_start + fbc_length <= fbc->fc_data) {
 			// this page has its "recycle-requeue" done, but hasn't gone
 			// through "recycle-reuse", or it has no data, ditch it
 			continue;
 		}
-		if (!((firehose_tracepoint_t)fbc->fbc_data)->ft_length) {
+		if (!((firehose_tracepoint_t)fbc->fc_data)->ft_length) {
 			// this thing has data, but the first tracepoint is unreadable
 			// so also just ditch it
 			continue;
 		}
-		if (!fbc->fbc_pos.fbc_flag_io) {
+		if (!fbc->fc_pos.fcp_flag_io) {
 			mem_bitmap |= 1ULL << ref;
 			continue;
 		}
@@ -416,7 +416,7 @@ firehose_client_handle_death(void *ctxt)
 
 		while (mem_bitmap_copy) {
 			uint16_t ref = firehose_bitmap_first_set(mem_bitmap_copy);
-			firehose_buffer_chunk_t fbc = firehose_buffer_ref_to_chunk(fb, ref);
+			firehose_chunk_t fbc = firehose_buffer_ref_to_chunk(fb, ref);
 
 			mem_bitmap_copy &= ~(1ULL << ref);
 			server_config.fs_handler(fc, FIREHOSE_EVENT_MEM_BUFFER_RECEIVED, fbc);
@@ -434,9 +434,9 @@ static void
 firehose_client_handle_mach_event(void *ctx, dispatch_mach_reason_t reason,
 		dispatch_mach_msg_t dmsg, mach_error_t error OS_UNUSED)
 {
-	mach_msg_header_t *msg_hdr;
+	mach_msg_header_t *msg_hdr = NULL;
 	firehose_client_t fc = ctx;
-	mach_port_t oldsendp, oldrecvp;
+	mach_port_t oldsendp = 0, oldrecvp = 0;
 
 	if (dmsg) {
 		msg_hdr = dispatch_mach_msg_get_msg(dmsg, NULL);
@@ -617,7 +617,7 @@ firehose_kernel_client_create(void)
 		DISPATCH_INTERNAL_CRASH(errno, "Unable to map kernel buffer");
 	}
 	if (fb_map.fbmi_size !=
-			FIREHOSE_BUFFER_KERNEL_CHUNK_COUNT * FIREHOSE_BUFFER_CHUNK_SIZE) {
+			FIREHOSE_BUFFER_KERNEL_CHUNK_COUNT * FIREHOSE_CHUNK_SIZE) {
 		DISPATCH_INTERNAL_CRASH(fb_map.fbmi_size, "Unexpected kernel buffer size");
 	}
 
@@ -777,13 +777,31 @@ firehose_server_resume(void)
 			MACH_PORT_NULL, NULL);
 }
 
+dispatch_queue_t
+firehose_server_copy_queue(firehose_server_queue_t which)
+{
+	dispatch_queue_t dq;
+	switch (which) {
+	case FIREHOSE_SERVER_QUEUE_IO:
+		dq = server_config.fs_io_drain_queue;
+		break;
+	case FIREHOSE_SERVER_QUEUE_MEMORY:
+		dq = server_config.fs_mem_drain_queue;
+		break;
+	default:
+		DISPATCH_INTERNAL_CRASH(which, "Invalid firehose server queue type");
+	}
+	dispatch_retain(dq);
+	return dq;
+}
+
 #pragma mark -
 #pragma mark firehose snapshot and peeking
 
 void
 firehose_client_metadata_stream_peek(firehose_client_t fc,
 		firehose_event_t context, bool (^peek_should_start)(void),
-		bool (^peek)(firehose_buffer_chunk_t fbc))
+		bool (^peek)(firehose_chunk_t fbc))
 {
 	if (context != FIREHOSE_EVENT_MEM_BUFFER_RECEIVED) {
 		return dispatch_sync(server_config.fs_mem_drain_queue, ^{
@@ -802,21 +820,21 @@ firehose_client_metadata_stream_peek(firehose_client_t fc,
 
 	while (bitmap) {
 		uint16_t ref = firehose_bitmap_first_set(bitmap);
-		firehose_buffer_chunk_t fbc = firehose_buffer_ref_to_chunk(fb, ref);
-		uint16_t fbc_length = fbc->fbc_pos.fbc_next_entry_offs;
+		firehose_chunk_t fbc = firehose_buffer_ref_to_chunk(fb, ref);
+		uint16_t fbc_length = fbc->fc_pos.fcp_next_entry_offs;
 
 		bitmap &= ~(1ULL << ref);
-		if (fbc->fbc_start + fbc_length <= fbc->fbc_data) {
+		if (fbc->fc_start + fbc_length <= fbc->fc_data) {
 			// this page has its "recycle-requeue" done, but hasn't gone
 			// through "recycle-reuse", or it has no data, ditch it
 			continue;
 		}
-		if (!((firehose_tracepoint_t)fbc->fbc_data)->ft_length) {
+		if (!((firehose_tracepoint_t)fbc->fc_data)->ft_length) {
 			// this thing has data, but the first tracepoint is unreadable
 			// so also just ditch it
 			continue;
 		}
-		if (fbc->fbc_pos.fbc_stream != firehose_stream_metadata) {
+		if (fbc->fc_pos.fcp_stream != firehose_stream_metadata) {
 			continue;
 		}
 		if (!peek(fbc)) {
@@ -872,21 +890,21 @@ firehose_client_snapshot_finish(firehose_client_t fc,
 	// Then look at all the allocated pages not seen in the ring
 	while (bitmap) {
 		uint16_t ref = firehose_bitmap_first_set(bitmap);
-		firehose_buffer_chunk_t fbc = firehose_buffer_ref_to_chunk(fb, ref);
-		uint16_t fbc_length = fbc->fbc_pos.fbc_next_entry_offs;
+		firehose_chunk_t fbc = firehose_buffer_ref_to_chunk(fb, ref);
+		uint16_t fbc_length = fbc->fc_pos.fcp_next_entry_offs;
 
 		bitmap &= ~(1ULL << ref);
-		if (fbc->fbc_start + fbc_length <= fbc->fbc_data) {
+		if (fbc->fc_start + fbc_length <= fbc->fc_data) {
 			// this page has its "recycle-requeue" done, but hasn't gone
 			// through "recycle-reuse", or it has no data, ditch it
 			continue;
 		}
-		if (!((firehose_tracepoint_t)fbc->fbc_data)->ft_length) {
+		if (!((firehose_tracepoint_t)fbc->fc_data)->ft_length) {
 			// this thing has data, but the first tracepoint is unreadable
 			// so also just ditch it
 			continue;
 		}
-		if (fbc->fbc_pos.fbc_flag_io != for_io) {
+		if (fbc->fc_pos.fcp_flag_io != for_io) {
 			continue;
 		}
 		snapshot->handler(fc, evt, fbc);

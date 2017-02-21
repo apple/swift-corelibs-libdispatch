@@ -70,13 +70,13 @@ __BEGIN_DECLS
  *     cache-line.
  */
 #ifdef __BLOCKS__
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW
 uint64_t
 dispatch_benchmark(size_t count, dispatch_block_t block);
 #endif
 
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_NOTHROW
 uint64_t
 dispatch_benchmark_f(size_t count, void *_Nullable ctxt,

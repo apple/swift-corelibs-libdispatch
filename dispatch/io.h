@@ -102,7 +102,7 @@ typedef int dispatch_fd_t;
  *		param error	An errno condition for the read operation or
  *				zero if the read was successful.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_NONNULL4 DISPATCH_NOTHROW
 void
 dispatch_read(dispatch_fd_t fd,
@@ -140,7 +140,7 @@ dispatch_read(dispatch_fd_t fd,
  *		param error	An errno condition for the write operation or
  *				zero if the write was successful.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NONNULL3 DISPATCH_NONNULL4
 DISPATCH_NOTHROW
 void
@@ -211,7 +211,7 @@ typedef unsigned long dispatch_io_type_t;
  * @result	The newly created dispatch I/O channel or NULL if an error
  *		occurred (invalid type specified).
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_io_t
@@ -247,7 +247,7 @@ dispatch_io_create(dispatch_io_type_t type,
  * @result	The newly created dispatch I/O channel or NULL if an error
  *		occurred (invalid type or non-absolute path specified).
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_io_t
@@ -287,7 +287,7 @@ dispatch_io_create_with_path(dispatch_io_type_t type,
  * @result	The newly created dispatch I/O channel or NULL if an error
  *		occurred (invalid type specified).
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_io_t
@@ -349,7 +349,7 @@ typedef void (^dispatch_io_handler_t)(bool done, dispatch_data_t _Nullable data,
  *	param error	An errno condition for the read operation or zero if
  *			the read was successful.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL4 DISPATCH_NONNULL5
 DISPATCH_NOTHROW
 void
@@ -402,7 +402,7 @@ dispatch_io_read(dispatch_io_t channel,
  *	param error	An errno condition for the write operation or zero
  *			if the write was successful.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NONNULL4
 DISPATCH_NONNULL5 DISPATCH_NOTHROW
 void
@@ -441,7 +441,7 @@ typedef unsigned long dispatch_io_close_flags_t;
  * @param channel	The dispatch I/O channel to close.
  * @param flags		The flags for the close operation.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_io_close(dispatch_io_t channel, dispatch_io_close_flags_t flags);
@@ -468,7 +468,7 @@ dispatch_io_close(dispatch_io_t channel, dispatch_io_close_flags_t flags);
  * @param channel	The dispatch I/O channel to schedule the barrier on.
  * @param barrier	The barrier block.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_io_barrier(dispatch_io_t channel, dispatch_block_t barrier);
@@ -488,7 +488,7 @@ dispatch_io_barrier(dispatch_io_t channel, dispatch_block_t barrier);
  * @param channel	The dispatch I/O channel to query.
  * @result		The file descriptor underlying the channel, or -1.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_fd_t
 dispatch_io_get_descriptor(dispatch_io_t channel);
@@ -509,7 +509,7 @@ dispatch_io_get_descriptor(dispatch_io_t channel);
  * @param channel	The dispatch I/O channel on which to set the policy.
  * @param high_water	The number of bytes to use as a high water mark.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_io_set_high_water(dispatch_io_t channel, size_t high_water);
@@ -540,7 +540,7 @@ dispatch_io_set_high_water(dispatch_io_t channel, size_t high_water);
  * @param channel	The dispatch I/O channel on which to set the policy.
  * @param low_water	The number of bytes to use as a low water mark.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_io_set_low_water(dispatch_io_t channel, size_t low_water);
@@ -579,7 +579,7 @@ typedef unsigned long dispatch_io_interval_flags_t;
  * @param flags		Flags indicating desired data delivery behavior at
  *					interval time.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_io_set_interval(dispatch_io_t channel,

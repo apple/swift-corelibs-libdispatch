@@ -300,16 +300,11 @@ _dispatch_introspection_source_get_info(dispatch_source_t ds)
 		.suspend_count = _dq_state_suspend_cnt(dq_state) + ds->dq_side_suspend_cnt,
 		.enqueued = _dq_state_is_enqueued(dq_state),
 		.handler_is_block = hdlr_is_block,
-		.timer = ds->ds_is_timer,
-		.after = ds->ds_is_timer && (bool)(ds_timer(ds).flags & DISPATCH_TIMER_AFTER),
+		.timer = dr->du_is_timer,
+		.after = dr->du_is_timer && (dr->du_fflags & DISPATCH_TIMER_AFTER),
+		.type = (unsigned long)dr->du_filter,
+		.handle = (unsigned long)dr->du_ident,
 	};
-	dispatch_kevent_t dk = ds->ds_dkev;
-	if (ds->ds_is_custom_source) {
-		dis.type = (unsigned long)dk;
-	} else if (dk) {
-		dis.type = (unsigned long)dk->dk_kevent.filter;
-		dis.handle = (unsigned long)dk->dk_kevent.ident;
-	}
 	return dis;
 }
 
@@ -739,7 +734,7 @@ struct dispatch_order_frame_s {
 	dispatch_queue_order_entry_t dof_e;
 };
 
-DISPATCH_NOINLINE
+DISPATCH_NOINLINE DISPATCH_NORETURN
 static void
 _dispatch_introspection_lock_inversion_fail(dispatch_order_frame_t dof,
 		dispatch_queue_t top_q, dispatch_queue_t bottom_q)

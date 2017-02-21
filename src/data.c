@@ -433,7 +433,7 @@ dispatch_data_create_subrange(dispatch_data_t dd, size_t offset,
 
 	// find the record containing the end of the current range
 	// and optimize the case when you just remove bytes at the origin
-	size_t count, last_length;
+	size_t count, last_length = 0;
 
 	if (to_the_end) {
 		count = dd_num_records - i;

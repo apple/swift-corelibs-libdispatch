@@ -58,7 +58,7 @@ typedef long dispatch_once_t;
  * initialized by the block.
  */
 #ifdef __BLOCKS__
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 DISPATCH_SWIFT3_UNAVAILABLE("Use lazily initialized globals instead")
 void
@@ -82,7 +82,7 @@ _dispatch_once(dispatch_once_t *predicate,
 #define dispatch_once _dispatch_once
 #endif
 
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 DISPATCH_SWIFT3_UNAVAILABLE("Use lazily initialized globals instead")
 void

@@ -16,4 +16,8 @@
 #ifndef __DISPATCH__ANDROID__STUBS__INTERNAL
 #define __DISPATCH__ANDROID__STUBS__INTERNAL
 
+#if !__has_feature(c_static_assert)
+#define _Static_assert(...)
+#endif
+
 #endif /* __DISPATCH__ANDROID__STUBS__INTERNAL */

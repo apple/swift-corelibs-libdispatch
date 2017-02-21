@@ -28,11 +28,13 @@
 #endif
 #ifndef __linux__
 #include <os/base.h>
+#include <os/availability.h>
 #endif
+#include <sys/uio.h>
 #include <os/object.h>
 #include "voucher_private.h"
 
-#define OS_VOUCHER_ACTIVITY_SPI_VERSION 20160329
+#define OS_VOUCHER_ACTIVITY_SPI_VERSION 20161003
 
 #if OS_VOUCHER_WEAK_IMPORT
 #define OS_VOUCHER_EXPORT OS_EXPORT OS_WEAK_IMPORT
@@ -79,8 +81,7 @@ __BEGIN_DECLS
  * The current activity identifier, if any. When 0 is returned, parent_id will
  * also always be 0.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 OS_VOUCHER_EXPORT OS_NOTHROW
 firehose_activity_id_t
 voucher_get_activity_id(voucher_t voucher, firehose_activity_id_t *parent_id);
@@ -109,15 +110,14 @@ voucher_get_activity_id(voucher_t voucher, firehose_activity_id_t *parent_id);
  * The current activity identifier, if any. When 0 is returned, parent_id will
  * also always be 0.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 OS_VOUCHER_EXPORT OS_NOTHROW
 firehose_activity_id_t
 voucher_get_activity_id_and_creator(voucher_t voucher, uint64_t *creator_pid,
 		firehose_activity_id_t *parent_id);
 
 /*!
- * @function voucher_activity_create
+ * @function voucher_activity_create_with_data
  *
  * @abstract
  * Creates a voucher object with a new activity identifier.
@@ -151,22 +151,24 @@ voucher_get_activity_id_and_creator(voucher_t voucher, uint64_t *creator_pid,
  * @param flags
  * See voucher_activity_flag_t documentation for effect.
  *
- * @param location
- * Location identifier for the automatic tracepoint generated as part of
- * creating the new activity.
+ * @param pubdata
+ * Pointer to packed buffer of tracepoint data.
+ *
+ * @param publen
+ * Length of data at 'pubdata'.
  *
  * @result
  * A new voucher with an activity identifier.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t
-voucher_activity_create(firehose_tracepoint_id_t trace_id,
-		voucher_t base, firehose_activity_flags_t flags, uint64_t location);
+voucher_activity_create_with_data(firehose_tracepoint_id_t *trace_id,
+		voucher_t base, firehose_activity_flags_t flags,
+		const void *pubdata, size_t publen);
 
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_DEPRECATED_WITH_REPLACEMENT("voucher_activity_create_with_data",
+		macos(10.12,10.12), ios(10.0,10.0), tvos(10.0,10.0), watchos(3.0,3.0))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t
 voucher_activity_create_with_location(firehose_tracepoint_id_t *trace_id,
@@ -192,8 +194,7 @@ voucher_activity_create_with_location(firehose_tracepoint_id_t *trace_id,
  * @param stream
  * The stream to flush.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 OS_VOUCHER_EXPORT OS_NOTHROW
 void
 voucher_activity_flush(firehose_stream_t stream);
@@ -219,8 +220,7 @@ voucher_activity_flush(firehose_stream_t stream);
  * @param publen
  * Length of data at 'pubdata'.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 OS_VOUCHER_EXPORT OS_NOTHROW OS_NONNULL4
 firehose_tracepoint_id_t
 voucher_activity_trace(firehose_stream_t stream,
@@ -228,7 +228,7 @@ voucher_activity_trace(firehose_stream_t stream,
 		const void *pubdata, size_t publen);
 
 /*!
- * @function voucher_activity_trace_with_private_strings
+ * @function voucher_activity_trace_v
  *
  * @abstract
  * Add a tracepoint to the specified stream, with private data.
@@ -242,20 +242,29 @@ voucher_activity_trace(firehose_stream_t stream,
  * @param timestamp
  * The mach_approximate_time()/mach_absolute_time() value for this tracepoint.
  *
- * @param pubdata
- * Pointer to packed buffer of tracepoint data.
+ * @param iov
+ * Array of `struct iovec` pointing to the data to layout.
+ * The total size of this iovec must span exactly `publen + privlen` bytes.
+ * The `publen` boundary must coincide with the end of an iovec (each iovec
+ * must either be pure public or pure private data).
  *
  * @param publen
- * Length of data at 'pubdata'.
- *
- * @param privdata
- * Pointer to packed buffer of private tracepoint data.
+ * Total length of data to read from the iovec for the public data.
  *
  * @param privlen
- * Length of data at 'privdata'.
+ * Length of data to read from the iovec after the public data for the private
+ * data.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+OS_VOUCHER_EXPORT OS_NOTHROW OS_NONNULL4
+firehose_tracepoint_id_t
+voucher_activity_trace_v(firehose_stream_t stream,
+		firehose_tracepoint_id_t trace_id, uint64_t timestamp,
+		const struct iovec *iov, size_t publen, size_t privlen);
+
+
+API_DEPRECATED_WITH_REPLACEMENT("voucher_activity_trace_v",
+		macos(10.12,10.12), ios(10.0,10.0), tvos(10.0,10.0), watchos(3.0,3.0))
 OS_VOUCHER_EXPORT OS_NOTHROW OS_NONNULL4 OS_NONNULL6
 firehose_tracepoint_id_t
 voucher_activity_trace_with_private_strings(firehose_stream_t stream,
@@ -263,14 +272,11 @@ voucher_activity_trace_with_private_strings(firehose_stream_t stream,
 		const void *pubdata, size_t publen,
 		const void *privdata, size_t privlen);
 
-typedef struct voucher_activity_hooks_s {
+typedef const struct voucher_activity_hooks_s {
 #define VOUCHER_ACTIVITY_HOOKS_VERSION     3
 	long vah_version;
-	// version 1
 	mach_port_t (*vah_get_logd_port)(void);
-	// version 2
 	dispatch_mach_handler_function_t vah_debug_channel_handler;
-	// version 3
 	kern_return_t (*vah_get_reconnect_info)(mach_vm_address_t *, mach_vm_size_t *);
 } *voucher_activity_hooks_t;
 
@@ -283,8 +289,7 @@ typedef struct voucher_activity_hooks_s {
  * @param hooks
  * A pointer to a voucher_activity_hooks_s structure.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 OS_VOUCHER_EXPORT OS_NOTHROW OS_NONNULL_ALL
 void
 voucher_activity_initialize_4libtrace(voucher_activity_hooks_t hooks);
@@ -302,7 +307,7 @@ voucher_activity_initialize_4libtrace(voucher_activity_hooks_t hooks);
  * @result
  * Address of metadata buffer.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL_ALL
 void*
 voucher_activity_get_metadata_buffer(size_t *length);
@@ -314,8 +319,7 @@ voucher_activity_get_metadata_buffer(size_t *length);
  * Return the current voucher activity ID. Available for the dyld client stub
  * only.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW
 firehose_activity_id_t
 voucher_get_activity_id_4dyld(void);

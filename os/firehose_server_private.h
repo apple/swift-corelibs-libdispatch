@@ -235,7 +235,7 @@ OS_NOTHROW OS_NONNULL1 OS_NONNULL4
 void
 firehose_client_metadata_stream_peek(firehose_client_t client,
 		firehose_event_t context, OS_NOESCAPE bool (^peek_should_start)(void),
-		OS_NOESCAPE bool (^peek)(firehose_buffer_chunk_t fbc));
+		OS_NOESCAPE bool (^peek)(firehose_chunk_t fbc));
 
 #pragma mark - Firehose Server
 
@@ -246,7 +246,7 @@ firehose_client_metadata_stream_peek(firehose_client_t client,
  * Type of the handler block for firehose_server_init()
  */
 typedef void (^firehose_handler_t)(firehose_client_t client,
-		firehose_event_t event, firehose_buffer_chunk_t page);
+		firehose_event_t event, firehose_chunk_t page);
 
 /*!
  * @function firehose_server_init
@@ -289,11 +289,32 @@ OS_NOTHROW
 void
 firehose_server_resume(void);
 
+/*!
+ * @typedef firehose_server_queue_t
+ *
+ * @abstract
+ * Values to pass to firehose_server_get_queue()
+ */
+OS_ENUM(firehose_server_queue, unsigned long,
+	FIREHOSE_SERVER_QUEUE_UNKNOWN,
+	FIREHOSE_SERVER_QUEUE_IO,
+	FIREHOSE_SERVER_QUEUE_MEMORY,
+);
+
+/*!
+ * @function firehose_server_copy_queue
+ *
+ * @abstract
+ * Returns internal queues to the firehose server subsystem.
+ */
+OS_NOTHROW OS_OBJECT_RETURNS_RETAINED
+dispatch_queue_t
+firehose_server_copy_queue(firehose_server_queue_t which);
+
 #pragma mark - Firehose Snapshot
 
 /*!
  * @typedef firehose_snapshot_event
- *
  */
 OS_ENUM(firehose_snapshot_event, unsigned long,
 	FIREHOSE_SNAPSHOT_EVENT_IO_START = 1,
@@ -310,7 +331,7 @@ OS_ENUM(firehose_snapshot_event, unsigned long,
  * Type of the handler block for firehose_snapshot
  */
 typedef void (^firehose_snapshot_handler_t)(firehose_client_t client,
-		firehose_snapshot_event_t event, firehose_buffer_chunk_t page);
+		firehose_snapshot_event_t event, firehose_chunk_t page);
 
 /*!
  * @function firehose_snapshot

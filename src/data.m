@@ -29,8 +29,8 @@
 #include <Foundation/NSString.h>
 
 @interface DISPATCH_CLASS(data) () <DISPATCH_CLASS(data)>
-@property (readonly) NSUInteger length;
-@property (readonly) const void *bytes NS_RETURNS_INNER_POINTER;
+@property (readonly,nonatomic) NSUInteger length;
+@property (readonly,nonatomic) const void *bytes NS_RETURNS_INNER_POINTER;
 
 - (id)initWithBytes:(void *)bytes length:(NSUInteger)length copy:(BOOL)copy
 		freeWhenDone:(BOOL)freeBytes bytesAreVM:(BOOL)vm;
@@ -124,9 +124,9 @@
 	if (!nsstring) return nil;
 	char buf[2048];
 	_dispatch_data_debug(self, buf, sizeof(buf));
-	return [nsstring stringWithFormat:
-			[nsstring stringWithUTF8String:"<%s: %s>"],
-			class_getName([self class]), buf];
+	NSString *format = [nsstring stringWithUTF8String:"<%s: %s>"];
+	if (!format) return nil;
+	return [nsstring stringWithFormat:format, class_getName([self class]), buf];
 }
 
 - (NSUInteger)length {

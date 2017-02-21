@@ -52,10 +52,10 @@ _dispatch_apply_invoke2(void *ctxt, long invoke_flags)
 	_dispatch_thread_context_push(&apply_ctxt);
 
 	dispatch_thread_frame_s dtf;
-	pthread_priority_t old_dp;
+	dispatch_priority_t old_dbp = 0;
 	if (invoke_flags & DISPATCH_APPLY_INVOKE_REDIRECT) {
 		_dispatch_thread_frame_push(&dtf, dq);
-		old_dp = _dispatch_set_defaultpriority(dq->dq_priority, NULL);
+		old_dbp = _dispatch_set_basepri(dq->dq_priority);
 	}
 	dispatch_invoke_flags_t flags = da->da_flags;
 
@@ -70,7 +70,7 @@ _dispatch_apply_invoke2(void *ctxt, long invoke_flags)
 	} while (fastpath(idx < iter));
 
 	if (invoke_flags & DISPATCH_APPLY_INVOKE_REDIRECT) {
-		_dispatch_reset_defaultpriority(old_dp);
+		_dispatch_reset_basepri(old_dbp);
 		_dispatch_thread_frame_pop(&dtf);
 	}
 
@@ -182,8 +182,8 @@ _dispatch_apply_f2(dispatch_queue_t dq, dispatch_apply_t da,
 
 	_dispatch_thread_event_init(&da->da_event);
 
-	_dispatch_queue_push_list(dq, head, tail, head->dc_priority,
-			continuation_cnt);
+	dispatch_qos_t qos = _dispatch_qos_from_pp(head->dc_priority);
+	_dispatch_queue_push_list(dq, head, tail, qos, continuation_cnt);
 	// Call the first element directly
 	_dispatch_apply_invoke_and_wait(da);
 }
@@ -252,7 +252,7 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 	}
 	if (slowpath(dq == DISPATCH_APPLY_CURRENT_ROOT_QUEUE)) {
 		dq = old_dq ? old_dq : _dispatch_get_root_queue(
-				_DISPATCH_QOS_CLASS_DEFAULT, false);
+				DISPATCH_QOS_DEFAULT, false);
 		while (slowpath(dq->do_targetq)) {
 			dq = dq->do_targetq;
 		}

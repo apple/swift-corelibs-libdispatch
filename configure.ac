@@ -295,19 +295,6 @@ esac
 AC_SEARCH_LIBS(clock_gettime, rt)
 AC_SEARCH_LIBS(pthread_create, pthread)
 
-AS_IF([test -f $srcdir/libkqueue/configure.ac],
-  [AC_DEFINE(BUILD_OWN_KQUEUES, 1, [Define if building libkqueue from source])
-   ac_configure_args="--disable-libkqueue-install $ac_configure_args"
-   AC_CONFIG_SUBDIRS([libkqueue])
-   build_own_kqueues=true],
-  [build_own_kqueues=false
-   AC_CHECK_HEADER(sys/event.h, [],
-     [PKG_CHECK_MODULES(KQUEUE, libkqueue)]
-   )
-  ]
-)
-AM_CONDITIONAL(BUILD_OWN_KQUEUES, $build_own_kqueues)
-
 AC_CHECK_FUNCS([strlcpy getprogname], [],
   [PKG_CHECK_MODULES(BSD_OVERLAY, libbsd-overlay,[
     AC_DEFINE(HAVE_STRLCPY, 1, [])
@@ -423,7 +410,7 @@ AC_CHECK_FUNCS([mach_port_construct])
 #
 # Find functions and declarations we care about.
 #
-AC_CHECK_DECLS([CLOCK_UPTIME, CLOCK_MONOTONIC], [], [],
+AC_CHECK_DECLS([CLOCK_UPTIME, CLOCK_MONOTONIC, CLOCK_REALTIME, CLOCK_UPTIME_FAST], [], [],
   [[#include <time.h>]])
 AC_CHECK_DECLS([NOTE_NONE, NOTE_REAP, NOTE_REVOKE, NOTE_SIGNAL, NOTE_LOWAT], [], [],
   [[#include <sys/event.h>]])
@@ -431,7 +418,7 @@ AC_CHECK_DECLS([FD_COPY], [], [], [[#include <sys/select.h>]])
 AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])
 AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK, VQ_QUOTA], [], [], [[#include <sys/mount.h>]])
 AC_CHECK_DECLS([program_invocation_short_name], [], [], [[#include <errno.h>]])
-AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sysconf])
+AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time mach_approximate_time malloc_create_zone sysconf])
 
 AC_CHECK_DECLS([POSIX_SPAWN_START_SUSPENDED],
   [have_posix_spawn_start_suspended=true], [have_posix_spawn_start_suspended=false],

@@ -233,7 +233,7 @@ _dispatch_objc_debug(dispatch_object_t dou, char* buf, size_t bufsiz)
 	NSUInteger offset = 0;
 	NSString *desc = [dou debugDescription];
 	[desc getBytes:buf maxLength:bufsiz-1 usedLength:&offset
-			encoding:NSUTF8StringEncoding options:0
+			encoding:NSUTF8StringEncoding options:(NSStringEncodingConversionOptions)0
 			range:NSMakeRange(0, [desc length]) remainingRange:NULL];
 	if (offset) buf[offset] = 0;
 	return offset;
@@ -263,9 +263,9 @@ DISPATCH_UNAVAILABLE_INIT()
 	} else {
 		strlcpy(buf, dx_kind(obj), sizeof(buf));
 	}
-	return [nsstring stringWithFormat:
-			[nsstring stringWithUTF8String:"<%s: %s>"],
-			class_getName([self class]), buf];
+	NSString *format = [nsstring stringWithUTF8String:"<%s: %s>"];
+	if (!format) return nil;
+	return [nsstring stringWithFormat:format, class_getName([self class]), buf];
 }
 
 @end
@@ -277,9 +277,10 @@ DISPATCH_UNAVAILABLE_INIT()
 - (NSString *)description {
 	Class nsstring = objc_lookUpClass("NSString");
 	if (!nsstring) return nil;
-	return [nsstring stringWithFormat:
-			[nsstring stringWithUTF8String:"<%s: %s[%p]>"],
-			class_getName([self class]), dispatch_queue_get_label(self), self];
+	NSString *format = [nsstring stringWithUTF8String:"<%s: %s>"];
+	if (!format) return nil;
+	return [nsstring stringWithFormat:format, class_getName([self class]),
+			dispatch_queue_get_label(self), self];
 }
 
 - (void)_xref_dispose {
@@ -364,9 +365,9 @@ DISPATCH_OBJC_LOAD()
 	if (!nsstring) return nil;
 	char buf[2048];
 	_voucher_debug(self, buf, sizeof(buf));
-	return [nsstring stringWithFormat:
-			[nsstring stringWithUTF8String:"<%s: %s>"],
-			class_getName([self class]), buf];
+	NSString *format = [nsstring stringWithUTF8String:"<%s: %s>"];
+	if (!format) return nil;
+	return [nsstring stringWithFormat:format, class_getName([self class]), buf];
 }
 
 @end

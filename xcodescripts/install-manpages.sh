@@ -64,7 +64,7 @@ for m in dispatch_group_enter dispatch_group_leave dispatch_group_wait \
 	ln -f dispatch_group_create.3 ${m}.3
 done
 
-for m in dispatch_retain dispatch_release dispatch_suspend dispatch_resume \
+for m in dispatch_retain dispatch_release dispatch_suspend dispatch_resume dispatch_activate \
 		dispatch_get_context dispatch_set_context dispatch_set_finalizer_f; do
 	ln -f dispatch_object.3 ${m}.3
 done

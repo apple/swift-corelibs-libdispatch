@@ -54,7 +54,7 @@ OS_OBJECT_DECL_CLASS(voucher_recipe);
  * @result
  * The newly created voucher object.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t
 voucher_create(voucher_recipe_t recipe);
@@ -78,7 +78,7 @@ voucher_create(voucher_recipe_t recipe);
  * @result
  * A mach voucher port.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW
 mach_voucher_t
 voucher_get_mach_voucher(voucher_t voucher);
@@ -206,12 +206,7 @@ typedef struct voucher_recipe_s {
 		_dispatch_debug("voucher[%p]: " msg, v, ##__VA_ARGS__)
 #define _dispatch_kvoucher_debug(msg, kv, ...) \
 		_dispatch_debug("kvoucher[0x%08x]: " msg, kv, ##__VA_ARGS__)
-#if DISPATCH_MACHPORT_DEBUG
-#define _dispatch_voucher_debug_machport(name) \
-		dispatch_debug_machport((name), __func__)
-#else
-#define _dispatch_voucher_debug_machport(name) ((void)(name))
-#endif
+#define _dispatch_voucher_debug_machport(name) _dispatch_debug_machport(name)
 #else
 #define _dispatch_voucher_debug(msg, v, ...)
 #define _dispatch_kvoucher_debug(msg, kv, ...)

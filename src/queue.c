@@ -20,7 +20,7 @@
 
 #include "internal.h"
 #if HAVE_MACH
-#include "protocol.h"
+#include "protocol.h" // _dispatch_send_wakeup_runloop_thread
 #endif
 
 #if (!HAVE_PTHREAD_WORKQUEUES || DISPATCH_DEBUG) && \
@@ -30,18 +30,10 @@
 #if DISPATCH_ENABLE_PTHREAD_ROOT_QUEUES || DISPATCH_ENABLE_THREAD_POOL
 #define DISPATCH_USE_PTHREAD_POOL 1
 #endif
-#if HAVE_PTHREAD_WORKQUEUES && (!HAVE_PTHREAD_WORKQUEUE_QOS || DISPATCH_DEBUG) \
-		&& !defined(DISPATCH_USE_NOQOS_WORKQUEUE_FALLBACK)
-#define DISPATCH_USE_NOQOS_WORKQUEUE_FALLBACK 1
-#endif
-#if HAVE_PTHREAD_WORKQUEUES && DISPATCH_USE_NOQOS_WORKQUEUE_FALLBACK && \
+#if HAVE_PTHREAD_WORKQUEUES && (!HAVE_PTHREAD_WORKQUEUE_QOS || DISPATCH_DEBUG) && \
 		!HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP && \
 		!defined(DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK)
 #define DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK 1
-#endif
-#if HAVE_PTHREAD_WORKQUEUE_QOS && !DISPATCH_USE_NOQOS_WORKQUEUE_FALLBACK
-#undef HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP
-#define HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP 0
 #endif
 #if HAVE_PTHREAD_WORKQUEUES && DISPATCH_USE_PTHREAD_POOL && \
 		!DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK
@@ -59,6 +51,8 @@ static void _dispatch_frame_cleanup(void *ctxt);
 static void _dispatch_context_cleanup(void *ctxt);
 static void _dispatch_non_barrier_complete(dispatch_queue_t dq);
 static inline void _dispatch_global_queue_poke(dispatch_queue_t dq);
+static void _dispatch_queue_push_slow_waiter(dispatch_queue_t dq,
+		dispatch_object_t dou);
 #if HAVE_PTHREAD_WORKQUEUES
 static void _dispatch_worker_thread4(void *context);
 #if HAVE_PTHREAD_WORKQUEUE_QOS
@@ -76,7 +70,7 @@ static int _dispatch_pthread_sigmask(int how, sigset_t *set, sigset_t *oset);
 #if DISPATCH_COCOA_COMPAT
 static dispatch_once_t _dispatch_main_q_handle_pred;
 static void _dispatch_runloop_queue_poke(dispatch_queue_t dq,
-		pthread_priority_t pp, dispatch_wakeup_flags_t flags);
+		dispatch_qos_t qos, dispatch_wakeup_flags_t flags);
 static void _dispatch_runloop_queue_handle_init(void *ctxt);
 static void _dispatch_runloop_queue_handle_dispose(dispatch_queue_t dq);
 #endif
@@ -185,7 +179,7 @@ DISPATCH_CACHELINE_ALIGN
 static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
-		.dgq_qos = _DISPATCH_QOS_CLASS_MAINTENANCE,
+		.dgq_qos = QOS_CLASS_MAINTENANCE,
 		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
@@ -196,7 +190,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS_OVERCOMMIT] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
-		.dgq_qos = _DISPATCH_QOS_CLASS_MAINTENANCE,
+		.dgq_qos = QOS_CLASS_MAINTENANCE,
 		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE,
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
 #endif
@@ -207,7 +201,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
-		.dgq_qos = _DISPATCH_QOS_CLASS_BACKGROUND,
+		.dgq_qos = QOS_CLASS_BACKGROUND,
 		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE_CONDITIONAL,
 		.dgq_wq_options = 0,
 #endif
@@ -218,7 +212,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS_OVERCOMMIT] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
-		.dgq_qos = _DISPATCH_QOS_CLASS_BACKGROUND,
+		.dgq_qos = QOS_CLASS_BACKGROUND,
 		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE_CONDITIONAL,
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
 #endif
@@ -229,7 +223,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_UTILITY_QOS] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
-		.dgq_qos = _DISPATCH_QOS_CLASS_UTILITY,
+		.dgq_qos = QOS_CLASS_UTILITY,
 		.dgq_wq_priority = WORKQ_LOW_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
@@ -240,7 +234,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_UTILITY_QOS_OVERCOMMIT] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
-		.dgq_qos = _DISPATCH_QOS_CLASS_UTILITY,
+		.dgq_qos = QOS_CLASS_UTILITY,
 		.dgq_wq_priority = WORKQ_LOW_PRIOQUEUE,
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
 #endif
@@ -251,7 +245,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
-		.dgq_qos = _DISPATCH_QOS_CLASS_DEFAULT,
+		.dgq_qos = QOS_CLASS_DEFAULT,
 		.dgq_wq_priority = WORKQ_DEFAULT_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
@@ -262,7 +256,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS_OVERCOMMIT] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
-		.dgq_qos = _DISPATCH_QOS_CLASS_DEFAULT,
+		.dgq_qos = QOS_CLASS_DEFAULT,
 		.dgq_wq_priority = WORKQ_DEFAULT_PRIOQUEUE,
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
 #endif
@@ -273,7 +267,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_USER_INITIATED_QOS] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
-		.dgq_qos = _DISPATCH_QOS_CLASS_USER_INITIATED,
+		.dgq_qos = QOS_CLASS_USER_INITIATED,
 		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE,
 		.dgq_wq_options = 0,
 #endif
@@ -284,7 +278,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_USER_INITIATED_QOS_OVERCOMMIT] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
-		.dgq_qos = _DISPATCH_QOS_CLASS_USER_INITIATED,
+		.dgq_qos = QOS_CLASS_USER_INITIATED,
 		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE,
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
 #endif
@@ -295,7 +289,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
-		.dgq_qos = _DISPATCH_QOS_CLASS_USER_INTERACTIVE,
+		.dgq_qos = QOS_CLASS_USER_INTERACTIVE,
 		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE_CONDITIONAL,
 		.dgq_wq_options = 0,
 #endif
@@ -306,7 +300,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS_OVERCOMMIT] = {{{
 #if HAVE_PTHREAD_WORKQUEUES
-		.dgq_qos = _DISPATCH_QOS_CLASS_USER_INTERACTIVE,
+		.dgq_qos = QOS_CLASS_USER_INTERACTIVE,
 		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE_CONDITIONAL,
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
 #endif
@@ -321,62 +315,69 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 //         renaming this symbol
 DISPATCH_CACHELINE_ALIGN
 struct dispatch_queue_s _dispatch_root_queues[] = {
-#define _DISPATCH_ROOT_QUEUE_ENTRY(n, ...) \
-	[DISPATCH_ROOT_QUEUE_IDX_##n] = { \
+#define _DISPATCH_ROOT_QUEUE_IDX(n, flags) \
+	((flags & DISPATCH_PRIORITY_FLAG_OVERCOMMIT) ? \
+		DISPATCH_ROOT_QUEUE_IDX_##n##_QOS_OVERCOMMIT : \
+		DISPATCH_ROOT_QUEUE_IDX_##n##_QOS)
+#define _DISPATCH_ROOT_QUEUE_ENTRY(n, flags, ...) \
+	[_DISPATCH_ROOT_QUEUE_IDX(n, flags)] = { \
 		DISPATCH_GLOBAL_OBJECT_HEADER(queue_root), \
 		.dq_state = DISPATCH_ROOT_QUEUE_STATE_INIT_VALUE, \
 		.do_ctxt = &_dispatch_root_queue_contexts[ \
-				DISPATCH_ROOT_QUEUE_IDX_##n], \
-		.dq_width = DISPATCH_QUEUE_WIDTH_POOL, \
+				_DISPATCH_ROOT_QUEUE_IDX(n, flags)], \
+		.dq_atomic_flags = DQF_WIDTH(DISPATCH_QUEUE_WIDTH_POOL), \
 		.dq_override_voucher = DISPATCH_NO_VOUCHER, \
-		.dq_override = DISPATCH_SATURATED_OVERRIDE, \
+		.dq_priority = _dispatch_priority_make(DISPATCH_QOS_##n, 0) | flags | \
+				DISPATCH_PRIORITY_FLAG_ROOTQUEUE | \
+				DISPATCH_PRIORITY_SATURATED_OVERRIDE, \
 		__VA_ARGS__ \
 	}
-	_DISPATCH_ROOT_QUEUE_ENTRY(MAINTENANCE_QOS,
+	_DISPATCH_ROOT_QUEUE_ENTRY(MAINTENANCE, 0,
 		.dq_label = "com.apple.root.maintenance-qos",
 		.dq_serialnum = 4,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(MAINTENANCE_QOS_OVERCOMMIT,
+	_DISPATCH_ROOT_QUEUE_ENTRY(MAINTENANCE, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
 		.dq_label = "com.apple.root.maintenance-qos.overcommit",
 		.dq_serialnum = 5,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(BACKGROUND_QOS,
+	_DISPATCH_ROOT_QUEUE_ENTRY(BACKGROUND, 0,
 		.dq_label = "com.apple.root.background-qos",
 		.dq_serialnum = 6,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(BACKGROUND_QOS_OVERCOMMIT,
+	_DISPATCH_ROOT_QUEUE_ENTRY(BACKGROUND, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
 		.dq_label = "com.apple.root.background-qos.overcommit",
 		.dq_serialnum = 7,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(UTILITY_QOS,
+	_DISPATCH_ROOT_QUEUE_ENTRY(UTILITY, 0,
 		.dq_label = "com.apple.root.utility-qos",
 		.dq_serialnum = 8,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(UTILITY_QOS_OVERCOMMIT,
+	_DISPATCH_ROOT_QUEUE_ENTRY(UTILITY, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
 		.dq_label = "com.apple.root.utility-qos.overcommit",
 		.dq_serialnum = 9,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(DEFAULT_QOS,
+	_DISPATCH_ROOT_QUEUE_ENTRY(DEFAULT, DISPATCH_PRIORITY_FLAG_DEFAULTQUEUE,
 		.dq_label = "com.apple.root.default-qos",
 		.dq_serialnum = 10,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(DEFAULT_QOS_OVERCOMMIT,
+	_DISPATCH_ROOT_QUEUE_ENTRY(DEFAULT,
+			DISPATCH_PRIORITY_FLAG_DEFAULTQUEUE | DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
 		.dq_label = "com.apple.root.default-qos.overcommit",
 		.dq_serialnum = 11,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INITIATED_QOS,
+	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INITIATED, 0,
 		.dq_label = "com.apple.root.user-initiated-qos",
 		.dq_serialnum = 12,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INITIATED_QOS_OVERCOMMIT,
+	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INITIATED, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
 		.dq_label = "com.apple.root.user-initiated-qos.overcommit",
 		.dq_serialnum = 13,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INTERACTIVE_QOS,
+	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INTERACTIVE, 0,
 		.dq_label = "com.apple.root.user-interactive-qos",
 		.dq_serialnum = 14,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INTERACTIVE_QOS_OVERCOMMIT,
+	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INTERACTIVE, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
 		.dq_label = "com.apple.root.user-interactive-qos.overcommit",
 		.dq_serialnum = 15,
 	),
@@ -407,36 +408,6 @@ static const dispatch_queue_t _dispatch_wq2root_queues[][2] = {
 };
 #endif // HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP
 
-#define DISPATCH_PRIORITY_COUNT 5
-
-enum {
-	// No DISPATCH_PRIORITY_IDX_MAINTENANCE define because there is no legacy
-	// maintenance priority
-	DISPATCH_PRIORITY_IDX_BACKGROUND = 0,
-	DISPATCH_PRIORITY_IDX_NON_INTERACTIVE,
-	DISPATCH_PRIORITY_IDX_LOW,
-	DISPATCH_PRIORITY_IDX_DEFAULT,
-	DISPATCH_PRIORITY_IDX_HIGH,
-};
-
-static qos_class_t _dispatch_priority2qos[] = {
-	[DISPATCH_PRIORITY_IDX_BACKGROUND] = _DISPATCH_QOS_CLASS_BACKGROUND,
-	[DISPATCH_PRIORITY_IDX_NON_INTERACTIVE] = _DISPATCH_QOS_CLASS_UTILITY,
-	[DISPATCH_PRIORITY_IDX_LOW] = _DISPATCH_QOS_CLASS_UTILITY,
-	[DISPATCH_PRIORITY_IDX_DEFAULT] = _DISPATCH_QOS_CLASS_DEFAULT,
-	[DISPATCH_PRIORITY_IDX_HIGH] = _DISPATCH_QOS_CLASS_USER_INITIATED,
-};
-
-#if HAVE_PTHREAD_WORKQUEUE_QOS
-static const int _dispatch_priority2wq[] = {
-	[DISPATCH_PRIORITY_IDX_BACKGROUND] = WORKQ_BG_PRIOQUEUE,
-	[DISPATCH_PRIORITY_IDX_NON_INTERACTIVE] = WORKQ_NON_INTERACTIVE_PRIOQUEUE,
-	[DISPATCH_PRIORITY_IDX_LOW] = WORKQ_LOW_PRIOQUEUE,
-	[DISPATCH_PRIORITY_IDX_DEFAULT] = WORKQ_DEFAULT_PRIOQUEUE,
-	[DISPATCH_PRIORITY_IDX_HIGH] = WORKQ_HIGH_PRIOQUEUE,
-};
-#endif
-
 #if DISPATCH_USE_MGR_THREAD && DISPATCH_ENABLE_PTHREAD_ROOT_QUEUES
 static struct dispatch_queue_s _dispatch_mgr_root_queue;
 #else
@@ -452,9 +423,10 @@ struct dispatch_queue_s _dispatch_mgr_q = {
 	.dq_state = DISPATCH_QUEUE_STATE_INIT_VALUE(1),
 	.do_targetq = &_dispatch_mgr_root_queue,
 	.dq_label = "com.apple.libdispatch-manager",
-	.dq_width = 1,
+	.dq_atomic_flags = DQF_WIDTH(1),
+	.dq_priority = DISPATCH_PRIORITY_FLAG_MANAGER |
+			DISPATCH_PRIORITY_SATURATED_OVERRIDE,
 	.dq_override_voucher = DISPATCH_NO_VOUCHER,
-	.dq_override = DISPATCH_SATURATED_OVERRIDE,
 	.dq_serialnum = 2,
 };
 
@@ -466,46 +438,16 @@ dispatch_get_global_queue(long priority, unsigned long flags)
 	}
 	dispatch_once_f(&_dispatch_root_queues_pred, NULL,
 			_dispatch_root_queues_init_once);
-	qos_class_t qos;
-	switch (priority) {
-#if DISPATCH_USE_NOQOS_WORKQUEUE_FALLBACK
-	case _DISPATCH_QOS_CLASS_MAINTENANCE:
-		if (!_dispatch_root_queues[DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS]
-				.dq_priority) {
-			// map maintenance to background on old kernel
-			qos = _dispatch_priority2qos[DISPATCH_PRIORITY_IDX_BACKGROUND];
-		} else {
-			qos = (qos_class_t)priority;
-		}
-		break;
-#endif // DISPATCH_USE_NOQOS_WORKQUEUE_FALLBACK
-	case DISPATCH_QUEUE_PRIORITY_BACKGROUND:
-		qos = _dispatch_priority2qos[DISPATCH_PRIORITY_IDX_BACKGROUND];
-		break;
-	case DISPATCH_QUEUE_PRIORITY_NON_INTERACTIVE:
-		qos = _dispatch_priority2qos[DISPATCH_PRIORITY_IDX_NON_INTERACTIVE];
-		break;
-	case DISPATCH_QUEUE_PRIORITY_LOW:
-		qos = _dispatch_priority2qos[DISPATCH_PRIORITY_IDX_LOW];
-		break;
-	case DISPATCH_QUEUE_PRIORITY_DEFAULT:
-		qos = _dispatch_priority2qos[DISPATCH_PRIORITY_IDX_DEFAULT];
-		break;
-	case DISPATCH_QUEUE_PRIORITY_HIGH:
-		qos = _dispatch_priority2qos[DISPATCH_PRIORITY_IDX_HIGH];
-		break;
-	case _DISPATCH_QOS_CLASS_USER_INTERACTIVE:
-#if DISPATCH_USE_NOQOS_WORKQUEUE_FALLBACK
-		if (!_dispatch_root_queues[DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS]
-				.dq_priority) {
-			qos = _dispatch_priority2qos[DISPATCH_PRIORITY_IDX_HIGH];
-			break;
-		}
+	dispatch_qos_t qos = _dispatch_qos_from_queue_priority(priority);
+#if !HAVE_PTHREAD_WORKQUEUE_QOS
+	if (qos == QOS_CLASS_MAINTENANCE) {
+		qos = DISPATCH_QOS_BACKGROUND;
+	} else if (qos == QOS_CLASS_USER_INTERACTIVE) {
+		qos = DISPATCH_QOS_USER_INITIATED;
+	}
 #endif
-		// fallthrough
-	default:
-		qos = (qos_class_t)priority;
-		break;
+	if (qos == DISPATCH_QOS_UNSPECIFIED) {
+		return DISPATCH_BAD_INPUT;
 	}
 	return _dispatch_get_root_queue(qos, flags & DISPATCH_QUEUE_OVERCOMMIT);
 }
@@ -515,7 +457,7 @@ static inline dispatch_queue_t
 _dispatch_get_current_queue(void)
 {
 	return _dispatch_queue_get_current() ?:
-			_dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT, true);
+			_dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, true);
 }
 
 dispatch_queue_t
@@ -625,40 +567,6 @@ dispatch_assert_queue_barrier(dispatch_queue_t dq)
 #pragma mark -
 #pragma mark dispatch_init
 
-#if HAVE_PTHREAD_WORKQUEUE_QOS
-pthread_priority_t _dispatch_background_priority;
-pthread_priority_t _dispatch_user_initiated_priority;
-
-static void
-_dispatch_root_queues_init_qos(int supported)
-{
-	pthread_priority_t p;
-	qos_class_t qos;
-	unsigned int i;
-	for (i = 0; i < DISPATCH_PRIORITY_COUNT; i++) {
-		p = _pthread_qos_class_encode_workqueue(_dispatch_priority2wq[i], 0);
-		qos = _pthread_qos_class_decode(p, NULL, NULL);
-		dispatch_assert(qos != _DISPATCH_QOS_CLASS_UNSPECIFIED);
-		_dispatch_priority2qos[i] = qos;
-	}
-	for (i = 0; i < DISPATCH_ROOT_QUEUE_COUNT; i++) {
-		qos = _dispatch_root_queue_contexts[i].dgq_qos;
-		if (qos == _DISPATCH_QOS_CLASS_MAINTENANCE &&
-				!(supported & WORKQ_FEATURE_MAINTENANCE)) {
-			continue;
-		}
-		unsigned long flags = i & 1 ? _PTHREAD_PRIORITY_OVERCOMMIT_FLAG : 0;
-		flags |= _PTHREAD_PRIORITY_ROOTQUEUE_FLAG;
-		if (i == DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS ||
-				i == DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS_OVERCOMMIT) {
-			flags |= _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG;
-		}
-		p = _pthread_qos_class_encode(qos, 0, flags);
-		_dispatch_root_queues[i].dq_priority = (dispatch_priority_t)p;
-	}
-}
-#endif // HAVE_PTHREAD_WORKQUEUE_QOS
-
 static inline bool
 _dispatch_root_queues_init_workq(int *wq_supported)
 {
@@ -705,7 +613,10 @@ _dispatch_root_queues_init_workq(int *wq_supported)
 			result = !r;
 #endif
 		}
-		if (result) _dispatch_root_queues_init_qos(*wq_supported);
+		if (!(*wq_supported & WORKQ_FEATURE_MAINTENANCE)) {
+			DISPATCH_INTERNAL_CRASH(*wq_supported,
+					"QoS Maintenance support required");
+		}
 	}
 #endif // DISPATCH_USE_KEVENT_WORKQUEUE || HAVE_PTHREAD_WORKQUEUE_QOS
 #if HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP
@@ -728,7 +639,7 @@ _dispatch_root_queues_init_workq(int *wq_supported)
 			(void)dispatch_assume_zero(r);
 		}
 #endif
-		int i;
+		size_t i;
 		for (i = 0; i < DISPATCH_ROOT_QUEUE_COUNT; i++) {
 			pthread_workqueue_t pwq = NULL;
 			dispatch_root_queue_context_t qc;
@@ -784,18 +695,9 @@ _dispatch_root_queue_init_pthread_pool(dispatch_root_queue_context_t qc,
 #endif
 	}
 #endif // HAVE_PTHREAD_WORKQUEUES
-#if USE_MACH_SEM
-	// override the default FIFO behavior for the pool semaphores
-	kern_return_t kr = semaphore_create(mach_task_self(),
-			&pqc->dpq_thread_mediator.dsema_port, SYNC_POLICY_LIFO, 0);
-	DISPATCH_VERIFY_MIG(kr);
-	(void)dispatch_assume_zero(kr);
-	(void)dispatch_assume(pqc->dpq_thread_mediator.dsema_port);
-#elif USE_POSIX_SEM
-	/* XXXRW: POSIX semaphores don't support LIFO? */
-	int ret = sem_init(&(pqc->dpq_thread_mediator.dsema_sem), 0, 0);
-	(void)dispatch_assume_zero(ret);
-#endif
+	_dispatch_sema4_t *sema = &pqc->dpq_thread_mediator.dsema_sema;
+	_dispatch_sema4_init(sema, _DSEMA4_POLICY_LIFO);
+	_dispatch_sema4_create(sema, _DSEMA4_POLICY_LIFO);
 }
 #endif // DISPATCH_USE_PTHREAD_POOL
 
@@ -815,7 +717,7 @@ _dispatch_root_queues_init_once(void *context DISPATCH_UNUSED)
 	_dispatch_fork_becomes_unsafe();
 	if (!_dispatch_root_queues_init_workq(&wq_supported)) {
 #if DISPATCH_ENABLE_THREAD_POOL
-		int i;
+		size_t i;
 		for (i = 0; i < DISPATCH_ROOT_QUEUE_COUNT; i++) {
 			bool overcommit = true;
 #if TARGET_OS_EMBEDDED
@@ -840,8 +742,7 @@ DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 libdispatch_init(void)
 {
-	dispatch_assert(DISPATCH_QUEUE_QOS_COUNT == 6);
-	dispatch_assert(DISPATCH_ROOT_QUEUE_COUNT == 12);
+	dispatch_assert(DISPATCH_ROOT_QUEUE_COUNT == 2 * DISPATCH_QOS_MAX);
 
 	dispatch_assert(DISPATCH_QUEUE_PRIORITY_LOW ==
 			-DISPATCH_QUEUE_PRIORITY_HIGH);
@@ -849,12 +750,6 @@ libdispatch_init(void)
 			DISPATCH_ROOT_QUEUE_COUNT);
 	dispatch_assert(countof(_dispatch_root_queue_contexts) ==
 			DISPATCH_ROOT_QUEUE_COUNT);
-	dispatch_assert(countof(_dispatch_priority2qos) ==
-			DISPATCH_PRIORITY_COUNT);
-#if HAVE_PTHREAD_WORKQUEUE_QOS
-	dispatch_assert(countof(_dispatch_priority2wq) ==
-			DISPATCH_PRIORITY_COUNT);
-#endif
 #if HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP
 	dispatch_assert(sizeof(_dispatch_wq2root_queues) /
 			sizeof(_dispatch_wq2root_queues[0][0]) ==
@@ -879,15 +774,9 @@ libdispatch_init(void)
 
 
 #if HAVE_PTHREAD_WORKQUEUE_QOS
-	// 26497968 _dispatch_user_initiated_priority should be set for qos
-	//          propagation to work properly
-	pthread_priority_t p = _pthread_qos_class_encode(qos_class_main(), 0, 0);
-	_dispatch_main_q.dq_priority = (dispatch_priority_t)p;
-	_dispatch_main_q.dq_override = p & _PTHREAD_PRIORITY_QOS_CLASS_MASK;
-	p = _pthread_qos_class_encode(_DISPATCH_QOS_CLASS_USER_INITIATED, 0, 0);
-	_dispatch_user_initiated_priority = p;
-	p = _pthread_qos_class_encode(_DISPATCH_QOS_CLASS_BACKGROUND, 0, 0);
-	_dispatch_background_priority = p;
+	dispatch_qos_t qos = _dispatch_qos_from_qos_class(qos_class_main());
+	dispatch_priority_t pri = _dispatch_priority_make(qos, 0);
+	_dispatch_main_q.dq_priority = _dispatch_priority_with_override_qos(pri, qos);
 #if DISPATCH_DEBUG
 	if (!slowpath(getenv("LIBDISPATCH_DISABLE_SET_QOS"))) {
 		_dispatch_set_qos_class_enabled = 1;
@@ -899,24 +788,20 @@ libdispatch_init(void)
 	_dispatch_thread_key_create(&__dispatch_tsd_key, _libdispatch_tsd_cleanup);
 #else
 	_dispatch_thread_key_create(&dispatch_queue_key, _dispatch_queue_cleanup);
-	_dispatch_thread_key_create(&dispatch_deferred_items_key,
-			_dispatch_deferred_items_cleanup);
 	_dispatch_thread_key_create(&dispatch_frame_key, _dispatch_frame_cleanup);
-	_dispatch_thread_key_create(&dispatch_voucher_key, _voucher_thread_cleanup);
 	_dispatch_thread_key_create(&dispatch_cache_key, _dispatch_cache_cleanup);
 	_dispatch_thread_key_create(&dispatch_context_key, _dispatch_context_cleanup);
-	_dispatch_thread_key_create(&dispatch_defaultpriority_key, NULL);
 	_dispatch_thread_key_create(&dispatch_pthread_root_queue_observer_hooks_key,
 			NULL);
-#if DISPATCH_PERF_MON && !DISPATCH_INTROSPECTION
+	_dispatch_thread_key_create(&dispatch_basepri_key, NULL);
+#if DISPATCH_INTROSPECTION
+	_dispatch_thread_key_create(&dispatch_introspection_key , NULL);
+#elif DISPATCH_PERF_MON
 	_dispatch_thread_key_create(&dispatch_bcounter_key, NULL);
 #endif
-#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
-	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
-		_dispatch_thread_key_create(&dispatch_sema4_key,
-				_dispatch_thread_semaphore_dispose);
-	}
-#endif
+	_dispatch_thread_key_create(&dispatch_voucher_key, _voucher_thread_cleanup);
+	_dispatch_thread_key_create(&dispatch_deferred_items_key,
+			_dispatch_deferred_items_cleanup);
 #endif
 
 #if DISPATCH_USE_RESOLVERS // rdar://problem/8541707
@@ -937,40 +822,6 @@ libdispatch_init(void)
 	_voucher_init();
 	_dispatch_introspection_init();
 }
-
-#if HAVE_MACH
-static dispatch_once_t _dispatch_mach_host_port_pred;
-static mach_port_t _dispatch_mach_host_port;
-
-static void
-_dispatch_mach_host_port_init(void *ctxt DISPATCH_UNUSED)
-{
-	kern_return_t kr;
-	mach_port_t mp, mhp = mach_host_self();
-	kr = host_get_host_port(mhp, &mp);
-	DISPATCH_VERIFY_MIG(kr);
-	if (fastpath(!kr)) {
-		// mach_host_self returned the HOST_PRIV port
-		kr = mach_port_deallocate(mach_task_self(), mhp);
-		DISPATCH_VERIFY_MIG(kr);
-		mhp = mp;
-	} else if (kr != KERN_INVALID_ARGUMENT) {
-		(void)dispatch_assume_zero(kr);
-	}
-	if (!fastpath(mhp)) {
-		DISPATCH_CLIENT_CRASH(kr, "Could not get unprivileged host port");
-	}
-	_dispatch_mach_host_port = mhp;
-}
-
-mach_port_t
-_dispatch_get_mach_host_port(void)
-{
-	dispatch_once_f(&_dispatch_mach_host_port_pred, NULL,
-			_dispatch_mach_host_port_init);
-	return _dispatch_mach_host_port;
-}
-#endif
 
 #if DISPATCH_USE_THREAD_LOCAL_STORAGE
 #include <unistd.h>
@@ -998,20 +849,20 @@ _libdispatch_tsd_cleanup(void *ctx)
 {
 	struct dispatch_tsd *tsd = (struct dispatch_tsd*) ctx;
 
+	_tsd_call_cleanup(dispatch_priority_key, NULL);
+
 	_tsd_call_cleanup(dispatch_queue_key, _dispatch_queue_cleanup);
 	_tsd_call_cleanup(dispatch_frame_key, _dispatch_frame_cleanup);
 	_tsd_call_cleanup(dispatch_cache_key, _dispatch_cache_cleanup);
 	_tsd_call_cleanup(dispatch_context_key, _dispatch_context_cleanup);
 	_tsd_call_cleanup(dispatch_pthread_root_queue_observer_hooks_key,
 			NULL);
-	_tsd_call_cleanup(dispatch_defaultpriority_key, NULL);
-#if DISPATCH_PERF_MON && !DISPATCH_INTROSPECTION
+	_tsd_call_cleanup(dispatch_basepri_key, NULL);
+#if DISPATCH_INTROSPECTION
+	_tsd_call_cleanup(dispatch_introspection_key, NULL);
+#elif DISPATCH_PERF_MON
 	_tsd_call_cleanup(dispatch_bcounter_key, NULL);
 #endif
-#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
-	_tsd_call_cleanup(dispatch_sema4_key, _dispatch_thread_semaphore_dispose);
-#endif
-	_tsd_call_cleanup(dispatch_priority_key, NULL);
 	_tsd_call_cleanup(dispatch_voucher_key, _voucher_thread_cleanup);
 	_tsd_call_cleanup(dispatch_deferred_items_key,
 			_dispatch_deferred_items_cleanup);
@@ -1034,11 +885,8 @@ dispatch_atfork_child(void)
 	void *crash = (void *)0x100;
 	size_t i;
 
-#if HAVE_MACH
-	_dispatch_mach_host_port_pred = 0;
-	_dispatch_mach_host_port = MACH_VOUCHER_NULL;
-#endif
 	_voucher_atfork_child();
+	_dispatch_event_loop_atfork_child();
 	if (!_dispatch_is_multithreaded_inline()) {
 		// clear the _PROHIBIT bit if set
 		_dispatch_unsafe_fork = 0;
@@ -1068,13 +916,13 @@ _dispatch_qos_class_valid(dispatch_qos_class_t qos_class, int relative_priority)
 {
 	qos_class_t qos = (qos_class_t)qos_class;
 	switch (qos) {
-	case _DISPATCH_QOS_CLASS_MAINTENANCE:
-	case _DISPATCH_QOS_CLASS_BACKGROUND:
-	case _DISPATCH_QOS_CLASS_UTILITY:
-	case _DISPATCH_QOS_CLASS_DEFAULT:
-	case _DISPATCH_QOS_CLASS_USER_INITIATED:
-	case _DISPATCH_QOS_CLASS_USER_INTERACTIVE:
-	case _DISPATCH_QOS_CLASS_UNSPECIFIED:
+	case QOS_CLASS_MAINTENANCE:
+	case QOS_CLASS_BACKGROUND:
+	case QOS_CLASS_UTILITY:
+	case QOS_CLASS_DEFAULT:
+	case QOS_CLASS_USER_INITIATED:
+	case QOS_CLASS_USER_INTERACTIVE:
+	case QOS_CLASS_UNSPECIFIED:
 		break;
 	default:
 		return false;
@@ -1084,20 +932,6 @@ _dispatch_qos_class_valid(dispatch_qos_class_t qos_class, int relative_priority)
 	}
 	return true;
 }
-
-#define DISPATCH_QUEUE_ATTR_QOS2IDX_INITIALIZER(qos) \
-		[_DISPATCH_QOS_CLASS_##qos] = DQA_INDEX_QOS_CLASS_##qos
-
-static const
-_dispatch_queue_attr_index_qos_class_t _dispatch_queue_attr_qos2idx[] = {
-	DISPATCH_QUEUE_ATTR_QOS2IDX_INITIALIZER(UNSPECIFIED),
-	DISPATCH_QUEUE_ATTR_QOS2IDX_INITIALIZER(MAINTENANCE),
-	DISPATCH_QUEUE_ATTR_QOS2IDX_INITIALIZER(BACKGROUND),
-	DISPATCH_QUEUE_ATTR_QOS2IDX_INITIALIZER(UTILITY),
-	DISPATCH_QUEUE_ATTR_QOS2IDX_INITIALIZER(DEFAULT),
-	DISPATCH_QUEUE_ATTR_QOS2IDX_INITIALIZER(USER_INITIATED),
-	DISPATCH_QUEUE_ATTR_QOS2IDX_INITIALIZER(USER_INTERACTIVE),
-};
 
 #define DISPATCH_QUEUE_ATTR_OVERCOMMIT2IDX(overcommit) \
 		((overcommit) == _dispatch_queue_attr_overcommit_disabled ? \
@@ -1116,10 +950,10 @@ _dispatch_queue_attr_index_qos_class_t _dispatch_queue_attr_qos2idx[] = {
 
 #define DISPATCH_QUEUE_ATTR_PRIO2IDX(prio) (-(prio))
 
-#define DISPATCH_QUEUE_ATTR_QOS2IDX(qos) (_dispatch_queue_attr_qos2idx[(qos)])
+#define DISPATCH_QUEUE_ATTR_QOS2IDX(qos) (qos)
 
 static inline dispatch_queue_attr_t
-_dispatch_get_queue_attr(qos_class_t qos, int prio,
+_dispatch_get_queue_attr(dispatch_qos_t qos, int prio,
 		_dispatch_queue_attr_overcommit_t overcommit,
 		dispatch_autorelease_frequency_t frequency,
 		bool concurrent, bool inactive)
@@ -1136,16 +970,16 @@ _dispatch_get_queue_attr(qos_class_t qos, int prio,
 dispatch_queue_attr_t
 _dispatch_get_default_queue_attr(void)
 {
-	return _dispatch_get_queue_attr(_DISPATCH_QOS_CLASS_UNSPECIFIED, 0,
+	return _dispatch_get_queue_attr(DISPATCH_QOS_UNSPECIFIED, 0,
 				_dispatch_queue_attr_overcommit_unspecified,
 				DISPATCH_AUTORELEASE_FREQUENCY_INHERIT, false, false);
 }
 
 dispatch_queue_attr_t
 dispatch_queue_attr_make_with_qos_class(dispatch_queue_attr_t dqa,
-		dispatch_qos_class_t qos_class, int relative_priority)
+		dispatch_qos_class_t qos_class, int relpri)
 {
-	if (!_dispatch_qos_class_valid(qos_class, relative_priority)) {
+	if (!_dispatch_qos_class_valid(qos_class, relpri)) {
 		return DISPATCH_BAD_INPUT;
 	}
 	if (!slowpath(dqa)) {
@@ -1153,8 +987,8 @@ dispatch_queue_attr_make_with_qos_class(dispatch_queue_attr_t dqa,
 	} else if (dqa->do_vtable != DISPATCH_VTABLE(queue_attr)) {
 		DISPATCH_CLIENT_CRASH(dqa->do_vtable, "Invalid queue attribute");
 	}
-	return _dispatch_get_queue_attr(qos_class, relative_priority,
-			dqa->dqa_overcommit, dqa->dqa_autorelease_frequency,
+	return _dispatch_get_queue_attr(_dispatch_qos_from_qos_class(qos_class),
+			relpri, dqa->dqa_overcommit, dqa->dqa_autorelease_frequency,
 			dqa->dqa_concurrent, dqa->dqa_inactive);
 }
 
@@ -1166,8 +1000,9 @@ dispatch_queue_attr_make_initially_inactive(dispatch_queue_attr_t dqa)
 	} else if (dqa->do_vtable != DISPATCH_VTABLE(queue_attr)) {
 		DISPATCH_CLIENT_CRASH(dqa->do_vtable, "Invalid queue attribute");
 	}
-	return _dispatch_get_queue_attr(dqa->dqa_qos_class,
-			dqa->dqa_relative_priority, dqa->dqa_overcommit,
+	dispatch_priority_t pri = dqa->dqa_qos_and_relpri;
+	return _dispatch_get_queue_attr(_dispatch_priority_qos(pri),
+			_dispatch_priority_relpri(pri), dqa->dqa_overcommit,
 			dqa->dqa_autorelease_frequency, dqa->dqa_concurrent, true);
 }
 
@@ -1180,8 +1015,9 @@ dispatch_queue_attr_make_with_overcommit(dispatch_queue_attr_t dqa,
 	} else if (dqa->do_vtable != DISPATCH_VTABLE(queue_attr)) {
 		DISPATCH_CLIENT_CRASH(dqa->do_vtable, "Invalid queue attribute");
 	}
-	return _dispatch_get_queue_attr(dqa->dqa_qos_class,
-			dqa->dqa_relative_priority, overcommit ?
+	dispatch_priority_t pri = dqa->dqa_qos_and_relpri;
+	return _dispatch_get_queue_attr(_dispatch_priority_qos(pri),
+			_dispatch_priority_relpri(pri), overcommit ?
 			_dispatch_queue_attr_overcommit_enabled :
 			_dispatch_queue_attr_overcommit_disabled,
 			dqa->dqa_autorelease_frequency, dqa->dqa_concurrent,
@@ -1205,13 +1041,27 @@ dispatch_queue_attr_make_with_autorelease_frequency(dispatch_queue_attr_t dqa,
 	} else if (dqa->do_vtable != DISPATCH_VTABLE(queue_attr)) {
 		DISPATCH_CLIENT_CRASH(dqa->do_vtable, "Invalid queue attribute");
 	}
-	return _dispatch_get_queue_attr(dqa->dqa_qos_class,
-			dqa->dqa_relative_priority, dqa->dqa_overcommit,
+	dispatch_priority_t pri = dqa->dqa_qos_and_relpri;
+	return _dispatch_get_queue_attr(_dispatch_priority_qos(pri),
+			_dispatch_priority_relpri(pri), dqa->dqa_overcommit,
 			frequency, dqa->dqa_concurrent, dqa->dqa_inactive);
 }
 
 #pragma mark -
 #pragma mark dispatch_queue_t
+
+void
+dispatch_queue_set_label_nocopy(dispatch_queue_t dq, const char *label)
+{
+	if (dq->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) {
+		return;
+	}
+	dispatch_queue_flags_t dqf = _dispatch_queue_atomic_flags(dq);
+	if (unlikely(dqf & DQF_LABEL_NEEDS_FREE)) {
+		DISPATCH_CLIENT_CRASH(dq, "Cannot change label for this queue");
+	}
+	dq->dq_label = label;
+}
 
 // skip zero
 // 1 - main_q
@@ -1226,7 +1076,7 @@ static dispatch_queue_t
 _dispatch_queue_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 		dispatch_queue_t tq, bool legacy)
 {
-#if DISPATCH_USE_NOQOS_WORKQUEUE_FALLBACK
+#if !HAVE_PTHREAD_WORKQUEUE_QOS
 	// Be sure the root queue priorities are set
 	dispatch_once_f(&_dispatch_root_queues_pred, NULL,
 			_dispatch_root_queues_init_once);
@@ -1241,25 +1091,15 @@ _dispatch_queue_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 	// Step 1: Normalize arguments (qos, overcommit, tq)
 	//
 
-	qos_class_t qos = dqa->dqa_qos_class;
-#if DISPATCH_USE_NOQOS_WORKQUEUE_FALLBACK
-	if (qos == _DISPATCH_QOS_CLASS_USER_INTERACTIVE &&
-			!_dispatch_root_queues[
-			DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS].dq_priority) {
-		qos = _DISPATCH_QOS_CLASS_USER_INITIATED;
+	dispatch_qos_t qos = _dispatch_priority_qos(dqa->dqa_qos_and_relpri);
+#if !HAVE_PTHREAD_WORKQUEUE_QOS
+	if (qos == DISPATCH_QOS_USER_INTERACTIVE) {
+		qos = DISPATCH_QOS_USER_INITIATED;
 	}
-#endif
-	bool maintenance_fallback = false;
-#if DISPATCH_USE_NOQOS_WORKQUEUE_FALLBACK
-	maintenance_fallback = true;
-#endif // DISPATCH_USE_NOQOS_WORKQUEUE_FALLBACK
-	if (maintenance_fallback) {
-		if (qos == _DISPATCH_QOS_CLASS_MAINTENANCE &&
-				!_dispatch_root_queues[
-				DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS].dq_priority) {
-			qos = _DISPATCH_QOS_CLASS_BACKGROUND;
-		}
+	if (qos == DISPATCH_QOS_MAINTENANCE) {
+		qos = DISPATCH_QOS_BACKGROUND;
 	}
+#endif // !HAVE_PTHREAD_WORKQUEUE_QOS
 
 	_dispatch_queue_attr_overcommit_t overcommit = dqa->dqa_overcommit;
 	if (overcommit != _dispatch_queue_attr_overcommit_unspecified && tq) {
@@ -1273,14 +1113,15 @@ _dispatch_queue_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 			tq->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) {
 		// Handle discrepancies between attr and target queue, attributes win
 		if (overcommit == _dispatch_queue_attr_overcommit_unspecified) {
-			if (tq->dq_priority & _PTHREAD_PRIORITY_OVERCOMMIT_FLAG) {
+			if (tq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT) {
 				overcommit = _dispatch_queue_attr_overcommit_enabled;
 			} else {
 				overcommit = _dispatch_queue_attr_overcommit_disabled;
 			}
 		}
-		if (qos == _DISPATCH_QOS_CLASS_UNSPECIFIED) {
-			tq = _dispatch_get_root_queue_with_overcommit(tq,
+		if (qos == DISPATCH_QOS_UNSPECIFIED) {
+			dispatch_qos_t tq_qos = _dispatch_priority_qos(tq->dq_priority);
+			tq = _dispatch_get_root_queue(tq_qos,
 					overcommit == _dispatch_queue_attr_overcommit_enabled);
 		} else {
 			tq = NULL;
@@ -1292,7 +1133,7 @@ _dispatch_queue_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 			DISPATCH_CLIENT_CRASH(tq, "Cannot specify an overcommit attribute "
 					"and use this kind of target queue");
 		}
-		if (qos != _DISPATCH_QOS_CLASS_UNSPECIFIED) {
+		if (qos != DISPATCH_QOS_UNSPECIFIED) {
 			DISPATCH_CLIENT_CRASH(tq, "Cannot specify a QoS attribute "
 					"and use this kind of target queue");
 		}
@@ -1305,10 +1146,9 @@ _dispatch_queue_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 		}
 	}
 	if (!tq) {
-		qos_class_t tq_qos = qos == _DISPATCH_QOS_CLASS_UNSPECIFIED ?
-				_DISPATCH_QOS_CLASS_DEFAULT : qos;
-		tq = _dispatch_get_root_queue(tq_qos, overcommit ==
-				_dispatch_queue_attr_overcommit_enabled);
+		tq = _dispatch_get_root_queue(
+				qos == DISPATCH_QOS_UNSPECIFIED ? DISPATCH_QOS_DEFAULT : qos,
+				overcommit == _dispatch_queue_attr_overcommit_enabled);
 		if (slowpath(!tq)) {
 			DISPATCH_CLIENT_CRASH(qos, "Invalid queue attribute");
 		}
@@ -1342,6 +1182,9 @@ _dispatch_queue_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 		dqf |= DQF_AUTORELEASE_ALWAYS;
 		break;
 	}
+	if (legacy) {
+		dqf |= DQF_LEGACY;
+	}
 	if (label) {
 		const char *tmp = _dispatch_strdup_if_mutable(label);
 		if (tmp != label) {
@@ -1358,13 +1201,13 @@ _dispatch_queue_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 	dq->dq_label = label;
 
 #if HAVE_PTHREAD_WORKQUEUE_QOS
-	dq->dq_priority = (dispatch_priority_t)_pthread_qos_class_encode(qos,
-			dqa->dqa_relative_priority,
-			overcommit == _dispatch_queue_attr_overcommit_enabled ?
-			_PTHREAD_PRIORITY_OVERCOMMIT_FLAG : 0);
+	dq->dq_priority = dqa->dqa_qos_and_relpri;
+	if (overcommit == _dispatch_queue_attr_overcommit_enabled) {
+		dq->dq_priority |= DISPATCH_PRIORITY_FLAG_OVERCOMMIT;
+	}
 #endif
 	_dispatch_retain(tq);
-	if (qos == _DISPATCH_QOS_CLASS_UNSPECIFIED) {
+	if (qos == QOS_CLASS_UNSPECIFIED) {
 		// legacy way of inherithing the QoS from the target
 		_dispatch_queue_priority_inherit_from_target(dq, tq);
 	}
@@ -1413,7 +1256,7 @@ _dispatch_queue_destroy(dispatch_queue_t dq)
 		// dispatch_cancel_and_wait may apply overrides in a racy way with
 		// the source cancellation finishing. This race is expensive and not
 		// really worthwhile to resolve since the source becomes dead anyway.
-		dq_state &= ~DISPATCH_QUEUE_HAS_OVERRIDE;
+		dq_state &= ~DISPATCH_QUEUE_MAX_QOS_MASK;
 	}
 	if (slowpath(dq_state != initial_state)) {
 		if (_dq_state_drain_locked(dq_state)) {
@@ -1688,18 +1531,19 @@ _dispatch_queue_resume(dispatch_queue_t dq, bool activate)
 	}
 
 	if ((dq_state ^ value) & DISPATCH_QUEUE_IN_BARRIER) {
-		_dispatch_release(dq);
-		return _dispatch_try_lock_transfer_or_wakeup(dq);
+		_dispatch_try_lock_transfer_or_wakeup(dq);
+	} else if (_dq_state_should_wakeup(value)) {
+		// <rdar://problem/14637483>
+		// dependency ordering for dq state changes that were flushed
+		// and not acted upon
+		os_atomic_thread_fence(dependency);
+		dq = os_atomic_force_dependency_on(dq, value);
+		dispatch_qos_t qos = _dispatch_queue_reset_max_qos(dq);
+		// Balancing the retain() done in suspend() for rdar://8181908
+		return dx_wakeup(dq, qos, DISPATCH_WAKEUP_CONSUME);
 	}
 
-	if (_dq_state_should_wakeup(value)) {
-		// <rdar://problem/14637483>
-		// seq_cst wrt state changes that were flushed and not acted upon
-		os_atomic_thread_fence(acquire);
-		pthread_priority_t pp = _dispatch_queue_reset_override_priority(dq,
-				_dispatch_queue_is_thread_bound(dq));
-		return dx_wakeup(dq, pp, DISPATCH_WAKEUP_CONSUME);
-	}
+	// Balancing the retain() done in suspend() for rdar://8181908
 	return _dispatch_release_tailcall(dq);
 
 over_resume:
@@ -1719,19 +1563,13 @@ dispatch_queue_get_label(dispatch_queue_t dq)
 }
 
 qos_class_t
-dispatch_queue_get_qos_class(dispatch_queue_t dq, int *relative_priority_ptr)
+dispatch_queue_get_qos_class(dispatch_queue_t dq, int *relpri_ptr)
 {
-	qos_class_t qos = _DISPATCH_QOS_CLASS_UNSPECIFIED;
-	int relative_priority = 0;
-#if HAVE_PTHREAD_WORKQUEUE_QOS
-	pthread_priority_t dqp = dq->dq_priority;
-	if (dqp & _PTHREAD_PRIORITY_INHERIT_FLAG) dqp = 0;
-	qos = _pthread_qos_class_decode(dqp, &relative_priority, NULL);
-#else
-	(void)dq;
-#endif
-	if (relative_priority_ptr) *relative_priority_ptr = relative_priority;
-	return qos;
+	dispatch_qos_class_t qos = _dispatch_priority_qos(dq->dq_priority);
+	if (relpri_ptr) {
+		*relpri_ptr = qos ? _dispatch_priority_relpri(dq->dq_priority) : 0;
+	}
+	return _dispatch_qos_to_qos_class(qos);
 }
 
 static void
@@ -1765,8 +1603,7 @@ _dispatch_queue_set_width2(void *ctxt)
 
 	dispatch_queue_flags_t old_dqf, new_dqf;
 	os_atomic_rmw_loop2o(dq, dq_atomic_flags, old_dqf, new_dqf, relaxed, {
-		new_dqf = old_dqf & ~DQF_WIDTH_MASK;
-		new_dqf |= (tmp << DQF_WIDTH_SHIFT);
+		new_dqf = (old_dqf & DQF_FLAGS_MASK) | DQF_WIDTH(tmp);
 	});
 	_dispatch_object_debug(dq, "%s", __func__);
 }
@@ -1830,10 +1667,9 @@ _dispatch_queue_set_target_queue(dispatch_queue_t dq, dispatch_queue_t tq)
 	dispatch_assert(dq->do_ref_cnt != DISPATCH_OBJECT_GLOBAL_REFCNT &&
 			dq->do_targetq);
 
-	if (slowpath(!tq)) {
+	if (unlikely(!tq)) {
 		bool is_concurrent_q = (dq->dq_width > 1);
-		tq = _dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT,
-				!is_concurrent_q);
+		tq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, !is_concurrent_q);
 	}
 
 	if (_dispatch_queue_try_inactive_suspend(dq)) {
@@ -1844,6 +1680,11 @@ _dispatch_queue_set_target_queue(dispatch_queue_t dq, dispatch_queue_t tq)
 	if (dq->dq_override_voucher != DISPATCH_NO_VOUCHER) {
 		DISPATCH_CLIENT_CRASH(dq, "Cannot change the target of a queue or "
 				"source with an accounting override voucher "
+				"after it has been activated");
+	}
+
+	if (unlikely(!_dispatch_queue_is_legacy(dq))) {
+		DISPATCH_CLIENT_CRASH(dq, "Cannot change the target of this object "
 				"after it has been activated");
 	}
 
@@ -1861,11 +1702,6 @@ _dispatch_queue_set_target_queue(dispatch_queue_t dq, dispatch_queue_t tq)
 		_dispatch_bug_deprecated("Changing the target of a source "
 				"after it has been activated");
 		break;
-
-	case DISPATCH_QUEUE_SERIAL_TYPE:
-	case DISPATCH_QUEUE_CONCURRENT_TYPE:
-		DISPATCH_CLIENT_CRASH(type, "Cannot change the target of this queue "
-				"after it has been activated");
 	default:
 		DISPATCH_CLIENT_CRASH(type, "Unexpected dispatch object type");
 	}
@@ -1895,9 +1731,10 @@ static struct dispatch_queue_s _dispatch_mgr_root_queue = {
 	.dq_state = DISPATCH_ROOT_QUEUE_STATE_INIT_VALUE,
 	.do_ctxt = &_dispatch_mgr_root_queue_context,
 	.dq_label = "com.apple.root.libdispatch-manager",
-	.dq_width = DISPATCH_QUEUE_WIDTH_POOL,
-	.dq_override = DISPATCH_SATURATED_OVERRIDE,
+	.dq_atomic_flags = DQF_WIDTH(DISPATCH_QUEUE_WIDTH_POOL),
 	.dq_override_voucher = DISPATCH_NO_VOUCHER,
+	.dq_priority = DISPATCH_PRIORITY_FLAG_MANAGER |
+			DISPATCH_PRIORITY_SATURATED_OVERRIDE,
 	.dq_serialnum = 3,
 };
 #endif // DISPATCH_USE_MGR_THREAD && DISPATCH_ENABLE_PTHREAD_ROOT_QUEUES
@@ -1918,12 +1755,12 @@ static dispatch_once_t _dispatch_mgr_sched_pred;
 #if HAVE_PTHREAD_WORKQUEUE_QOS
 // Must be kept in sync with list of qos classes in sys/qos.h
 static const int _dispatch_mgr_sched_qos2prio[] = {
-	[_DISPATCH_QOS_CLASS_MAINTENANCE] = 4,
-	[_DISPATCH_QOS_CLASS_BACKGROUND] = 4,
-	[_DISPATCH_QOS_CLASS_UTILITY] = 20,
-	[_DISPATCH_QOS_CLASS_DEFAULT] = 31,
-	[_DISPATCH_QOS_CLASS_USER_INITIATED] = 37,
-	[_DISPATCH_QOS_CLASS_USER_INTERACTIVE] = 47,
+	[QOS_CLASS_MAINTENANCE] = 4,
+	[QOS_CLASS_BACKGROUND] = 4,
+	[QOS_CLASS_UTILITY] = 20,
+	[QOS_CLASS_DEFAULT] = 31,
+	[QOS_CLASS_USER_INITIATED] = 37,
+	[QOS_CLASS_USER_INTERACTIVE] = 47,
 };
 #endif // HAVE_PTHREAD_WORKQUEUE_QOS
 
@@ -1943,8 +1780,8 @@ _dispatch_mgr_sched_init(void *ctxt DISPATCH_UNUSED)
 	(void)dispatch_assume_zero(pthread_attr_getschedparam(attr, &param));
 #if HAVE_PTHREAD_WORKQUEUE_QOS
 	qos_class_t qos = qos_class_main();
-	if (qos == _DISPATCH_QOS_CLASS_DEFAULT) {
-		qos = _DISPATCH_QOS_CLASS_USER_INITIATED; // rdar://problem/17279292
+	if (qos == QOS_CLASS_DEFAULT) {
+		qos = QOS_CLASS_USER_INITIATED; // rdar://problem/17279292
 	}
 	if (qos) {
 		_dispatch_mgr_sched.qos = qos;
@@ -1977,8 +1814,6 @@ _dispatch_mgr_root_queue_init(void)
 			(void)dispatch_assume_zero(pthread_attr_set_qos_class_np(attr,
 					qos, 0));
 		}
-		_dispatch_mgr_q.dq_priority =
-				(dispatch_priority_t)_pthread_qos_class_encode(qos, 0, 0);
 	}
 #endif
 	param.sched_priority = _dispatch_mgr_sched.prio;
@@ -2094,7 +1929,6 @@ _dispatch_kevent_workqueue_init(void)
 	pthread_priority_t pp = 0;
 	if (qos) {
 		pp = _pthread_qos_class_encode(qos, 0, 0);
-		_dispatch_mgr_q.dq_priority = (dispatch_priority_t)pp;
 	}
 	if (prio > _dispatch_mgr_sched.default_prio) {
 		pp = (pthread_priority_t)prio | _PTHREAD_PRIORITY_SCHED_PRI_FLAG;
@@ -2142,10 +1976,10 @@ _dispatch_pthread_root_queue_create(const char *label, unsigned long flags,
 
 	_dispatch_queue_init(dq, dqf, DISPATCH_QUEUE_WIDTH_POOL, false);
 	dq->dq_label = label;
-	dq->dq_state = DISPATCH_ROOT_QUEUE_STATE_INIT_VALUE,
-	dq->dq_override = DISPATCH_SATURATED_OVERRIDE;
+	dq->dq_state = DISPATCH_ROOT_QUEUE_STATE_INIT_VALUE;
 	dq->do_ctxt = qc;
 	dq->do_targetq = NULL;
+	dq->dq_priority = DISPATCH_PRIORITY_SATURATED_OVERRIDE;
 
 	pqc->dpq_thread_mediator.do_vtable = DISPATCH_VTABLE(semaphore);
 	qc->dgq_ctxt = pqc;
@@ -2230,8 +2064,7 @@ _dispatch_pthread_root_queue_dispose(dispatch_queue_t dq)
 	if (pqc->dpq_thread_configure) {
 		Block_release(pqc->dpq_thread_configure);
 	}
-	dq->do_targetq = _dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT,
-			false);
+	dq->do_targetq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false);
 #endif
 	if (dq->dq_label && _dispatch_queue_label_needs_free(dq)) {
 		free((void*)dq->dq_label);
@@ -2246,7 +2079,7 @@ struct dispatch_queue_specific_queue_s {
 	DISPATCH_QUEUE_HEADER(queue_specific_queue);
 	TAILQ_HEAD(dispatch_queue_specific_head_s,
 			dispatch_queue_specific_s) dqsq_contexts;
-} DISPATCH_QUEUE_ALIGN;
+} DISPATCH_ATOMIC64_ALIGN;
 
 struct dispatch_queue_specific_s {
 	const void *dqs_key;
@@ -2260,12 +2093,11 @@ void
 _dispatch_queue_specific_queue_dispose(dispatch_queue_specific_queue_t dqsq)
 {
 	dispatch_queue_specific_t dqs, tmp;
+	dispatch_queue_t rq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false);
 
 	TAILQ_FOREACH_SAFE(dqs, &dqsq->dqsq_contexts, dqs_list, tmp) {
 		if (dqs->dqs_destructor) {
-			dispatch_async_f(_dispatch_get_root_queue(
-					_DISPATCH_QOS_CLASS_DEFAULT, false), dqs->dqs_ctxt,
-					dqs->dqs_destructor);
+			dispatch_async_f(rq, dqs->dqs_ctxt, dqs->dqs_destructor);
 		}
 		free(dqs);
 	}
@@ -2282,8 +2114,7 @@ _dispatch_queue_init_specific(dispatch_queue_t dq)
 	_dispatch_queue_init(dqsq->_as_dq, DQF_NONE,
 			DISPATCH_QUEUE_WIDTH_MAX, false);
 	dqsq->do_xref_cnt = -1;
-	dqsq->do_targetq = _dispatch_get_root_queue(
-			_DISPATCH_QOS_CLASS_USER_INITIATED, true);
+	dqsq->do_targetq = _dispatch_get_root_queue(DISPATCH_QOS_USER_INITIATED, true);
 	dqsq->dq_label = "queue-specific";
 	TAILQ_INIT(&dqsq->dqsq_contexts);
 	if (slowpath(!os_atomic_cmpxchg2o(dq, dq_specific_q, NULL,
@@ -2304,7 +2135,7 @@ _dispatch_queue_set_specific(void *ctxt)
 			// Destroy previous context for existing key
 			if (dqs->dqs_destructor) {
 				dispatch_async_f(_dispatch_get_root_queue(
-						_DISPATCH_QOS_CLASS_DEFAULT, false), dqs->dqs_ctxt,
+						DISPATCH_QOS_DEFAULT, false), dqs->dqs_ctxt,
 						dqs->dqs_destructor);
 			}
 			if (dqsn->dqs_ctxt) {
@@ -2362,6 +2193,18 @@ _dispatch_queue_get_specific(void *ctxt)
 	*ctxtp = NULL;
 }
 
+DISPATCH_ALWAYS_INLINE
+static inline void *
+_dispatch_queue_get_specific_inline(dispatch_queue_t dq, const void *key)
+{
+	void *ctxt = NULL;
+	if (fastpath(dx_metatype(dq) == _DISPATCH_QUEUE_TYPE && dq->dq_specific_q)){
+		ctxt = (void *)key;
+		dispatch_sync_f(dq->dq_specific_q, &ctxt, _dispatch_queue_get_specific);
+	}
+	return ctxt;
+}
+
 DISPATCH_NOINLINE
 void *
 dispatch_queue_get_specific(dispatch_queue_t dq, const void *key)
@@ -2369,13 +2212,7 @@ dispatch_queue_get_specific(dispatch_queue_t dq, const void *key)
 	if (slowpath(!key)) {
 		return NULL;
 	}
-	void *ctxt = NULL;
-
-	if (fastpath(dq->dq_specific_q)) {
-		ctxt = (void *)key;
-		dispatch_sync_f(dq->dq_specific_q, &ctxt, _dispatch_queue_get_specific);
-	}
-	return ctxt;
+	return _dispatch_queue_get_specific_inline(dq, key);
 }
 
 DISPATCH_NOINLINE
@@ -2389,12 +2226,8 @@ dispatch_get_specific(const void *key)
 	dispatch_queue_t dq = _dispatch_queue_get_current();
 
 	while (slowpath(dq)) {
-		if (slowpath(dq->dq_specific_q)) {
-			ctxt = (void *)key;
-			dispatch_sync_f(dq->dq_specific_q, &ctxt,
-					_dispatch_queue_get_specific);
-			if (ctxt) break;
-		}
+		ctxt = _dispatch_queue_get_specific_inline(dq, key);
+		if (ctxt) break;
 		dq = dq->do_targetq;
 	}
 	return ctxt;
@@ -2442,8 +2275,9 @@ _dispatch_queue_debug_attr(dispatch_queue_t dq, char* buf, size_t bufsiz)
 	if (_dq_state_is_dirty(dq_state)) {
 		offset += dsnprintf(&buf[offset], bufsiz - offset, ", dirty");
 	}
-	if (_dq_state_has_override(dq_state)) {
-		offset += dsnprintf(&buf[offset], bufsiz - offset, ", async-override");
+	dispatch_qos_t qos = _dq_state_max_qos(dq_state);
+	if (qos) {
+		offset += dsnprintf(&buf[offset], bufsiz - offset, ", max qos %d", qos);
 	}
 	mach_port_t owner = _dq_state_drain_owner(dq_state);
 	if (!_dispatch_queue_is_thread_bound(dq) && owner) {
@@ -2489,34 +2323,37 @@ dispatch_debug_queue(dispatch_queue_t dq, const char* str) {
 }
 #endif
 
-#if DISPATCH_PERF_MON && !DISPATCH_INTROSPECTION
-static OSSpinLock _dispatch_stats_lock;
+#if DISPATCH_PERF_MON
 static struct {
-	uint64_t time_total;
-	uint64_t count_total;
-	uint64_t thread_total;
-} _dispatch_stats[65]; // ffs*/fls*() returns zero when no bits are set
+	uint64_t volatile time_total;
+	uint64_t volatile count_total;
+	uint64_t volatile thread_total;
+} _dispatch_stats[65];
 
-static void
-_dispatch_queue_merge_stats(uint64_t start)
+void
+_dispatch_queue_merge_stats(uint64_t start, bool trace, perfmon_thread_type type)
 {
 	uint64_t delta = _dispatch_absolute_time() - start;
 	unsigned long count;
+	int bucket = 0;
 
 	count = (unsigned long)_dispatch_thread_getspecific(dispatch_bcounter_key);
 	_dispatch_thread_setspecific(dispatch_bcounter_key, NULL);
 
-	int bucket = flsl((long)count);
-
-	// 64-bit counters on 32-bit require a lock or a queue
-	OSSpinLockLock(&_dispatch_stats_lock);
-
-	_dispatch_stats[bucket].time_total += delta;
-	_dispatch_stats[bucket].count_total += count;
-	_dispatch_stats[bucket].thread_total++;
-
-	OSSpinLockUnlock(&_dispatch_stats_lock);
+	if (count == 0) {
+		bucket = 0;
+		if (trace) _dispatch_ktrace1(DISPATCH_PERF_MON_worker_useless, type);
+	} else {
+		bucket = (int)sizeof(count) * CHAR_BIT - __builtin_clzl(count);
+		os_atomic_add(&_dispatch_stats[bucket].count_total, count, relaxed);
+	}
+	os_atomic_add(&_dispatch_stats[bucket].time_total, delta, relaxed);
+	os_atomic_inc(&_dispatch_stats[bucket].thread_total, relaxed);
+	if (trace) {
+		_dispatch_ktrace3(DISPATCH_PERF_MON_worker_thread_end, count, delta, type);
+	}
 }
+
 #endif
 
 #pragma mark -
@@ -2536,8 +2373,8 @@ _dispatch_set_priority_and_mach_voucher_slow(pthread_priority_t pp,
 				pflags |= _PTHREAD_SET_SELF_WQ_KEVENT_UNBIND;
 				// when we unbind, overcomitness can flip, so we need to learn
 				// it from the defaultpri, see _dispatch_priority_compute_update
-				pp |= (_dispatch_get_defaultpriority() &
-						_PTHREAD_PRIORITY_OVERCOMMIT_FLAG);
+				pp |= (_dispatch_get_basepri() &
+						DISPATCH_PRIORITY_FLAG_OVERCOMMIT);
 			} else {
 				// else we need to keep the one that is set in the current pri
 				pp |= (old_pri & _PTHREAD_PRIORITY_OVERCOMMIT_FLAG);
@@ -2606,6 +2443,31 @@ _dispatch_set_priority_and_voucher_slow(pthread_priority_t priority,
 #pragma mark -
 #pragma mark dispatch_continuation_t
 
+const struct dispatch_continuation_vtable_s _dispatch_continuation_vtables[] = {
+	DC_VTABLE_ENTRY(ASYNC_REDIRECT,
+		.do_kind = "dc-redirect",
+		.do_invoke = _dispatch_async_redirect_invoke),
+#if HAVE_MACH
+	DC_VTABLE_ENTRY(MACH_SEND_BARRRIER_DRAIN,
+		.do_kind = "dc-mach-send-drain",
+		.do_invoke = _dispatch_mach_send_barrier_drain_invoke),
+	DC_VTABLE_ENTRY(MACH_SEND_BARRIER,
+		.do_kind = "dc-mach-send-barrier",
+		.do_invoke = _dispatch_mach_barrier_invoke),
+	DC_VTABLE_ENTRY(MACH_RECV_BARRIER,
+		.do_kind = "dc-mach-recv-barrier",
+		.do_invoke = _dispatch_mach_barrier_invoke),
+#endif
+#if HAVE_PTHREAD_WORKQUEUE_QOS
+	DC_VTABLE_ENTRY(OVERRIDE_STEALING,
+		.do_kind = "dc-override-stealing",
+		.do_invoke = _dispatch_queue_override_invoke),
+	DC_VTABLE_ENTRY(OVERRIDE_OWNING,
+		.do_kind = "dc-override-owning",
+		.do_invoke = _dispatch_queue_override_invoke),
+#endif
+};
+
 static void
 _dispatch_force_cache_cleanup(void)
 {
@@ -2639,7 +2501,7 @@ _dispatch_continuation_free_to_cache_limit(dispatch_continuation_t dc)
 	dc = _dispatch_thread_getspecific(dispatch_cache_key);
 	int cnt;
 	if (!dc || (cnt = dc->dc_cache_cnt -
-			_dispatch_continuation_cache_limit) <= 0){
+			_dispatch_continuation_cache_limit) <= 0) {
 		return;
 	}
 	do {
@@ -2656,11 +2518,12 @@ _dispatch_continuation_slow_item_signal(dispatch_queue_t dq,
 		dispatch_object_t dou)
 {
 	dispatch_continuation_t dc = dou._dc;
-	pthread_priority_t pp = dq->dq_override;
+	uint64_t dq_state = os_atomic_load2o(dq, dq_state, relaxed);
+	dispatch_qos_t qos = _dq_state_max_qos(dq_state);
 
 	_dispatch_trace_continuation_pop(dq, dc);
-	if (pp > (dc->dc_priority & _PTHREAD_PRIORITY_QOS_CLASS_MASK)) {
-		_dispatch_wqthread_override_start((mach_port_t)dc->dc_data, pp);
+	if (_dispatch_qos_greater_than_pp(qos, dc->dc_priority)) {
+		_dispatch_wqthread_override_start((mach_port_t)dc->dc_data, qos);
 	}
 	_dispatch_thread_event_signal((dispatch_thread_event_t)dc->dc_other);
 	_dispatch_introspection_queue_item_complete(dc);
@@ -2670,18 +2533,7 @@ DISPATCH_NOINLINE
 static void
 _dispatch_continuation_push(dispatch_queue_t dq, dispatch_continuation_t dc)
 {
-	_dispatch_queue_push(dq, dc,
-			_dispatch_continuation_get_override_priority(dq, dc));
-}
-
-DISPATCH_NOINLINE
-static void
-_dispatch_continuation_push_sync_slow(dispatch_queue_t dq,
-		dispatch_continuation_t dc)
-{
-	_dispatch_queue_push_inline(dq, dc,
-			_dispatch_continuation_get_override_priority(dq, dc),
-			DISPATCH_WAKEUP_SLOW_WAITER);
+	_dispatch_queue_push(dq, dc, _dispatch_continuation_override_qos(dq, dc));
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -3002,8 +2854,8 @@ dispatch_block_wait(dispatch_block_t db, dispatch_time_t timeout)
 		// neither of us would ever release. Side effect: After a _wait
 		// that times out, subsequent waits will not boost the qos of the
 		// still-running block.
-		dx_wakeup(boost_oq, pp, DISPATCH_WAKEUP_OVERRIDING |
-				DISPATCH_WAKEUP_CONSUME);
+		dx_wakeup(boost_oq, _dispatch_qos_from_pp(pp),
+				DISPATCH_WAKEUP_OVERRIDING | DISPATCH_WAKEUP_CONSUME);
 	}
 
 	mach_port_t boost_th = dbpd->dbpd_thread;
@@ -3199,9 +3051,8 @@ _dispatch_async_redirect_invoke(dispatch_continuation_t dc,
 	// the "right" root queue was stuffed into dc_func
 	dispatch_queue_t assumed_rq = (dispatch_queue_t)dc->dc_func;
 	dispatch_queue_t dq = dc->dc_data, rq, old_dq;
-	struct _dispatch_identity_s di;
+	dispatch_priority_t old_dbp;
 
-	pthread_priority_t op, dp, old_dp;
 
 	if (ctxt_flags) {
 		flags &= ~_DISPATCH_INVOKE_AUTORELEASE_MASK;
@@ -3210,15 +3061,9 @@ _dispatch_async_redirect_invoke(dispatch_continuation_t dc,
 	old_dq = _dispatch_get_current_queue();
 	if (assumed_rq) {
 		_dispatch_queue_set_current(assumed_rq);
-		_dispatch_root_queue_identity_assume(&di, 0);
-	}
-
-	old_dp = _dispatch_set_defaultpriority(dq->dq_priority, &dp);
-	op = dq->dq_override;
-	if (op > (dp & _PTHREAD_PRIORITY_QOS_CLASS_MASK)) {
-		_dispatch_wqthread_override_start(_dispatch_tid_self(), op);
-		// Ensure that the root queue sees that this thread was overridden.
-		_dispatch_set_defaultpriority_override();
+		old_dbp = _dispatch_root_queue_identity_assume(0, dq);
+	} else {
+		old_dbp = _dispatch_set_basepri(dq->dq_priority);
 	}
 
 	_dispatch_thread_frame_push(&dtf, dq);
@@ -3227,11 +3072,8 @@ _dispatch_async_redirect_invoke(dispatch_continuation_t dc,
 		_dispatch_continuation_pop(other_dc, dq, flags);
 	});
 	_dispatch_thread_frame_pop(&dtf);
-	if (assumed_rq) {
-		_dispatch_root_queue_identity_restore(&di);
-		_dispatch_queue_set_current(old_dq);
-	}
-	_dispatch_reset_defaultpriority(old_dp);
+	if (assumed_rq) _dispatch_queue_set_current(old_dq);
+	_dispatch_reset_basepri(old_dbp);
 
 	rq = dq->do_targetq;
 	while (slowpath(rq->do_targetq) && rq != old_dq) {
@@ -3270,7 +3112,7 @@ _dispatch_async_redirect_wrap(dispatch_queue_t dq, dispatch_object_t dou)
 DISPATCH_NOINLINE
 static void
 _dispatch_async_f_redirect(dispatch_queue_t dq,
-		dispatch_object_t dou, pthread_priority_t pp)
+		dispatch_object_t dou, dispatch_qos_t qos)
 {
 	if (!slowpath(_dispatch_object_is_redirection(dou))) {
 		dou._dc = _dispatch_async_redirect_wrap(dq, dou);
@@ -3292,7 +3134,7 @@ _dispatch_async_f_redirect(dispatch_queue_t dq,
 		dq = dq->do_targetq;
 	}
 
-	_dispatch_queue_push(dq, dou, pp);
+	_dispatch_queue_push(dq, dou, qos);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -3305,7 +3147,8 @@ _dispatch_continuation_redirect(dispatch_queue_t dq,
 	// by _dispatch_async_f2.
 	// However we want to end up on the root queue matching `dc` qos, so pick up
 	// the current override of `dq` which includes dc's overrde (and maybe more)
-	_dispatch_async_f_redirect(dq, dc, dq->dq_override);
+	uint64_t dq_state = os_atomic_load2o(dq, dq_state, relaxed);
+	_dispatch_async_f_redirect(dq, dc, _dq_state_max_qos(dq_state));
 	_dispatch_introspection_queue_item_complete(dc);
 }
 
@@ -3326,7 +3169,7 @@ _dispatch_async_f2(dispatch_queue_t dq, dispatch_continuation_t dc)
 	}
 
 	return _dispatch_async_f_redirect(dq, dc,
-			_dispatch_continuation_get_override_priority(dq, dc));
+			_dispatch_continuation_override_qos(dq, dc));
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -3622,7 +3465,7 @@ _dispatch_barrier_sync_f_slow(dispatch_queue_t dq, void *ctxt,
 		_dispatch_continuation_voucher_set(&dbsc.dbsc_dc, dq, 0);
 		// save frame linkage for _dispatch_barrier_sync_f_slow_invoke
 		_dispatch_thread_frame_save_state(&dbsc.dbsc_dtf);
-		// thread bound queues cannot mutate their target queue hierarchy
+		// thread-bound queues cannot mutate their target queue hierarchy
 		// so it's fine to look now
 		_dispatch_introspection_barrier_sync_begin(dq, func);
 	}
@@ -3644,14 +3487,17 @@ _dispatch_barrier_sync_f_slow(dispatch_queue_t dq, void *ctxt,
 				"already owned by current thread");
 	}
 
-	_dispatch_continuation_push_sync_slow(dq, &dbss);
+	_dispatch_queue_push_slow_waiter(dq, &dbss);
 	_dispatch_thread_event_wait(&event); // acquire
 	_dispatch_thread_event_destroy(&event);
-	if (_dispatch_queue_received_override(dq, pp)) {
+	dq_state = os_atomic_load2o(dq, dq_state, relaxed);
+	dispatch_qos_t qos = _dq_state_max_qos(dq_state);
+	if (_dispatch_qos_greater_than_pp(qos, pp)) {
 		// Ensure that the root queue sees that this thread was overridden.
 		// pairs with the _dispatch_wqthread_override_start in
-		// _dispatch_continuation_slow_item_signal
-		_dispatch_set_defaultpriority_override();
+		// _dispatch_continuation_slow_item_signal, which is why it doesn't use
+		// the usual _dq_state_received_override() test.
+		_dispatch_set_basepri_override_qos(qos);
 	}
 
 #if DISPATCH_COCOA_COMPAT
@@ -3728,7 +3574,7 @@ _dispatch_sync_block_with_private_data(dispatch_queue_t dq,
 	}
 	// balanced in d_block_sync_invoke or d_block_wait
 	if (os_atomic_cmpxchg2o(_dispatch_block_get_data(work),
-			dbpd_queue, NULL, dq, relaxed)) {
+			dbpd_queue, NULL, dq->_as_oq, relaxed)) {
 		_dispatch_retain(dq);
 	}
 	if (flags & DISPATCH_BLOCK_BARRIER) {
@@ -3803,7 +3649,8 @@ _dispatch_non_barrier_complete(dispatch_queue_t dq)
 		return _dispatch_try_lock_transfer_or_wakeup(dq);
 	}
 	if (!_dq_state_is_runnable(old_state)) {
-		_dispatch_queue_try_wakeup(dq, new_state, 0);
+		_dispatch_queue_try_wakeup(dq, new_state,
+				DISPATCH_WAKEUP_WAITER_HANDOFF);
 	}
 }
 
@@ -3839,14 +3686,17 @@ _dispatch_sync_f_slow(dispatch_queue_t dq, void *ctxt, dispatch_function_t func,
 				"already owned by current thread");
 	}
 
-	_dispatch_continuation_push_sync_slow(dq, &dc);
+	_dispatch_queue_push_slow_waiter(dq, &dc);
 	_dispatch_thread_event_wait(&event); // acquire
 	_dispatch_thread_event_destroy(&event);
-	if (_dispatch_queue_received_override(dq, pp)) {
+	dq_state = os_atomic_load2o(dq, dq_state, relaxed);
+	dispatch_qos_t qos = _dq_state_max_qos(dq_state);
+	if (_dispatch_qos_greater_than_pp(qos, pp)) {
 		// Ensure that the root queue sees that this thread was overridden.
 		// pairs with the _dispatch_wqthread_override_start in
-		// _dispatch_continuation_slow_item_signal
-		_dispatch_set_defaultpriority_override();
+		// _dispatch_continuation_slow_item_signal, which is why it doesn't use
+		// the usual _dq_state_received_override() test.
+		_dispatch_set_basepri_override_qos(qos);
 	}
 	_dispatch_non_barrier_sync_f_invoke_inline(dq, ctxt, func, pp);
 }
@@ -3999,75 +3849,11 @@ _dispatch_trysync_f(dispatch_queue_t dq, void *ctxt, dispatch_function_t f)
 }
 
 #pragma mark -
-#pragma mark dispatch_after
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_after(dispatch_time_t when, dispatch_queue_t queue,
-		void *ctxt, void *handler, bool block)
-{
-	dispatch_source_t ds;
-	uint64_t leeway, delta;
-
-	if (when == DISPATCH_TIME_FOREVER) {
-#if DISPATCH_DEBUG
-		DISPATCH_CLIENT_CRASH(0, "dispatch_after called with 'when' == infinity");
-#endif
-		return;
-	}
-
-	delta = _dispatch_timeout(when);
-	if (delta == 0) {
-		if (block) {
-			return dispatch_async(queue, handler);
-		}
-		return dispatch_async_f(queue, ctxt, handler);
-	}
-	leeway = delta / 10; // <rdar://problem/13447496>
-
-	if (leeway < NSEC_PER_MSEC) leeway = NSEC_PER_MSEC;
-	if (leeway > 60 * NSEC_PER_SEC) leeway = 60 * NSEC_PER_SEC;
-
-	// this function can and should be optimized to not use a dispatch source
-	ds = dispatch_source_create(&_dispatch_source_type_after, 0, 0, queue);
-	dispatch_assert(ds);
-
-	dispatch_continuation_t dc = _dispatch_continuation_alloc();
-	if (block) {
-		_dispatch_continuation_init(dc, ds, handler, 0, 0, 0);
-	} else {
-		_dispatch_continuation_init_f(dc, ds, ctxt, handler, 0, 0, 0);
-	}
-	// reference `ds` so that it doesn't show up as a leak
-	dc->dc_data = ds;
-	_dispatch_source_set_event_handler_continuation(ds, dc);
-	dispatch_source_set_timer(ds, when, DISPATCH_TIME_FOREVER, leeway);
-	dispatch_activate(ds);
-}
-
-DISPATCH_NOINLINE
-void
-dispatch_after_f(dispatch_time_t when, dispatch_queue_t queue, void *ctxt,
-		dispatch_function_t func)
-{
-	_dispatch_after(when, queue, ctxt, func, false);
-}
-
-#ifdef __BLOCKS__
-void
-dispatch_after(dispatch_time_t when, dispatch_queue_t queue,
-		dispatch_block_t work)
-{
-	_dispatch_after(when, queue, NULL, work, true);
-}
-#endif
-
-#pragma mark -
 #pragma mark dispatch_queue_wakeup
 
 DISPATCH_NOINLINE
 void
-_dispatch_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
+_dispatch_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags)
 {
 	dispatch_queue_wakeup_target_t target = DISPATCH_QUEUE_WAKEUP_NONE;
@@ -4076,9 +3862,9 @@ _dispatch_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
 		target = DISPATCH_QUEUE_WAKEUP_TARGET;
 	}
 	if (target) {
-		return _dispatch_queue_class_wakeup(dq, pp, flags, target);
-	} else if (pp) {
-		return _dispatch_queue_class_override_drainer(dq, pp, flags);
+		return _dispatch_queue_class_wakeup(dq, qos, flags, target);
+	} else if (qos) {
+		return _dispatch_queue_class_override_drainer(dq, qos, flags);
 	} else if (flags & DISPATCH_WAKEUP_CONSUME) {
 		return _dispatch_release_tailcall(dq);
 	}
@@ -4128,24 +3914,27 @@ _dispatch_runloop_queue_set_handle(dispatch_queue_t dq, dispatch_runloop_handle_
 #endif // DISPATCH_COCOA_COMPAT
 
 void
-_dispatch_runloop_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
+_dispatch_runloop_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags)
 {
 #if DISPATCH_COCOA_COMPAT
 	if (slowpath(_dispatch_queue_atomic_flags(dq) & DQF_RELEASED)) {
 		// <rdar://problem/14026816>
-		return _dispatch_queue_wakeup(dq, pp, flags);
+		return _dispatch_queue_wakeup(dq, qos, flags);
 	}
 
+	if (flags & DISPATCH_WAKEUP_FLUSH) {
+		os_atomic_or2o(dq, dq_state, DISPATCH_QUEUE_DIRTY, release);
+	}
 	if (_dispatch_queue_class_probe(dq)) {
-		return _dispatch_runloop_queue_poke(dq, pp, flags);
+		return _dispatch_runloop_queue_poke(dq, qos, flags);
 	}
 
-	pp = _dispatch_queue_reset_override_priority(dq, true);
-	if (pp) {
+	qos = _dispatch_queue_reset_max_qos(dq);
+	if (qos) {
 		mach_port_t owner = DISPATCH_QUEUE_DRAIN_OWNER(dq);
 		if (_dispatch_queue_class_probe(dq)) {
-			_dispatch_runloop_queue_poke(dq, pp, flags);
+			_dispatch_runloop_queue_poke(dq, qos, flags);
 		}
 		_dispatch_thread_override_end(owner, dq);
 		return;
@@ -4154,26 +3943,25 @@ _dispatch_runloop_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
 		return _dispatch_release_tailcall(dq);
 	}
 #else
-	return _dispatch_queue_wakeup(dq, pp, flags);
+	return _dispatch_queue_wakeup(dq, qos, flags);
 #endif
 }
 
 void
-_dispatch_main_queue_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
+_dispatch_main_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags)
 {
 #if DISPATCH_COCOA_COMPAT
 	if (_dispatch_queue_is_thread_bound(dq)) {
-		return _dispatch_runloop_queue_wakeup(dq, pp, flags);
+		return _dispatch_runloop_queue_wakeup(dq, qos, flags);
 	}
 #endif
-	return _dispatch_queue_wakeup(dq, pp, flags);
+	return _dispatch_queue_wakeup(dq, qos, flags);
 }
 
 void
 _dispatch_root_queue_wakeup(dispatch_queue_t dq,
-		pthread_priority_t pp DISPATCH_UNUSED,
-		dispatch_wakeup_flags_t flags)
+		dispatch_qos_t qos DISPATCH_UNUSED, dispatch_wakeup_flags_t flags)
 {
 	if (flags & DISPATCH_WAKEUP_CONSUME) {
 		// see _dispatch_queue_push_set_head
@@ -4194,7 +3982,7 @@ _dispatch_runloop_queue_class_poke(dispatch_queue_t dq)
 		return;
 	}
 
-#if TARGET_OS_MAC
+#if HAVE_MACH
 	mach_port_t mp = handle;
 	kern_return_t kr = _dispatch_send_wakeup_runloop_thread(mp, 0);
 	switch (kr) {
@@ -4219,27 +4007,38 @@ _dispatch_runloop_queue_class_poke(dispatch_queue_t dq)
 
 DISPATCH_NOINLINE
 static void
-_dispatch_runloop_queue_poke(dispatch_queue_t dq,
-		pthread_priority_t pp, dispatch_wakeup_flags_t flags)
+_dispatch_runloop_queue_poke(dispatch_queue_t dq, dispatch_qos_t qos,
+		dispatch_wakeup_flags_t flags)
 {
 	// it's not useful to handle WAKEUP_FLUSH because mach_msg() will have
-	// a release barrier and that when runloop queues stop being thread bound
+	// a release barrier and that when runloop queues stop being thread-bound
 	// they have a non optional wake-up to start being a "normal" queue
 	// either in _dispatch_runloop_queue_xref_dispose,
 	// or in _dispatch_queue_cleanup2() for the main thread.
+	uint64_t old_state, new_state;
 
 	if (dq == &_dispatch_main_q) {
 		dispatch_once_f(&_dispatch_main_q_handle_pred, dq,
 				_dispatch_runloop_queue_handle_init);
 	}
-	_dispatch_queue_override_priority(dq, /* inout */ &pp, /* inout */ &flags);
-	if (flags & DISPATCH_WAKEUP_OVERRIDING) {
-		mach_port_t owner = DISPATCH_QUEUE_DRAIN_OWNER(dq);
+
+	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, relaxed, {
+		new_state = _dq_state_merge_qos(old_state, qos);
+		if (old_state == new_state) {
+			os_atomic_rmw_loop_give_up(goto no_change);
+		}
+	});
+
+	dispatch_qos_t dq_qos = _dispatch_priority_qos(dq->dq_priority);
+	if (qos > dq_qos) {
+		mach_port_t owner = _dq_state_drain_owner(new_state);
+		pthread_priority_t pp = _dispatch_qos_to_pp(qos);
 		_dispatch_thread_override_start(owner, pp, dq);
-		if (flags & DISPATCH_WAKEUP_WAS_OVERRIDDEN) {
+		if (_dq_state_max_qos(old_state) > dq_qos) {
 			_dispatch_thread_override_end(owner, dq);
 		}
 	}
+no_change:
 	_dispatch_runloop_queue_class_poke(dq);
 	if (flags & DISPATCH_WAKEUP_CONSUME) {
 		return _dispatch_release_tailcall(dq);
@@ -4253,7 +4052,10 @@ _dispatch_global_queue_poke_slow(dispatch_queue_t dq, unsigned int n)
 {
 	dispatch_root_queue_context_t qc = dq->do_ctxt;
 	uint32_t i = n;
-	int r;
+	int r = ENOSYS;
+
+	dispatch_once_f(&_dispatch_root_queues_pred, NULL,
+			_dispatch_root_queues_init_once);
 
 	_dispatch_debug_root_queue(dq, __func__);
 #if HAVE_PTHREAD_WORKQUEUES
@@ -4275,18 +4077,14 @@ _dispatch_global_queue_poke_slow(dispatch_queue_t dq, unsigned int n)
 			return;
 		}
 #endif // DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK
-#if HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP
-		if (!dq->dq_priority) {
-			r = pthread_workqueue_addthreads_np(qc->dgq_wq_priority,
-					qc->dgq_wq_options, (int)i);
-			(void)dispatch_assume_zero(r);
-			return;
-		}
-#endif
 #if HAVE_PTHREAD_WORKQUEUE_QOS
-		r = _pthread_workqueue_addthreads((int)i, dq->dq_priority);
-		(void)dispatch_assume_zero(r);
+		r = _pthread_workqueue_addthreads((int)i,
+				_dispatch_priority_to_pp(dq->dq_priority));
+#elif HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP
+		r = pthread_workqueue_addthreads_np(qc->dgq_wq_priority,
+				qc->dgq_wq_options, (int)i);
 #endif
+		(void)dispatch_assume_zero(r);
 		return;
 	}
 #endif // HAVE_PTHREAD_WORKQUEUES
@@ -4349,7 +4147,7 @@ _dispatch_global_queue_poke_n(dispatch_queue_t dq, unsigned int n)
 		return;
 	}
 #endif // HAVE_PTHREAD_WORKQUEUES
-	return 	_dispatch_global_queue_poke_slow(dq, n);
+	return _dispatch_global_queue_poke_slow(dq, n);
 }
 
 static inline void
@@ -4431,7 +4229,8 @@ _dispatch_queue_drain(dispatch_queue_t dq, dispatch_invoke_flags_t flags,
 	while (dq->dq_items_tail) {
 		dc = _dispatch_queue_head(dq);
 		do {
-			if (unlikely(DISPATCH_QUEUE_IS_SUSPENDED(dq))) {
+			uint64_t dq_state = os_atomic_load(&dq->dq_state, relaxed);
+			if (unlikely(_dq_state_is_suspended(dq_state))) {
 				goto out;
 			}
 			if (unlikely(orig_tq != dq->do_targetq)) {
@@ -4482,7 +4281,6 @@ _dispatch_queue_drain(dispatch_queue_t dq, dispatch_invoke_flags_t flags,
 			}
 
 			_dispatch_continuation_pop_inline(dc, dq, flags);
-			_dispatch_perfmon_workitem_inc();
 			if (unlikely(dtf.dtf_deferred)) {
 				goto out_with_deferred_compute_owned;
 			}
@@ -4549,6 +4347,41 @@ _dispatch_queue_serial_drain(dispatch_queue_t dq,
 }
 
 #if DISPATCH_COCOA_COMPAT
+DISPATCH_NOINLINE
+static void
+_dispatch_main_queue_update_priority_from_thread(void)
+{
+	dispatch_queue_t dq = &_dispatch_main_q;
+	uint64_t dq_state = os_atomic_load2o(dq, dq_state, relaxed);
+	mach_port_t owner = _dq_state_drain_owner(dq_state);
+
+	dispatch_priority_t main_pri =
+			_dispatch_priority_from_pp_strip_flags(_dispatch_get_priority());
+	dispatch_qos_t main_qos = _dispatch_priority_qos(main_pri);
+	dispatch_qos_t max_qos = _dq_state_max_qos(dq_state);
+	dispatch_qos_t old_qos = _dispatch_priority_qos(dq->dq_priority);
+
+	// the main thread QoS was adjusted by someone else, learn the new QoS
+	// and reinitialize _dispatch_main_q.dq_priority
+	dq->dq_priority = _dispatch_priority_with_override_qos(main_pri, main_qos);
+
+	if (old_qos < max_qos && main_qos == DISPATCH_QOS_UNSPECIFIED) {
+		// main thread is opted out of QoS and we had an override
+		return _dispatch_thread_override_end(owner, dq);
+	}
+
+	if (old_qos < max_qos && max_qos <= main_qos) {
+		// main QoS was raised, and we had an override which is now useless
+		return _dispatch_thread_override_end(owner, dq);
+	}
+
+	if (main_qos < max_qos && max_qos <= old_qos) {
+		// main thread QoS was lowered, and we actually need an override
+		pthread_priority_t pp = _dispatch_qos_to_pp(max_qos);
+		return _dispatch_thread_override_start(owner, pp, dq);
+	}
+}
+
 static void
 _dispatch_main_queue_drain(void)
 {
@@ -4559,6 +4392,7 @@ _dispatch_main_queue_drain(void)
 		return;
 	}
 
+	_dispatch_perfmon_start_notrace();
 	if (!fastpath(_dispatch_queue_is_thread_bound(dq))) {
 		DISPATCH_CLIENT_CRASH(0, "_dispatch_main_queue_callback_4CF called"
 				" after dispatch_main()");
@@ -4572,32 +4406,38 @@ _dispatch_main_queue_drain(void)
 	dispatch_once_f(&_dispatch_main_q_handle_pred, dq,
 			_dispatch_runloop_queue_handle_init);
 
-	_dispatch_perfmon_start();
 	// <rdar://problem/23256682> hide the frame chaining when CFRunLoop
 	// drains the main runloop, as this should not be observable that way
 	_dispatch_thread_frame_push_and_rebase(&dtf, dq, NULL);
 
-	pthread_priority_t old_pri = _dispatch_get_priority();
-	pthread_priority_t old_dp = _dispatch_set_defaultpriority(old_pri, NULL);
+	pthread_priority_t pp = _dispatch_get_priority();
+	dispatch_priority_t pri = _dispatch_priority_from_pp(pp);
+	dispatch_qos_t qos = _dispatch_priority_qos(pri);
 	voucher_t voucher = _voucher_copy();
+
+	if (unlikely(qos != _dispatch_priority_qos(dq->dq_priority))) {
+		_dispatch_main_queue_update_priority_from_thread();
+	}
+	dispatch_priority_t old_dbp = _dispatch_set_basepri(pri);
+	_dispatch_set_basepri_override_qos(DISPATCH_QOS_SATURATED);
 
 	struct dispatch_object_s *dc, *next_dc, *tail;
 	dc = os_mpsc_capture_snapshot(dq, dq_items, &tail);
 	do {
 		next_dc = os_mpsc_pop_snapshot_head(dc, tail, do_next);
 		_dispatch_continuation_pop_inline(dc, dq, DISPATCH_INVOKE_NONE);
-		_dispatch_perfmon_workitem_inc();
 	} while ((dc = next_dc));
 
 	// runloop based queues use their port for the queue PUBLISH pattern
 	// so this raw call to dx_wakeup(0) is valid
 	dx_wakeup(dq, 0, 0);
 	_dispatch_voucher_debug("main queue restore", voucher);
-	_dispatch_reset_defaultpriority(old_dp);
-	_dispatch_reset_priority_and_voucher(old_pri, voucher);
+	_dispatch_reset_basepri(old_dbp);
+	_dispatch_reset_basepri_override();
+	_dispatch_reset_priority_and_voucher(pp, voucher);
 	_dispatch_thread_frame_pop(&dtf);
-	_dispatch_perfmon_end();
 	_dispatch_force_cache_cleanup();
+	_dispatch_perfmon_end_notrace();
 }
 
 static bool
@@ -4606,18 +4446,19 @@ _dispatch_runloop_queue_drain_one(dispatch_queue_t dq)
 	if (!dq->dq_items_tail) {
 		return false;
 	}
+	_dispatch_perfmon_start_notrace();
 	dispatch_thread_frame_s dtf;
-	_dispatch_perfmon_start();
 	_dispatch_thread_frame_push(&dtf, dq);
-	pthread_priority_t old_pri = _dispatch_get_priority();
-	pthread_priority_t old_dp = _dispatch_set_defaultpriority(old_pri, NULL);
+	pthread_priority_t pp = _dispatch_get_priority();
+	dispatch_priority_t pri = _dispatch_priority_from_pp(pp);
 	voucher_t voucher = _voucher_copy();
+	dispatch_priority_t old_dbp = _dispatch_set_basepri(pri);
+	_dispatch_set_basepri_override_qos(DISPATCH_QOS_SATURATED);
 
 	struct dispatch_object_s *dc, *next_dc;
 	dc = _dispatch_queue_head(dq);
 	next_dc = _dispatch_queue_next(dq, dc);
 	_dispatch_continuation_pop_inline(dc, dq, DISPATCH_INVOKE_NONE);
-	_dispatch_perfmon_workitem_inc();
 
 	if (!next_dc) {
 		// runloop based queues use their port for the queue PUBLISH pattern
@@ -4626,11 +4467,12 @@ _dispatch_runloop_queue_drain_one(dispatch_queue_t dq)
 	}
 
 	_dispatch_voucher_debug("runloop queue restore", voucher);
-	_dispatch_reset_defaultpriority(old_dp);
-	_dispatch_reset_priority_and_voucher(old_pri, voucher);
+	_dispatch_reset_basepri(old_dbp);
+	_dispatch_reset_basepri_override();
+	_dispatch_reset_priority_and_voucher(pp, voucher);
 	_dispatch_thread_frame_pop(&dtf);
-	_dispatch_perfmon_end();
 	_dispatch_force_cache_cleanup();
+	_dispatch_perfmon_end_notrace();
 	return next_dc;
 }
 #endif
@@ -4639,7 +4481,7 @@ DISPATCH_NOINLINE
 void
 _dispatch_try_lock_transfer_or_wakeup(dispatch_queue_t dq)
 {
-	dispatch_continuation_t dc_tmp, dc_start, dc_end;
+	dispatch_continuation_t dc_tmp, dc_start = NULL, dc_end = NULL;
 	struct dispatch_object_s *dc = NULL;
 	uint64_t dq_state, owned;
 	size_t count = 0;
@@ -4695,7 +4537,8 @@ attempt_running_slow_head:
 		// for sources and mach channels in the first place.
 		owned = _dispatch_queue_adjust_owned(dq, owned, dc);
 		dq_state = _dispatch_queue_drain_unlock(dq, owned, NULL);
-		return _dispatch_queue_try_wakeup(dq, dq_state, 0);
+		return _dispatch_queue_try_wakeup(dq, dq_state,
+				DISPATCH_WAKEUP_WAITER_HANDOFF);
 	} else if (!fastpath(_dispatch_queue_drain_try_unlock(dq, owned))) {
 		// someone enqueued a slow item at the head
 		// looping may be its last chance
@@ -4712,13 +4555,14 @@ _dispatch_mgr_queue_drain(void)
 
 	if (dq->dq_items_tail) {
 		_dispatch_perfmon_start();
+		_dispatch_set_basepri_override_qos(DISPATCH_QOS_SATURATED);
 		if (slowpath(_dispatch_queue_serial_drain(dq, flags, &owned, NULL))) {
 			DISPATCH_INTERNAL_CRASH(0, "Interrupted drain on manager queue");
 		}
 		_dispatch_voucher_debug("mgr queue clear", NULL);
 		_voucher_clear();
-		_dispatch_reset_defaultpriority_override();
-		_dispatch_perfmon_end();
+		_dispatch_reset_basepri_override();
+		_dispatch_perfmon_end(perfmon_thread_manager);
 	}
 
 #if DISPATCH_USE_KEVENT_WORKQUEUE
@@ -4796,15 +4640,17 @@ _dispatch_queue_drain_deferred_invoke(dispatch_queue_t dq,
 					_dq_state_drain_owner(old_state) != self) {
 				os_atomic_rmw_loop_give_up({
 					// We may have been overridden, so inform the root queue
-					_dispatch_set_defaultpriority_override();
+					_dispatch_set_basepri_override_qos(
+							_dq_state_max_qos(old_state));
 					return _dispatch_release_tailcall(dq);
 				});
 			}
-			new_state = DISPATCH_QUEUE_DRAIN_UNLOCK_PRESERVE_WAITERS_BIT(new_state);
+			new_state =
+				DISPATCH_QUEUE_DRAIN_UNLOCK_PRESERVE_WAITERS_BIT(new_state);
 		});
-		if (_dq_state_has_override(old_state)) {
+		if (_dq_state_received_override(old_state)) {
 			// Ensure that the root queue sees that this thread was overridden.
-			_dispatch_set_defaultpriority_override();
+			_dispatch_set_basepri_override_qos(_dq_state_max_qos(old_state));
 		}
 		return dx_invoke(dq, flags | DISPATCH_INVOKE_STEALING);
 	}
@@ -4886,39 +4732,37 @@ _dispatch_queue_override_invoke(dispatch_continuation_t dc,
 
 DISPATCH_ALWAYS_INLINE
 static inline bool
-_dispatch_need_global_root_queue_push_override(dispatch_queue_t rq,
-		pthread_priority_t pp)
+_dispatch_need_global_root_queue_override(dispatch_queue_t rq,
+		dispatch_qos_t qos)
 {
-	pthread_priority_t rqp = rq->dq_priority & _PTHREAD_PRIORITY_QOS_CLASS_MASK;
-	bool defaultqueue = rq->dq_priority & _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG;
+	dispatch_qos_t rqos = _dispatch_priority_qos(rq->dq_priority);
+	bool defaultqueue = rq->dq_priority & DISPATCH_PRIORITY_FLAG_DEFAULTQUEUE;
 
-	if (unlikely(!rqp)) return false;
+	if (unlikely(!rqos)) return false;
 
-	pp &= _PTHREAD_PRIORITY_QOS_CLASS_MASK;
-	return defaultqueue ? pp && pp != rqp : pp > rqp;
+	return defaultqueue ? qos && qos != rqos : qos > rqos;
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline bool
-_dispatch_need_global_root_queue_push_override_stealer(dispatch_queue_t rq,
-		pthread_priority_t pp)
+_dispatch_need_global_root_queue_override_stealer(dispatch_queue_t rq,
+		dispatch_qos_t qos)
 {
-	pthread_priority_t rqp = rq->dq_priority & _PTHREAD_PRIORITY_QOS_CLASS_MASK;
-	bool defaultqueue = rq->dq_priority & _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG;
+	dispatch_qos_t rqos = _dispatch_priority_qos(rq->dq_priority);
+	bool defaultqueue = rq->dq_priority & DISPATCH_PRIORITY_FLAG_DEFAULTQUEUE;
 
-	if (unlikely(!rqp)) return false;
+	if (unlikely(!rqos)) return false;
 
-	pp &= _PTHREAD_PRIORITY_QOS_CLASS_MASK;
-	return defaultqueue || pp > rqp;
+	return defaultqueue ? qos != 0 : qos > rqos;
 }
 
 DISPATCH_NOINLINE
 static void
 _dispatch_root_queue_push_override(dispatch_queue_t orig_rq,
-		dispatch_object_t dou, pthread_priority_t pp)
+		dispatch_object_t dou, dispatch_qos_t qos)
 {
-	bool overcommit = orig_rq->dq_priority & _PTHREAD_PRIORITY_OVERCOMMIT_FLAG;
-	dispatch_queue_t rq = _dispatch_get_root_queue_for_priority(pp, overcommit);
+	bool overcommit = orig_rq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT;
+	dispatch_queue_t rq = _dispatch_get_root_queue(qos, overcommit);
 	dispatch_continuation_t dc = dou._dc;
 
 	if (_dispatch_object_is_redirection(dc)) {
@@ -4944,10 +4788,10 @@ _dispatch_root_queue_push_override(dispatch_queue_t orig_rq,
 DISPATCH_NOINLINE
 static void
 _dispatch_root_queue_push_override_stealer(dispatch_queue_t orig_rq,
-		dispatch_queue_t dq, pthread_priority_t pp)
+		dispatch_queue_t dq, dispatch_qos_t qos)
 {
-	bool overcommit = orig_rq->dq_priority & _PTHREAD_PRIORITY_OVERCOMMIT_FLAG;
-	dispatch_queue_t rq = _dispatch_get_root_queue_for_priority(pp, overcommit);
+	bool overcommit = orig_rq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT;
+	dispatch_queue_t rq = _dispatch_get_root_queue(qos, overcommit);
 	dispatch_continuation_t dc = _dispatch_continuation_alloc();
 
 	dc->do_vtable = DC_VTABLE(OVERRIDE_STEALING);
@@ -4964,20 +4808,20 @@ _dispatch_root_queue_push_override_stealer(dispatch_queue_t orig_rq,
 }
 
 DISPATCH_NOINLINE
-static void
+void
 _dispatch_queue_class_wakeup_with_override(dispatch_queue_t dq,
-		pthread_priority_t pp, dispatch_wakeup_flags_t flags, uint64_t dq_state)
+		dispatch_qos_t qos, dispatch_wakeup_flags_t flags, uint64_t dq_state)
 {
 	mach_port_t owner = _dq_state_drain_owner(dq_state);
-	pthread_priority_t pp2;
 	dispatch_queue_t tq;
+	dispatch_qos_t oqos;
 	bool locked;
 
 	if (owner) {
-		int rc = _dispatch_wqthread_override_start_check_owner(owner, pp,
+		int rc = _dispatch_wqthread_override_start_check_owner(owner, qos,
 				&dq->dq_state_lock);
 		// EPERM means the target of the override is not a work queue thread
-		// and could be a thread bound queue such as the main queue.
+		// and could be a thread-bound queue such as the main queue.
 		// When that happens we must get to that queue and wake it up if we
 		// want the override to be appplied and take effect.
 		if (rc != EPERM) {
@@ -4991,14 +4835,14 @@ _dispatch_queue_class_wakeup_with_override(dispatch_queue_t dq,
 
 	tq = dq->do_targetq;
 
-	if (_dispatch_queue_has_immutable_target(dq)) {
+	if (likely(!_dispatch_queue_is_legacy(dq))) {
 		locked = false;
 	} else if (_dispatch_is_in_root_queues_array(tq)) {
 		// avoid locking when we recognize the target queue as a global root
 		// queue it is gross, but is a very common case. The locking isn't
 		// needed because these target queues cannot go away.
 		locked = false;
-	} else if (_dispatch_queue_sidelock_trylock(dq, pp)) {
+	} else if (_dispatch_queue_sidelock_trylock(dq, qos)) {
 		// <rdar://problem/17735825> to traverse the tq chain safely we must
 		// lock it to ensure it cannot change
 		locked = true;
@@ -5008,10 +4852,9 @@ _dispatch_queue_class_wakeup_with_override(dispatch_queue_t dq,
 		//
 		// Leading to being there, the current thread has:
 		// 1. enqueued an object on `dq`
-		// 2. raised the dq_override value of `dq`
-		// 3. set the HAS_OVERRIDE bit and not seen an owner
-		// 4. tried and failed to acquire the side lock
-		//
+		// 2. raised the dq_override value and set RECEIVED_OVERRDE on `dq`
+		//    and not seen an owner
+		// 3. tried and failed to acquire the side lock
 		//
 		// The side lock owner can only be one of three things:
 		//
@@ -5021,20 +4864,19 @@ _dispatch_queue_class_wakeup_with_override(dispatch_queue_t dq,
 		//   the eventual dispatch_resume().
 		//
 		// - A dispatch_set_target_queue() call. The fact that we saw no `owner`
-		//   means that the trysync it does wasn't being drained when (3)
+		//   means that the trysync it does wasn't being drained when (2)
 		//   happened which can only be explained by one of these interleavings:
 		//
 		//    o `dq` became idle between when the object queued in (1) ran and
 		//      the set_target_queue call and we were unlucky enough that our
-		//      step (3) happened while this queue was idle. There is no reason
+		//      step (2) happened while this queue was idle. There is no reason
 		//		to override anything anymore, the queue drained to completion
 		//      while we were preempted, our job is done.
 		//
-		//    o `dq` is queued but not draining during (1-3), then when we try
-		//      to lock at (4) the queue is now draining a set_target_queue.
-		//      Since we set HAS_OVERRIDE with a release barrier, the effect of
-		//      (2) was visible to the drainer when he acquired the drain lock,
-		//      and that guy has applied our override. Our job is done.
+		//    o `dq` is queued but not draining during (1-2), then when we try
+		//      to lock at (3) the queue is now draining a set_target_queue.
+		//      This drainer must have seen the effects of (2) and that guy has
+		//      applied our override. Our job is done.
 		//
 		// - Another instance of _dispatch_queue_class_wakeup_with_override(),
 		//   which is fine because trylock leaves a hint that we failed our
@@ -5047,11 +4889,13 @@ _dispatch_queue_class_wakeup_with_override(dispatch_queue_t dq,
 
 apply_again:
 	if (dx_type(tq) == DISPATCH_QUEUE_GLOBAL_ROOT_TYPE) {
-		if (_dispatch_need_global_root_queue_push_override_stealer(tq, pp)) {
-			_dispatch_root_queue_push_override_stealer(tq, dq, pp);
+		if (_dispatch_need_global_root_queue_override_stealer(tq, qos)) {
+			_dispatch_root_queue_push_override_stealer(tq, dq, qos);
 		}
-	} else if (_dispatch_queue_need_override(tq, pp)) {
-		dx_wakeup(tq, pp, DISPATCH_WAKEUP_OVERRIDING);
+	} else if (flags & DISPATCH_WAKEUP_WAITER_HANDOFF) {
+		dx_wakeup(tq, qos, flags);
+	} else if (_dispatch_queue_need_override(tq, qos)) {
+		dx_wakeup(tq, qos, DISPATCH_WAKEUP_OVERRIDING);
 	}
 	while (unlikely(locked && !_dispatch_queue_sidelock_tryunlock(dq))) {
 		// rdar://problem/24081326
@@ -5060,9 +4904,9 @@ apply_again:
 		// tried to acquire the side lock while we were running, and could have
 		// had a better override than ours to apply.
 		//
-		pp2 = dq->dq_override;
-		if (pp2 > pp) {
-			pp = pp2;
+		oqos = _dq_state_max_qos(os_atomic_load2o(dq, dq_state, relaxed));
+		if (oqos > qos) {
+			qos = oqos;
 			// The other instance had a better priority than ours, override
 			// our thread, and apply the override that wasn't applied to `dq`
 			// because of us.
@@ -5080,32 +4924,26 @@ out:
 DISPATCH_NOINLINE
 void
 _dispatch_queue_class_override_drainer(dispatch_queue_t dq,
-		pthread_priority_t pp, dispatch_wakeup_flags_t flags)
+		dispatch_qos_t qos, dispatch_wakeup_flags_t flags)
 {
 #if HAVE_PTHREAD_WORKQUEUE_QOS
-	uint64_t dq_state, value;
+	uint64_t old_state, new_state;
 
 	//
 	// Someone is trying to override the last work item of the queue.
-	// Do not remember this override on the queue because we know the precise
-	// duration the override is required for: until the current drain unlocks.
 	//
-	// That is why this function only tries to set HAS_OVERRIDE if we can
-	// still observe a drainer, and doesn't need to set the DIRTY bit
-	// because oq_override wasn't touched and there is no race to resolve
-	//
-	os_atomic_rmw_loop2o(dq, dq_state, dq_state, value, relaxed, {
-		if (!_dq_state_drain_locked(dq_state)) {
-			os_atomic_rmw_loop_give_up(break);
+	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, relaxed, {
+		new_state = _dq_state_merge_qos(old_state, qos);
+		if (!_dq_state_drain_locked(new_state) || new_state == old_state) {
+			os_atomic_rmw_loop_give_up(goto done);
 		}
-		value = dq_state | DISPATCH_QUEUE_HAS_OVERRIDE;
 	});
-	if (_dq_state_drain_locked(dq_state)) {
-		return _dispatch_queue_class_wakeup_with_override(dq, pp,
-				flags, dq_state);
-	}
+	return _dispatch_queue_class_wakeup_with_override(dq, qos,
+			flags, new_state);
+
+done:
 #else
-	(void)pp;
+	(void)qos;
 #endif // HAVE_PTHREAD_WORKQUEUE_QOS
 	if (flags & DISPATCH_WAKEUP_CONSUME) {
 		return _dispatch_release_tailcall(dq);
@@ -5116,31 +4954,30 @@ _dispatch_queue_class_override_drainer(dispatch_queue_t dq,
 DISPATCH_NOINLINE
 static void
 _dispatch_trystash_to_deferred_items(dispatch_queue_t dq, dispatch_object_t dou,
-		pthread_priority_t pp, dispatch_deferred_items_t ddi)
+		dispatch_qos_t qos, dispatch_deferred_items_t ddi)
 {
-	dispatch_priority_t old_pp = ddi->ddi_stashed_pp;
+	dispatch_priority_t old_pri = ddi->ddi_stashed_pri;
 	dispatch_queue_t old_dq = ddi->ddi_stashed_dq;
 	struct dispatch_object_s *old_dou = ddi->ddi_stashed_dou;
 	dispatch_priority_t rq_overcommit;
 
-	rq_overcommit = dq->dq_priority & _PTHREAD_PRIORITY_OVERCOMMIT_FLAG;
-	if (likely(!old_pp || rq_overcommit)) {
+	rq_overcommit = dq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT;
+	if (likely(!old_pri || rq_overcommit)) {
 		ddi->ddi_stashed_dq = dq;
 		ddi->ddi_stashed_dou = dou._do;
-		ddi->ddi_stashed_pp = (dispatch_priority_t)pp | rq_overcommit |
-				_PTHREAD_PRIORITY_PRIORITY_MASK;
-		if (likely(!old_pp)) {
+		ddi->ddi_stashed_pri = _dispatch_priority_make(qos, 0) | rq_overcommit;
+		if (likely(!old_pri)) {
 			return;
 		}
 		// push the previously stashed item
-		pp = old_pp & _PTHREAD_PRIORITY_QOS_CLASS_MASK;
+		qos = _dispatch_priority_qos(old_pri);
 		dq = old_dq;
 		dou._do = old_dou;
 	}
-	if (_dispatch_need_global_root_queue_push_override(dq, pp)) {
-		return _dispatch_root_queue_push_override(dq, dou, pp);
+	if (_dispatch_need_global_root_queue_override(dq, qos)) {
+		return _dispatch_root_queue_push_override(dq, dou, qos);
 	}
-	// bit of cheating: we should really pass `pp` but we know that we are
+	// bit of cheating: we should really pass `qos` but we know that we are
 	// pushing onto a global queue at this point, and we just checked that
 	// `pp` doesn't matter.
 	DISPATCH_COMPILER_CAN_ASSUME(dx_type(dq) == DISPATCH_QUEUE_GLOBAL_ROOT_TYPE);
@@ -5152,54 +4989,48 @@ _dispatch_trystash_to_deferred_items(dispatch_queue_t dq, dispatch_object_t dou,
 DISPATCH_NOINLINE
 static void
 _dispatch_queue_push_slow(dispatch_queue_t dq, dispatch_object_t dou,
-		pthread_priority_t pp)
+		dispatch_qos_t qos)
 {
 	dispatch_once_f(&_dispatch_root_queues_pred, NULL,
 			_dispatch_root_queues_init_once);
-	_dispatch_queue_push(dq, dou, pp);
+	_dispatch_queue_push(dq, dou, qos);
 }
 #endif
 
 DISPATCH_NOINLINE
 void
 _dispatch_queue_push(dispatch_queue_t dq, dispatch_object_t dou,
-		pthread_priority_t pp)
+		dispatch_qos_t qos)
 {
-	_dispatch_assert_is_valid_qos_override(pp);
 	if (dx_type(dq) == DISPATCH_QUEUE_GLOBAL_ROOT_TYPE) {
 #if DISPATCH_USE_KEVENT_WORKQUEUE
 		dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
-		if (unlikely(ddi && !(ddi->ddi_stashed_pp &
-				(dispatch_priority_t)_PTHREAD_PRIORITY_FLAGS_MASK))) {
+		if (unlikely(ddi &&
+				(ddi->ddi_stashed_pri != DISPATCH_PRIORITY_NOSTASH))) {
 			dispatch_assert(_dispatch_root_queues_pred == DLOCK_ONCE_DONE);
-			return _dispatch_trystash_to_deferred_items(dq, dou, pp, ddi);
+			return _dispatch_trystash_to_deferred_items(dq, dou, qos, ddi);
 		}
 #endif
 #if HAVE_PTHREAD_WORKQUEUE_QOS
 		// can't use dispatch_once_f() as it would create a frame
 		if (unlikely(_dispatch_root_queues_pred != DLOCK_ONCE_DONE)) {
-			return _dispatch_queue_push_slow(dq, dou, pp);
+			return _dispatch_queue_push_slow(dq, dou, qos);
 		}
-		if (_dispatch_need_global_root_queue_push_override(dq, pp)) {
-			return _dispatch_root_queue_push_override(dq, dou, pp);
+		if (_dispatch_need_global_root_queue_override(dq, qos)) {
+			return _dispatch_root_queue_push_override(dq, dou, qos);
 		}
 #endif
 	}
-	_dispatch_queue_push_inline(dq, dou, pp, 0);
+	_dispatch_queue_push_inline(dq, dou, qos, 0);
 }
 
 DISPATCH_NOINLINE
 static void
-_dispatch_queue_class_wakeup_enqueue(dispatch_queue_t dq, pthread_priority_t pp,
+_dispatch_queue_class_wakeup_enqueue(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags, dispatch_queue_wakeup_target_t target)
 {
 	dispatch_queue_t tq;
 
-	if (flags & (DISPATCH_WAKEUP_OVERRIDING | DISPATCH_WAKEUP_WAS_OVERRIDDEN)) {
-		// _dispatch_queue_drain_try_unlock may have reset the override while
-		// we were becoming the enqueuer
-		_dispatch_queue_reinstate_override_priority(dq, (dispatch_priority_t)pp);
-	}
 	if (!(flags & DISPATCH_WAKEUP_CONSUME)) {
 		_dispatch_retain(dq);
 	}
@@ -5208,123 +5039,36 @@ _dispatch_queue_class_wakeup_enqueue(dispatch_queue_t dq, pthread_priority_t pp,
 		// of a queue asyncing to that queue is not an uncommon pattern
 		// and in that case the acquire is completely useless
 		//
-		// so instead use a thread fence here when we will read the targetq
-		// pointer because that is the only thing that really requires
-		// that barrier.
-		os_atomic_thread_fence(acquire);
-		tq = dq->do_targetq;
+		// so instead use depdendency ordering to read the targetq pointer.
+		os_atomic_thread_fence(dependency);
+		tq = os_atomic_load_with_dependency_on2o(dq, do_targetq, (long)qos);
 	} else {
 		dispatch_assert(target == DISPATCH_QUEUE_WAKEUP_MGR);
 		tq = &_dispatch_mgr_q;
 	}
-	return _dispatch_queue_push(tq, dq, pp);
+	return _dispatch_queue_push(tq, dq, qos);
 }
 
-DISPATCH_NOINLINE
-void
-_dispatch_queue_class_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
-		dispatch_wakeup_flags_t flags, dispatch_queue_wakeup_target_t target)
+DISPATCH_ALWAYS_INLINE
+static void
+_dispatch_queue_class_wakeup_finish(dispatch_queue_t dq, dispatch_qos_t qos,
+		dispatch_wakeup_flags_t flags, dispatch_queue_wakeup_target_t target,
+		uint64_t old_state, uint64_t new_state)
 {
-	uint64_t old_state, new_state, bits = 0;
-
-#if HAVE_PTHREAD_WORKQUEUE_QOS
-	_dispatch_queue_override_priority(dq, /* inout */ &pp, /* inout */ &flags);
-#endif
-
-	if (flags & DISPATCH_WAKEUP_FLUSH) {
-		bits = DISPATCH_QUEUE_DIRTY;
-	}
-	if (flags & DISPATCH_WAKEUP_OVERRIDING) {
-		//
-		// Setting the dirty bit here is about forcing callers of
-		// _dispatch_queue_drain_try_unlock() to loop again when an override
-		// has just been set to close the following race:
-		//
-		// Drainer (in drain_try_unlokc():
-		//    override_reset();
-		//    preempted....
-		//
-		// Enqueuer:
-		//    atomic_or(oq_override, override, relaxed);
-		//    atomic_or(dq_state, HAS_OVERRIDE, release);
-		//
-		// Drainer:
-		//    ... resumes
-		//    successful drain_unlock() and leaks `oq_override`
-		//
-		bits = DISPATCH_QUEUE_DIRTY | DISPATCH_QUEUE_HAS_OVERRIDE;
-	}
-
-	if (flags & DISPATCH_WAKEUP_SLOW_WAITER) {
-		uint64_t pending_barrier_width =
-				(dq->dq_width - 1) * DISPATCH_QUEUE_WIDTH_INTERVAL;
-		uint64_t xor_owner_and_set_full_width_and_in_barrier =
-				_dispatch_tid_self() | DISPATCH_QUEUE_WIDTH_FULL_BIT |
-				DISPATCH_QUEUE_IN_BARRIER;
-
-#ifdef DLOCK_NOWAITERS_BIT
-		bits  |= DLOCK_NOWAITERS_BIT;
-#else
-		bits  |= DLOCK_WAITERS_BIT;
-#endif
-		flags ^= DISPATCH_WAKEUP_SLOW_WAITER;
-		dispatch_assert(!(flags & DISPATCH_WAKEUP_CONSUME));
-
-		os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, release, {
-			new_state = old_state | bits;
-			if (_dq_state_drain_pended(old_state)) {
-				// same as DISPATCH_QUEUE_DRAIN_UNLOCK_PRESERVE_WAITERS_BIT
-				// but we want to be more efficient wrt the WAITERS_BIT
-				new_state &= ~DISPATCH_QUEUE_DRAIN_OWNER_MASK;
-				new_state &= ~DISPATCH_QUEUE_DRAIN_PENDED;
-			}
-			if (unlikely(_dq_state_drain_locked(new_state))) {
-#ifdef DLOCK_NOWAITERS_BIT
-				new_state &= ~(uint64_t)DLOCK_NOWAITERS_BIT;
-#endif
-			} else if (unlikely(!_dq_state_is_runnable(new_state) ||
-					!(flags & DISPATCH_WAKEUP_FLUSH))) {
-				// either not runnable, or was not for the first item (26700358)
-				// so we should not try to lock and handle overrides instead
-			} else if (_dq_state_has_pending_barrier(old_state) ||
-					new_state + pending_barrier_width <
-					DISPATCH_QUEUE_WIDTH_FULL_BIT) {
-				// see _dispatch_queue_drain_try_lock
-				new_state &= DISPATCH_QUEUE_DRAIN_PRESERVED_BITS_MASK;
-				new_state ^= xor_owner_and_set_full_width_and_in_barrier;
-			} else {
-				new_state |= DISPATCH_QUEUE_ENQUEUED;
-			}
-		});
-		if ((old_state ^ new_state) & DISPATCH_QUEUE_IN_BARRIER) {
-			return _dispatch_try_lock_transfer_or_wakeup(dq);
-		}
-	} else if (bits) {
-		os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, release,{
-			new_state = old_state | bits;
-			if (likely(_dq_state_should_wakeup(old_state))) {
-				new_state |= DISPATCH_QUEUE_ENQUEUED;
-			}
-		});
+	if ((old_state ^ new_state) & DISPATCH_QUEUE_MAX_QOS_MASK) {
+		flags |= DISPATCH_WAKEUP_OVERRIDING;
 	} else {
-		os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, relaxed,{
-			new_state = old_state;
-			if (likely(_dq_state_should_wakeup(old_state))) {
-				new_state |= DISPATCH_QUEUE_ENQUEUED;
-			} else {
-				os_atomic_rmw_loop_give_up(break);
-			}
-		});
+		flags &= ~(dispatch_wakeup_flags_t)DISPATCH_WAKEUP_OVERRIDING;
+		qos = _dq_state_max_qos(new_state);
 	}
-
 	if ((old_state ^ new_state) & DISPATCH_QUEUE_ENQUEUED) {
-		return _dispatch_queue_class_wakeup_enqueue(dq, pp, flags, target);
+		return _dispatch_queue_class_wakeup_enqueue(dq, qos, flags, target);
 	}
 
 #if HAVE_PTHREAD_WORKQUEUE_QOS
-	if ((flags & DISPATCH_WAKEUP_OVERRIDING)
+	if ((flags & (DISPATCH_WAKEUP_OVERRIDING | DISPATCH_WAKEUP_WAITER_HANDOFF))
 			&& target == DISPATCH_QUEUE_WAKEUP_TARGET) {
-		return _dispatch_queue_class_wakeup_with_override(dq, pp,
+		return _dispatch_queue_class_wakeup_with_override(dq, qos,
 				flags, new_state);
 	}
 #endif
@@ -5332,6 +5076,97 @@ _dispatch_queue_class_wakeup(dispatch_queue_t dq, pthread_priority_t pp,
 	if (flags & DISPATCH_WAKEUP_CONSUME) {
 		return _dispatch_release_tailcall(dq);
 	}
+}
+
+DISPATCH_NOINLINE
+void
+_dispatch_queue_class_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
+		dispatch_wakeup_flags_t flags, dispatch_queue_wakeup_target_t target)
+{
+	uint64_t old_state, new_state;
+
+	qos = _dispatch_queue_override_qos(dq, qos);
+	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, release, {
+		new_state = _dq_state_merge_qos(old_state, qos);
+		if (likely(_dq_state_should_wakeup(old_state))) {
+			new_state |= DISPATCH_QUEUE_ENQUEUED;
+		}
+		if (flags & DISPATCH_WAKEUP_FLUSH) {
+			new_state |= DISPATCH_QUEUE_DIRTY;
+		} else if (new_state == old_state) {
+			os_atomic_rmw_loop_give_up(break);
+		}
+	});
+
+	return _dispatch_queue_class_wakeup_finish(dq, qos, flags, target,
+			old_state, new_state);
+}
+
+DISPATCH_NOINLINE
+static void
+_dispatch_queue_push_slow_waiter(dispatch_queue_t dq, dispatch_object_t dou)
+{
+	uint64_t pending_barrier_width =
+			(dq->dq_width - 1) * DISPATCH_QUEUE_WIDTH_INTERVAL;
+	uint64_t xor_owner_and_set_full_width_and_in_barrier =
+			_dispatch_tid_self() | DISPATCH_QUEUE_WIDTH_FULL_BIT |
+			DISPATCH_QUEUE_IN_BARRIER;
+	dispatch_qos_t qos = _dispatch_continuation_override_qos(dq, dou._dc);
+	uint64_t old_state, new_state;
+	dispatch_wakeup_flags_t flags = 0;
+
+	_dispatch_trace_continuation_push(dq, dou);
+	if (unlikely(_dispatch_queue_push_update_tail(dq, dou._do))) {
+		// for slow waiters, we borrow the reference of the caller
+		// so we don't need to protect the wakeup with a temporary retain
+		_dispatch_queue_push_update_head(dq, dou._do, true);
+		flags = DISPATCH_WAKEUP_FLUSH;
+		if (unlikely(_dispatch_queue_is_thread_bound(dq))) {
+			return dx_wakeup(dq, qos, flags);
+		}
+	}
+
+	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, release, {
+		new_state = _dq_state_merge_qos(old_state, qos);
+#ifdef DLOCK_NOWAITERS_BIT
+		new_state |= DLOCK_NOWAITERS_BIT;
+#else
+		new_state |= DLOCK_WAITERS_BIT;
+#endif
+		if (flags & DISPATCH_WAKEUP_FLUSH) {
+			new_state |= DISPATCH_QUEUE_DIRTY;
+		}
+		if (_dq_state_drain_pended(old_state)) {
+			// same as DISPATCH_QUEUE_DRAIN_UNLOCK_PRESERVE_WAITERS_BIT
+			// but we want to be more efficient wrt the WAITERS_BIT
+			new_state &= ~DISPATCH_QUEUE_DRAIN_OWNER_MASK;
+			new_state &= ~DISPATCH_QUEUE_DRAIN_PENDED;
+		}
+		if (unlikely(_dq_state_drain_locked(new_state))) {
+#ifdef DLOCK_NOWAITERS_BIT
+			new_state &= ~(uint64_t)DLOCK_NOWAITERS_BIT;
+#endif
+		} else if (unlikely(!_dq_state_is_runnable(new_state) ||
+				!(flags & DISPATCH_WAKEUP_FLUSH))) {
+			// either not runnable, or was not for the first item (26700358)
+			// so we should not try to lock and handle overrides instead
+		} else if (_dq_state_has_pending_barrier(old_state) ||
+				new_state + pending_barrier_width <
+				DISPATCH_QUEUE_WIDTH_FULL_BIT) {
+			// see _dispatch_queue_drain_try_lock
+			new_state &= DISPATCH_QUEUE_DRAIN_PRESERVED_BITS_MASK;
+			new_state ^= xor_owner_and_set_full_width_and_in_barrier;
+		} else {
+			new_state |= DISPATCH_QUEUE_ENQUEUED;
+		}
+	});
+
+	if ((old_state ^ new_state) & DISPATCH_QUEUE_IN_BARRIER) {
+		return _dispatch_try_lock_transfer_or_wakeup(dq);
+	}
+
+	return _dispatch_queue_class_wakeup_finish(dq, qos, flags,
+			DISPATCH_QUEUE_WAKEUP_TARGET, old_state, new_state);
 }
 
 #pragma mark -
@@ -5438,7 +5273,7 @@ start:
 			goto out;
 		}
 		// There must be a next item now.
-		_dispatch_wait_until(next = head->do_next);
+		next = os_mpsc_get_next(head, do_next);
 	}
 
 	os_atomic_store2o(dq, dq_items_head, next, relaxed);
@@ -5449,30 +5284,30 @@ out:
 
 void
 _dispatch_root_queue_drain_deferred_item(dispatch_queue_t dq,
-		struct dispatch_object_s *dou, pthread_priority_t pp)
+		struct dispatch_object_s *dou, dispatch_qos_t qos
+		DISPATCH_PERF_MON_ARGS_PROTO)
 {
-	struct _dispatch_identity_s di;
-
 	// fake that we queued `dou` on `dq` for introspection purposes
 	_dispatch_trace_continuation_push(dq, dou);
 
-	pp = _dispatch_priority_inherit_from_root_queue(pp, dq);
+	dispatch_priority_t old_pri, pri = _dispatch_priority_make(qos, 0);
+	pri = _dispatch_priority_inherit_from_root_queue(pri, dq);
 	_dispatch_queue_set_current(dq);
-	_dispatch_root_queue_identity_assume(&di, pp);
+	pthread_priority_t pp = _dispatch_priority_to_pp(pri);
+	old_pri = _dispatch_root_queue_identity_assume(pp, NULL);
 #if DISPATCH_COCOA_COMPAT
 	void *pool = _dispatch_last_resort_autorelease_pool_push();
 #endif // DISPATCH_COCOA_COMPAT
 
-	_dispatch_perfmon_start();
 	_dispatch_continuation_pop_inline(dou, dq,
 			DISPATCH_INVOKE_WORKER_DRAIN | DISPATCH_INVOKE_REDIRECTING_DRAIN);
-	_dispatch_perfmon_workitem_inc();
-	_dispatch_perfmon_end();
+	// event thread that could steal
+	_dispatch_perfmon_end(perfmon_thread_event_steal);
 
 #if DISPATCH_COCOA_COMPAT
 	_dispatch_last_resort_autorelease_pool_pop(pool);
 #endif // DISPATCH_COCOA_COMPAT
-	_dispatch_reset_defaultpriority(di.old_pp);
+	_dispatch_reset_basepri(old_pri);
 	_dispatch_queue_set_current(NULL);
 
 	_dispatch_voucher_debug("root queue clear", NULL);
@@ -5481,7 +5316,7 @@ _dispatch_root_queue_drain_deferred_item(dispatch_queue_t dq,
 
 DISPATCH_NOT_TAIL_CALLED // prevent tailcall (for Instrument DTrace probe)
 static void
-_dispatch_root_queue_drain(dispatch_queue_t dq, pthread_priority_t pri)
+_dispatch_root_queue_drain(dispatch_queue_t dq, pthread_priority_t pp)
 {
 #if DISPATCH_DEBUG
 	dispatch_queue_t cq;
@@ -5490,28 +5325,34 @@ _dispatch_root_queue_drain(dispatch_queue_t dq, pthread_priority_t pri)
 	}
 #endif
 	_dispatch_queue_set_current(dq);
-	if (dq->dq_priority) pri = dq->dq_priority;
-	pthread_priority_t old_dp = _dispatch_set_defaultpriority(pri, NULL);
+	dispatch_priority_t pri = dq->dq_priority;
+	if (!pri) pri = _dispatch_priority_from_pp(pp);
+	dispatch_priority_t old_dbp = _dispatch_set_basepri(pri);
 #if DISPATCH_COCOA_COMPAT
 	void *pool = _dispatch_last_resort_autorelease_pool_push();
 #endif // DISPATCH_COCOA_COMPAT
 
-	_dispatch_perfmon_start();
 	struct dispatch_object_s *item;
 	bool reset = false;
+	_dispatch_perfmon_start();
 	while ((item = fastpath(_dispatch_root_queue_drain_one(dq)))) {
 		if (reset) _dispatch_wqthread_override_reset();
 		_dispatch_continuation_pop_inline(item, dq,
 				DISPATCH_INVOKE_WORKER_DRAIN|DISPATCH_INVOKE_REDIRECTING_DRAIN);
-		_dispatch_perfmon_workitem_inc();
-		reset = _dispatch_reset_defaultpriority_override();
+		reset = _dispatch_reset_basepri_override();
 	}
-	_dispatch_perfmon_end();
+
+	// overcommit or not. worker thread
+	if (pri & _PTHREAD_PRIORITY_OVERCOMMIT_FLAG) {
+		_dispatch_perfmon_end(perfmon_thread_worker_oc);
+	} else {
+		_dispatch_perfmon_end(perfmon_thread_worker_non_oc);
+	}
 
 #if DISPATCH_COCOA_COMPAT
 	_dispatch_last_resort_autorelease_pool_pop(pool);
 #endif // DISPATCH_COCOA_COMPAT
-	_dispatch_reset_defaultpriority(old_dp);
+	_dispatch_reset_basepri(old_dbp);
 	_dispatch_queue_set_current(NULL);
 }
 
@@ -5541,7 +5382,7 @@ _dispatch_worker_thread3(pthread_priority_t pp)
 	dispatch_queue_t dq;
 	pp &= _PTHREAD_PRIORITY_OVERCOMMIT_FLAG | ~_PTHREAD_PRIORITY_FLAGS_MASK;
 	_dispatch_thread_setspecific(dispatch_priority_key, (void *)(uintptr_t)pp);
-	dq = _dispatch_get_root_queue_for_priority(pp, overcommit);
+	dq = _dispatch_get_root_queue(_dispatch_qos_from_pp(pp), overcommit);
 	return _dispatch_worker_thread4(dq);
 }
 #endif // HAVE_PTHREAD_WORKQUEUE_QOS
@@ -5653,7 +5494,7 @@ _dispatch_runloop_root_queue_create_4CF(const char *label, unsigned long flags)
 	dqs = sizeof(struct dispatch_queue_s) - DISPATCH_QUEUE_CACHELINE_PAD;
 	dq = _dispatch_alloc(DISPATCH_VTABLE(queue_runloop), dqs);
 	_dispatch_queue_init(dq, DQF_THREAD_BOUND | DQF_CANNOT_TRYSYNC, 1, false);
-	dq->do_targetq = _dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT,true);
+	dq->do_targetq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, true);
 	dq->dq_label = label ? label : "runloop-queue"; // no-copy contract
 	_dispatch_runloop_queue_handle_init(dq);
 	_dispatch_queue_set_bound_thread(dq);
@@ -5666,10 +5507,10 @@ _dispatch_runloop_queue_xref_dispose(dispatch_queue_t dq)
 {
 	_dispatch_object_debug(dq, "%s", __func__);
 
-	pthread_priority_t pp = _dispatch_queue_reset_override_priority(dq, true);
+	dispatch_qos_t qos = _dispatch_queue_reset_max_qos(dq);
 	_dispatch_queue_clear_bound_thread(dq);
-	dx_wakeup(dq, pp, DISPATCH_WAKEUP_FLUSH);
-	if (pp) _dispatch_thread_override_end(DISPATCH_QUEUE_DRAIN_OWNER(dq), dq);
+	dx_wakeup(dq, qos, DISPATCH_WAKEUP_FLUSH);
+	if (qos) _dispatch_thread_override_end(DISPATCH_QUEUE_DRAIN_OWNER(dq), dq);
 }
 
 void
@@ -5828,12 +5669,7 @@ _dispatch_queue_set_mainq_drain_state(bool arg)
 
 void
 _dispatch_main_queue_callback_4CF(
-#if TARGET_OS_MAC
-		mach_msg_header_t *_Null_unspecified msg
-#else
-		void *ignored
-#endif
-		DISPATCH_UNUSED)
+		void *ignored DISPATCH_UNUSED)
 {
 	if (main_q_is_draining) {
 		return;
@@ -5901,52 +5737,25 @@ static void
 _dispatch_queue_cleanup2(void)
 {
 	dispatch_queue_t dq = &_dispatch_main_q;
-	_dispatch_queue_clear_bound_thread(dq);
+	uint64_t old_state, new_state;
 
-	// <rdar://problem/22623242>
-	// Here is what happens when both this cleanup happens because of
-	// dispatch_main() being called, and a concurrent enqueuer makes the queue
-	// non empty.
+	// Turning the main queue from a runloop queue into an ordinary serial queue
+	// is a 3 steps operation:
+	// 1. finish taking the main queue lock the usual way
+	// 2. clear the THREAD_BOUND flag
+	// 3. do a handoff
 	//
-	// _dispatch_queue_cleanup2:
-	//     atomic_and(dq_is_thread_bound, ~DQF_THREAD_BOUND, relaxed);
-	//     maximal_barrier();
-	//     if (load(dq_items_tail, seq_cst)) {
-	//         // do the wake up the normal serial queue way
-	//     } else {
-	//         // do no wake up  <----
-	//     }
-	//
-	// enqueuer:
-	//     store(dq_items_tail, new_tail, release);
-	//     if (load(dq_is_thread_bound, relaxed)) {
-	//         // do the wake up the runloop way <----
-	//     } else {
-	//         // do the wake up the normal serial way
-	//     }
-	//
-	// what would be bad is to take both paths marked <---- because the queue
-	// wouldn't be woken up until the next time it's used (which may never
-	// happen)
-	//
-	// An enqueuer that speculates the load of the old value of thread_bound
-	// and then does the store may wake up the main queue the runloop way.
-	// But then, the cleanup thread will see that store because the load
-	// of dq_items_tail is sequentially consistent, and we have just thrown away
-	// our pipeline.
-	//
-	// By the time cleanup2() is out of the maximally synchronizing barrier,
-	// no other thread can speculate the wrong load anymore, and both cleanup2()
-	// and a concurrent enqueuer would treat the queue in the standard non
-	// thread bound way
-
-	_dispatch_queue_atomic_flags_clear(dq,
-			DQF_THREAD_BOUND | DQF_CANNOT_TRYSYNC);
-	os_atomic_maximally_synchronizing_barrier();
-	// no need to drop the override, the thread will die anyway
-	// the barrier above includes an acquire, so it's ok to do this raw
-	// call to dx_wakeup(0)
-	dx_wakeup(dq, 0, 0);
+	// If an enqueuer executes concurrently, he may do the wakeup the runloop
+	// way, because he still believes the queue to be thread-bound, but the
+	// dirty bit will force this codepath to notice the enqueue, and the usual
+	// lock transfer will do the proper wakeup.
+	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, acquire, {
+		new_state = old_state & ~DISPATCH_QUEUE_DIRTY;
+		new_state += DISPATCH_QUEUE_WIDTH_INTERVAL;
+		new_state += DISPATCH_QUEUE_IN_BARRIER;
+	});
+	_dispatch_queue_atomic_flags_clear(dq, DQF_THREAD_BOUND|DQF_CANNOT_TRYSYNC);
+	_dispatch_try_lock_transfer_or_wakeup(dq);
 
 	// overload the "probably" variable to mean that dispatch_main() or
 	// similar non-POSIX API was called
@@ -5955,7 +5764,7 @@ _dispatch_queue_cleanup2(void)
 #ifndef __linux__
 	if (_dispatch_program_is_probably_callback_driven) {
 		_dispatch_barrier_async_detached_f(_dispatch_get_root_queue(
-				_DISPATCH_QOS_CLASS_DEFAULT, true), NULL, _dispatch_sig_thread);
+				DISPATCH_QOS_DEFAULT, true), NULL, _dispatch_sig_thread);
 		sleep(1); // workaround 6778970
 	}
 #endif
@@ -5978,6 +5787,7 @@ _dispatch_queue_cleanup(void *ctxt)
 			"Premature thread exit while a dispatch queue is running");
 }
 
+DISPATCH_NORETURN
 static void
 _dispatch_deferred_items_cleanup(void *ctxt)
 {
@@ -5986,6 +5796,7 @@ _dispatch_deferred_items_cleanup(void *ctxt)
 			"Premature thread exit with unhandled deferred items");
 }
 
+DISPATCH_NORETURN
 static void
 _dispatch_frame_cleanup(void *ctxt)
 {
@@ -5994,6 +5805,7 @@ _dispatch_frame_cleanup(void *ctxt)
 			"Premature thread exit while a dispatch frame is active");
 }
 
+DISPATCH_NORETURN
 static void
 _dispatch_context_cleanup(void *ctxt)
 {

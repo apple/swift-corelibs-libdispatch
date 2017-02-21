@@ -184,7 +184,7 @@
 #define DISPATCH_QUEUEABLE_VTABLE_HEADER(x) \
 	DISPATCH_INVOKABLE_VTABLE_HEADER(x); \
 	void (*const do_wakeup)(struct x##_s *, \
-			pthread_priority_t, dispatch_wakeup_flags_t); \
+			dispatch_qos_t, dispatch_wakeup_flags_t); \
 	void (*const do_dispose)(struct x##_s *)
 
 #define DISPATCH_OBJECT_VTABLE_HEADER(x) \
@@ -241,21 +241,12 @@ DISPATCH_ENUM(dispatch_wakeup_flags, uint32_t,
 	// involved before dx_wakeup returns
 	DISPATCH_WAKEUP_FLUSH					= 0x00000002,
 
-	// A slow waiter was just enqueued
-	DISPATCH_WAKEUP_SLOW_WAITER				= 0x00000004,
+	// The caller desires to apply an override on the object being woken up.
+	// When this flag is passed, the qos passed to dx_wakeup() should not be 0
+	DISPATCH_WAKEUP_OVERRIDING              = 0x00000004,
 
-	// The caller desires to apply an override on the object being woken up
-	// and has already adjusted the `oq_override` field. When this flag is
-	// passed, the priority passed to dx_wakeup() should not be 0
-	DISPATCH_WAKEUP_OVERRIDING              = 0x00000008,
-
-	// At the time this queue was woken up it had an override that must be
-	// preserved (used to solve a race with _dispatch_queue_drain_try_unlock())
-	DISPATCH_WAKEUP_WAS_OVERRIDDEN          = 0x00000010,
-
-#define _DISPATCH_WAKEUP_OVERRIDE_BITS \
-		((dispatch_wakeup_flags_t)(DISPATCH_WAKEUP_OVERRIDING | \
-		DISPATCH_WAKEUP_WAS_OVERRIDDEN))
+	// This wakeup is caused by a handoff from a slow waiter.
+	DISPATCH_WAKEUP_WAITER_HANDOFF          = 0x00000008,
 );
 
 DISPATCH_ENUM(dispatch_invoke_flags, uint32_t,
@@ -410,38 +401,30 @@ struct dispatch_object_s {
 
 #if OS_OBJECT_HAVE_OBJC1
 #define _OS_MPSC_QUEUE_FIELDS(ns, __state_field__) \
-	struct dispatch_object_s *volatile ns##_items_head; \
-	unsigned long ns##_serialnum; \
-	union { \
-		uint64_t volatile __state_field__; \
-		DISPATCH_STRUCT_LITTLE_ENDIAN_2( \
+	DISPATCH_UNION_LE(uint64_t volatile __state_field__, \
 			dispatch_lock __state_field__##_lock, \
 			uint32_t __state_field__##_bits \
-		); \
-	}; /* needs to be 64-bit aligned */ \
-	/* LP64 global queue cacheline boundary */ \
+	) DISPATCH_ATOMIC64_ALIGN; \
+	struct dispatch_object_s *volatile ns##_items_head; \
+	unsigned long ns##_serialnum; \
 	const char *ns##_label; \
 	voucher_t ns##_override_voucher; \
-	dispatch_priority_t ns##_priority; \
-	dispatch_priority_t volatile ns##_override; \
-	struct dispatch_object_s *volatile ns##_items_tail
+	struct dispatch_object_s *volatile ns##_items_tail; \
+	dispatch_priority_t ns##_priority
 #else
 #define _OS_MPSC_QUEUE_FIELDS(ns, __state_field__) \
 	struct dispatch_object_s *volatile ns##_items_head; \
-	union { \
-		uint64_t volatile __state_field__; \
-		DISPATCH_STRUCT_LITTLE_ENDIAN_2( \
+	DISPATCH_UNION_LE(uint64_t volatile __state_field__, \
 			dispatch_lock __state_field__##_lock, \
 			uint32_t __state_field__##_bits \
-		); \
-	}; /* needs to be 64-bit aligned */ \
+	) DISPATCH_ATOMIC64_ALIGN; \
 	/* LP64 global queue cacheline boundary */ \
 	unsigned long ns##_serialnum; \
 	const char *ns##_label; \
 	voucher_t ns##_override_voucher; \
-	dispatch_priority_t ns##_priority; \
-	dispatch_priority_t volatile ns##_override; \
-	struct dispatch_object_s *volatile ns##_items_tail
+	struct dispatch_object_s *volatile ns##_items_tail; \
+	dispatch_priority_t ns##_priority
+	/* LP64: 32bit hole */
 #endif
 
 OS_OBJECT_INTERNAL_CLASS_DECL(os_mpsc_queue, object,
