@@ -17,7 +17,7 @@
 #define __DISPATCH__STUBS__INTERNAL
 
 #ifndef TAILQ_FOREACH_SAFE
-#define TAILQ_FOREACH_SAFE(var, head, field, temp)                             \
+#define TAILQ_FOREACH_SAFE(var, head, field, temp)                         \
 	for ((var) = TAILQ_FIRST((head));                                      \
 		(var) && ((temp) = TAILQ_NEXT((var), field), 1); (var) = (temp))
 #endif
@@ -70,7 +70,9 @@ typedef void (*dispatch_mach_handler_function_t)(void*, dispatch_mach_reason_t,
 typedef void (*dispatch_mach_msg_destructor_t)(void*);
 
 // Print a warning when an unported code path executes.
-#define LINUX_PORT_ERROR()  do { printf("LINUX_PORT_ERROR_CALLED %s:%d: %s\n",__FILE__,__LINE__,__FUNCTION__); } while (0)
+#define LINUX_PORT_ERROR()  do { \
+		printf("LINUX_PORT_ERROR_CALLED %s:%d: %s\n",\
+		__FILE__,__LINE__,__FUNCTION__); } while (0)
 
 /*
  * Stub out defines for other missing types

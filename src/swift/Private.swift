@@ -117,7 +117,7 @@ public func dispatch_group_async(_ group: DispatchGroup, _ queue: DispatchQueue,
 }
 
 @available(*, unavailable, renamed: "DispatchGroup.notify(self:qos:flags:queue:execute:)")
-public func dispatch_group_notify(_ group: DispatchGroup, _ queue: DispatchQueue, _ block: @escaping () -> Void) 
+public func dispatch_group_notify(_ group: DispatchGroup, _ queue: DispatchQueue, _ block: @escaping () -> Void)
 {
 	fatalError()
 }
@@ -141,7 +141,7 @@ public func dispatch_io_set_interval(_ channel: DispatchIO, _ interval: UInt64, 
 }
 
 @available(*, unavailable, renamed:"DispatchQueue.concurrentPerform(iterations:execute:)")
-public func dispatch_apply(_ iterations: Int, _ queue: DispatchQueue, _ block: (Int) -> Void) 
+public func dispatch_apply(_ iterations: Int, _ queue: DispatchQueue, _ block: (Int) -> Void)
 {
 	fatalError()
 }
@@ -159,7 +159,7 @@ public func dispatch_get_global_queue(_ identifier: Int, _ flags: UInt) -> Dispa
 }
 
 @available(*, unavailable, renamed: "getter:DispatchQueue.main()")
-public func dispatch_get_main_queue() -> DispatchQueue 
+public func dispatch_get_main_queue() -> DispatchQueue
 {
 	fatalError()
 }
