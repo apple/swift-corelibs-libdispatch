@@ -62,7 +62,8 @@ _dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
 #define DISPATCH_SEMAPHORE_VERIFY_KR(x) do { \
 		DISPATCH_VERIFY_MIG(x); \
 		if (unlikely((x) == KERN_INVALID_NAME)) { \
-			DISPATCH_CLIENT_CRASH((x), "Use-after-free of dispatch_semaphore_t"); \
+			DISPATCH_CLIENT_CRASH((x), \
+				"Use-after-free of dispatch_semaphore_t or dispatch_group_t"); \
 		} else if (unlikely(x)) { \
 			DISPATCH_INTERNAL_CRASH((x), "mach semaphore API failure"); \
 		} \

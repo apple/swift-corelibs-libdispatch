@@ -126,6 +126,24 @@ os_release(void *obj)
 	return objc_release(obj);
 }
 
+void
+_os_object_atfork_prepare(void)
+{
+	return _objc_atfork_prepare();
+}
+
+void
+_os_object_atfork_parent(void)
+{
+	return _objc_atfork_parent();
+}
+
+void
+_os_object_atfork_child(void)
+{
+	return _objc_atfork_child();
+}
+
 #pragma mark -
 #pragma mark _os_object
 
@@ -308,6 +326,7 @@ DISPATCH_UNAVAILABLE_INIT()
 
 - (void)_xref_dispose {
 	_dispatch_queue_xref_dispose((struct dispatch_queue_s *)self);
+	_dispatch_mach_xref_dispose((struct dispatch_mach_s *)self);
 	[super _xref_dispose];
 }
 
@@ -449,6 +468,19 @@ _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 }
 
 #if HAVE_MACH
+#undef _dispatch_client_callout3
+void
+_dispatch_client_callout3(void *ctxt, dispatch_mach_reason_t reason,
+		dispatch_mach_msg_t dmsg, dispatch_mach_async_reply_callback_t f)
+{
+	@try {
+		return f(ctxt, reason, dmsg);
+	}
+	@catch (...) {
+		objc_terminate();
+	}
+}
+
 #undef _dispatch_client_callout4
 void
 _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,

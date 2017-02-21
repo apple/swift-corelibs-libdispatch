@@ -41,6 +41,8 @@ static struct firehose_server_s {
 	firehose_handler_t	fs_handler;
 
 	firehose_snapshot_t fs_snapshot;
+	bool                fs_io_snapshot_started;
+	bool                fs_mem_snapshot_started;
 
 	int					fs_kernel_fd;
 	firehose_client_t	fs_kernel_client;
@@ -172,7 +174,7 @@ firehose_client_drain(firehose_client_t fc, mach_port_t port, uint32_t flags)
 		fbh_ring = fb->fb_header.fbh_io_ring;
 		sent_flushed = (uint16_t)fc->fc_io_sent_flushed_pos;
 		flushed = (uint16_t)fc->fc_io_flushed_pos;
-		if (fc->fc_needs_io_snapshot) {
+		if (fc->fc_needs_io_snapshot && server_config.fs_io_snapshot_started) {
 			snapshot = server_config.fs_snapshot;
 		}
 	} else {
@@ -182,7 +184,7 @@ firehose_client_drain(firehose_client_t fc, mach_port_t port, uint32_t flags)
 		fbh_ring = fb->fb_header.fbh_mem_ring;
 		sent_flushed = (uint16_t)fc->fc_mem_sent_flushed_pos;
 		flushed = (uint16_t)fc->fc_mem_flushed_pos;
-		if (fc->fc_needs_mem_snapshot) {
+		if (fc->fc_needs_mem_snapshot && server_config.fs_mem_snapshot_started) {
 			snapshot = server_config.fs_snapshot;
 		}
 	}
@@ -334,6 +336,8 @@ firehose_client_finalize(firehose_client_t fc OS_OBJECT_CONSUMED)
 	server_config.fs_handler(fc, FIREHOSE_EVENT_CLIENT_DIED, NULL);
 
 	TAILQ_REMOVE(&server_config.fs_clients, fc, fc_entry);
+	dispatch_release(fc->fc_mach_channel);
+	fc->fc_mach_channel = NULL;
 	fc->fc_entry.tqe_next = DISPATCH_OBJECT_LISTLESS;
 	fc->fc_entry.tqe_prev = DISPATCH_OBJECT_LISTLESS;
 	_os_object_release(&fc->fc_as_os_object);
@@ -409,7 +413,7 @@ firehose_client_handle_death(void *ctxt)
 			continue;
 		}
 		server_config.fs_handler(fc, FIREHOSE_EVENT_IO_BUFFER_RECEIVED, fbc);
-		if (fc->fc_needs_io_snapshot && snapshot) {
+		if (fc->fc_needs_io_snapshot && server_config.fs_io_snapshot_started) {
 			snapshot->handler(fc, FIREHOSE_SNAPSHOT_EVENT_IO_BUFFER, fbc);
 		}
 	}
@@ -427,7 +431,7 @@ firehose_client_handle_death(void *ctxt)
 
 			mem_bitmap_copy &= ~(1ULL << ref);
 			server_config.fs_handler(fc, FIREHOSE_EVENT_MEM_BUFFER_RECEIVED, fbc);
-			if (fc->fc_needs_mem_snapshot && snapshot) {
+			if (fc->fc_needs_mem_snapshot && server_config.fs_mem_snapshot_started) {
 				snapshot->handler(fc, FIREHOSE_SNAPSHOT_EVENT_MEM_BUFFER, fbc);
 			}
 		}
@@ -522,15 +526,10 @@ firehose_client_resume(firehose_client_t fc,
 static void
 firehose_client_cancel(firehose_client_t fc)
 {
-	dispatch_mach_t dm;
 	dispatch_block_t block;
 
 	_dispatch_debug("client died (unique_pid: 0x%llx",
 			firehose_client_get_unique_pid(fc, NULL));
-
-	dm = fc->fc_mach_channel;
-	fc->fc_mach_channel = NULL;
-	dispatch_release(dm);
 
 	fc->fc_use_notifs = false;
 	dispatch_source_cancel(fc->fc_io_source);
@@ -559,8 +558,21 @@ _firehose_client_create(firehose_buffer_t fb)
 	return fc;
 }
 
+#pragma pack(4)
+typedef struct firehose_token_s {
+	uid_t auid;
+	uid_t euid;
+	gid_t egid;
+	uid_t ruid;
+	gid_t rgid;
+	pid_t pid;
+	au_asid_t asid;
+	dev_t execcnt;
+} *firehose_token_t;
+#pragma pack()
+
 static firehose_client_t
-firehose_client_create(firehose_buffer_t fb, pid_t pid,
+firehose_client_create(firehose_buffer_t fb, firehose_token_t token,
 		mach_port_t comm_recvp, mach_port_t comm_sendp)
 {
 	uint64_t unique_pid = fb->fb_header.fbh_uniquepid;
@@ -568,7 +580,9 @@ firehose_client_create(firehose_buffer_t fb, pid_t pid,
 	dispatch_mach_t dm;
 	dispatch_source_t ds;
 
-	fc->fc_pid = pid;
+	fc->fc_pid = token->pid ? token->pid : ~0;
+	fc->fc_euid = token->euid;
+	fc->fc_pidversion = token->execcnt;
 	ds = dispatch_source_create(DISPATCH_SOURCE_TYPE_DATA_OR, 0, 0,
 			server_config.fs_mem_drain_queue);
 	_os_object_retain_internal_inline(&fc->fc_as_os_object);
@@ -675,6 +689,18 @@ firehose_client_get_unique_pid(firehose_client_t fc, pid_t *pid_out)
 	return fbh->fbh_uniquepid ? fbh->fbh_uniquepid : ~0ull;
 }
 
+uid_t
+firehose_client_get_euid(firehose_client_t fc)
+{
+	return fc->fc_euid;
+}
+
+int
+firehose_client_get_pid_version(firehose_client_t fc)
+{
+	return fc->fc_pidversion;
+}
+
 void *
 firehose_client_get_metadata_buffer(firehose_client_t client, size_t *size)
 {
@@ -764,6 +790,17 @@ firehose_server_assert_spi_version(uint32_t spi_version)
 	}
 }
 
+bool
+firehose_server_has_ever_flushed_pages(void)
+{
+	// Use the IO pages flushed count from the kernel client as an
+	// approximation for whether the firehose has ever flushed pages during
+	// this boot. logd uses this detect the first time it starts after a
+	// fresh boot.
+	firehose_client_t fhc = server_config.fs_kernel_client;
+	return !fhc || fhc->fc_io_flushed_pos > 0;
+}
+
 void
 firehose_server_resume(void)
 {
@@ -779,6 +816,24 @@ firehose_server_resume(void)
 	}
 	dispatch_mach_connect(fs->fs_mach_channel, fs->fs_bootstrap_port,
 			MACH_PORT_NULL, NULL);
+}
+
+OS_NOINLINE
+static void
+_firehose_server_cancel(void *ctxt OS_UNUSED)
+{
+	firehose_client_t fc;
+	TAILQ_FOREACH(fc, &server_config.fs_clients, fc_entry) {
+		dispatch_mach_cancel(fc->fc_mach_channel);
+	}
+}
+
+void
+firehose_server_cancel(void)
+{
+	dispatch_mach_cancel(server_config.fs_mach_channel);
+	dispatch_async_f(server_config.fs_io_drain_queue, NULL,
+			_firehose_server_cancel);
 }
 
 dispatch_queue_t
@@ -920,6 +975,7 @@ firehose_snapshot_start(void *ctxt)
 	// 0. we need to be on the IO queue so that client connection and/or death
 	//    cannot happen concurrently
 	dispatch_assert_queue(server_config.fs_io_drain_queue);
+	server_config.fs_snapshot = snapshot;
 
 	// 1. mark all the clients participating in the current snapshot
 	//    and enter the group for each bit set
@@ -943,16 +999,18 @@ firehose_snapshot_start(void *ctxt)
 	}
 
 	dispatch_async(server_config.fs_mem_drain_queue, ^{
-		// 2. make fs_snapshot visible, this is what triggers the snapshot
-		//    logic from _drain() or handle_death(). until fs_snapshot is
-		//    published, the bits set above are mostly ignored
-		server_config.fs_snapshot = snapshot;
-
+		// 2. start the fs_mem_snapshot, this is what triggers the snapshot
+		//    logic from _drain() or handle_death()
+		server_config.fs_mem_snapshot_started = true;
 		snapshot->handler(NULL, FIREHOSE_SNAPSHOT_EVENT_MEM_START, NULL);
 
 		dispatch_async(server_config.fs_io_drain_queue, ^{
 			firehose_client_t fcj;
 
+			// 3. start the fs_io_snapshot, this is what triggers the snapshot
+			//    logic from _drain() or handle_death()
+			//    29868879: must always happen after the memory snapshot started
+			server_config.fs_io_snapshot_started = true;
 			snapshot->handler(NULL, FIREHOSE_SNAPSHOT_EVENT_IO_START, NULL);
 
 			// match group_enter from firehose_snapshot() after MEM+IO_START
@@ -984,6 +1042,8 @@ firehose_snapshot_finish(void *ctxt)
 
 	fs->handler(NULL, FIREHOSE_SNAPSHOT_EVENT_COMPLETE, NULL);
 	server_config.fs_snapshot = NULL;
+	server_config.fs_mem_snapshot_started = false;
+	server_config.fs_io_snapshot_started = false;
 
 	dispatch_release(fs->fs_group);
 	Block_release(fs->handler);
@@ -1077,10 +1137,8 @@ firehose_server_register(mach_port_t server_port OS_UNUSED,
 		fcci.fcci_size = (size_t)extra_info_size;
 	}
 
-	pid_t pid = (pid_t)atoken.val[5]; // same as audit_token_to_pid()
-	if (pid == 0) pid = ~0;
-	fc = firehose_client_create((firehose_buffer_t)base_addr, pid,
-			comm_recvp, comm_sendp);
+	fc = firehose_client_create((firehose_buffer_t)base_addr,
+			(firehose_token_t)&atoken, comm_recvp, comm_sendp);
 	dispatch_async(server_config.fs_io_drain_queue, ^{
 		firehose_client_resume(fc, &fcci);
 		if (fcci.fcci_size) {

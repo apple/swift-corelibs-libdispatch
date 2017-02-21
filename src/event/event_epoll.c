@@ -100,7 +100,7 @@ _dispatch_muxnote_find(struct dispatch_muxnote_bucket_s *dmb,
 	return dmn;
 }
 #define _dispatch_unote_muxnote_find(dmb, du) \
-	_dispatch_muxnote_find(dmb, du._du->du_ident, du._du->du_filter)
+		_dispatch_muxnote_find(dmb, du._du->du_ident, du._du->du_filter)
 
 static void
 _dispatch_muxnote_dispose(dispatch_muxnote_t dmn)
@@ -187,13 +187,15 @@ _dispatch_unote_register(dispatch_unote_t du, dispatch_priority_t pri)
 	dispatch_muxnote_t dmn;
 	int16_t events = EPOLLFREE;
 
-	dispatch_assert(!du._du->du_registered);
+	dispatch_assert(!_dispatch_unote_registered(du));
 	du._du->du_priority = pri;
 
 	switch (du._du->du_filter) {
-	case DISPATCH_EVFILT_CUSTOM_OR:
 	case DISPATCH_EVFILT_CUSTOM_ADD:
-		return du._du->du_registered = true;
+	case DISPATCH_EVFILT_CUSTOM_OR:
+	case DISPATCH_EVFILT_CUSTOM_REPLACE:
+		du._du->du_wlh = DISPATCH_WLH_GLOBAL;
+		return true;
 	case EVFILT_WRITE:
 		events |= EPOLLOUT;
 		break;
@@ -235,15 +237,16 @@ _dispatch_unote_register(dispatch_unote_t du, dispatch_priority_t pri)
 			TAILQ_INSERT_TAIL(&dmn->dmn_readers_head, dul, du_link);
 		}
 		dul->du_muxnote = dmn;
+		du._du->du_wlh = DISPATCH_WLH_GLOBAL;
 	}
-	return du._du->du_registered = (dmn != NULL);
+	return dmn != NULL;
 }
 
 void
 _dispatch_unote_resume(dispatch_unote_t du)
 {
 	dispatch_muxnote_t dmn = _dispatch_unote_get_linkage(du)->du_muxnote;
-	dispatch_assert((bool)du._du->du_registered);
+	dispatch_assert(_dispatch_unote_registered(du));
 
 	_dispatch_epoll_update(dmn, EPOLL_CTL_MOD);
 }
@@ -252,12 +255,13 @@ bool
 _dispatch_unote_unregister(dispatch_unote_t du, uint32_t flags)
 {
 	switch (du._du->du_filter) {
-	case DISPATCH_EVFILT_CUSTOM_OR:
 	case DISPATCH_EVFILT_CUSTOM_ADD:
-		du._du->du_registered = false;
+	case DISPATCH_EVFILT_CUSTOM_OR:
+	case DISPATCH_EVFILT_CUSTOM_REPLACE:
+		du._du->du_wlh = NULL;
 		return true;
 	}
-	if (du._du->du_registered) {
+	if (_dispatch_unote_registered(du)) {
 		dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
 		dispatch_muxnote_t dmn = dul->du_muxnote;
 		int16_t events = dmn->dmn_events;
@@ -286,7 +290,7 @@ _dispatch_unote_unregister(dispatch_unote_t du, uint32_t flags)
 			TAILQ_REMOVE(_dispatch_unote_muxnote_bucket(du), dmn, dmn_list);
 			_dispatch_muxnote_dispose(dmn);
 		}
-		du._du->du_registered = false;
+		du._du->du_wlh = NULL;
 	}
 	return true;
 }
@@ -415,7 +419,8 @@ _dispatch_event_loop_init(void)
 }
 
 void
-_dispatch_event_loop_poke(void)
+_dispatch_event_loop_poke(dispatch_wlh_t wlh DISPATCH_UNUSED,
+		dispatch_priority_t pri DISPATCH_UNUSED, uint32_t flags DISPATCH_UNUSED)
 {
 	dispatch_assume_zero(eventfd_write(_dispatch_eventfd, 1));
 }
@@ -477,13 +482,14 @@ _dispatch_event_merge_fd(dispatch_muxnote_t dmn, int16_t events)
 
 DISPATCH_NOINLINE
 void
-_dispatch_event_loop_drain(dispatch_deferred_items_t ddi DISPATCH_UNUSED, bool poll)
+_dispatch_event_loop_drain(uint32_t flags)
 {
 	struct epoll_event ev[DISPATCH_DEFERRED_ITEMS_EVENT_COUNT];
 	int i, r;
+	int timeout = (flags & KEVENT_FLAG_IMMEDIATE) ? 0 : -1;
 
 retry:
-	r = epoll_wait(_dispatch_epfd, ev, countof(ev), poll ? 0 : -1);
+	r = epoll_wait(_dispatch_epfd, ev, countof(ev), timeout);
 	if (unlikely(r == -1)) {
 		int err = errno;
 		switch (err) {

@@ -29,23 +29,26 @@
 
 #include "event_config.h"
 
+typedef struct dispatch_wlh_s *dispatch_wlh_t; // opaque handle
+#define DISPATCH_WLH_GLOBAL ((dispatch_wlh_t)(void*)(~0ul))
+#define DISPATCH_WLH_MANAGER ((dispatch_wlh_t)(void*)(~2ul))
+
+#define DISPATCH_UNOTE_DATA_ACTION_SIZE 2
+
 #define DISPATCH_UNOTE_CLASS_HEADER() \
 	dispatch_source_type_t du_type; \
 	uintptr_t du_owner_wref; /* "weak" back reference to the owner object */ \
+	dispatch_wlh_t du_wlh; \
 	uint32_t  du_ident; \
 	int16_t   du_filter; \
+	uint8_t   du_data_action : DISPATCH_UNOTE_DATA_ACTION_SIZE; \
 	uint8_t   du_is_direct : 1; \
-	uint8_t   du_registered : 1; \
-	uint8_t   du_is_level : 1; \
-	uint8_t   du_is_adder : 1; \
 	uint8_t   du_is_timer : 1; \
-	uint8_t   du_needs_rearm : 1; \
 	uint8_t   du_memorypressure_override : 1; \
 	uint8_t   du_vmpressure_override : 1; \
-	union { \
-		bool  dmrr_handler_is_block; \
-		os_atomic(bool) dmsr_notification_armed; \
-	}; \
+	uint8_t   dmr_async_reply : 1; \
+	uint8_t   dmrr_handler_is_block : 1; \
+	os_atomic(bool) dmsr_notification_armed; \
 	uint32_t  du_fflags; \
 	dispatch_priority_t du_priority
 
@@ -54,9 +57,21 @@
 #define _dispatch_source_from_refs(dr) \
 		((dispatch_source_t)_dispatch_wref2ptr((dr)->du_owner_wref))
 
+DISPATCH_ENUM(dispatch_unote_action, uint8_t,
+    DISPATCH_UNOTE_ACTION_DATA_OR = 0,
+    DISPATCH_UNOTE_ACTION_DATA_OR_STATUS_SET,
+    DISPATCH_UNOTE_ACTION_DATA_SET,
+    DISPATCH_UNOTE_ACTION_DATA_ADD,
+	DISPATCH_UNOTE_ACTION_LAST = DISPATCH_UNOTE_ACTION_DATA_ADD
+);
+_Static_assert(DISPATCH_UNOTE_ACTION_LAST <
+		(1 << DISPATCH_UNOTE_DATA_ACTION_SIZE),
+		"DISPATCH_UNOTE_ACTION_LAST too large for du_data_action field");
+
 typedef struct dispatch_unote_class_s {
 	DISPATCH_UNOTE_CLASS_HEADER();
 } *dispatch_unote_class_t;
+
 
 enum {
 	DS_EVENT_HANDLER = 0,
@@ -139,6 +154,7 @@ struct dispatch_mach_reply_refs_s {
 	void *dmr_ctxt;
 	voucher_t dmr_voucher;
 	TAILQ_ENTRY(dispatch_mach_reply_refs_s) dmr_list;
+	mach_port_t dmr_waiter_tid;
 };
 typedef struct dispatch_mach_reply_refs_s *dispatch_mach_reply_refs_t;
 
@@ -160,8 +176,8 @@ struct dispatch_mach_send_refs_s {
 #define DISPATCH_MACH_NEVER_CONNECTED (DISPATCH_MACH_DISCONNECT_MAGIC_BASE + 1)
 	uint32_t volatile dmsr_disconnect_cnt;
 	DISPATCH_UNION_LE(uint64_t volatile dmsr_state,
-			dispatch_unfair_lock_s dmsr_state_lock,
-			uint32_t dmsr_state_bits
+		dispatch_unfair_lock_s dmsr_state_lock,
+		uint32_t dmsr_state_bits
 	) DISPATCH_ATOMIC64_ALIGN;
 	struct dispatch_object_s *volatile dmsr_tail;
 	struct dispatch_object_s *volatile dmsr_head;
@@ -187,7 +203,7 @@ typedef union dispatch_unote_u {
 	dispatch_mach_reply_refs_t _dmr;
 	dispatch_xpc_term_refs_t _dxtr;
 #endif
-} __attribute__((__transparent_union__)) dispatch_unote_t;
+} dispatch_unote_t DISPATCH_TRANSPARENT_UNION;
 
 #define DISPATCH_UNOTE_NULL ((dispatch_unote_t){ ._du = NULL })
 
@@ -226,16 +242,16 @@ typedef struct dispatch_source_type_s {
 	bool (*dst_update_mux)(struct dispatch_muxnote_s *dmn);
 #endif
 	void (*dst_merge_evt)(dispatch_unote_t du, uint32_t flags, uintptr_t data,
-			pthread_priority_t pp);
+			uintptr_t status, pthread_priority_t pp);
 #if HAVE_MACH
 	void (*dst_merge_msg)(dispatch_unote_t du, uint32_t flags,
 			mach_msg_header_t *msg, mach_msg_size_t sz);
 #endif
 } dispatch_source_type_s;
 
-#define dux_create(dst, handle, mask)  (dst)->dst_create(dst, handle, mask)
-#define dux_merge_evt(du, ...)   (du)->du_type->dst_merge_evt(du, __VA_ARGS__)
-#define dux_merge_msg(du, ...)   (du)->du_type->dst_merge_msg(du, __VA_ARGS__)
+#define dux_create(dst, handle, mask)	(dst)->dst_create(dst, handle, mask)
+#define dux_merge_evt(du, ...)	(du)->du_type->dst_merge_evt(du, __VA_ARGS__)
+#define dux_merge_msg(du, ...)	(du)->du_type->dst_merge_msg(du, __VA_ARGS__)
 
 extern const dispatch_source_type_s _dispatch_source_type_after;
 
@@ -263,21 +279,23 @@ typedef struct kevent dispatch_kevent_s;
 typedef dispatch_kevent_s *dispatch_kevent_t;
 #endif // DISPATCH_EVENT_BACKEND_KEVENT
 
-#define DISPATCH_DEFERRED_ITEMS_MAGIC  0xdefe55edul /* deferred */
-#define DISPATCH_DEFERRED_ITEMS_EVENT_COUNT 8
+#define DISPATCH_DEFERRED_ITEMS_EVENT_COUNT 16
 
 typedef struct dispatch_deferred_items_s {
-	uint32_t ddi_magic;
-	dispatch_queue_t ddi_stashed_dq;
-	struct dispatch_object_s *ddi_stashed_dou;
 #define DISPATCH_PRIORITY_NOSTASH ((dispatch_priority_t)~0u)
 	dispatch_priority_t ddi_stashed_pri;
+	dispatch_queue_t ddi_stashed_rq;
+	dispatch_queue_t ddi_stashed_dq;
 #if DISPATCH_EVENT_BACKEND_KEVENT
 	int ddi_nevents;
-	int ddi_maxevents;
 	dispatch_kevent_s ddi_eventlist[DISPATCH_DEFERRED_ITEMS_EVENT_COUNT];
 #endif
 } dispatch_deferred_items_s, *dispatch_deferred_items_t;
+
+#pragma mark -
+#pragma mark inlines
+
+#if DISPATCH_PURE_C
 
 DISPATCH_ALWAYS_INLINE
 static inline void
@@ -290,18 +308,64 @@ DISPATCH_ALWAYS_INLINE
 static inline dispatch_deferred_items_t
 _dispatch_deferred_items_get(void)
 {
-	dispatch_deferred_items_t ddi = (dispatch_deferred_items_t)
+	return (dispatch_deferred_items_t)
 			_dispatch_thread_getspecific(dispatch_deferred_items_key);
-	if (ddi && ddi->ddi_magic == DISPATCH_DEFERRED_ITEMS_MAGIC) {
-		return ddi;
-	}
-	return NULL;
 }
 
-#pragma mark -
-#pragma mark inlines
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_needs_to_return_to_kernel(void)
+{
+	return (uintptr_t)_dispatch_thread_getspecific(dispatch_r2k_key) != 0;
+}
 
-#if DISPATCH_PURE_C
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_set_return_to_kernel(void)
+{
+	_dispatch_thread_setspecific(dispatch_r2k_key, (void *)1);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_clear_return_to_kernel(void)
+{
+	_dispatch_thread_setspecific(dispatch_r2k_key, (void *)0);
+}
+
+DISPATCH_ALWAYS_INLINE DISPATCH_PURE
+static inline dispatch_wlh_t
+_dispatch_get_wlh(void)
+{
+	return _dispatch_thread_getspecific(dispatch_wlh_key);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_set_wlh(dispatch_wlh_t wlh)
+{
+	dispatch_assert(_dispatch_get_wlh() == NULL);
+	dispatch_assert(wlh);
+	_dispatch_debug("wlh[%p]: set current ", wlh);
+	_dispatch_thread_setspecific(dispatch_wlh_key, (void *)wlh);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_reset_wlh(void)
+{
+	_dispatch_debug("wlh[%p]: clear current ", _dispatch_get_wlh());
+	_dispatch_thread_setspecific(dispatch_wlh_key, NULL);
+	_dispatch_clear_return_to_kernel();
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_unote_registered(dispatch_unote_t du)
+{
+	return du._du->du_wlh != NULL;
+}
+
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_unote_linkage_t
 _dispatch_unote_get_linkage(dispatch_unote_t du)
@@ -312,12 +376,20 @@ _dispatch_unote_get_linkage(dispatch_unote_t du)
 }
 
 DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_unote_needs_rearm(dispatch_unote_t du)
+{
+	return du._du->du_type->dst_flags & (EV_ONESHOT | EV_DISPATCH);
+}
+
+DISPATCH_ALWAYS_INLINE
 static inline dispatch_unote_t
 _dispatch_unote_linkage_get_unote(dispatch_unote_linkage_t dul)
 {
 	return (dispatch_unote_t){ ._du = (dispatch_unote_class_t)(dul + 1) };
 }
-#endif
+
+#endif // DISPATCH_PURE_C
 
 #pragma mark -
 #pragma mark prototypes
@@ -340,7 +412,6 @@ _dispatch_unote_linkage_get_unote(dispatch_unote_linkage_t dul)
 		DISPATCH_TIMER_INDEX(0, DISPATCH_TIMER_QOS_COUNT)
 #define DISPATCH_TIMER_IDENT_CANCELED    (~0u)
 
-
 extern struct dispatch_timer_heap_s _dispatch_timers_heap[DISPATCH_TIMER_COUNT];
 extern bool _dispatch_timers_reconfigure, _dispatch_timers_expired;
 extern uint32_t _dispatch_timers_processing_mask;
@@ -350,25 +421,25 @@ extern uint32_t _dispatch_timers_will_wake;
 
 dispatch_unote_t _dispatch_unote_create_with_handle(dispatch_source_type_t dst,
 		uintptr_t handle, unsigned long mask);
-
 dispatch_unote_t _dispatch_unote_create_with_fd(dispatch_source_type_t dst,
 		uintptr_t handle, unsigned long mask);
+dispatch_unote_t _dispatch_unote_create_without_handle(
+		dispatch_source_type_t dst, uintptr_t handle, unsigned long mask);
 
-dispatch_unote_t _dispatch_unote_create_without_handle(dispatch_source_type_t dst,
-		uintptr_t handle, unsigned long mask);
-
-bool _dispatch_unote_register(dispatch_unote_t du, dispatch_priority_t pri);
+bool _dispatch_unote_register(dispatch_unote_t du, dispatch_wlh_t wlh,
+		dispatch_priority_t pri);
 void _dispatch_unote_resume(dispatch_unote_t du);
 bool _dispatch_unote_unregister(dispatch_unote_t du, uint32_t flags);
 void _dispatch_unote_dispose(dispatch_unote_t du);
 
 void _dispatch_event_loop_atfork_child(void);
 void _dispatch_event_loop_init(void);
-void _dispatch_event_loop_poke(void);
-void _dispatch_event_loop_drain(dispatch_deferred_items_t ddi, bool poll);
+void _dispatch_event_loop_poke(dispatch_wlh_t wlh, dispatch_priority_t pri,
+		uint32_t flags);
+void _dispatch_event_loop_drain(uint32_t flags);
 #if DISPATCH_EVENT_BACKEND_KEVENT
+void _dispatch_event_loop_update(void);
 void _dispatch_event_loop_merge(dispatch_kevent_t events, int nevents);
-void _dispatch_event_loop_update(dispatch_kevent_t events, int nevents);
 #endif
 void _dispatch_event_loop_timer_arm(unsigned int tidx,
 		dispatch_timer_delay_s range, dispatch_clock_now_cache_t nows);

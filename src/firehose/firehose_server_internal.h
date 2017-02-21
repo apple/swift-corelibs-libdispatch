@@ -54,7 +54,9 @@ struct firehose_client_s {
 	mach_port_t			fc_recvp;
 	mach_port_t			fc_sendp;
 	os_unfair_lock      fc_lock;
-	pid_t               fc_pid;
+	pid_t				fc_pid;
+	int					fc_pidversion;
+	uid_t				fc_euid;
 	bool				fc_use_notifs;
 	bool				fc_memory_corrupted;
 	bool				fc_needs_io_snapshot;

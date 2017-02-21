@@ -41,6 +41,7 @@ typedef uint32_t dispatch_lock;
 
 #define DLOCK_OWNER_NULL			((dispatch_lock_owner)MACH_PORT_NULL)
 #define DLOCK_OWNER_MASK			((dispatch_lock)0xfffffffc)
+#define DLOCK_OWNER_INVALID			((dispatch_lock)0xffffffff)
 #define DLOCK_NOWAITERS_BIT			((dispatch_lock)0x00000001)
 #define DLOCK_NOFAILED_TRYLOCK_BIT	((dispatch_lock)0x00000002)
 #define _dispatch_tid_self()		((dispatch_lock_owner)_dispatch_thread_port())
@@ -97,6 +98,7 @@ typedef pid_t dispatch_lock_owner;
 
 #define DLOCK_OWNER_NULL			((dispatch_lock_owner)0)
 #define DLOCK_OWNER_MASK			((dispatch_lock)FUTEX_TID_MASK)
+#define DLOCK_OWNER_INVALID			((dispatch_lock)DLOCK_OWNER_MASK)
 #define DLOCK_WAITERS_BIT			((dispatch_lock)FUTEX_WAITERS)
 #define DLOCK_FAILED_TRYLOCK_BIT	((dispatch_lock)FUTEX_OWNER_DIED)
 #define _dispatch_tid_self() \

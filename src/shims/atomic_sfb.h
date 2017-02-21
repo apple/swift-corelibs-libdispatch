@@ -27,43 +27,9 @@
 #ifndef __DISPATCH_SHIMS_ATOMIC_SFB__
 #define __DISPATCH_SHIMS_ATOMIC_SFB__
 
-#if __clang__ && __clang_major__ < 5 // <rdar://problem/13833871>
-#define __builtin_ffs(x) __builtin_ffs((unsigned int)(x))
-#endif
-
-// Returns UINT_MAX if all the bits in p were already set.
-#define os_atomic_set_first_bit(p,m) _os_atomic_set_first_bit(p,m)
-
-DISPATCH_ALWAYS_INLINE
-static inline unsigned int
-_os_atomic_set_first_bit(volatile unsigned long *p,
-		unsigned int max_index)
-{
-	unsigned int index;
-	unsigned long b, mask, b_masked;
-
-	for (;;) {
-		b = *p;
-		// ffs returns 1 + index, or 0 if none set.
-		index = (unsigned int)__builtin_ffsl((long)~b);
-		if (slowpath(index == 0)) {
-			return UINT_MAX;
-		}
-		index--;
-		if (slowpath(index > max_index)) {
-			return UINT_MAX;
-		}
-		mask = ((typeof(b))1) << index;
-		b_masked = b | mask;
-		if (__sync_bool_compare_and_swap(p, b, b_masked)) {
-			return index;
-		}
-	}
-}
-
 #if defined(__x86_64__) || defined(__i386__)
 
-#undef os_atomic_set_first_bit
+// Returns UINT_MAX if all the bits in p were already set.
 DISPATCH_ALWAYS_INLINE
 static inline unsigned int
 os_atomic_set_first_bit(volatile unsigned long *p, unsigned int max)
@@ -108,7 +74,35 @@ os_atomic_set_first_bit(volatile unsigned long *p, unsigned int max)
 	return (unsigned int)bit;
 }
 
+#else
+
+#if __clang__ && __clang_major__ < 5 // <rdar://problem/13833871>
+#define __builtin_ffs(x) __builtin_ffs((unsigned int)(x))
 #endif
 
+DISPATCH_ALWAYS_INLINE
+static inline unsigned int
+os_atomic_set_first_bit(volatile unsigned long *p, unsigned int max_index)
+{
+	unsigned int index;
+	unsigned long b, b_masked;
+
+	os_atomic_rmw_loop(p, b, b_masked, relaxed, {
+		// ffs returns 1 + index, or 0 if none set
+		index = (unsigned int)__builtin_ffsl((long)~b);
+		if (slowpath(index == 0)) {
+			os_atomic_rmw_loop_give_up(return UINT_MAX);
+		}
+		index--;
+		if (slowpath(index > max_index)) {
+			os_atomic_rmw_loop_give_up(return UINT_MAX);
+		}
+		b_masked = b | (1UL << index);
+	});
+
+	return index;
+}
+
+#endif
 
 #endif // __DISPATCH_SHIMS_ATOMIC_SFB__

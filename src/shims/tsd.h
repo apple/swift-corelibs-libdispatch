@@ -62,7 +62,12 @@ typedef struct { void *a; void *b; } dispatch_tsd_pair_t;
 #ifndef __TSD_THREAD_QOS_CLASS
 #define __TSD_THREAD_QOS_CLASS 4
 #endif
+#ifndef __TSD_RETURN_TO_KERNEL
+#define __TSD_RETURN_TO_KERNEL 5
+#endif
+
 static const unsigned long dispatch_priority_key	= __TSD_THREAD_QOS_CLASS;
+static const unsigned long dispatch_r2k_key			= __TSD_RETURN_TO_KERNEL;
 
 // dispatch_queue_key & dispatch_frame_key need to be contiguous
 // in that order, and queue_key to be an even number
@@ -78,6 +83,7 @@ static const unsigned long dispatch_introspection_key = __PTK_LIBDISPATCH_KEY6;
 #elif DISPATCH_PERF_MON
 static const unsigned long dispatch_bcounter_key	= __PTK_LIBDISPATCH_KEY6;
 #endif
+static const unsigned long dispatch_wlh_key			= __PTK_LIBDISPATCH_KEY7;
 static const unsigned long dispatch_voucher_key		= __PTK_LIBDISPATCH_KEY8;
 static const unsigned long dispatch_deferred_items_key = __PTK_LIBDISPATCH_KEY9;
 
@@ -111,6 +117,8 @@ struct dispatch_tsd {
 	void *dispatch_bcounter_key;
 #endif
 	void *dispatch_priority_key;
+	void *dispatch_r2k_key;
+	void *dispatch_wlh_key
 	void *dispatch_voucher_key;
 	void *dispatch_deferred_items_key;
 };
@@ -154,6 +162,7 @@ _dispatch_get_tsd_base(void)
 
 #else
 extern pthread_key_t dispatch_priority_key;
+extern pthread_key_t dispatch_r2k_key;
 extern pthread_key_t dispatch_queue_key;
 extern pthread_key_t dispatch_frame_key;
 extern pthread_key_t dispatch_cache_key;
@@ -165,6 +174,7 @@ extern pthread_key_t dispatch_introspection_key;
 #elif DISPATCH_PERF_MON
 extern pthread_key_t dispatch_bcounter_key;
 #endif
+extern pthread_key_t dispatch_wlh_key;
 extern pthread_key_t dispatch_voucher_key;
 extern pthread_key_t dispatch_deferred_items_key;
 

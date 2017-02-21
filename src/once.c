@@ -77,7 +77,7 @@ dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 			if (next == DISPATCH_ONCE_DONE) {
 				break;
 			}
-			if (os_atomic_cmpxchgvw(vval, next, tail, &next, release)) {
+			if (os_atomic_cmpxchgv(vval, next, tail, &next, release)) {
 				dow.dow_thread = next->dow_thread;
 				dow.dow_next = next;
 				if (dow.dow_thread) {

@@ -60,6 +60,7 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
 	DQF_CANNOT_TRYSYNC      = 0x00400000,
 	DQF_RELEASED            = 0x00800000, // xref_cnt == -1
 	DQF_LEGACY              = 0x01000000,
+	DQF_WLH_CHANGED         = 0x02000000, // queue wlh changed from initial value
 
 	// only applies to sources
 	//
@@ -116,7 +117,7 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
 	_OS_MPSC_QUEUE_FIELDS(dq, dq_state); \
 	DISPATCH_UNION_LE(uint32_t volatile dq_atomic_flags, \
 		const uint16_t dq_width, \
-		const uint16_t __dq_unused \
+		const uint16_t __dq_opaque \
 	); \
 	uint32_t dq_side_suspend_cnt; \
 	dispatch_unfair_lock_s dq_sidelock; \
@@ -380,17 +381,18 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
 #ifdef DLOCK_NOWAITERS_BIT
 #define DISPATCH_QUEUE_DRAIN_OWNER_MASK \
 		((uint64_t)(DLOCK_OWNER_MASK | DLOCK_NOFAILED_TRYLOCK_BIT))
-#define DISPATCH_QUEUE_DRAIN_UNLOCK_PRESERVE_WAITERS_BIT(v) \
-		(((v) & ~(DISPATCH_QUEUE_DRAIN_PENDED|DISPATCH_QUEUE_DRAIN_OWNER_MASK))\
-				^ DLOCK_NOWAITERS_BIT)
+#define DISPATCH_QUEUE_DRAIN_UNLOCK(v) \
+		(((v) & ~(DISPATCH_QUEUE_DIRTY | DISPATCH_QUEUE_DRAIN_PENDED \
+				| DISPATCH_QUEUE_DRAIN_OWNER_MASK)) ^ DLOCK_NOWAITERS_BIT)
 #define DISPATCH_QUEUE_DRAIN_PRESERVED_BITS_MASK \
 		(DISPATCH_QUEUE_ENQUEUED | DISPATCH_QUEUE_MAX_QOS_MASK | \
 				DLOCK_NOWAITERS_BIT)
 #else
 #define DISPATCH_QUEUE_DRAIN_OWNER_MASK \
 		((uint64_t)(DLOCK_OWNER_MASK | DLOCK_FAILED_TRYLOCK_BIT))
-#define DISPATCH_QUEUE_DRAIN_UNLOCK_PRESERVE_WAITERS_BIT(v) \
-		((v) & ~(DISPATCH_QUEUE_DRAIN_PENDED|DISPATCH_QUEUE_DRAIN_OWNER_MASK))
+#define DISPATCH_QUEUE_DRAIN_UNLOCK(v) \
+		((v) & ~(DISPATCH_QUEUE_DIRTY | DISPATCH_QUEUE_DRAIN_PENDED | \
+				DISPATCH_QUEUE_DRAIN_OWNER_MASK))
 #define DISPATCH_QUEUE_DRAIN_PRESERVED_BITS_MASK \
 		(DISPATCH_QUEUE_ENQUEUED | DISPATCH_QUEUE_MAX_QOS_MASK | \
 				DLOCK_WAITERS_BIT)
@@ -518,7 +520,7 @@ typedef union {
 	dispatch_mach_t _objc_dm;
 	dispatch_queue_specific_queue_t _objc_dqsq;
 #endif
-} dispatch_queue_class_t __attribute__((__transparent_union__));
+} dispatch_queue_class_t DISPATCH_TRANSPARENT_UNION;
 
 typedef struct dispatch_thread_context_s *dispatch_thread_context_t;
 typedef struct dispatch_thread_context_s {
@@ -535,19 +537,21 @@ typedef struct dispatch_thread_frame_s {
 	// must be in the same order as our TSD keys!
 	dispatch_queue_t dtf_queue;
 	dispatch_thread_frame_t dtf_prev;
-	struct dispatch_object_s *dtf_deferred;
 } dispatch_thread_frame_s;
 
-DISPATCH_ENUM(dispatch_queue_wakeup_target, long,
-	DISPATCH_QUEUE_WAKEUP_NONE = 0,
-	DISPATCH_QUEUE_WAKEUP_TARGET,
-	DISPATCH_QUEUE_WAKEUP_MGR,
-);
+typedef dispatch_queue_t dispatch_queue_wakeup_target_t;
+#define DISPATCH_QUEUE_WAKEUP_NONE           ((dispatch_queue_wakeup_target_t)0)
+#define DISPATCH_QUEUE_WAKEUP_TARGET         ((dispatch_queue_wakeup_target_t)1)
+#define DISPATCH_QUEUE_WAKEUP_MGR            (&_dispatch_mgr_q)
+#define DISPATCH_QUEUE_WAKEUP_WAIT_FOR_EVENT ((dispatch_queue_wakeup_target_t)-1)
 
 void _dispatch_queue_class_wakeup_with_override(dispatch_queue_t dq,
 		dispatch_qos_t qos, dispatch_wakeup_flags_t flags, uint64_t dq_state);
 void _dispatch_queue_class_override_drainer(dispatch_queue_t dqu,
 		dispatch_qos_t qos, dispatch_wakeup_flags_t flags);
+void _dispatch_queue_class_wakeup_enqueue(dispatch_queue_t dq,
+		dispatch_qos_t qos, dispatch_wakeup_flags_t flags,
+		dispatch_queue_wakeup_target_t target);
 void _dispatch_queue_class_wakeup(dispatch_queue_t dqu, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags, dispatch_queue_wakeup_target_t target);
 
@@ -557,26 +561,28 @@ void _dispatch_queue_set_target_queue(dispatch_queue_t dq, dispatch_queue_t tq);
 void _dispatch_queue_suspend(dispatch_queue_t dq);
 void _dispatch_queue_resume(dispatch_queue_t dq, bool activate);
 void _dispatch_queue_finalize_activation(dispatch_queue_t dq);
-void _dispatch_queue_invoke(dispatch_queue_t dq, dispatch_invoke_flags_t flags);
-void _dispatch_queue_push_list_slow(dispatch_queue_t dq, unsigned int n);
+void _dispatch_queue_invoke(dispatch_queue_t dq,
+		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
+void _dispatch_global_queue_poke(dispatch_queue_t dq, unsigned int n);
 void _dispatch_queue_push(dispatch_queue_t dq, dispatch_object_t dou,
 		dispatch_qos_t qos);
 void _dispatch_try_lock_transfer_or_wakeup(dispatch_queue_t dq);
 void _dispatch_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
-dispatch_queue_t _dispatch_queue_serial_drain(dispatch_queue_t dq,
-		dispatch_invoke_flags_t flags, uint64_t *owned,
-		struct dispatch_object_s **dc_ptr);
+dispatch_queue_wakeup_target_t _dispatch_queue_serial_drain(dispatch_queue_t dq,
+		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags,
+		uint64_t *owned);
 void _dispatch_queue_drain_deferred_invoke(dispatch_queue_t dq,
-		dispatch_invoke_flags_t flags, uint64_t to_unlock,
-		struct dispatch_object_s *dc);
+		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags,
+		uint64_t to_unlock);
 void _dispatch_queue_specific_queue_dispose(dispatch_queue_specific_queue_t
 		dqsq);
 void _dispatch_root_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
-void _dispatch_root_queue_drain_deferred_item(dispatch_queue_t dq,
-		struct dispatch_object_s *dou, dispatch_qos_t qos
-		DISPATCH_PERF_MON_ARGS_PROTO);
+void _dispatch_root_queue_push(dispatch_queue_t dq, dispatch_object_t dou,
+		dispatch_qos_t qos);
+void _dispatch_root_queue_drain_deferred_item(dispatch_queue_t rq,
+		dispatch_queue_t dq DISPATCH_PERF_MON_ARGS_PROTO);
 void _dispatch_pthread_root_queue_dispose(dispatch_queue_t dq);
 void _dispatch_main_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
@@ -595,13 +601,13 @@ void _dispatch_kevent_workqueue_init(void);
 #else
 static inline void _dispatch_kevent_workqueue_init(void) {}
 #endif
-void _dispatch_sync_recurse_invoke(void *ctxt);
 void _dispatch_apply_invoke(void *ctxt);
 void _dispatch_apply_redirect_invoke(void *ctxt);
 void _dispatch_barrier_async_detached_f(dispatch_queue_t dq, void *ctxt,
 		dispatch_function_t func);
 void _dispatch_barrier_trysync_or_async_f(dispatch_queue_t dq, void *ctxt,
 		dispatch_function_t func);
+void _dispatch_queue_atfork_child(void);
 
 #if DISPATCH_DEBUG
 void dispatch_debug_queue(dispatch_queue_t dq, const char* str);
@@ -795,7 +801,7 @@ dispatch_queue_attr_t _dispatch_get_default_queue_attr(void);
 		~(DISPATCH_CONTINUATION_SIZE - 1u))
 
 // continuation is a dispatch_sync or dispatch_barrier_sync
-#define DISPATCH_OBJ_SYNC_SLOW_BIT			0x001ul
+#define DISPATCH_OBJ_SYNC_WAITER_BIT		0x001ul
 // continuation acts as a barrier
 #define DISPATCH_OBJ_BARRIER_BIT			0x002ul
 // continuation resources are freed on run
@@ -812,16 +818,29 @@ dispatch_queue_attr_t _dispatch_get_default_queue_attr(void);
 // use the voucher from the continuation even if the queue has voucher set
 #define DISPATCH_OBJ_ENFORCE_VOUCHER		0x080ul
 
-struct dispatch_continuation_s {
+typedef struct dispatch_continuation_s {
 	struct dispatch_object_s _as_do[0];
 	DISPATCH_CONTINUATION_HEADER(continuation);
-};
-typedef struct dispatch_continuation_s *dispatch_continuation_t;
+} *dispatch_continuation_t;
+
+typedef struct dispatch_sync_context_s {
+	struct dispatch_object_s _as_do[0];
+	struct dispatch_continuation_s _as_dc[0];
+	DISPATCH_CONTINUATION_HEADER(continuation);
+	dispatch_function_t dsc_func;
+	void *dsc_ctxt;
+#if DISPATCH_COCOA_COMPAT
+	dispatch_thread_frame_s dsc_dtf;
+#endif
+	dispatch_thread_event_s dsc_event;
+	dispatch_qos_t dsc_override_qos_floor;
+	dispatch_qos_t dsc_override_qos;
+} *dispatch_sync_context_t;
 
 typedef struct dispatch_continuation_vtable_s {
 	_OS_OBJECT_CLASS_HEADER();
 	DISPATCH_INVOKABLE_VTABLE_HEADER(dispatch_continuation);
-} *dispatch_continuation_vtable_t;
+} const *dispatch_continuation_vtable_t;
 
 #ifndef DISPATCH_CONTINUATION_CACHE_LIMIT
 #if TARGET_OS_EMBEDDED
@@ -837,8 +856,9 @@ dispatch_continuation_t _dispatch_continuation_alloc_from_heap(void);
 void _dispatch_continuation_free_to_heap(dispatch_continuation_t c);
 void _dispatch_continuation_async(dispatch_queue_t dq,
 	dispatch_continuation_t dc);
-void _dispatch_continuation_pop(dispatch_object_t dou, dispatch_queue_t dq,
-		dispatch_invoke_flags_t flags);
+void _dispatch_continuation_pop(dispatch_object_t dou,
+		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags,
+		dispatch_queue_t dq);
 void _dispatch_continuation_invoke(dispatch_object_t dou,
 		voucher_t override_voucher, dispatch_invoke_flags_t flags);
 
@@ -860,6 +880,7 @@ enum {
 	DC_MACH_SEND_BARRRIER_DRAIN_TYPE,
 	DC_MACH_SEND_BARRIER_TYPE,
 	DC_MACH_RECV_BARRIER_TYPE,
+	DC_MACH_ASYNC_REPLY_TYPE,
 #if HAVE_PTHREAD_WORKQUEUE_QOS
 	DC_OVERRIDE_STEALING_TYPE,
 	DC_OVERRIDE_OWNING_TYPE,
@@ -886,12 +907,12 @@ extern const struct dispatch_continuation_vtable_s
 
 void
 _dispatch_async_redirect_invoke(dispatch_continuation_t dc,
-		dispatch_invoke_flags_t flags);
+		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 
 #if HAVE_PTHREAD_WORKQUEUE_QOS
 void
 _dispatch_queue_override_invoke(dispatch_continuation_t dc,
-		dispatch_invoke_flags_t flags);
+		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 #endif
 
 #define DC_VTABLE(name)  (&_dispatch_continuation_vtables[DC_##name##_TYPE])
@@ -909,7 +930,7 @@ _dispatch_queue_override_invoke(dispatch_continuation_t dc,
 void _dispatch_set_priority_and_mach_voucher_slow(pthread_priority_t pri,
 		mach_voucher_t kv);
 voucher_t _dispatch_set_priority_and_voucher_slow(pthread_priority_t pri,
-		voucher_t voucher, _dispatch_thread_set_self_t flags);
+		voucher_t voucher, dispatch_thread_set_self_t flags);
 #else
 static inline void
 _dispatch_set_priority_and_mach_voucher_slow(pthread_priority_t pri,
@@ -986,12 +1007,12 @@ void _dispatch_continuation_init_slow(dispatch_continuation_t dc,
 void _dispatch_continuation_update_bits(dispatch_continuation_t dc,
 		uintptr_t dc_flags);
 
-bool _dispatch_barrier_trysync_f(dispatch_queue_t dq, void *ctxt,
+long _dispatch_barrier_trysync_f(dispatch_queue_t dq, void *ctxt,
 		dispatch_function_t func);
 
 /* exported for tests in dispatch_trysync.c */
 DISPATCH_EXPORT DISPATCH_NOTHROW
-bool _dispatch_trysync_f(dispatch_queue_t dq, void *ctxt,
+long _dispatch_trysync_f(dispatch_queue_t dq, void *ctxt,
 		dispatch_function_t f);
 
 #endif /* __BLOCKS__ */

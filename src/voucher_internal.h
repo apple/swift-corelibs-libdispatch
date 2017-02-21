@@ -160,7 +160,10 @@ typedef struct voucher_s {
 	struct voucher_vtable_s *os_obj_isa,
 	os_obj_ref_cnt,
 	os_obj_xref_cnt);
-	TAILQ_ENTRY(voucher_s) v_list;
+	struct voucher_hash_entry_s {
+		uintptr_t vhe_next;
+		uintptr_t vhe_prev_ptr;
+	} v_list;
 	mach_voucher_t v_kvoucher, v_ipc_kvoucher; // if equal, only one reference
 	voucher_t v_kvbase; // if non-NULL, v_kvoucher is a borrowed reference
 	firehose_activity_id_t v_activity;
@@ -173,6 +176,54 @@ typedef struct voucher_s {
 	mach_voucher_attr_recipe_size_t v_recipe_extra_size;
 #endif
 } voucher_s;
+
+typedef struct voucher_hash_head_s {
+	uintptr_t vhh_first;
+	uintptr_t vhh_last_ptr;
+} voucher_hash_head_s;
+
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_voucher_hash_is_enqueued(const struct voucher_s *v)
+{
+	return v->v_list.vhe_prev_ptr != 0;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_voucher_hash_mark_not_enqueued(struct voucher_s *v)
+{
+	v->v_list.vhe_prev_ptr = 0;
+	v->v_list.vhe_next = (uintptr_t)DISPATCH_OBJECT_LISTLESS;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_voucher_hash_set_next(uintptr_t *next, struct voucher_s *v)
+{
+	*next = ~(uintptr_t)v;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline voucher_t
+_voucher_hash_get_next(uintptr_t next)
+{
+	return (voucher_t)~next;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_voucher_hash_set_prev_ptr(uintptr_t *prev_ptr, uintptr_t *addr)
+{
+	*prev_ptr = ~(uintptr_t)addr;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_voucher_hash_store_to_prev_ptr(uintptr_t prev_ptr, struct voucher_s *v)
+{
+	*(uintptr_t *)~prev_ptr = ~(uintptr_t)v;
+}
 
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
 #define _voucher_extra_size(v) ((v)->v_recipe_extra_size)
@@ -497,21 +548,13 @@ _dispatch_continuation_voucher_set(dispatch_continuation_t dc,
 {
 	voucher_t v = NULL;
 
+	(void)dqu;
 	// _dispatch_continuation_voucher_set is never called for blocks with
 	// private data or with the DISPATCH_BLOCK_HAS_VOUCHER flag set.
 	// only _dispatch_continuation_init_slow handles this bit.
 	dispatch_assert(!(flags & DISPATCH_BLOCK_HAS_VOUCHER));
 
-	if (dqu._oq->oq_override_voucher != DISPATCH_NO_VOUCHER) {
-		// if the queue has an override voucher, we should not capture anything
-		//
-		// if the continuation is enqueued before the queue is activated, then
-		// this optimization fails and we do capture whatever is current
-		//
-		// _dispatch_continuation_voucher_adopt() would do the right thing
-		// but using DISPATCH_NO_VOUCHER here is more efficient.
-		v = DISPATCH_NO_VOUCHER;
-	} else if (!(flags & DISPATCH_BLOCK_NO_VOUCHER)) {
+	if (!(flags & DISPATCH_BLOCK_NO_VOUCHER)) {
 		v = _voucher_copy();
 	}
 	dc->dc_voucher = v;
@@ -527,7 +570,7 @@ _dispatch_continuation_voucher_adopt(dispatch_continuation_t dc,
 		voucher_t ov, uintptr_t dc_flags)
 {
 	voucher_t v = dc->dc_voucher;
-	_dispatch_thread_set_self_t consume = (dc_flags & DISPATCH_OBJ_CONSUME_BIT);
+	dispatch_thread_set_self_t consume = (dc_flags & DISPATCH_OBJ_CONSUME_BIT);
 	dispatch_assert(DISPATCH_OBJ_CONSUME_BIT == DISPATCH_VOUCHER_CONSUME);
 
 	if (consume) {
@@ -539,7 +582,7 @@ _dispatch_continuation_voucher_adopt(dispatch_continuation_t dc,
 
 		if (likely(!(dc_flags & DISPATCH_OBJ_ENFORCE_VOUCHER))) {
 			if (unlikely(ov != DISPATCH_NO_VOUCHER && v != ov)) {
-				if (consume) _voucher_release(v);
+				if (consume && v) _voucher_release(v);
 				consume = 0;
 				v = ov;
 			}

@@ -206,6 +206,9 @@ firehose_buffer_update_limits(firehose_buffer_t fb);
 void
 firehose_buffer_ring_enqueue(firehose_buffer_t fb, uint16_t ref);
 
+void
+firehose_buffer_force_connect(firehose_buffer_t fb);
+
 #endif
 
 #endif // __FIREHOSE_BUFFER_INTERNAL__

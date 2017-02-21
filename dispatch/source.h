@@ -94,6 +94,21 @@ API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_SOURCE_TYPE_DECL(data_or);
 
 /*!
+ * @const DISPATCH_SOURCE_TYPE_DATA_REPLACE
+ * @discussion A dispatch source that tracks data obtained via calls to
+ * dispatch_source_merge_data(). Newly obtained data values replace existing
+ * data values not yet delivered to the source handler
+ *
+ * A data value of zero will cause the source handler to not be invoked.
+ *
+ * The handle is unused (pass zero for now).
+ * The mask is unused (pass zero for now).
+ */
+#define DISPATCH_SOURCE_TYPE_DATA_REPLACE (&_dispatch_source_type_data_replace)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+DISPATCH_SOURCE_TYPE_DECL(data_replace);
+
+/*!
  * @const DISPATCH_SOURCE_TYPE_MACH_SEND
  * @discussion A dispatch source that monitors a Mach port for dead name
  * notifications (send right no longer has any corresponding receive right).

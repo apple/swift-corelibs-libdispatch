@@ -650,6 +650,7 @@ typedef pthread_worqueue_function_kevent_t pthread_workqueue_function_kevent_t;
 #define HAVE_PTHREAD_WORKQUEUE_KEVENT 1
 #endif
 
+
 #ifndef PTHREAD_WORKQUEUE_RESETS_VOUCHER_AND_PRIORITY_ON_PARK
 #if HAVE_PTHREAD_WORKQUEUE_QOS && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
 #define PTHREAD_WORKQUEUE_RESETS_VOUCHER_AND_PRIORITY_ON_PARK 1
@@ -657,6 +658,14 @@ typedef pthread_worqueue_function_kevent_t pthread_workqueue_function_kevent_t;
 #define PTHREAD_WORKQUEUE_RESETS_VOUCHER_AND_PRIORITY_ON_PARK 0
 #endif
 #endif // PTHREAD_WORKQUEUE_RESETS_VOUCHER_AND_PRIORITY_ON_PARK
+
+#ifndef HAVE_PTHREAD_WORKQUEUE_NARROWING
+#if !DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(109900)
+#define HAVE_PTHREAD_WORKQUEUE_NARROWING 0
+#else
+#define HAVE_PTHREAD_WORKQUEUE_NARROWING 1
+#endif
+#endif
 
 #ifdef EVFILT_MEMORYSTATUS
 #ifndef DISPATCH_USE_MEMORYSTATUS
@@ -692,6 +701,7 @@ extern bool _dispatch_memory_warn;
 		!defined(DISPATCH_USE_EVFILT_MACHPORT_DIRECT)
 #define DISPATCH_USE_EVFILT_MACHPORT_DIRECT 1
 #endif
+
 
 #if (!DISPATCH_USE_EVFILT_MACHPORT_DIRECT || DISPATCH_DEBUG) && \
 		!defined(DISPATCH_EVFILT_MACHPORT_PORTSET_FALLBACK)
@@ -767,6 +777,7 @@ extern bool _dispatch_memory_warn;
 #define DISPATCH_PERF_delayed_registration DISPATCH_CODE(PERF, 4)
 #define DISPATCH_PERF_mutable_target DISPATCH_CODE(PERF, 5)
 #define DISPATCH_PERF_strict_bg_timer DISPATCH_CODE(PERF, 6)
+#define DISPATCH_PERF_wlh_change DISPATCH_CODE(PERF, 7)
 
 #define DISPATCH_MACH_MSG_hdr_move DISPATCH_CODE(MACH_MSG, 1)
 
@@ -930,7 +941,7 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 
 #define DISPATCH_NO_VOUCHER ((voucher_t)(void*)~0ul)
 #define DISPATCH_NO_PRIORITY ((pthread_priority_t)~0ul)
-DISPATCH_ENUM(_dispatch_thread_set_self, unsigned long,
+DISPATCH_ENUM(dispatch_thread_set_self, unsigned long,
 	DISPATCH_PRIORITY_ENFORCE = 0x1,
 	DISPATCH_VOUCHER_REPLACE = 0x2,
 	DISPATCH_VOUCHER_CONSUME = 0x4,
@@ -939,7 +950,7 @@ DISPATCH_ENUM(_dispatch_thread_set_self, unsigned long,
 DISPATCH_WARN_RESULT
 static inline voucher_t _dispatch_adopt_priority_and_set_voucher(
 		pthread_priority_t priority, voucher_t voucher,
-		_dispatch_thread_set_self_t flags);
+		dispatch_thread_set_self_t flags);
 #if HAVE_MACH
 mach_port_t _dispatch_get_mach_host_port(void);
 #endif
@@ -963,6 +974,7 @@ extern int _dispatch_kevent_workqueue_enabled;
 #else
 #define _dispatch_kevent_workqueue_enabled (0)
 #endif // DISPATCH_USE_KEVENT_WORKQUEUE
+
 
 #if DISPATCH_USE_EVFILT_MACHPORT_DIRECT
 #if !DISPATCH_USE_KEVENT_WORKQUEUE || !EV_UDATA_SPECIFIC

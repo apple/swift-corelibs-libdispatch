@@ -416,7 +416,7 @@ AC_CHECK_DECLS([NOTE_NONE, NOTE_REAP, NOTE_REVOKE, NOTE_SIGNAL, NOTE_LOWAT], [],
   [[#include <sys/event.h>]])
 AC_CHECK_DECLS([FD_COPY], [], [], [[#include <sys/select.h>]])
 AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])
-AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK, VQ_QUOTA], [], [], [[#include <sys/mount.h>]])
+AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK, VQ_QUOTA, VQ_NEARLOWDISK, VQ_DESIRED_DISK], [], [], [[#include <sys/mount.h>]])
 AC_CHECK_DECLS([program_invocation_short_name], [], [], [[#include <errno.h>]])
 AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time mach_approximate_time malloc_create_zone sysconf])
 

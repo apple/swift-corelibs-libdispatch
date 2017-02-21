@@ -179,6 +179,8 @@ _dispatch_xref_dispose(dispatch_object_t dou)
 	}
 	if (dx_type(dou._do) == DISPATCH_SOURCE_KEVENT_TYPE) {
 		_dispatch_source_xref_dispose(dou._ds);
+	} else if (dx_type(dou._do) == DISPATCH_MACH_CHANNEL_TYPE) {
+		_dispatch_mach_xref_dispose(dou._dm);
 	} else if (dx_type(dou._do) == DISPATCH_QUEUE_RUNLOOP_TYPE) {
 		_dispatch_runloop_queue_xref_dispose(dou._dq);
 	}

@@ -108,7 +108,7 @@ _dispatch_trace_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 		} else { \
 			_dc = (void*)_do; \
 			_ctxt = _dc->dc_ctxt; \
-			if (_dc->dc_flags & DISPATCH_OBJ_SYNC_SLOW_BIT) { \
+			if (_dc->dc_flags & DISPATCH_OBJ_SYNC_WAITER_BIT) { \
 				_kind = "semaphore"; \
 				_func = (dispatch_function_t)dispatch_semaphore_signal; \
 			} else if (_dc->dc_flags & DISPATCH_OBJ_BLOCK_BIT) { \
@@ -131,8 +131,8 @@ _dispatch_trace_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 #if DISPATCH_USE_DTRACE_INTROSPECTION || DISPATCH_INTROSPECTION
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_trace_queue_push_list(dispatch_queue_t dq, dispatch_object_t _head,
-		dispatch_object_t _tail, dispatch_qos_t qos, unsigned int n)
+_dispatch_trace_root_queue_push_list(dispatch_queue_t dq,
+		dispatch_object_t _head, dispatch_object_t _tail, unsigned int n)
 {
 	if (slowpath(DISPATCH_QUEUE_PUSH_ENABLED())) {
 		struct dispatch_object_s *dou = _head._do;
@@ -141,20 +141,20 @@ _dispatch_trace_queue_push_list(dispatch_queue_t dq, dispatch_object_t _head,
 		} while (dou != _tail._do && (dou = dou->do_next));
 	}
 	_dispatch_introspection_queue_push_list(dq, _head, _tail);
-	_dispatch_queue_push_list(dq, _head, _tail, qos, n);
+	_dispatch_root_queue_push_inline(dq, _head, _tail, n);
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_trace_queue_push_inline(dispatch_queue_t dq, dispatch_object_t _tail,
-		dispatch_qos_t qos, dispatch_wakeup_flags_t flags)
+		dispatch_qos_t qos)
 {
 	if (slowpath(DISPATCH_QUEUE_PUSH_ENABLED())) {
 		struct dispatch_object_s *dou = _tail._do;
 		_dispatch_trace_continuation(dq, dou, DISPATCH_QUEUE_PUSH);
 	}
 	_dispatch_introspection_queue_push(dq, _tail);
-	_dispatch_queue_push_inline(dq, _tail, qos, flags);
+	_dispatch_queue_push_inline(dq, _tail, qos);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -168,7 +168,7 @@ _dispatch_trace_continuation_push(dispatch_queue_t dq, dispatch_object_t _tail)
 	_dispatch_introspection_queue_push(dq, _tail);
 }
 
-#define _dispatch_queue_push_list _dispatch_trace_queue_push_list
+#define _dispatch_root_queue_push_inline _dispatch_trace_root_queue_push_list
 #define _dispatch_queue_push_inline _dispatch_trace_queue_push_inline
 
 DISPATCH_ALWAYS_INLINE
@@ -270,8 +270,8 @@ _dispatch_trace_timer_wake(dispatch_timer_source_refs_t dr)
 
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_trace_timer_fire(dispatch_timer_source_refs_t dr, unsigned long data,
-		unsigned long missed)
+_dispatch_trace_timer_fire(dispatch_timer_source_refs_t dr, uint64_t data,
+		uint64_t missed)
 {
 	if (slowpath(DISPATCH_TIMER_FIRE_ENABLED())) {
 		if (!(data - missed) && dr) {

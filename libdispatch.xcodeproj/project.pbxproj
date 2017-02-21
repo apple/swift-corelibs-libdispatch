@@ -658,6 +658,8 @@
 		6EB4E4421BA8BD7800D7B9D2 /* libfirehose.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = libfirehose.xcconfig; sourceTree = "<group>"; };
 		6EB60D291BBB19640092FA94 /* firehose_inline_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = firehose_inline_internal.h; sourceTree = "<group>"; };
 		6EC5ABE31D4436E4004F8674 /* dispatch_deadname.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_deadname.c; sourceTree = "<group>"; };
+		6EC670C71E37E201004F10D6 /* perf_mach_async.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = perf_mach_async.c; sourceTree = "<group>"; };
+		6EC670C81E37E201004F10D6 /* perf_pipepingpong.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = perf_pipepingpong.c; sourceTree = "<group>"; };
 		6EDB888D1CB73BDC006776D6 /* dispatch_kevent_cancel_races.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_kevent_cancel_races.c; sourceTree = "<group>"; };
 		6EDF10831BBB487E007F14BF /* firehose_buffer_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = firehose_buffer_private.h; sourceTree = "<group>"; };
 		6EE89F3D1BFAF5B000EB140D /* dispatch_state_machine.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_state_machine.c; sourceTree = "<group>"; };
@@ -699,6 +701,9 @@
 		96BC39BC0F3EBAB100C59689 /* queue_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = queue_private.h; sourceTree = "<group>"; };
 		96C9553A0F3EAEDD000D2CA4 /* once.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = once.h; sourceTree = "<group>"; };
 		96DF70BD0F38FE3C0074BD99 /* once.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; lineEnding = 0; path = once.c; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.c; };
+		B6AE9A4A1D7F53B300AC007F /* dispatch_queue_create.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_queue_create.c; sourceTree = "<group>"; };
+		B6AE9A561D7F53C100AC007F /* perf_async_bench.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = perf_async_bench.m; sourceTree = "<group>"; };
+		B6AE9A581D7F53CB00AC007F /* perf_bench.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = perf_bench.m; sourceTree = "<group>"; };
 		C00B0E0A1C5AEBBE000330B3 /* libdispatch_dyld_stub.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libdispatch_dyld_stub.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		C00B0E121C5AEBF7000330B3 /* libdispatch-dyld-stub.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = "libdispatch-dyld-stub.xcconfig"; sourceTree = "<group>"; };
 		C01866BD1C5973210040FC07 /* libdispatch.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libdispatch.a; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -1002,15 +1007,16 @@
 				6E67D90D1C16CCEB00FC98AC /* dispatch_debug.c */,
 				6E8E4ECB1C1A72650004F5CC /* dispatch_drift.c */,
 				6E67D90F1C16CF0B00FC98AC /* dispatch_group.c */,
-				6EDB888D1CB73BDC006776D6 /* dispatch_kevent_cancel_races.c */,
 				6E326ABD1C22A577002A6505 /* dispatch_io_net.c */,
 				6E326ABE1C22A577002A6505 /* dispatch_io.c */,
+				6EDB888D1CB73BDC006776D6 /* dispatch_kevent_cancel_races.c */,
 				C96CE17A1CEB851600F4B8E6 /* dispatch_objc.m */,
 				6E67D9131C17676D00FC98AC /* dispatch_overcommit.c */,
 				6E67D9151C1768B300FC98AC /* dispatch_pingpong.c */,
 				6E326B441C239B61002A6505 /* dispatch_priority.c */,
 				6E326AB51C225477002A6505 /* dispatch_proc.c */,
 				6E326AB31C224870002A6505 /* dispatch_qos.c */,
+				B6AE9A4A1D7F53B300AC007F /* dispatch_queue_create.c */,
 				6E67D9111C17669C00FC98AC /* dispatch_queue_finalizer.c */,
 				6E1612691C79606E006FC9A9 /* dispatch_queue_label.c */,
 				6E326AB91C229866002A6505 /* dispatch_read.c */,
@@ -1035,6 +1041,10 @@
 				6E326AB71C225FCA002A6505 /* dispatch_vnode.c */,
 				6E67D9171C17BA7200FC98AC /* nsoperation.m */,
 				6E4FC9D11C84123600520351 /* os_venture_basic.c */,
+				B6AE9A561D7F53C100AC007F /* perf_async_bench.m */,
+				B6AE9A581D7F53CB00AC007F /* perf_bench.m */,
+				6EC670C71E37E201004F10D6 /* perf_mach_async.c */,
+				6EC670C81E37E201004F10D6 /* perf_pipepingpong.c */,
 				92F3FE921BEC686300025962 /* Makefile */,
 				6E8E4E6E1C1A35EE0004F5CC /* test_lib.c */,
 				6E8E4E6F1C1A35EE0004F5CC /* test_lib.h */,
@@ -1682,7 +1692,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 0810;
+				LastUpgradeCheck = 0820;
 				TargetAttributes = {
 					3F3C9326128E637B0042B1F7 = {
 						ProvisioningStyle = Manual;

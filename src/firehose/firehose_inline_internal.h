@@ -190,6 +190,9 @@ firehose_buffer_stream_flush(firehose_buffer_t fb, firehose_stream_t stream)
 	ref = old_state.fss_current;
 	if (!ref || ref == FIREHOSE_STREAM_STATE_PRISTINE) {
 		// there is no installed page, nothing to flush, go away
+#ifndef KERNEL
+		firehose_buffer_force_connect(fb);
+#endif
 		return;
 	}
 
@@ -318,7 +321,7 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 #else
 		new_state.fss_allocator = _dispatch_tid_self();
 #endif
-		success = os_atomic_cmpxchgvw2o(fbs, fbs_state.fss_atomic_state,
+		success = os_atomic_cmpxchgv2o(fbs, fbs_state.fss_atomic_state,
 				old_state.fss_atomic_state, new_state.fss_atomic_state,
 				&old_state.fss_atomic_state, relaxed);
 		if (likely(success)) {

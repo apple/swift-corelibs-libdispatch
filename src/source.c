@@ -23,8 +23,7 @@
 static void _dispatch_source_handler_free(dispatch_source_t ds, long kind);
 static void _dispatch_source_set_interval(dispatch_source_t ds, uint64_t interval);
 
-#define DISPATCH_TIMERS_RETAIN_ON_DISARM  1u
-static void _dispatch_timers_update(dispatch_unote_t du, uint32_t flags);
+static void _dispatch_timers_update(dispatch_unote_t du);
 static void _dispatch_timers_unregister(dispatch_timer_source_refs_t dt);
 
 static void _dispatch_source_timer_configure(dispatch_source_t ds);
@@ -135,8 +134,8 @@ dispatch_source_get_handle(dispatch_source_t ds)
 unsigned long
 dispatch_source_get_data(dispatch_source_t ds)
 {
-#if DISPATCH_USE_MEMORYSTATUS
 	dispatch_source_refs_t dr = ds->ds_refs;
+#if DISPATCH_USE_MEMORYSTATUS
 	if (dr->du_vmpressure_override) {
 		return NOTE_VM_PRESSURE;
 	}
@@ -146,7 +145,43 @@ dispatch_source_get_data(dispatch_source_t ds)
 	}
 #endif
 #endif // DISPATCH_USE_MEMORYSTATUS
-	return ds->ds_data;
+	uint64_t value = os_atomic_load2o(ds, ds_data, relaxed);
+	return (unsigned long)(
+		ds->ds_refs->du_data_action == DISPATCH_UNOTE_ACTION_DATA_OR_STATUS_SET
+		? DISPATCH_SOURCE_GET_DATA(value) : value);
+}
+
+size_t
+dispatch_source_get_extended_data(dispatch_source_t ds,
+		dispatch_source_extended_data_t edata, size_t size)
+{
+	size_t target_size = MIN(size,
+		sizeof(struct dispatch_source_extended_data_s));
+	if (size > 0) {
+		unsigned long data, status = 0;
+		if (ds->ds_refs->du_data_action
+				== DISPATCH_UNOTE_ACTION_DATA_OR_STATUS_SET) {
+			uint64_t combined = os_atomic_load(&ds->ds_data, relaxed);
+			data = DISPATCH_SOURCE_GET_DATA(combined);
+			status = DISPATCH_SOURCE_GET_STATUS(combined);
+		} else {
+			data = dispatch_source_get_data(ds);
+		}
+		if (size >= offsetof(struct dispatch_source_extended_data_s, data)
+				+ sizeof(edata->data)) {
+			edata->data = data;
+		}
+		if (size >= offsetof(struct dispatch_source_extended_data_s, status)
+				+ sizeof(edata->status)) {
+			edata->status = status;
+		}
+		if (size > sizeof(struct dispatch_source_extended_data_s)) {
+			memset(
+				(char *)edata + sizeof(struct dispatch_source_extended_data_s),
+				0, size - sizeof(struct dispatch_source_extended_data_s));
+		}
+	}
+	return target_size;
 }
 
 DISPATCH_NOINLINE
@@ -161,11 +196,17 @@ _dispatch_source_merge_data(dispatch_source_t ds, pthread_priority_t pp,
 		return;
 	}
 
-	if (filter == DISPATCH_EVFILT_CUSTOM_OR) {
-		os_atomic_or2o(ds, ds_pending_data, val, relaxed);
-	} else if (filter == DISPATCH_EVFILT_CUSTOM_ADD) {
+	switch (filter) {
+	case DISPATCH_EVFILT_CUSTOM_ADD:
 		os_atomic_add2o(ds, ds_pending_data, val, relaxed);
-	} else {
+		break;
+	case DISPATCH_EVFILT_CUSTOM_OR:
+		os_atomic_or2o(ds, ds_pending_data, val, relaxed);
+		break;
+	case DISPATCH_EVFILT_CUSTOM_REPLACE:
+		os_atomic_store2o(ds, ds_pending_data, val, relaxed);
+		break;
+	default:
 		DISPATCH_CLIENT_CRASH(filter, "Invalid source type");
 	}
 
@@ -426,7 +467,7 @@ _dispatch_source_registration_callout(dispatch_source_t ds, dispatch_queue_t cq,
 	if (dc->dc_flags & DISPATCH_OBJ_CTXT_FETCH_BIT) {
 		dc->dc_ctxt = ds->do_ctxt;
 	}
-	_dispatch_continuation_pop(dc, cq, flags);
+	_dispatch_continuation_pop(dc, NULL, flags, cq);
 }
 
 static void
@@ -449,7 +490,7 @@ _dispatch_source_cancel_callout(dispatch_source_t ds, dispatch_queue_t cq,
 	if (dc->dc_flags & DISPATCH_OBJ_CTXT_FETCH_BIT) {
 		dc->dc_ctxt = ds->do_ctxt;
 	}
-	_dispatch_continuation_pop(dc, cq, flags);
+	_dispatch_continuation_pop(dc, NULL, flags, cq);
 }
 
 static void
@@ -458,22 +499,22 @@ _dispatch_source_latch_and_call(dispatch_source_t ds, dispatch_queue_t cq,
 {
 	dispatch_source_refs_t dr = ds->ds_refs;
 	dispatch_continuation_t dc = _dispatch_source_get_handler(dr, DS_EVENT_HANDLER);
-	unsigned long prev;
+	uint64_t prev;
 
 	if (dr->du_is_timer && !(dr->du_fflags & DISPATCH_TIMER_AFTER)) {
 		prev = _dispatch_source_timer_data(ds, dr);
 	} else {
 		prev = os_atomic_xchg2o(ds, ds_pending_data, 0, relaxed);
 	}
-	if (dr->du_is_level) {
+	if (dr->du_data_action == DISPATCH_UNOTE_ACTION_DATA_SET) {
 		ds->ds_data = ~prev;
 	} else {
 		ds->ds_data = prev;
 	}
-	if (!dispatch_assume(prev) || !dc) {
+	if (!dispatch_assume(prev != 0) || !dc) {
 		return;
 	}
-	_dispatch_continuation_pop(dc, cq, flags);
+	_dispatch_continuation_pop(dc, NULL, flags, cq);
 	if (dr->du_is_timer && (dr->du_fflags & DISPATCH_TIMER_AFTER)) {
 		_dispatch_source_handler_free(ds, DS_EVENT_HANDLER);
 		dispatch_release(ds); // dispatch_after sources are one-shot
@@ -487,13 +528,16 @@ _dispatch_source_refs_unregister(dispatch_source_t ds, uint32_t options)
 	dispatch_queue_flags_t dqf = _dispatch_queue_atomic_flags(ds->_as_dq);
 	dispatch_source_refs_t dr = ds->ds_refs;
 
-	if (dr->du_filter == DISPATCH_EVFILT_TIMER) {
-		if (dr->du_registered) {
+	if (dr->du_is_timer) {
+		// Because of the optimization to unregister fired oneshot timers
+		// from the target queue, we can't trust _dispatch_unote_registered()
+		// to tell the truth, it may not have happened yet
+		if (dqf & DSF_ARMED) {
 			_dispatch_timers_unregister(ds->ds_timer_refs);
 		}
 		dr->du_ident = DISPATCH_TIMER_IDENT_CANCELED;
 	} else {
-		if (dr->du_needs_rearm && !(dqf & DSF_ARMED)) {
+		if (_dispatch_unote_needs_rearm(dr) && !(dqf & DSF_ARMED)) {
 			options |= DU_UNREGISTER_IMMEDIATE_DELETE;
 		}
 		if (!_dispatch_unote_unregister(dr, options)) {
@@ -534,8 +578,8 @@ static inline bool
 _dispatch_source_refs_resume(dispatch_source_t ds)
 {
 	dispatch_source_refs_t dr = ds->ds_refs;
-	if (dr->du_filter == DISPATCH_EVFILT_TIMER) {
-		_dispatch_timers_update(dr, 0);
+	if (dr->du_is_timer) {
+		_dispatch_timers_update(dr);
 		return true;
 	}
 	if (unlikely(!_dispatch_source_tryarm(ds))) {
@@ -552,9 +596,8 @@ _dispatch_source_refs_register(dispatch_source_t ds, dispatch_priority_t pri)
 	dispatch_source_refs_t dr = ds->ds_refs;
 
 	dispatch_assert(!ds->ds_is_installed);
-	ds->ds_is_installed = true;
 
-	if (dr->du_filter == DISPATCH_EVFILT_TIMER) {
+	if (dr->du_is_timer) {
 		dispatch_priority_t kbp = _dispatch_source_compute_kevent_priority(ds);
 		// aggressively coalesce background/maintenance QoS timers
 		// <rdar://problem/12200216&27342536>
@@ -566,12 +609,12 @@ _dispatch_source_refs_register(dispatch_source_t ds, dispatch_priority_t pri)
 				dr->du_ident = _dispatch_source_timer_idx(dr);
 			}
 		}
-		_dispatch_timers_update(dr, 0);
+		_dispatch_timers_update(dr);
 		return;
 	}
 
 	if (unlikely(!_dispatch_source_tryarm(ds) ||
-			!_dispatch_unote_register(dr, pri))) {
+			!_dispatch_unote_register(dr, ds->dq_wlh, pri))) {
 		_dispatch_queue_atomic_flags_set_and_clear(ds->_as_dq, DSF_DELETED,
 				DSF_ARMED | DSF_DEFERRED_DELETE);
 	} else {
@@ -598,7 +641,7 @@ _dispatch_source_compute_kevent_priority(dispatch_source_t ds)
 	dispatch_queue_t tq = ds->do_targetq;
 	dispatch_priority_t tqp = tq->dq_priority & DISPATCH_PRIORITY_REQUESTED_MASK;
 
-	while (unlikely(tq->do_targetq)) {
+	while (unlikely(!dx_hastypeflag(tq, QUEUE_ROOT))) {
 		if (unlikely(tq == &_dispatch_mgr_q)) {
 			return DISPATCH_PRIORITY_FLAG_MANAGER;
 		}
@@ -634,6 +677,17 @@ _dispatch_source_compute_kevent_priority(dispatch_source_t ds)
 	return _dispatch_priority_inherit_from_root_queue(p, tq);
 }
 
+static void
+_dispatch_source_install(dispatch_source_t ds, dispatch_priority_t pri,
+		dispatch_wlh_t wlh)
+{
+	if (!ds->dq_wlh && wlh) {
+		_dispatch_queue_class_record_wlh_hierarchy(ds, wlh);
+	}
+	_dispatch_source_refs_register(ds, pri);
+	ds->ds_is_installed = true;
+}
+
 void
 _dispatch_source_finalize_activation(dispatch_source_t ds)
 {
@@ -661,25 +715,33 @@ _dispatch_source_finalize_activation(dispatch_source_t ds)
 	_dispatch_queue_finalize_activation(ds->_as_dq);
 
 	if (dr->du_is_direct && !ds->ds_is_installed) {
-		dispatch_priority_t bp = _dispatch_source_compute_kevent_priority(ds);
-		if (bp) _dispatch_source_refs_register(ds, bp);
+		dispatch_priority_t pri = _dispatch_source_compute_kevent_priority(ds);
+		if (pri) {
+			dispatch_wlh_t wlh = ds->dq_wlh;
+			if (!wlh) wlh = _dispatch_queue_class_compute_wlh(ds);
+			_dispatch_source_install(ds, pri, wlh);
+		}
 	}
 }
 
 DISPATCH_ALWAYS_INLINE
-static inline dispatch_queue_t
-_dispatch_source_invoke2(dispatch_object_t dou, dispatch_invoke_flags_t flags,
-		uint64_t *owned, struct dispatch_object_s **dc_ptr DISPATCH_UNUSED)
+static inline dispatch_queue_wakeup_target_t
+_dispatch_source_invoke2(dispatch_object_t dou, dispatch_invoke_context_t dic,
+		dispatch_invoke_flags_t flags, uint64_t *owned)
 {
 	dispatch_source_t ds = dou._ds;
-	dispatch_queue_t retq = NULL;
+	dispatch_queue_wakeup_target_t retq = DISPATCH_QUEUE_WAKEUP_NONE;
 	dispatch_queue_t dq = _dispatch_queue_get_current();
+
+	flags |= DISPATCH_INVOKE_DISALLOW_SYNC_WAITERS;
 
 	if (_dispatch_queue_class_probe(ds)) {
 		// Intentionally always drain even when on the manager queue
 		// and not the source's regular target queue: we need to be able
 		// to drain timer setting and the like there.
-		retq = _dispatch_queue_serial_drain(ds->_as_dq, flags, owned, NULL);
+		dispatch_with_disabled_narrowing(dic, {
+			retq = _dispatch_queue_serial_drain(ds->_as_dq, dic, flags, owned);
+		});
 	}
 
 	// This function performs all source actions. Each action is responsible
@@ -715,7 +777,8 @@ _dispatch_source_invoke2(dispatch_object_t dou, dispatch_invoke_flags_t flags,
 		if (dq != dkq) {
 			return dkq;
 		}
-		_dispatch_source_refs_register(ds, _dispatch_get_basepri());
+		_dispatch_source_install(ds, _dispatch_get_basepri(),
+				_dispatch_get_wlh());
 	}
 
 	if (unlikely(DISPATCH_QUEUE_IS_SUSPENDED(ds))) {
@@ -745,7 +808,8 @@ unregister_event:
 		dqf = _dispatch_queue_atomic_flags(ds->_as_dq);
 	}
 
-	if (!(dqf & (DSF_CANCELED | DQF_RELEASED)) && ds->ds_pending_data) {
+	if (!(dqf & (DSF_CANCELED | DQF_RELEASED)) &&
+			os_atomic_load2o(ds, ds_pending_data, relaxed)) {
 		// The source has pending data to deliver via the event handler callback
 		// on the target queue. Some sources need to be rearmed on the kevent
 		// queue after event delivery.
@@ -757,12 +821,13 @@ unregister_event:
 			// re-queue to give other things already queued on the target queue
 			// a chance to run.
 			//
-			// however, if the source is directly targetting an overcommit root
+			// however, if the source is directly targeting an overcommit root
 			// queue, this would requeue the source and ask for a new overcommit
 			// thread right away.
 			prevent_starvation = dq->do_targetq ||
 					!(dq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT);
-			if (prevent_starvation && ds->ds_pending_data) {
+			if (prevent_starvation &&
+					os_atomic_load2o(ds, ds_pending_data, relaxed)) {
 				retq = ds->do_targetq;
 			}
 		} else {
@@ -791,7 +856,7 @@ unregister_event:
 					goto unregister_event;
 				}
 				// we need to wait for the EV_DELETE
-				return retq;
+				return retq ? retq : DISPATCH_QUEUE_WAKEUP_WAIT_FOR_EVENT;
 			}
 		}
 		if (dq != ds->do_targetq && (_dispatch_source_get_event_handler(dr) ||
@@ -805,7 +870,7 @@ unregister_event:
 		prevent_starvation = false;
 	}
 
-	if (dr->du_needs_rearm &&
+	if (_dispatch_unote_needs_rearm(dr) &&
 			!(dqf & (DSF_ARMED|DSF_DELETED|DSF_CANCELED|DQF_RELEASED))) {
 		// The source needs to be rearmed on the kevent queue.
 		if (dq != dkq) {
@@ -815,10 +880,14 @@ unregister_event:
 			// no need for resume when we can directly unregister the kevent
 			goto unregister_event;
 		}
-		if (prevent_starvation) {
+		if (unlikely(DISPATCH_QUEUE_IS_SUSPENDED(ds))) {
+			// do not try to rearm the kevent if the source is suspended
+			// from the source handler
+			return ds->do_targetq;
+		}
+		if (prevent_starvation && dr->du_wlh == DISPATCH_WLH_GLOBAL) {
 			// keep the old behavior to force re-enqueue to our target queue
-			// for the rearm. It is inefficient though and we should
-			// improve this <rdar://problem/24635615>.
+			// for the rearm.
 			//
 			// if the handler didn't run, or this is a pending delete
 			// or our target queue is a global queue, then starvation is
@@ -828,6 +897,12 @@ unregister_event:
 		if (unlikely(!_dispatch_source_refs_resume(ds))) {
 			goto unregister_event;
 		}
+		if (!prevent_starvation && dr->du_wlh != DISPATCH_WLH_GLOBAL) {
+			// try to redrive the drain from under the lock for sources
+			// targeting an overcommit root queue to avoid parking
+			// when the next event has already fired
+			_dispatch_event_loop_drain(KEVENT_FLAG_IMMEDIATE);
+		}
 	}
 
 	return retq;
@@ -835,9 +910,10 @@ unregister_event:
 
 DISPATCH_NOINLINE
 void
-_dispatch_source_invoke(dispatch_source_t ds, dispatch_invoke_flags_t flags)
+_dispatch_source_invoke(dispatch_source_t ds, dispatch_invoke_context_t dic,
+		dispatch_invoke_flags_t flags)
 {
-	_dispatch_queue_class_invoke(ds->_as_dq, flags, _dispatch_source_invoke2);
+	_dispatch_queue_class_invoke(ds, dic, flags, _dispatch_source_invoke2);
 }
 
 void
@@ -871,7 +947,8 @@ _dispatch_source_wakeup(dispatch_source_t ds, dispatch_qos_t qos,
 		// Pending source kevent unregistration has been completed
 		// or EV_ONESHOT event can be acknowledged
 		tq = dkq;
-	} else if (!(dqf & (DSF_CANCELED | DQF_RELEASED)) && ds->ds_pending_data) {
+	} else if (!(dqf & (DSF_CANCELED | DQF_RELEASED)) &&
+			os_atomic_load2o(ds, ds_pending_data, relaxed)) {
 		// The source has pending data to deliver to the target queue.
 		tq = DISPATCH_QUEUE_WAKEUP_TARGET;
 	} else if ((dqf & (DSF_CANCELED | DQF_RELEASED)) && !deferred_delete) {
@@ -892,7 +969,7 @@ _dispatch_source_wakeup(dispatch_source_t ds, dispatch_qos_t qos,
 				_dispatch_source_get_registration_handler(dr)) {
 			tq = DISPATCH_QUEUE_WAKEUP_TARGET;
 		}
-	} else if (dr->du_needs_rearm &&
+	} else if (_dispatch_unote_needs_rearm(dr) &&
 			!(dqf & (DSF_ARMED|DSF_DELETED|DSF_CANCELED|DQF_RELEASED))) {
 		// The source needs to be rearmed on the kevent queue.
 		tq = dkq;
@@ -1012,14 +1089,14 @@ dispatch_source_cancel_and_wait(dispatch_source_t ds)
 		dispatch_qos_t qos;
 override:
 		qos = _dispatch_qos_from_pp(_dispatch_get_priority());
-		if (qos) dx_wakeup(ds, qos, DISPATCH_WAKEUP_OVERRIDING);
+		dx_wakeup(ds, qos, DISPATCH_WAKEUP_OVERRIDING | DISPATCH_WAKEUP_FLUSH);
 		dispatch_activate(ds);
 	}
 
 	dqf = _dispatch_queue_atomic_flags(ds->_as_dq);
 	while (unlikely((dqf & DSF_STATE_MASK) != DSF_DELETED)) {
 		if (unlikely(!(dqf & DSF_CANCEL_WAITER))) {
-			if (!os_atomic_cmpxchgvw2o(ds, dq_atomic_flags,
+			if (!os_atomic_cmpxchgv2o(ds, dq_atomic_flags,
 					dqf, dqf | DSF_CANCEL_WAITER, &dqf, relaxed)) {
 				continue;
 			}
@@ -1032,14 +1109,14 @@ override:
 
 void
 _dispatch_source_merge_evt(dispatch_unote_t du, uint32_t flags, uintptr_t data,
-		pthread_priority_t pp)
+		uintptr_t status, pthread_priority_t pp)
 {
 	dispatch_source_refs_t dr = du._dr;
 	dispatch_source_t ds = _dispatch_source_from_refs(dr);
 	dispatch_wakeup_flags_t wflags = 0;
 	dispatch_queue_flags_t dqf;
 
-	if (dr->du_needs_rearm || (flags & (EV_DELETE | EV_ONESHOT))) {
+	if (_dispatch_unote_needs_rearm(dr) || (flags & (EV_DELETE | EV_ONESHOT))) {
 		// once we modify the queue atomic flags below, it will allow concurrent
 		// threads running _dispatch_source_invoke2 to dispose of the source,
 		// so we can't safely borrow the reference we get from the muxnote udata
@@ -1065,7 +1142,7 @@ _dispatch_source_merge_evt(dispatch_unote_t du, uint32_t flags, uintptr_t data,
 		_dispatch_debug("kevent-source[%p]: deleted kevent[%p]", ds, dr);
 		if (flags & EV_DELETE) goto done;
 		dqf = _dispatch_queue_atomic_flags(ds->_as_dq);
-	} else if (dr->du_needs_rearm) {
+	} else if (_dispatch_unote_needs_rearm(dr)) {
 		dqf = _dispatch_queue_atomic_flags_clear(ds->_as_dq, DSF_ARMED);
 		_dispatch_debug("kevent-source[%p]: disarmed kevent[%p]", ds, dr);
 	} else {
@@ -1076,6 +1153,7 @@ _dispatch_source_merge_evt(dispatch_unote_t du, uint32_t flags, uintptr_t data,
 		goto done; // rdar://20204025
 	}
 
+	dispatch_unote_action_t action = dr->du_data_action;
 	if ((flags & EV_UDATA_SPECIFIC) && (flags & EV_ONESHOT) &&
 			(flags & EV_VANISHED)) {
 		// if the resource behind the ident vanished, the event handler can't
@@ -1090,12 +1168,21 @@ _dispatch_source_merge_evt(dispatch_unote_t du, uint32_t flags, uintptr_t data,
 	} else if (dr->du_filter == EVFILT_MACHPORT) {
 		os_atomic_store2o(ds, ds_pending_data, data, relaxed);
 #endif
-	} else if (dr->du_is_level) {
+	} else if (action == DISPATCH_UNOTE_ACTION_DATA_SET) {
 		os_atomic_store2o(ds, ds_pending_data, data, relaxed);
-	} else if (dr->du_is_adder) {
+	} else if (action == DISPATCH_UNOTE_ACTION_DATA_ADD) {
 		os_atomic_add2o(ds, ds_pending_data, data, relaxed);
-	} else if (data) {
+	} else if (data && action == DISPATCH_UNOTE_ACTION_DATA_OR) {
 		os_atomic_or2o(ds, ds_pending_data, data, relaxed);
+	} else if (data && action == DISPATCH_UNOTE_ACTION_DATA_OR_STATUS_SET) {
+		// We combine the data and status into a single 64-bit value.
+		uint64_t odata, ndata;
+		uint64_t value = DISPATCH_SOURCE_COMBINE_DATA_AND_STATUS(data, status);
+		os_atomic_rmw_loop2o(ds, ds_pending_data, odata, ndata, relaxed, {
+            ndata = DISPATCH_SOURCE_GET_DATA(odata) | value;
+		});
+	} else if (data) {
+		DISPATCH_INTERNAL_CRASH(action, "Unexpected source action value");
 	}
 	_dispatch_debug("kevent-source[%p]: merged kevent[%p]", ds, dr);
 
@@ -1180,7 +1267,7 @@ _dispatch_source_timer_configure(dispatch_source_t ds)
 		// Clear any pending data that might have accumulated on
 		// older timer params <rdar://problem/8574886>
 		os_atomic_store2o(ds, ds_pending_data, 0, relaxed);
-		_dispatch_timers_update(dt, 0);
+		_dispatch_timers_update(dt);
 	}
 }
 
@@ -1191,8 +1278,10 @@ _dispatch_source_timer_config_create(dispatch_time_t start,
 	dispatch_timer_config_t dtc;
 	dtc = _dispatch_calloc(1ul, sizeof(struct dispatch_timer_config_s));
 	if (unlikely(interval == 0)) {
-		_dispatch_bug_deprecated("Setting timer interval to 0, "
-				"do you mean FOREVER?");
+		if (start != DISPATCH_TIME_FOREVER) {
+			_dispatch_bug_deprecated("Setting timer interval to 0 requests "
+					"a 1ns timer, did you mean FOREVER (a one-shot timer)?");
+		}
 		interval = 1;
 	} else if ((int64_t)interval < 0) {
 		// 6866347 - make sure nanoseconds won't overflow
@@ -1797,14 +1886,14 @@ _dispatch_timers_unregister(dispatch_timer_source_refs_t dt)
 	_dispatch_timer_heap_remove(heap, dt);
 	_dispatch_timers_reconfigure = true;
 	_dispatch_timers_processing_mask |= 1 << tidx;
-	dt->du_registered = false;
+	dt->du_wlh = NULL;
 }
 
 static inline void
 _dispatch_timers_register(dispatch_timer_source_refs_t dt, uint32_t tidx)
 {
 	dispatch_timer_heap_t heap = &_dispatch_timers_heap[tidx];
-	if (dt->du_registered) {
+	if (_dispatch_unote_registered(dt)) {
 		dispatch_assert(dt->du_ident == tidx);
 		_dispatch_timer_heap_update(heap, dt);
 	} else {
@@ -1813,7 +1902,7 @@ _dispatch_timers_register(dispatch_timer_source_refs_t dt, uint32_t tidx)
 	}
 	_dispatch_timers_reconfigure = true;
 	_dispatch_timers_processing_mask |= 1 << tidx;
-	dt->du_registered = true;
+	dt->du_wlh = DISPATCH_WLH_GLOBAL;
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -1833,7 +1922,7 @@ _dispatch_source_timer_tryarm(dispatch_source_t ds)
 // Updates the ordered list of timers based on next fire date for changes to ds.
 // Should only be called from the context of _dispatch_mgr_q.
 static void
-_dispatch_timers_update(dispatch_unote_t du, uint32_t flags)
+_dispatch_timers_update(dispatch_unote_t du)
 {
 	dispatch_timer_source_refs_t dr = du._dt;
 	dispatch_source_t ds = _dispatch_source_from_refs(dr);
@@ -1849,21 +1938,23 @@ _dispatch_timers_update(dispatch_unote_t du, uint32_t flags)
 	// Unregister timers that are unconfigured, disabled, suspended or have
 	// missed intervals. Rearm after dispatch_set_timer(), resume or source
 	// invoke will reenable them
-	will_register = dr->dt_timer.target < INT64_MAX && !ds->ds_pending_data &&
+	will_register = dr->dt_timer.target < INT64_MAX &&
+			!os_atomic_load2o(ds, ds_pending_data, relaxed) &&
 			!DISPATCH_QUEUE_IS_SUSPENDED(ds) &&
 			!os_atomic_load2o(dr, dt_pending_config, relaxed);
-	if (!dr->du_registered && will_register) {
+	if (!_dispatch_unote_registered(dr) && will_register) {
 		if (unlikely(!_dispatch_source_timer_tryarm(ds))) {
 			return;
 		}
 		verb = "armed";
-	} else if (unlikely(dr->du_registered && !will_register)) {
+	} else if (unlikely(_dispatch_unote_registered(dr) && !will_register)) {
 		disarm = true;
 		verb = "disarmed";
 	}
 
 	uint32_t tidx = _dispatch_source_timer_idx(dr);
-	if (unlikely(dr->du_registered && (!will_register || dr->du_ident != tidx))) {
+	if (unlikely(_dispatch_unote_registered(dr) &&
+			(!will_register || dr->du_ident != tidx))) {
 		_dispatch_timers_unregister(dr);
 	}
 	if (likely(will_register)) {
@@ -1871,9 +1962,6 @@ _dispatch_timers_update(dispatch_unote_t du, uint32_t flags)
 	}
 
 	if (disarm) {
-		if (flags & DISPATCH_TIMERS_RETAIN_ON_DISARM) {
-			_dispatch_retain(ds);
-		}
 		_dispatch_queue_atomic_flags_clear(ds->_as_dq, DSF_ARMED);
 	}
 	_dispatch_debug("kevent-source[%p]: %s timer[%p]", ds, verb, dr);
@@ -1952,7 +2040,7 @@ _dispatch_timers_run2(dispatch_clock_now_cache_t nows, uint32_t tidx)
 {
 	dispatch_timer_source_refs_t dr;
 	dispatch_source_t ds;
-	unsigned long data, pending_data;
+	uint64_t data, pending_data;
 	uint64_t now = _dispatch_time_now_cached(DISPATCH_TIMER_CLOCK(tidx), nows);
 
 	while ((dr = _dispatch_timers_heap[tidx].dth_min[DTH_TARGET_ID])) {
@@ -1964,39 +2052,40 @@ _dispatch_timers_run2(dispatch_clock_now_cache_t nows, uint32_t tidx)
 		}
 		if (dr->du_fflags & DISPATCH_TIMER_AFTER) {
 			_dispatch_trace_timer_fire(dr, 1, 1);
-			_dispatch_source_merge_evt(dr, EV_ONESHOT, 1, 0);
+			_dispatch_source_merge_evt(dr, EV_ONESHOT, 1, 0, 0);
 			_dispatch_debug("kevent-source[%p]: fired after timer[%p]", ds, dr);
 			_dispatch_object_debug(ds, "%s", __func__);
 			continue;
 		}
 
+		_dispatch_retain(ds);
 		data = os_atomic_load2o(ds, ds_pending_data, relaxed);
 		if (unlikely(data)) {
 			// the release barrier is required to make the changes
 			// to `ds_timer` visible to _dispatch_source_timer_data()
 			if (os_atomic_cmpxchg2o(ds, ds_pending_data, data,
 					data | DISPATCH_TIMER_MISSED_MARKER, release)) {
-				_dispatch_timers_update(dr, 0);
+				_dispatch_timers_update(dr);
+				_dispatch_release(ds);
 				continue;
 			}
 		}
 
 		data = _dispatch_source_timer_compute_missed(dr, now, 0);
-		_dispatch_timers_update(dr, DISPATCH_TIMERS_RETAIN_ON_DISARM);
+		_dispatch_timers_update(dr);
 		pending_data = data << 1;
-		if (!dr->du_registered && dr->dt_timer.target < INT64_MAX) {
+		if (!_dispatch_unote_registered(dr) && dr->dt_timer.target < INT64_MAX){
 			// if we unregistered because of suspension we have to fake we
 			// missed events.
 			pending_data |= DISPATCH_TIMER_MISSED_MARKER;
+			os_atomic_store2o(ds, ds_pending_data, pending_data, release);
+		} else {
+			os_atomic_store2o(ds, ds_pending_data, pending_data, relaxed);
 		}
-		os_atomic_store2o(ds, ds_pending_data, pending_data, relaxed);
 		_dispatch_trace_timer_fire(dr, data, data);
 		_dispatch_debug("kevent-source[%p]: fired timer[%p]", ds, dr);
 		_dispatch_object_debug(ds, "%s", __func__);
-
-		dispatch_wakeup_flags_t wflags = DISPATCH_WAKEUP_FLUSH;
-		if (!dr->du_registered) wflags |= DISPATCH_WAKEUP_CONSUME;
-		dx_wakeup(ds, 0, wflags);
+		dx_wakeup(ds, 0, DISPATCH_WAKEUP_FLUSH | DISPATCH_WAKEUP_CONSUME);
 	}
 }
 
@@ -2166,7 +2255,7 @@ _dispatch_mgr_timers(void)
 
 void
 _dispatch_mgr_queue_wakeup(dispatch_queue_t dq,
-		dispatch_qos_t qos DISPATCH_UNUSED, dispatch_wakeup_flags_t flags)
+		dispatch_qos_t qos, dispatch_wakeup_flags_t flags)
 {
 	if (flags & DISPATCH_WAKEUP_FLUSH) {
 		os_atomic_or2o(dq, dq_state, DISPATCH_QUEUE_DIRTY, release);
@@ -2180,7 +2269,7 @@ _dispatch_mgr_queue_wakeup(dispatch_queue_t dq,
 		return;
 	}
 
-	_dispatch_event_loop_poke();
+	_dispatch_event_loop_poke(DISPATCH_WLH_MANAGER, qos, 0);
 }
 
 #if DISPATCH_USE_MGR_THREAD
@@ -2205,19 +2294,20 @@ _dispatch_mgr_invoke(void)
 	dispatch_deferred_items_s ddi;
 	bool poll;
 
-	ddi.ddi_magic = DISPATCH_DEFERRED_ITEMS_MAGIC;
 	ddi.ddi_stashed_pri = DISPATCH_PRIORITY_NOSTASH;
+	ddi.ddi_stashed_dq = NULL;
+	ddi.ddi_stashed_rq = NULL;
 #if DISPATCH_EVENT_BACKEND_KEVENT
 	ddi.ddi_nevents = 0;
-	ddi.ddi_maxevents = 1;
 #endif
+	_dispatch_set_wlh(DISPATCH_WLH_GLOBAL);
 	_dispatch_deferred_items_set(&ddi);
 
 	for (;;) {
 		_dispatch_mgr_queue_drain();
 		poll = _dispatch_mgr_timers();
 		poll = poll || _dispatch_queue_class_probe(&_dispatch_mgr_q);
-		_dispatch_event_loop_drain(&ddi, poll);
+		_dispatch_event_loop_drain(poll ? KEVENT_FLAG_IMMEDIATE : 0);
 	}
 }
 #endif // DISPATCH_USE_MGR_THREAD
@@ -2225,6 +2315,7 @@ _dispatch_mgr_invoke(void)
 DISPATCH_NORETURN
 void
 _dispatch_mgr_thread(dispatch_queue_t dq DISPATCH_UNUSED,
+		dispatch_invoke_context_t dic DISPATCH_UNUSED,
 		dispatch_invoke_flags_t flags DISPATCH_UNUSED)
 {
 #if DISPATCH_USE_KEVENT_WORKQUEUE
@@ -2251,15 +2342,17 @@ _Static_assert(WORKQ_KEVENT_EVENT_BUFFER_LEN >=
 
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_priority_t
-_dispatch_kevent_worker_thread_init(dispatch_deferred_items_t ddi)
+_dispatch_wlh_worker_thread_init(dispatch_wlh_t wlh,
+		dispatch_deferred_items_t ddi)
 {
+	dispatch_assert(wlh);
 	uint64_t owned = DISPATCH_QUEUE_SERIAL_DRAIN_OWNED;
 	dispatch_priority_t old_dbp;
 
-	ddi->ddi_magic = DISPATCH_DEFERRED_ITEMS_MAGIC;
-	ddi->ddi_nevents = 0;
-	ddi->ddi_maxevents = countof(ddi->ddi_eventlist);
 	ddi->ddi_stashed_pri = DISPATCH_PRIORITY_NOSTASH;
+	ddi->ddi_stashed_dq = NULL;
+	ddi->ddi_stashed_rq = NULL;
+	ddi->ddi_nevents = 0;
 
 	pthread_priority_t pp = _dispatch_get_priority();
 	if (!(pp & _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG)) {
@@ -2270,10 +2363,19 @@ _dispatch_kevent_worker_thread_init(dispatch_deferred_items_t ddi)
 		// Also add the NEEDS_UNBIND flag so that
 		// _dispatch_priority_compute_update knows it has to unbind
 		pp &= _PTHREAD_PRIORITY_OVERCOMMIT_FLAG | ~_PTHREAD_PRIORITY_FLAGS_MASK;
-		pp |= _PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG;
+		if (wlh == DISPATCH_WLH_GLOBAL) {
+			pp |= _PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG;
+		} else {
+			// pthread sets the flag when it is an event delivery thread
+			// so we need to explicitly clear it
+			pp &= ~(pthread_priority_t)_PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG;
+		}
 		_dispatch_thread_setspecific(dispatch_priority_key,
-					(void *)(uintptr_t)pp);
+				(void *)(uintptr_t)pp);
 		ddi->ddi_stashed_pri = 0;
+		if (wlh != DISPATCH_WLH_GLOBAL) {
+			_dispatch_debug("wlh[%p]: handling events", wlh);
+		}
 		return DISPATCH_KEVENT_WORKER_IS_NOT_MANAGER;
 	}
 
@@ -2316,28 +2418,23 @@ _dispatch_kevent_worker_thread_init(dispatch_deferred_items_t ddi)
 
 DISPATCH_ALWAYS_INLINE DISPATCH_WARN_RESULT
 static inline bool
-_dispatch_kevent_worker_thread_reset(dispatch_priority_t old_dbp)
+_dispatch_wlh_worker_thread_reset(dispatch_priority_t old_dbp)
 {
 	dispatch_queue_t dq = &_dispatch_mgr_q;
-	uint64_t orig_dq_state;
+	uint64_t orig_dq_state = DISPATCH_QUEUE_SERIAL_DRAIN_OWNED;
 
-	_dispatch_queue_drain_unlock(dq, DISPATCH_QUEUE_SERIAL_DRAIN_OWNED,
-			&orig_dq_state);
+	orig_dq_state = _dispatch_queue_drain_unlock(dq, orig_dq_state);
 	_dispatch_reset_basepri(old_dbp);
 	_dispatch_queue_set_current(NULL);
 	return _dq_state_is_dirty(orig_dq_state);
 }
 
-DISPATCH_NOINLINE
-void
-_dispatch_kevent_worker_thread(dispatch_kevent_t *events, int *nevents)
+DISPATCH_ALWAYS_INLINE
+static void
+_dispatch_wlh_worker_thread(dispatch_wlh_t wlh, dispatch_kevent_t *events,
+		int *nevents)
 {
 	_dispatch_introspection_thread_add();
-
-	if (!events && !nevents) {
-		// events for worker thread request have already been delivered earlier
-		return;
-	}
 
 	dispatch_kevent_t ke = *events;
 	DISPATCH_PERF_MON_VAR
@@ -2345,46 +2442,65 @@ _dispatch_kevent_worker_thread(dispatch_kevent_t *events, int *nevents)
 	if (!dispatch_assume(n) || !dispatch_assume(*events)) return;
 
 	dispatch_deferred_items_s ddi;
-	dispatch_priority_t old_dbp = _dispatch_kevent_worker_thread_init(&ddi);
-
-	_dispatch_deferred_items_set(&ddi);
-	_dispatch_event_loop_merge(ke, n);
-
+	dispatch_priority_t old_dbp = _dispatch_wlh_worker_thread_init(wlh, &ddi);
 	if (old_dbp == DISPATCH_KEVENT_WORKER_IS_NOT_MANAGER) {
 		_dispatch_perfmon_start_impl(true);
 	} else {
+		dispatch_assert(wlh == DISPATCH_WLH_GLOBAL);
+		wlh = DISPATCH_WLH_GLOBAL;
+	}
+	_dispatch_set_wlh(wlh);
+	_dispatch_deferred_items_set(&ddi);
+	_dispatch_event_loop_merge(ke, n);
+
+	if (old_dbp != DISPATCH_KEVENT_WORKER_IS_NOT_MANAGER) {
 		_dispatch_mgr_queue_drain();
 		bool poll = _dispatch_mgr_timers();
-		if (_dispatch_kevent_worker_thread_reset(old_dbp)) {
+		if (_dispatch_wlh_worker_thread_reset(old_dbp)) {
 			poll = true;
 		}
-		if (poll) _dispatch_event_loop_poke();
-	}
-	_dispatch_deferred_items_set(NULL);
+		if (poll) _dispatch_event_loop_poke(DISPATCH_WLH_MANAGER, 0, 0);
+	} else if (ddi.ddi_stashed_dq) {
+		if (wlh == DISPATCH_WLH_GLOBAL) {
+			if (ddi.ddi_nevents) _dispatch_event_loop_update();
+			_dispatch_deferred_items_set(NULL);
+		} else {
+			ddi.ddi_stashed_pri = DISPATCH_PRIORITY_NOSTASH;
+		}
 
-	if (ddi.ddi_stashed_pri &&
-			ddi.ddi_stashed_pri != DISPATCH_PRIORITY_NOSTASH) {
-		*nevents = 0;
-		if (ddi.ddi_nevents) {
-			_dispatch_event_loop_update(ddi.ddi_eventlist, ddi.ddi_nevents);
-		}
-		dispatch_qos_t qos = _dispatch_priority_qos(ddi.ddi_stashed_pri);
-		return _dispatch_root_queue_drain_deferred_item(ddi.ddi_stashed_dq,
-				ddi.ddi_stashed_dou, qos DISPATCH_PERF_MON_ARGS);
-	} else {
-		if (ddi.ddi_nevents) {
-			_dispatch_debug("flushing %d deferred kevents", ddi.ddi_nevents);
-		}
-		*nevents = ddi.ddi_nevents;
-		dispatch_static_assert(__builtin_types_compatible_p(typeof(**events),
-				typeof(*ddi.ddi_eventlist)));
-		memcpy(*events, ddi.ddi_eventlist,
-			 (size_t)ddi.ddi_nevents * sizeof(*ddi.ddi_eventlist));
+		_dispatch_debug("wlh[%p]: draining deferred item %p", wlh,
+				ddi.ddi_stashed_dq);
+		_dispatch_root_queue_drain_deferred_item(ddi.ddi_stashed_rq,
+				ddi.ddi_stashed_dq DISPATCH_PERF_MON_ARGS);
 	}
-	if (old_dbp == DISPATCH_KEVENT_WORKER_IS_NOT_MANAGER) {
+
+	_dispatch_deferred_items_set(NULL);
+	_dispatch_reset_wlh();
+
+	if (ddi.ddi_nevents) {
+		_dispatch_debug("flushing %d deferred kevents", ddi.ddi_nevents);
+	}
+	*nevents = ddi.ddi_nevents;
+	dispatch_static_assert(__builtin_types_compatible_p(typeof(**events),
+			typeof(*ddi.ddi_eventlist)));
+	memcpy(*events, ddi.ddi_eventlist,
+		 (size_t)ddi.ddi_nevents * sizeof(*ddi.ddi_eventlist));
+	if (old_dbp == DISPATCH_KEVENT_WORKER_IS_NOT_MANAGER && !ddi.ddi_stashed_dq) {
 		_dispatch_perfmon_end(perfmon_thread_event_no_steal);
 	}
 }
+
+DISPATCH_NOINLINE
+void
+_dispatch_kevent_worker_thread(dispatch_kevent_t *events, int *nevents)
+{
+	if (!events && !nevents) {
+		// events for worker thread request have already been delivered earlier
+		return;
+	}
+	return _dispatch_wlh_worker_thread(DISPATCH_WLH_GLOBAL, events, nevents);
+}
+
 
 #endif // DISPATCH_USE_KEVENT_WORKQUEUE
 #pragma mark -
@@ -2396,7 +2512,7 @@ _dispatch_source_debug_attr(dispatch_source_t ds, char* buf, size_t bufsiz)
 	dispatch_queue_t target = ds->do_targetq;
 	dispatch_source_refs_t dr = ds->ds_refs;
 	return dsnprintf(buf, bufsiz, "target = %s[%p], ident = 0x%x, "
-			"mask = 0x%x, pending_data = 0x%lx, registered = %d, "
+			"mask = 0x%x, pending_data = 0x%llx, registered = %d, "
 			"armed = %d, deleted = %d%s, canceled = %d, ",
 			target && target->dq_label ? target->dq_label : "", target,
 			dr->du_ident, dr->du_fflags, ds->ds_pending_data,
