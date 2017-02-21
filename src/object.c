@@ -89,21 +89,19 @@ _os_object_release(_os_object_t obj)
 bool
 _os_object_retain_weak(_os_object_t obj)
 {
-	int xref_cnt = obj->os_obj_xref_cnt;
-	if (slowpath(xref_cnt == _OS_OBJECT_GLOBAL_REFCNT)) {
-		return true; // global object
-	}
-retry:
-	if (slowpath(xref_cnt == -1)) {
-		return false;
-	}
-	if (slowpath(xref_cnt < -1)) {
-		goto overrelease;
-	}
-	if (slowpath(!os_atomic_cmpxchgvw2o(obj, os_obj_xref_cnt, xref_cnt,
-			xref_cnt + 1, &xref_cnt, relaxed))) {
-		goto retry;
-	}
+	int xref_cnt, nxref_cnt;
+	os_atomic_rmw_loop2o(obj, os_obj_xref_cnt, xref_cnt, nxref_cnt, relaxed, {
+		if (slowpath(xref_cnt == _OS_OBJECT_GLOBAL_REFCNT)) {
+			os_atomic_rmw_loop_give_up(return true); // global object
+		}
+		if (slowpath(xref_cnt == -1)) {
+			os_atomic_rmw_loop_give_up(return false);
+		}
+		if (slowpath(xref_cnt < -1)) {
+			os_atomic_rmw_loop_give_up(goto overrelease);
+		}
+		nxref_cnt = xref_cnt + 1;
+	});
 	return true;
 overrelease:
 	_OS_OBJECT_CLIENT_CRASH("Over-release of an object");

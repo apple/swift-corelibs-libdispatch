@@ -42,12 +42,6 @@
 #define OS_VOUCHER_EXPORT OS_EXPORT
 #endif
 
-#define __VOUCHER_ACTIVITY_IGNORE_DEPRECATION_PUSH \
-	_Pragma("clang diagnostic push") \
-	_Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"")
-#define __VOUCHER_ACTIVITY_IGNORE_DEPRECATION_POP \
-	_Pragma("clang diagnostic pop")
-
 __BEGIN_DECLS
 
 /*!
@@ -273,11 +267,12 @@ voucher_activity_trace_with_private_strings(firehose_stream_t stream,
 		const void *privdata, size_t privlen);
 
 typedef const struct voucher_activity_hooks_s {
-#define VOUCHER_ACTIVITY_HOOKS_VERSION     3
+#define VOUCHER_ACTIVITY_HOOKS_VERSION     4
 	long vah_version;
 	mach_port_t (*vah_get_logd_port)(void);
 	dispatch_mach_handler_function_t vah_debug_channel_handler;
 	kern_return_t (*vah_get_reconnect_info)(mach_vm_address_t *, mach_vm_size_t *);
+	void (*vah_metadata_init)(void *metadata_buffer, size_t size);
 } *voucher_activity_hooks_t;
 
 /*!
