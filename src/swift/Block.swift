@@ -41,6 +41,7 @@ public class DispatchWorkItem {
 	public init(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], block: @escaping @convention(block) () -> ()) {
 		_block =  dispatch_block_create_with_qos_class(dispatch_block_flags_t(flags.rawValue),
 			qos.qosClass.rawValue.rawValue, Int32(qos.relativePriority), block)
+		_group = group
 	}
 
 	// Used by DispatchQueue.synchronously<T> to provide a path through
