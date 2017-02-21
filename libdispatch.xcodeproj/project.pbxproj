@@ -550,6 +550,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0C85091F1D48DDDD006CC8EB /* src */ = {isa = PBXFileReference; lastKnownFileType = folder; path = src; sourceTree = "<group>"; };
 		2BBF5A5F154B64D8002B20F9 /* allocator_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = allocator_internal.h; sourceTree = "<group>"; };
 		2BBF5A62154B64F5002B20F9 /* allocator.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = allocator.c; sourceTree = "<group>"; };
 		2BE17C6318EA305E002CA4E8 /* layout_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = layout_private.h; sourceTree = "<group>"; };
@@ -810,6 +811,7 @@
 		08FB7794FE84155DC02AAC07 /* libdispatch */ = {
 			isa = PBXGroup;
 			children = (
+				0C85091F1D48DDDD006CC8EB /* src */,
 				E44DB71E11D2FF080074F2AD /* Build Support */,
 				6E9B6AE21BB39793009E324D /* OS Public Headers */,
 				E4EB4A2914C35F1800AA0FA9 /* OS Private Headers */,
