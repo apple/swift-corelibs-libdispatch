@@ -135,7 +135,7 @@ _pthread_qos_override_end_direct(mach_port_t thread, void *resource)
 #endif
 
 #if PTHREAD_WORKQUEUE_SPI_VERSION < 20160427
-bool
+static inline bool
 _pthread_workqueue_should_narrow(pthread_priority_t priority)
 {
 	(void)priority;

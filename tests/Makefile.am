@@ -75,7 +75,7 @@ TESTS=							\
 	$(ADDITIONAL_TESTS)
 
 
-dispatch_c99_CFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CBLOCKS_FLAGS) $(KQUEUE_CFLAGS) -std=c99
+dispatch_c99_CFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CBLOCKS_FLAGS) -std=c99
 dispatch_plusplus_SOURCES=dispatch_plusplus.cpp
 dispatch_priority2_SOURCES=dispatch_priority.c
 dispatch_priority2_CPPFLAGS=$(AM_CPPFLAGS) -DUSE_SET_TARGET_QUEUE=1
@@ -83,15 +83,10 @@ dispatch_priority2_CPPFLAGS=$(AM_CPPFLAGS) -DUSE_SET_TARGET_QUEUE=1
 AM_CPPFLAGS=-I$(top_builddir) -I$(top_srcdir)
 
 DISPATCH_TESTS_CFLAGS=-Wall -Wno-deprecated-declarations $(MARCH_FLAGS)
-AM_CFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CBLOCKS_FLAGS) $(KQUEUE_CFLAGS) $(BSD_OVERLAY_CFLAGS)
+AM_CFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CBLOCKS_FLAGS) $(BSD_OVERLAY_CFLAGS)
 AM_OBJCFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CBLOCKS_FLAGS)
 AM_CXXFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CXXBLOCKS_FLAGS) $(BSD_OVERLAY_CFLAGS)
 AM_OBJCXXFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CXXBLOCKS_FLAGS)
-
-if BUILD_OWN_KQUEUES
-  KQUEUE_LIBS+=$(top_builddir)/libkqueue/libkqueue.la
-  KQUEUE_CFLAGS+=-I$(top_srcdir)/libkqueue/include
-endif
 
 if !BUILD_OWN_PTHREAD_WORKQUEUES
 if HAVE_PTHREAD_WORKQUEUES
@@ -109,7 +104,7 @@ if HAVE_SWIFT
   AM_LDFLAGS=-rpath $(SWIFT_LIBDIR)
 endif
 
-LDADD=libbsdtests.la $(top_builddir)/src/libdispatch.la $(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS) $(SWIFT_LIBS)
+LDADD=libbsdtests.la $(top_builddir)/src/libdispatch.la $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS) $(SWIFT_LIBS)
 libbsdtests_la_LDFLAGS=-avoid-version
 
 bsdtestsummarize_LDADD=-lm $(BSD_OVERLAY_LIBS)
