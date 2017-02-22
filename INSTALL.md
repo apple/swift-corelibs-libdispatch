@@ -152,7 +152,7 @@ on Ubuntu; currently supported versions are 14.04, 15.10 and 16.04.
 
 1. The first thing to do is install required packages:
 
-    `sudo apt-get install autoconf libtool pkg-config clang systemtap-sdt-dev libbsd-dev`
+    `sudo apt-get install autoconf libtool pkg-config clang systemtap-sdt-dev libbsd-dev linux-libc-dev`
 
     Note: compiling libdispatch requires clang 3.8 or better and
 the gold linker. If the default clang on your Ubuntu version is
