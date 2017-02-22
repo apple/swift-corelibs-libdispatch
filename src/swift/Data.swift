@@ -50,7 +50,9 @@ public struct DispatchData : RandomAccessCollection {
 	///
 	/// - parameter bytes: A pointer to the memory. It will be copied.
 	public init(bytes buffer: UnsafeBufferPointer<UInt8>) {
-		let d = dispatch_data_create(buffer.baseAddress!, buffer.count, nil, _dispatch_data_destructor_default())
+		let d = buffer.baseAddress == nil ? _swift_dispatch_data_empty()
+					: dispatch_data_create(buffer.baseAddress!, buffer.count, nil,
+							_dispatch_data_destructor_default())
 		self.init(data: d)
 	}
 
@@ -60,7 +62,8 @@ public struct DispatchData : RandomAccessCollection {
 	/// - parameter deallocator: Specifies the mechanism to free the indicated buffer.
 	public init(bytesNoCopy bytes: UnsafeBufferPointer<UInt8>, deallocator: Deallocator = .free) {
 		let (q, b) = deallocator._deallocator
-		let d = dispatch_data_create(bytes.baseAddress!, bytes.count, q?.__wrapped, b)
+		let d = bytes.baseAddress == nil ? _swift_dispatch_data_empty()
+					: dispatch_data_create(bytes.baseAddress!, bytes.count, q?.__wrapped, b)
 		self.init(data: d)
 	}
 
@@ -89,7 +92,7 @@ public struct DispatchData : RandomAccessCollection {
 	}
 
 	public func enumerateBytes(
-		block: (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void) 
+		block: (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void)
 	{
 		// we know that capturing block in the closure being created/passed to dispatch_data_apply
 		// does not cause block to escape because dispatch_data_apply does not allow its
@@ -135,11 +138,16 @@ public struct DispatchData : RandomAccessCollection {
 
 	private func _copyBytesHelper(to pointer: UnsafeMutableRawPointer, from range: CountableRange<Index>) {
 		var copiedCount = 0
+		if range.isEmpty { return }
+		let rangeSize = range.count
 		_ = CDispatch.dispatch_data_apply(__wrapped.__wrapped) { (data: dispatch_data_t, offset: Int, ptr: UnsafeRawPointer, size: Int) in
-			let limit = Swift.min((range.endIndex - range.startIndex) - copiedCount, size)
-			memcpy(pointer + copiedCount, ptr, limit)
-			copiedCount += limit
-			return copiedCount < (range.endIndex - range.startIndex)
+			if offset >= range.endIndex { return false } // This region is after endIndex
+			let copyOffset = range.startIndex > offset ? range.startIndex - offset : 0 // offset of first byte, in this region
+			if copyOffset >= size { return true } // This region is before startIndex
+			let count = Swift.min(rangeSize - copiedCount, size - copyOffset)
+			memcpy(pointer + copiedCount, ptr + copyOffset, count)
+			copiedCount += count
+			return copiedCount < rangeSize
 		}
 	}
 

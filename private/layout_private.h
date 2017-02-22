@@ -29,7 +29,7 @@
 __BEGIN_DECLS
 
 #if !TARGET_OS_WIN32
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT const struct dispatch_queue_offsets_s {
 	// always add new fields at the end
 	const uint16_t dqo_version;
@@ -60,7 +60,7 @@ DISPATCH_EXPORT const struct dispatch_queue_offsets_s {
  * SPI intended for CoreSymbolication only
  */
 
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT const struct dispatch_tsd_indexes_s {
 	// always add new fields at the end
 	const uint16_t dti_version;

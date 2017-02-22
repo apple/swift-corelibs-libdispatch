@@ -165,24 +165,69 @@ _voucher_thread_cleanup(void *voucher)
 	_voucher_release(voucher);
 }
 
+#pragma mark -
+#pragma mark voucher_hash
+
 DISPATCH_CACHELINE_ALIGN
-static TAILQ_HEAD(, voucher_s) _vouchers[VL_HASH_SIZE];
-#define _vouchers_head(kv) (&_vouchers[VL_HASH((kv))])
-static dispatch_unfair_lock_s _vouchers_lock;
-#define _vouchers_lock_lock() _dispatch_unfair_lock_lock(&_vouchers_lock)
-#define _vouchers_lock_unlock() _dispatch_unfair_lock_unlock(&_vouchers_lock)
+static voucher_hash_head_s _voucher_hash[VL_HASH_SIZE];
+
+#define _voucher_hash_head(kv)   (&_voucher_hash[VL_HASH((kv))])
+static dispatch_unfair_lock_s _voucher_hash_lock;
+#define _voucher_hash_lock_lock() \
+		_dispatch_unfair_lock_lock(&_voucher_hash_lock)
+#define _voucher_hash_lock_unlock() \
+		_dispatch_unfair_lock_unlock(&_voucher_hash_lock)
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_voucher_hash_head_init(voucher_hash_head_s *head)
+{
+	_voucher_hash_set_next(&head->vhh_first, VOUCHER_NULL);
+	_voucher_hash_set_prev_ptr(&head->vhh_last_ptr, &head->vhh_first);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_voucher_hash_enqueue(mach_voucher_t kv, voucher_t v)
+{
+	// same as TAILQ_INSERT_TAIL
+	voucher_hash_head_s *head = _voucher_hash_head(kv);
+	uintptr_t prev_ptr = head->vhh_last_ptr;
+	_voucher_hash_set_next(&v->v_list.vhe_next, VOUCHER_NULL);
+	v->v_list.vhe_prev_ptr = prev_ptr;
+	_voucher_hash_store_to_prev_ptr(prev_ptr, v);
+	_voucher_hash_set_prev_ptr(&head->vhh_last_ptr, &v->v_list.vhe_next);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_voucher_hash_remove(mach_voucher_t kv, voucher_t v)
+{
+	// same as TAILQ_REMOVE
+	voucher_hash_head_s *head = _voucher_hash_head(kv);
+	voucher_t next = _voucher_hash_get_next(v->v_list.vhe_next);
+	uintptr_t prev_ptr = v->v_list.vhe_prev_ptr;
+	if (next) {
+		next->v_list.vhe_prev_ptr = prev_ptr;
+	} else {
+		head->vhh_last_ptr = prev_ptr;
+	}
+	_voucher_hash_store_to_prev_ptr(prev_ptr, next);
+	_voucher_hash_mark_not_enqueued(v);
+}
 
 static voucher_t
 _voucher_find_and_retain(mach_voucher_t kv)
 {
-	voucher_t v;
 	if (!kv) return NULL;
-	_vouchers_lock_lock();
-	TAILQ_FOREACH(v, _vouchers_head(kv), v_list) {
+	_voucher_hash_lock_lock();
+	voucher_hash_head_s *head = _voucher_hash_head(kv);
+	voucher_t v = _voucher_hash_get_next(head->vhh_first);
+	while (v) {
 		if (v->v_ipc_kvoucher == kv) {
 			int xref_cnt = os_atomic_inc2o(v, os_obj_xref_cnt, relaxed);
 			_dispatch_voucher_debug("retain  -> %d", v, xref_cnt + 1);
-			if (slowpath(xref_cnt < 0)) {
+			if (unlikely(xref_cnt < 0)) {
 				_dispatch_voucher_debug("over-release", v);
 				_OS_OBJECT_CLIENT_CRASH("Voucher over-release");
 			}
@@ -192,8 +237,9 @@ _voucher_find_and_retain(mach_voucher_t kv)
 			}
 			break;
 		}
+		v = _voucher_hash_get_next(v->v_list.vhe_next);
 	}
-	_vouchers_lock_unlock();
+	_voucher_hash_lock_unlock();
 	return v;
 }
 
@@ -202,34 +248,34 @@ _voucher_insert(voucher_t v)
 {
 	mach_voucher_t kv = v->v_ipc_kvoucher;
 	if (!kv) return;
-	_vouchers_lock_lock();
-	if (slowpath(_TAILQ_IS_ENQUEUED(v, v_list))) {
+	_voucher_hash_lock_lock();
+	if (unlikely(_voucher_hash_is_enqueued(v))) {
 		_dispatch_voucher_debug("corruption", v);
-		DISPATCH_CLIENT_CRASH(v->v_list.tqe_prev, "Voucher corruption");
+		DISPATCH_CLIENT_CRASH(0, "Voucher corruption");
 	}
-	TAILQ_INSERT_TAIL(_vouchers_head(kv), v, v_list);
-	_vouchers_lock_unlock();
+	_voucher_hash_enqueue(kv, v);
+	_voucher_hash_lock_unlock();
 }
 
 static void
 _voucher_remove(voucher_t v)
 {
 	mach_voucher_t kv = v->v_ipc_kvoucher;
-	if (!_TAILQ_IS_ENQUEUED(v, v_list)) return;
-	_vouchers_lock_lock();
-	if (slowpath(!kv)) {
+	if (!_voucher_hash_is_enqueued(v)) return;
+	_voucher_hash_lock_lock();
+	if (unlikely(!kv)) {
 		_dispatch_voucher_debug("corruption", v);
 		DISPATCH_CLIENT_CRASH(0, "Voucher corruption");
 	}
 	// check for resurrection race with _voucher_find_and_retain
-	if (os_atomic_load2o(v, os_obj_xref_cnt, ordered) < 0 &&
-			_TAILQ_IS_ENQUEUED(v, v_list)) {
-		TAILQ_REMOVE(_vouchers_head(kv), v, v_list);
-		_TAILQ_MARK_NOT_ENQUEUED(v, v_list);
-		v->v_list.tqe_next = (void*)~0ull;
+	if (os_atomic_load2o(v, os_obj_xref_cnt, ordered) < 0) {
+		if (_voucher_hash_is_enqueued(v)) _voucher_hash_remove(kv, v);
 	}
-	_vouchers_lock_unlock();
+	_voucher_hash_lock_unlock();
 }
+
+#pragma mark -
+#pragma mark mach_voucher_t
 
 void
 _voucher_dealloc_mach_voucher(mach_voucher_t kv)
@@ -419,7 +465,7 @@ _voucher_get_mach_voucher(voucher_t voucher)
 
 	size = _voucher_mach_recipe_init(mvar, voucher, kvb, voucher->v_priority);
 	kr = _voucher_create_mach_voucher(mvar, size, &kv);
-	if (dispatch_assume_zero(kr) || !kv){
+	if (dispatch_assume_zero(kr) || !kv) {
 		return MACH_VOUCHER_NULL;
 	}
 	if (!os_atomic_cmpxchgv2o(voucher, v_ipc_kvoucher, MACH_VOUCHER_NULL,
@@ -453,7 +499,7 @@ _voucher_create_mach_voucher_with_priority(voucher_t voucher,
 
 	size = _voucher_mach_recipe_init(mvar, voucher, kvb, priority);
 	kr = _voucher_create_mach_voucher(mvar, size, &kv);
-	if (dispatch_assume_zero(kr) || !kv){
+	if (dispatch_assume_zero(kr) || !kv) {
 		return MACH_VOUCHER_NULL;
 	}
 	_dispatch_kvoucher_debug("create with priority from voucher[%p]", kv,
@@ -635,7 +681,7 @@ _voucher_create_without_importance(voucher_t ov)
 	};
 	kr = _voucher_create_mach_voucher(importance_remove_recipe,
 			sizeof(importance_remove_recipe), &kv);
-	if (dispatch_assume_zero(kr) || !kv){
+	if (dispatch_assume_zero(kr) || !kv) {
 		if (ov->v_ipc_kvoucher) return NULL;
 		kv = MACH_VOUCHER_NULL;
 	}
@@ -684,7 +730,7 @@ _voucher_create_accounting_voucher(voucher_t ov)
 	};
 	kr = _voucher_create_mach_voucher(&accounting_copy_recipe,
 			sizeof(accounting_copy_recipe), &kv);
-	if (dispatch_assume_zero(kr) || !kv){
+	if (dispatch_assume_zero(kr) || !kv) {
 		return NULL;
 	}
 	voucher_t v = _voucher_find_and_retain(kv);
@@ -764,11 +810,11 @@ void
 _voucher_dispose(voucher_t voucher)
 {
 	_dispatch_voucher_debug("dispose", voucher);
-	if (slowpath(_TAILQ_IS_ENQUEUED(voucher, v_list))) {
+	if (slowpath(_voucher_hash_is_enqueued(voucher))) {
 		_dispatch_voucher_debug("corruption", voucher);
-		DISPATCH_CLIENT_CRASH(voucher->v_list.tqe_prev, "Voucher corruption");
+		DISPATCH_CLIENT_CRASH(0, "Voucher corruption");
 	}
-	voucher->v_list.tqe_next = DISPATCH_OBJECT_LISTLESS;
+	_voucher_hash_mark_not_enqueued(voucher);
 	if (voucher->v_ipc_kvoucher) {
 		if (voucher->v_ipc_kvoucher != voucher->v_kvoucher) {
 			_voucher_dealloc_mach_voucher(voucher->v_ipc_kvoucher);
@@ -806,10 +852,9 @@ _voucher_activity_debug_channel_init(void)
 {
 	dispatch_mach_handler_function_t handler = NULL;
 
-	if (_voucher_libtrace_hooks && _voucher_libtrace_hooks->vah_version >= 2) {
+	if (_voucher_libtrace_hooks) {
 		handler = _voucher_libtrace_hooks->vah_debug_channel_handler;
 	}
-
 	if (!handler) return;
 
 	dispatch_mach_t dm;
@@ -989,6 +1034,9 @@ _voucher_libkernel_init(void)
 void
 voucher_activity_initialize_4libtrace(voucher_activity_hooks_t hooks)
 {
+	if (hooks->vah_version < 3) {
+		DISPATCH_CLIENT_CRASH(hooks->vah_version, "unsupported vah_version");
+	}
 	if (!os_atomic_cmpxchg(&_voucher_libtrace_hooks, NULL,
 			hooks, relaxed)) {
 		DISPATCH_CLIENT_CRASH(_voucher_libtrace_hooks,
@@ -1002,7 +1050,7 @@ _voucher_init(void)
 	_voucher_libkernel_init();
 	unsigned int i;
 	for (i = 0; i < VL_HASH_SIZE; i++) {
-		TAILQ_INIT(&_vouchers[i]);
+		_voucher_hash_head_init(&_voucher_hash[i]);
 	}
 }
 
@@ -1051,6 +1099,12 @@ _voucher_activity_id_allocate(firehose_activity_flags_t flags)
 	return FIREHOSE_ACTIVITY_ID_MAKE(aid, flags);
 }
 
+firehose_activity_id_t
+voucher_activity_id_allocate(firehose_activity_flags_t flags)
+{
+	return _voucher_activity_id_allocate(flags);
+}
+
 #define _voucher_activity_tracepoint_reserve(stamp, stream, pub, priv, privbuf) \
 		firehose_buffer_tracepoint_reserve(_firehose_task_buffer, stamp, \
 				stream, pub, priv, privbuf)
@@ -1094,6 +1148,13 @@ _firehose_task_buffer_init(void *ctx OS_UNUSED)
 		// firehose_buffer_create always consumes the send-right
 		_firehose_task_buffer = firehose_buffer_create(logd_port,
 				_voucher_unique_pid, flags);
+		if (_voucher_libtrace_hooks->vah_version >= 4 &&
+				_voucher_libtrace_hooks->vah_metadata_init) {
+			firehose_buffer_t fb = _firehose_task_buffer;
+			size_t meta_sz = FIREHOSE_BUFFER_LIBTRACE_HEADER_SIZE;
+			void *meta = (void *)((uintptr_t)(&fb->fb_header + 1) - meta_sz);
+			_voucher_libtrace_hooks->vah_metadata_init(meta, meta_sz);
+		}
 	}
 }
 
@@ -1126,29 +1187,22 @@ voucher_activity_get_metadata_buffer(size_t *length)
 }
 
 voucher_t
-voucher_activity_create(firehose_tracepoint_id_t trace_id,
-		voucher_t base, firehose_activity_flags_t flags, uint64_t location)
-{
-	return voucher_activity_create_with_location(&trace_id, base, flags, location);
-}
-
-voucher_t
-voucher_activity_create_with_location(firehose_tracepoint_id_t *trace_id,
-		voucher_t base, firehose_activity_flags_t flags, uint64_t location)
+voucher_activity_create_with_data(firehose_tracepoint_id_t *trace_id,
+		voucher_t base, firehose_activity_flags_t flags,
+		const void *pubdata, size_t publen)
 {
 	firehose_activity_id_t va_id = 0, current_id = 0, parent_id = 0;
 	firehose_tracepoint_id_u ftid = { .ftid_value = *trace_id };
-	uint16_t pubsize = sizeof(va_id) + sizeof(location);
 	uint64_t creator_id = 0;
+	uint16_t pubsize;
 	voucher_t ov = _voucher_get();
 	voucher_t v;
 
+	if (os_add_overflow(sizeof(va_id), publen, &pubsize) || pubsize > 128) {
+		DISPATCH_CLIENT_CRASH(pubsize, "Absurd publen");
+	}
 	if (base == VOUCHER_CURRENT) {
 		base = ov;
-	}
-	if (_voucher_activity_disabled()) {
-		*trace_id = 0;
-		return base ? _voucher_retain(base) : VOUCHER_NULL;
 	}
 
 	FIREHOSE_TRACE_ID_CLEAR_FLAG(ftid, base, has_unique_pid);
@@ -1179,6 +1233,10 @@ voucher_activity_create_with_location(firehose_tracepoint_id_t *trace_id,
 	v->v_activity_creator = _voucher_unique_pid;
 	v->v_parent_activity = parent_id;
 
+	if (_voucher_activity_disabled()) {
+		goto done;
+	}
+
 	static const firehose_stream_t streams[2] = {
 		firehose_stream_metadata,
 		firehose_stream_persist,
@@ -1202,13 +1260,23 @@ voucher_activity_create_with_location(firehose_tracepoint_id_t *trace_id,
 			pubptr = _dispatch_memappend(pubptr, &parent_id);
 		}
 		pubptr = _dispatch_memappend(pubptr, &va_id);
-		pubptr = _dispatch_memappend(pubptr, &location);
+		pubptr = _dispatch_mempcpy(pubptr, pubdata, publen);
 		_voucher_activity_tracepoint_flush(ft, ftid);
 	}
+done:
 	*trace_id = ftid.ftid_value;
 	return v;
 }
 
+voucher_t
+voucher_activity_create_with_location(firehose_tracepoint_id_t *trace_id,
+		voucher_t base, firehose_activity_flags_t flags, uint64_t loc)
+{
+	return voucher_activity_create_with_data(trace_id, base, flags,
+			&loc, sizeof(loc));
+}
+
+#if OS_VOUCHER_ACTIVITY_GENERATE_SWAPS
 void
 _voucher_activity_swap(firehose_activity_id_t old_id,
 		firehose_activity_id_t new_id)
@@ -1245,6 +1313,7 @@ _voucher_activity_swap(firehose_activity_id_t old_id,
 	if (new_id) pubptr = _dispatch_memappend(pubptr, &new_id);
 	_voucher_activity_tracepoint_flush(ft, ftid);
 }
+#endif
 
 firehose_activity_id_t
 voucher_get_activity_id_and_creator(voucher_t v, uint64_t *creator_pid,
@@ -1276,22 +1345,22 @@ voucher_activity_flush(firehose_stream_t stream)
 	firehose_buffer_stream_flush(_firehose_task_buffer, stream);
 }
 
-DISPATCH_ALWAYS_INLINE
-static inline firehose_tracepoint_id_t
-_voucher_activity_trace(firehose_stream_t stream,
-		firehose_tracepoint_id_u ftid, uint64_t stamp,
-		const void *pubdata, size_t publen,
-		const void *privdata, size_t privlen)
+DISPATCH_NOINLINE
+firehose_tracepoint_id_t
+voucher_activity_trace_v(firehose_stream_t stream,
+		firehose_tracepoint_id_t trace_id, uint64_t stamp,
+		const struct iovec *iov, size_t publen, size_t privlen)
 {
+	firehose_tracepoint_id_u ftid = { .ftid_value = trace_id };
 	const uint16_t ft_size = offsetof(struct firehose_tracepoint_s, ft_data);
 	const size_t _firehose_chunk_payload_size =
-			sizeof(((struct firehose_buffer_chunk_s *)0)->fbc_data);
+			sizeof(((struct firehose_chunk_s *)0)->fc_data);
 
 	if (_voucher_activity_disabled()) return 0;
 
 	firehose_tracepoint_t ft;
 	firehose_activity_id_t va_id = 0;
-	firehose_buffer_chunk_t fbc;
+	firehose_chunk_t fc;
 	uint8_t *privptr, *pubptr;
 	size_t pubsize = publen;
 	voucher_t ov = _voucher_get();
@@ -1331,38 +1400,52 @@ _voucher_activity_trace(firehose_stream_t stream,
 		pubptr = _dispatch_memappend(pubptr, &creator_pid);
 	}
 	if (privlen) {
-		fbc = firehose_buffer_chunk_for_address(ft);
+		fc = firehose_buffer_chunk_for_address(ft);
 		struct firehose_buffer_range_s range = {
-			.fbr_offset = (uint16_t)(privptr - fbc->fbc_start),
+			.fbr_offset = (uint16_t)(privptr - fc->fc_start),
 			.fbr_length = (uint16_t)privlen,
 		};
 		pubptr = _dispatch_memappend(pubptr, &range);
-		_dispatch_mempcpy(privptr, privdata, privlen);
 	}
-	_dispatch_mempcpy(pubptr, pubdata, publen);
+	while (publen > 0) {
+		pubptr = _dispatch_mempcpy(pubptr, iov->iov_base, iov->iov_len);
+		if (unlikely(os_sub_overflow(publen, iov->iov_len, &publen))) {
+			DISPATCH_CLIENT_CRASH(0, "Invalid arguments");
+		}
+		iov++;
+	}
+	while (privlen > 0) {
+		privptr = _dispatch_mempcpy(privptr, iov->iov_base, iov->iov_len);
+		if (unlikely(os_sub_overflow(privlen, iov->iov_len, &privlen))) {
+			DISPATCH_CLIENT_CRASH(0, "Invalid arguments");
+		}
+		iov++;
+	}
 	_voucher_activity_tracepoint_flush(ft, ftid);
 	return ftid.ftid_value;
 }
 
 firehose_tracepoint_id_t
 voucher_activity_trace(firehose_stream_t stream,
-		firehose_tracepoint_id_t trace_id, uint64_t timestamp,
+		firehose_tracepoint_id_t trace_id, uint64_t stamp,
 		const void *pubdata, size_t publen)
 {
-	firehose_tracepoint_id_u ftid = { .ftid_value = trace_id };
-	return _voucher_activity_trace(stream, ftid, timestamp, pubdata, publen,
-			NULL, 0);
+	struct iovec iov = { (void *)pubdata, publen };
+	return voucher_activity_trace_v(stream, trace_id, stamp, &iov, publen, 0);
 }
 
 firehose_tracepoint_id_t
 voucher_activity_trace_with_private_strings(firehose_stream_t stream,
-		firehose_tracepoint_id_t trace_id, uint64_t timestamp,
+		firehose_tracepoint_id_t trace_id, uint64_t stamp,
 		const void *pubdata, size_t publen,
 		const void *privdata, size_t privlen)
 {
-	firehose_tracepoint_id_u ftid = { .ftid_value = trace_id };
-	return _voucher_activity_trace(stream, ftid, timestamp,
-			pubdata, publen, privdata, privlen);
+	struct iovec iov[2] = {
+		{ (void *)pubdata, publen },
+		{ (void *)privdata, privlen },
+	};
+	return voucher_activity_trace_v(stream, trace_id, stamp,
+			iov, publen, privlen);
 }
 
 #pragma mark -
@@ -1410,7 +1493,7 @@ voucher_create(voucher_recipe_t recipe)
 	(void)recipe;
 	return NULL;
 }
-#endif
+#endif // VOUCHER_ENABLE_RECIPE_OBJECTS
 
 voucher_t
 voucher_adopt(voucher_t voucher)
@@ -1509,7 +1592,7 @@ voucher_get_mach_voucher(voucher_t voucher)
 	(void)voucher;
 	return 0;
 }
-#endif
+#endif // VOUCHER_ENABLE_GET_MACH_VOUCHER
 
 void
 _voucher_xref_dispose(voucher_t voucher)
@@ -1543,7 +1626,7 @@ voucher_get_current_persona_proximate_info(struct proc_persona_info *persona_inf
 	(void)persona_info;
 	return -1;
 }
-#endif
+#endif // VOUCHER_EXPORT_PERSONA_SPI
 
 void
 _voucher_activity_debug_channel_init(void)
@@ -1618,6 +1701,16 @@ voucher_activity_trace_with_private_strings(firehose_stream_t stream,
 {
 	(void)stream; (void)trace_id; (void)timestamp;
 	(void)pubdata; (void)publen; (void)privdata; (void)privlen;
+	return 0;
+}
+
+firehose_tracepoint_id_t
+voucher_activity_trace_v(firehose_stream_t stream,
+		firehose_tracepoint_id_t trace_id, uint64_t timestamp,
+		const struct iovec *iov, size_t publen, size_t privlen)
+{
+	(void)stream; (void)trace_id; (void)timestamp;
+	(void)iov; (void)publen; (void)privlen;
 	return 0;
 }
 

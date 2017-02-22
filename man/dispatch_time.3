@@ -80,28 +80,10 @@ parameter is ignored.
 .Pp
 Underflow causes the smallest representable value to be
 returned for a given clock.
-.Sh CAVEATS
-Under the C language, untyped numbers default to the
-.Vt int
-type. This can lead to truncation bugs when arithmetic operations with other
-numbers are expected to generate a
-.Vt int64_t
-sized result, such as the
-.Fa offset
-argument to
-.Fn dispatch_time
-and
-.Fn dispatch_walltime .
-When in doubt, use
-.Vt ull
-as a suffix. For example:
-.Bd -literal -offset indent
-3ull * NSEC_PER_SEC
-.Ed
 .Sh EXAMPLES
 Create a milestone two seconds in the future:
 .Bd -literal -offset indent
-milestone = dispatch_time(DISPATCH_TIME_NOW, 2LL * NSEC_PER_SEC);
+milestone = dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC);
 .Ed
 .Pp
 Create a milestone for use as an infinite timeout:
@@ -115,6 +97,11 @@ struct timespec ts;
 ts.tv_sec = 0x7FFFFFFF;
 ts.tv_nsec = 0;
 milestone = dispatch_walltime(&ts, 0);
+.Ed
+.Pp
+Use a negative delta to create a milestone an hour before the one above:
+.Bd -literal -offset indent
+milestone = dispatch_walltime(&ts, -60 * 60 * NSEC_PER_SEC);
 .Ed
 .Sh RETURN VALUE
 These functions return an abstract value for use with

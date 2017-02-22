@@ -26,7 +26,7 @@ public struct DispatchTime : Comparable {
 
 	public static let distantFuture = DispatchTime(rawValue: ~0)
 
-	fileprivate init(rawValue: dispatch_time_t) { 
+	fileprivate init(rawValue: dispatch_time_t) {
 		self.rawValue = rawValue
 	}
 
@@ -37,6 +37,12 @@ public struct DispatchTime : Comparable {
 	///   - uptimeNanoseconds: The number of nanoseconds since boot, excluding
 	///                        time the system spent asleep
 	/// - Returns: A new `DispatchTime`
+	/// - Discussion: This clock is the same as the value returned by
+	///               `mach_absolute_time` when converted into nanoseconds.
+	///               Note that `DispatchTime(uptimeNanoseconds: 0)` is
+	///               equivalent to `DispatchTime.now()`, that is, its value
+	///               represents the number of nanoseconds since boot (excluding
+	///               system sleep time), not zero nanoseconds since boot.
 	public init(uptimeNanoseconds: UInt64) {
 		self.rawValue = dispatch_time_t(uptimeNanoseconds)
 	}
@@ -110,12 +116,16 @@ public func -(time: DispatchTime, interval: DispatchTimeInterval) -> DispatchTim
 }
 
 public func +(time: DispatchTime, seconds: Double) -> DispatchTime {
-	let t = CDispatch.dispatch_time(time.rawValue, Int64(seconds * Double(NSEC_PER_SEC)))
+	let interval = seconds * Double(NSEC_PER_SEC)
+	let t = CDispatch.dispatch_time(time.rawValue,
+		interval.isInfinite || interval.isNaN ? Int64.max : Int64(interval))
 	return DispatchTime(rawValue: t)
 }
 
 public func -(time: DispatchTime, seconds: Double) -> DispatchTime {
-	let t = CDispatch.dispatch_time(time.rawValue, Int64(-seconds * Double(NSEC_PER_SEC)))
+	let interval = -seconds * Double(NSEC_PER_SEC)
+	let t = CDispatch.dispatch_time(time.rawValue,
+		interval.isInfinite || interval.isNaN ? Int64.min : Int64(interval))
 	return DispatchTime(rawValue: t)
 }
 
@@ -130,11 +140,15 @@ public func -(time: DispatchWallTime, interval: DispatchTimeInterval) -> Dispatc
 }
 
 public func +(time: DispatchWallTime, seconds: Double) -> DispatchWallTime {
-	let t = CDispatch.dispatch_time(time.rawValue, Int64(seconds * Double(NSEC_PER_SEC)))
+	let interval = seconds * Double(NSEC_PER_SEC)
+	let t = CDispatch.dispatch_time(time.rawValue,
+		interval.isInfinite || interval.isNaN ? Int64.max : Int64(interval))
 	return DispatchWallTime(rawValue: t)
 }
 
 public func -(time: DispatchWallTime, seconds: Double) -> DispatchWallTime {
-	let t = CDispatch.dispatch_time(time.rawValue, Int64(-seconds * Double(NSEC_PER_SEC)))
+	let interval = seconds * Double(NSEC_PER_SEC)
+	let t = CDispatch.dispatch_time(time.rawValue,
+		interval.isInfinite || interval.isNaN ? Int64.min : Int64(interval))
 	return DispatchWallTime(rawValue: t)
 }

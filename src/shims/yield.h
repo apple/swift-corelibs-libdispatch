@@ -31,31 +31,40 @@
 #pragma mark _dispatch_wait_until
 
 #if DISPATCH_HW_CONFIG_UP
-#define _dispatch_wait_until(c) do { \
+#define _dispatch_wait_until(c) ({ \
+		typeof(c) _c; \
 		int _spins = 0; \
-		while (!fastpath(c)) { \
+		for (;;) { \
+			if (likely(_c = (c))) break; \
 			_spins++; \
 			_dispatch_preemption_yield(_spins); \
-		} } while (0)
+		} \
+		_c; })
 #elif TARGET_OS_EMBEDDED
 // <rdar://problem/15440575>
 #ifndef DISPATCH_WAIT_SPINS
 #define DISPATCH_WAIT_SPINS 1024
 #endif
-#define _dispatch_wait_until(c) do { \
+#define _dispatch_wait_until(c) ({ \
+		typeof(c) _c; \
 		int _spins = -(DISPATCH_WAIT_SPINS); \
-		while (!fastpath(c)) { \
+		for (;;) { \
+			if (likely(_c = (c))) break; \
 			if (slowpath(_spins++ >= 0)) { \
 				_dispatch_preemption_yield(_spins); \
 			} else { \
 				dispatch_hardware_pause(); \
 			} \
-		} } while (0)
+		} \
+		_c; })
 #else
-#define _dispatch_wait_until(c) do { \
-		while (!fastpath(c)) { \
+#define _dispatch_wait_until(c) ({ \
+		typeof(c) _c; \
+		for (;;) { \
+			if (likely(_c = (c))) break; \
 			dispatch_hardware_pause(); \
-		} } while (0)
+		} \
+		_c; })
 #endif
 
 #pragma mark -

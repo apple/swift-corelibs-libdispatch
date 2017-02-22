@@ -35,7 +35,8 @@ register(
 			comm_recvp		: mach_port_move_receive_t;
 			comm_sendp		: mach_port_make_send_t;
 			extra_info_port : mach_port_move_send_t;
-			extra_info_size : mach_vm_size_t
+			extra_info_size : mach_vm_size_t;
+			ServerAuditToken atoken : audit_token_t
 );
 
 routine

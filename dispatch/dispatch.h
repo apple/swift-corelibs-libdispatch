@@ -24,19 +24,14 @@
 #ifdef __APPLE__
 #include <Availability.h>
 #include <TargetConditionals.h>
-#else
-#define __OSX_AVAILABLE_STARTING(x, y)
-#define __OSX_AVAILABLE_BUT_DEPRECATED(...)
-#define __OSX_AVAILABLE_BUT_DEPRECATED_MSG(...)
-#define __OSX_AVAILABLE(...)
-#define __IOS_AVAILABLE(...)
-#define __TVOS_AVAILABLE(...)
-#define __WATCHOS_AVAILABLE(...)
-#define __OSX_DEPRECATED(...)
-#define __IOS_DEPRECATED(...)
-#define __TVOS_DEPRECATED(...)
-#define __WATCHOS_DEPRECATED(...)
-#endif // __APPLE__
+#endif
+
+#ifndef API_AVAILABLE
+#define API_AVAILABLE(...)
+#define API_DEPRECATED(...)
+#define API_UNAVAILABLE(...)
+#define API_DEPRECATED_WITH_REPLACEMENT(...)
+#endif // !API_AVAILABLE
 
 #include <sys/cdefs.h>
 #include <sys/types.h>
@@ -55,7 +50,7 @@
 #endif
 #endif
 
-#define DISPATCH_API_VERSION 20160712
+#define DISPATCH_API_VERSION 20160831
 
 #ifndef __DISPATCH_BUILDING_DISPATCH__
 

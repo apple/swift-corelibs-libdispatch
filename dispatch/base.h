@@ -204,11 +204,14 @@
 #endif
 
 #if __has_feature(enumerator_attributes)
-#define DISPATCH_ENUM_AVAILABLE_STARTING __OSX_AVAILABLE_STARTING
-#define DISPATCH_ENUM_AVAILABLE(os, version) __##os##_AVAILABLE(version)
+#define DISPATCH_ENUM_API_AVAILABLE(...) API_AVAILABLE(__VA_ARGS__)
+#define DISPATCH_ENUM_API_DEPRECATED(...) API_DEPRECATED(__VA_ARGS__)
+#define DISPATCH_ENUM_API_DEPRECATED_WITH_REPLACEMENT(...) \
+		API_DEPRECATED_WITH_REPLACEMENT(__VA_ARGS__)
 #else
-#define DISPATCH_ENUM_AVAILABLE_STARTING(...)
-#define DISPATCH_ENUM_AVAILABLE(...)
+#define DISPATCH_ENUM_API_AVAILABLE(...)
+#define DISPATCH_ENUM_API_DEPRECATED(...)
+#define DISPATCH_ENUM_API_DEPRECATED_WITH_REPLACEMENT(...)
 #endif
 
 #if defined(SWIFT_SDK_OVERLAY_DISPATCH_EPOCH) && \
@@ -241,6 +244,12 @@
 #define DISPATCH_SWIFT_NAME(_name) __attribute__((__swift_name__(#_name)))
 #else
 #define DISPATCH_SWIFT_NAME(_name)
+#endif
+
+#ifndef __cplusplus
+#define DISPATCH_TRANSPARENT_UNION __attribute__((__transparent_union__))
+#else
+#define DISPATCH_TRANSPARENT_UNION
 #endif
 
 typedef void (*dispatch_function_t)(void *_Nullable);

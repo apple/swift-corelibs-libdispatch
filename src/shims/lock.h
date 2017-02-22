@@ -30,7 +30,7 @@
 #pragma mark - platform macros
 
 DISPATCH_ENUM(dispatch_lock_options, uint32_t,
-		DLOCK_LOCK_NONE 			= 0x00000000,
+		DLOCK_LOCK_NONE				= 0x00000000,
 		DLOCK_LOCK_DATA_CONTENTION  = 0x00010000,
 );
 
@@ -41,6 +41,7 @@ typedef uint32_t dispatch_lock;
 
 #define DLOCK_OWNER_NULL			((dispatch_lock_owner)MACH_PORT_NULL)
 #define DLOCK_OWNER_MASK			((dispatch_lock)0xfffffffc)
+#define DLOCK_OWNER_INVALID			((dispatch_lock)0xffffffff)
 #define DLOCK_NOWAITERS_BIT			((dispatch_lock)0x00000001)
 #define DLOCK_NOFAILED_TRYLOCK_BIT	((dispatch_lock)0x00000002)
 #define _dispatch_tid_self()		((dispatch_lock_owner)_dispatch_thread_port())
@@ -88,6 +89,7 @@ _dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
 
 #elif defined(__linux__)
 #include <linux/futex.h>
+#include <linux/membarrier.h>
 #include <unistd.h>
 #include <sys/syscall.h>   /* For SYS_xxx definitions */
 
@@ -96,6 +98,7 @@ typedef pid_t dispatch_lock_owner;
 
 #define DLOCK_OWNER_NULL			((dispatch_lock_owner)0)
 #define DLOCK_OWNER_MASK			((dispatch_lock)FUTEX_TID_MASK)
+#define DLOCK_OWNER_INVALID			((dispatch_lock)DLOCK_OWNER_MASK)
 #define DLOCK_WAITERS_BIT			((dispatch_lock)FUTEX_WAITERS)
 #define DLOCK_FAILED_TRYLOCK_BIT	((dispatch_lock)FUTEX_OWNER_DIED)
 #define _dispatch_tid_self() \
@@ -145,7 +148,7 @@ _dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
 #endif
 
 #ifndef HAVE_UL_COMPARE_AND_WAIT
-#if defined(UL_COMPARE_AND_WAIT) && DISPATCH_HOST_SUPPORTS_OSX(101200)
+#if defined(UL_COMPARE_AND_WAIT) && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
 #  define HAVE_UL_COMPARE_AND_WAIT 1
 #else
 #  define HAVE_UL_COMPARE_AND_WAIT 0
@@ -153,16 +156,12 @@ _dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
 #endif // HAVE_UL_COMPARE_AND_WAIT
 
 #ifndef HAVE_UL_UNFAIR_LOCK
-#if defined(UL_UNFAIR_LOCK) && DISPATCH_HOST_SUPPORTS_OSX(101200)
+#if defined(UL_UNFAIR_LOCK) && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
 #  define HAVE_UL_UNFAIR_LOCK 1
 #else
 #  define HAVE_UL_UNFAIR_LOCK 0
 #endif
 #endif // HAVE_UL_UNFAIR_LOCK
-
-#ifndef DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
-#define DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK (!HAVE_UL_COMPARE_AND_WAIT && !HAVE_FUTEX)
-#endif
 
 #ifndef HAVE_FUTEX
 #ifdef __linux__
@@ -172,28 +171,75 @@ _dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
 #endif
 #endif // HAVE_FUTEX
 
-#if USE_MACH_SEM
-#define DISPATCH_SEMAPHORE_VERIFY_KR(x) do { \
-		if (unlikely((x) == KERN_INVALID_NAME)) { \
-			DISPATCH_CLIENT_CRASH((x), "Use-after-free of dispatch_semaphore_t"); \
-		} else if (unlikely(x)) { \
-			DISPATCH_INTERNAL_CRASH((x), "mach semaphore API failure"); \
-		} \
-	} while (0)
-#define DISPATCH_GROUP_VERIFY_KR(x) do { \
-		if (unlikely((x) == KERN_INVALID_NAME)) { \
-			DISPATCH_CLIENT_CRASH((x), "Use-after-free of dispatch_group_t"); \
-		} else if (unlikely(x)) { \
-			DISPATCH_INTERNAL_CRASH((x), "mach semaphore API failure"); \
-		} \
-	} while (0)
-#elif USE_POSIX_SEM
-#define DISPATCH_SEMAPHORE_VERIFY_RET(x) do { \
-		if (unlikely((x) == -1)) { \
-			DISPATCH_INTERNAL_CRASH(errno, "POSIX semaphore API failure"); \
-		} \
-	} while (0)
+#pragma mark - semaphores
+
+#ifndef DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
+#if TARGET_OS_MAC
+#define DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK (!HAVE_UL_COMPARE_AND_WAIT)
+#else
+#define DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK 0
 #endif
+#endif
+
+#if USE_MACH_SEM
+
+typedef semaphore_t _dispatch_sema4_t;
+#define _DSEMA4_POLICY_FIFO  SYNC_POLICY_FIFO
+#define _DSEMA4_POLICY_LIFO  SYNC_POLICY_LIFO
+#define _DSEMA4_TIMEOUT() KERN_OPERATION_TIMED_OUT
+
+#define _dispatch_sema4_init(sema, policy) (void)(*(sema) = MACH_PORT_NULL)
+#define _dispatch_sema4_is_created(sema)   (*(sema) != MACH_PORT_NULL)
+void _dispatch_sema4_create_slow(_dispatch_sema4_t *sema, int policy);
+
+#elif USE_POSIX_SEM
+
+typedef sem_t _dispatch_sema4_t;
+#define _DSEMA4_POLICY_FIFO 0
+#define _DSEMA4_POLICY_LIFO 0
+#define _DSEMA4_TIMEOUT() ((errno) = ETIMEDOUT, -1)
+
+void _dispatch_sema4_init(_dispatch_sema4_t *sema, int policy);
+#define _dispatch_sema4_is_created(sema) 1
+#define _dispatch_sema4_create_slow(sema, policy) ((void)0)
+
+#elif USE_WIN32_SEM
+
+typedef HANDLE _dispatch_sema4_t;
+#define _DSEMA4_POLICY_FIFO 0
+#define _DSEMA4_POLICY_LIFO 0
+#define _DSEMA4_TIMEOUT() ((errno) = ETIMEDOUT, -1)
+
+#define _dispatch_sema4_init(sema, policy) (void)(*(sema) = 0)
+#define _dispatch_sema4_is_created(sema)   (*(sema) != 0)
+void _dispatch_sema4_create_slow(_dispatch_sema4_t *sema, int policy);
+
+#else
+#error "port has to implement _dispatch_sema4_t"
+#endif
+
+void _dispatch_sema4_dispose_slow(_dispatch_sema4_t *sema, int policy);
+void _dispatch_sema4_signal(_dispatch_sema4_t *sema, long count);
+void _dispatch_sema4_wait(_dispatch_sema4_t *sema);
+bool _dispatch_sema4_timedwait(_dispatch_sema4_t *sema, dispatch_time_t timeout);
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_sema4_create(_dispatch_sema4_t *sema, int policy)
+{
+	if (!_dispatch_sema4_is_created(sema)) {
+		_dispatch_sema4_create_slow(sema, policy);
+	}
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_sema4_dispose(_dispatch_sema4_t *sema, int policy)
+{
+	if (_dispatch_sema4_is_created(sema)) {
+		_dispatch_sema4_dispose_slow(sema, policy);
+	}
+}
 
 #pragma mark - compare and wait
 
@@ -224,7 +270,7 @@ void _dispatch_wake_by_address(uint32_t volatile *address);
 typedef struct dispatch_thread_event_s {
 #if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
 	union {
-		semaphore_t dte_semaphore;
+		_dispatch_sema4_t dte_sema;
 		uint32_t dte_value;
 	};
 #elif HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
@@ -232,42 +278,10 @@ typedef struct dispatch_thread_event_s {
 	// UINT32_MAX means waited on, but not signalled yet
 	// 0 is the initial and final state
 	uint32_t dte_value;
-#elif USE_POSIX_SEM
-	sem_t dte_sem;
 #else
-#  error define dispatch_thread_event_s for your platform
+	_dispatch_sema4_t dte_sema;
 #endif
 } dispatch_thread_event_s, *dispatch_thread_event_t;
-
-#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
-semaphore_t _dispatch_thread_semaphore_create(void);
-void _dispatch_thread_semaphore_dispose(void *);
-
-DISPATCH_ALWAYS_INLINE
-static inline semaphore_t
-_dispatch_get_thread_semaphore(void)
-{
-	semaphore_t sema = (semaphore_t)(uintptr_t)
-			_dispatch_thread_getspecific(dispatch_sema4_key);
-	if (unlikely(!sema)) {
-		return _dispatch_thread_semaphore_create();
-	}
-	_dispatch_thread_setspecific(dispatch_sema4_key, NULL);
-	return sema;
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_put_thread_semaphore(semaphore_t sema)
-{
-	semaphore_t old_sema = (semaphore_t)(uintptr_t)
-			_dispatch_thread_getspecific(dispatch_sema4_key);
-	_dispatch_thread_setspecific(dispatch_sema4_key, (void*)(uintptr_t)sema);
-	if (unlikely(old_sema)) {
-		return _dispatch_thread_semaphore_dispose((void *)(uintptr_t)old_sema);
-	}
-}
-#endif
 
 DISPATCH_NOT_TAIL_CALLED
 void _dispatch_thread_event_wait_slow(dispatch_thread_event_t);
@@ -279,15 +293,15 @@ _dispatch_thread_event_init(dispatch_thread_event_t dte)
 {
 #if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
 	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
-		dte->dte_semaphore = _dispatch_get_thread_semaphore();
+		_dispatch_sema4_init(&dte->dte_sema, _DSEMA4_POLICY_FIFO);
+		_dispatch_sema4_create(&dte->dte_sema, _DSEMA4_POLICY_FIFO);
 		return;
 	}
 #endif
 #if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
 	dte->dte_value = 0;
-#elif USE_POSIX_SEM
-	int rc = sem_init(&dte->dte_sem, 0, 0);
-	DISPATCH_SEMAPHORE_VERIFY_RET(rc);
+#else
+	_dispatch_sema4_init(&dte->dte_sema, _DSEMA4_POLICY_FIFO);
 #endif
 }
 
@@ -308,7 +322,7 @@ _dispatch_thread_event_signal(dispatch_thread_event_t dte)
 		// waiters do the validation
 		return;
 	}
-#elif USE_POSIX_SEM
+#else
 	// fallthrough
 #endif
 	_dispatch_thread_event_signal_slow(dte);
@@ -331,7 +345,7 @@ _dispatch_thread_event_wait(dispatch_thread_event_t dte)
 		// for any other value, go to the slowpath which checks it's not corrupt
 		return;
 	}
-#elif USE_POSIX_SEM
+#else
 	// fallthrough
 #endif
 	_dispatch_thread_event_wait_slow(dte);
@@ -343,16 +357,15 @@ _dispatch_thread_event_destroy(dispatch_thread_event_t dte)
 {
 #if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
 	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
-		_dispatch_put_thread_semaphore(dte->dte_semaphore);
+		_dispatch_sema4_dispose(&dte->dte_sema, _DSEMA4_POLICY_FIFO);
 		return;
 	}
 #endif
 #if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
 	// nothing to do
 	dispatch_assert(dte->dte_value == 0);
-#elif USE_POSIX_SEM
-	int rc = sem_destroy(&dte->dte_sem);
-	DISPATCH_SEMAPHORE_VERIFY_RET(rc);
+#else
+	_dispatch_sema4_dispose(&dte->dte_sema, _DSEMA4_POLICY_FIFO);
 #endif
 }
 
@@ -524,14 +537,29 @@ _dispatch_once_gate_tryenter(dispatch_once_gate_t l)
 			DLOCK_LOCK_NONE)
 
 DISPATCH_ALWAYS_INLINE
+static inline dispatch_once_t
+_dispatch_once_xchg_done(dispatch_once_t *pred)
+{
+#if defined(__i386__) || defined(__x86_64__)
+	// On Intel, any load is a load-acquire, so we don't need to be fancy
+	return os_atomic_xchg(pred, DLOCK_ONCE_DONE, release);
+#elif defined(__linux__)
+	if (unlikely(syscall(__NR_membarrier, MEMBARRIER_CMD_SHARED, 0) < 0)) {
+		DISPATCH_INTERNAL_CRASH(errno, "sys_membarrier not supported");
+	}
+	return os_atomic_xchg(pred, DLOCK_ONCE_DONE, relaxed);
+#else
+#  error dispatch_once algorithm not available for this port
+#endif
+}
+
+DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_once_gate_broadcast(dispatch_once_gate_t l)
 {
 	dispatch_once_t tid_cur, tid_self = (dispatch_once_t)_dispatch_tid_self();
-	// see once.c for explanation about this trick
-	os_atomic_maximally_synchronizing_barrier();
-	// above assumed to contain release barrier
-	tid_cur = os_atomic_xchg(&l->dgo_once, DLOCK_ONCE_DONE, relaxed);
+
+	tid_cur = _dispatch_once_xchg_done(&l->dgo_once);
 	if (likely(tid_cur == tid_self)) return;
 	_dispatch_gate_broadcast_slow(&l->dgo_gate, (dispatch_lock)tid_cur);
 }
