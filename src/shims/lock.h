@@ -89,7 +89,9 @@ _dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
 
 #elif defined(__linux__)
 #include <linux/futex.h>
+#if !defined(__x86_64__) && !defined(__i386__)
 #include <linux/membarrier.h>
+#endif
 #include <unistd.h>
 #include <sys/syscall.h>   /* For SYS_xxx definitions */
 
