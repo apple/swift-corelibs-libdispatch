@@ -77,11 +77,6 @@ AM_OBJCFLAGS=$(DISPATCH_CFLAGS) $(CBLOCKS_FLAGS)
 AM_CXXFLAGS=$(PTHREAD_WORKQUEUE_CFLAGS) $(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 AM_OBJCXXFLAGS=$(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 
-if BUILD_OWN_KQUEUES
-  KQUEUE_LIBS+=$(top_builddir)/libkqueue/libkqueue.la
-  KQUEUE_CFLAGS+=-I$(top_srcdir)/libkqueue/include
-endif
-
 if BUILD_OWN_PTHREAD_WORKQUEUES
   PTHREAD_WORKQUEUE_LIBS=$(top_builddir)/libpwq/libpthread_workqueue.la
   PTHREAD_WORKQUEUE_CFLAGS=-I$(top_srcdir)/libpwq/include

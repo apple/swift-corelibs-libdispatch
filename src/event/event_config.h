@@ -133,7 +133,6 @@
 #	define EV_ONESHOT				0x0010
 #	define EV_CLEAR					0x0020
 #	define EV_DISPATCH				0x0080
-#	define EV_UDATA_SPECIFIC		0x0100
 
 #	define EVFILT_READ				(-1)
 #	define EVFILT_WRITE				(-2)
