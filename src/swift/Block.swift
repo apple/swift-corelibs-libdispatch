@@ -66,10 +66,10 @@ public class DispatchWorkItem {
 	}
 
 	public func notify(
-		qos: DispatchQoS = .unspecified, 
-		flags: DispatchWorkItemFlags = [], 
-		queue: DispatchQueue, 
-		execute: @escaping @convention(block) () -> ()) 
+		qos: DispatchQoS = .unspecified,
+		flags: DispatchWorkItemFlags = [],
+		queue: DispatchQueue,
+		execute: @escaping @convention(block) () -> ())
 	{
 		if qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: execute)

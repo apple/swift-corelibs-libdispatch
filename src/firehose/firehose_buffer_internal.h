@@ -173,11 +173,11 @@ typedef struct firehose_buffer_header_s {
 	dispatch_unfair_lock_s			fbh_logd_lock;
 #endif
 	uint64_t						fbh_unused[0];
-} OS_ALIGNED(FIREHOSE_BUFFER_CHUNK_SIZE) *firehose_buffer_header_t;
+} OS_ALIGNED(FIREHOSE_CHUNK_SIZE) *firehose_buffer_header_t;
 
 union firehose_buffer_u {
 	struct firehose_buffer_header_s fb_header;
-	struct firehose_buffer_chunk_s fb_chunks[FIREHOSE_BUFFER_CHUNK_COUNT];
+	struct firehose_chunk_s fb_chunks[FIREHOSE_BUFFER_CHUNK_COUNT];
 };
 
 // used to let the compiler pack these values in 1 or 2 registers
@@ -205,6 +205,9 @@ firehose_buffer_update_limits(firehose_buffer_t fb);
 
 void
 firehose_buffer_ring_enqueue(firehose_buffer_t fb, uint16_t ref);
+
+void
+firehose_buffer_force_connect(firehose_buffer_t fb);
 
 #endif
 

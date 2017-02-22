@@ -85,6 +85,26 @@
 		6E21F2E81BBB23FA0000C6A5 /* firehose_server_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E21F2E41BBB23F00000C6A5 /* firehose_server_internal.h */; };
 		6E21F2E91BBB240E0000C6A5 /* firehose_server.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E21F2E51BBB23F00000C6A5 /* firehose_server.c */; };
 		6E393F981BD60F8D005A551E /* firehose_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 6EF0B26A1BA8C4AE007FA4F6 /* firehose_internal.h */; };
+		6E4BACBD1D48A41500B562AE /* mach.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E4BACBC1D48A41500B562AE /* mach.c */; };
+		6E4BACC21D48A42000B562AE /* mach.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E4BACBC1D48A41500B562AE /* mach.c */; };
+		6E4BACC31D48A42100B562AE /* mach.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E4BACBC1D48A41500B562AE /* mach.c */; };
+		6E4BACC41D48A42200B562AE /* mach.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E4BACBC1D48A41500B562AE /* mach.c */; };
+		6E4BACC51D48A42200B562AE /* mach.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E4BACBC1D48A41500B562AE /* mach.c */; };
+		6E4BACC61D48A42300B562AE /* mach.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E4BACBC1D48A41500B562AE /* mach.c */; };
+		6E4BACC71D48A42300B562AE /* mach.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E4BACBC1D48A41500B562AE /* mach.c */; };
+		6E4BACC81D48A42400B562AE /* mach.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E4BACBC1D48A41500B562AE /* mach.c */; };
+		6E4BACCA1D48A89500B562AE /* mach_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E4BACC91D48A89500B562AE /* mach_internal.h */; };
+		6E4BACF51D49A04600B562AE /* event_epoll.c in Sources */ = {isa = PBXBuildFile; fileRef = 6EA7937D1D456D1300929B1B /* event_epoll.c */; };
+		6E4BACF61D49A04700B562AE /* event_epoll.c in Sources */ = {isa = PBXBuildFile; fileRef = 6EA7937D1D456D1300929B1B /* event_epoll.c */; };
+		6E4BACF71D49A04700B562AE /* event_epoll.c in Sources */ = {isa = PBXBuildFile; fileRef = 6EA7937D1D456D1300929B1B /* event_epoll.c */; };
+		6E4BACF81D49A04800B562AE /* event_epoll.c in Sources */ = {isa = PBXBuildFile; fileRef = 6EA7937D1D456D1300929B1B /* event_epoll.c */; };
+		6E4BACF91D49A04800B562AE /* event_epoll.c in Sources */ = {isa = PBXBuildFile; fileRef = 6EA7937D1D456D1300929B1B /* event_epoll.c */; };
+		6E4BACFA1D49A04900B562AE /* event_epoll.c in Sources */ = {isa = PBXBuildFile; fileRef = 6EA7937D1D456D1300929B1B /* event_epoll.c */; };
+		6E4BACFB1D49A04A00B562AE /* event_epoll.c in Sources */ = {isa = PBXBuildFile; fileRef = 6EA7937D1D456D1300929B1B /* event_epoll.c */; };
+		6E4BACFC1D49A04A00B562AE /* event_epoll.c in Sources */ = {isa = PBXBuildFile; fileRef = 6EA7937D1D456D1300929B1B /* event_epoll.c */; };
+		6E5ACCBA1D3C4D0B007DA2B4 /* event_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E5ACCB91D3C4D0B007DA2B4 /* event_internal.h */; };
+		6E5ACCBB1D3C4D0E007DA2B4 /* event_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E5ACCB91D3C4D0B007DA2B4 /* event_internal.h */; };
+		6E5ACCBC1D3C4D0F007DA2B4 /* event_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E5ACCB91D3C4D0B007DA2B4 /* event_internal.h */; };
 		6E90269C1BB9BD50004DC3AD /* firehose.defs in Sources */ = {isa = PBXBuildFile; fileRef = 72DEAA9B1AE1B0BD00289540 /* firehose.defs */; settings = {ATTRIBUTES = (Server, ); }; };
 		6E9955581C3AF7710071D40C /* venture_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E9955571C3AF7710071D40C /* venture_private.h */; };
 		6E99558A1C3AF7900071D40C /* venture_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E9955571C3AF7710071D40C /* venture_private.h */; };
@@ -99,6 +119,25 @@
 		6E9956091C3B21B40071D40C /* venture_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E9956061C3B21AA0071D40C /* venture_internal.h */; };
 		6E9B6B5F1BB4F3C8009E324D /* firehose_buffer_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E9B6B201BB4CC73009E324D /* firehose_buffer_internal.h */; };
 		6EA283D71CAB93920041B2E0 /* libdispatch.codes in Copy Trace Definitions */ = {isa = PBXBuildFile; fileRef = 6EA283D01CAB93270041B2E0 /* libdispatch.codes */; };
+		6EA793891D458A5800929B1B /* event_config.h in Headers */ = {isa = PBXBuildFile; fileRef = 6EA793881D458A5800929B1B /* event_config.h */; };
+		6EA7938E1D458A5C00929B1B /* event_config.h in Headers */ = {isa = PBXBuildFile; fileRef = 6EA793881D458A5800929B1B /* event_config.h */; };
+		6EA7938F1D458A5E00929B1B /* event_config.h in Headers */ = {isa = PBXBuildFile; fileRef = 6EA793881D458A5800929B1B /* event_config.h */; };
+		6EA962971D48622600759D53 /* event.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCBD1D3C6719007DA2B4 /* event.c */; };
+		6EA962981D48622700759D53 /* event.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCBD1D3C6719007DA2B4 /* event.c */; };
+		6EA962991D48622800759D53 /* event.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCBD1D3C6719007DA2B4 /* event.c */; };
+		6EA9629A1D48622900759D53 /* event.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCBD1D3C6719007DA2B4 /* event.c */; };
+		6EA9629B1D48622900759D53 /* event.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCBD1D3C6719007DA2B4 /* event.c */; };
+		6EA9629C1D48622A00759D53 /* event.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCBD1D3C6719007DA2B4 /* event.c */; };
+		6EA9629D1D48622B00759D53 /* event.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCBD1D3C6719007DA2B4 /* event.c */; };
+		6EA9629E1D48622C00759D53 /* event.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCBD1D3C6719007DA2B4 /* event.c */; };
+		6EA9629F1D48625000759D53 /* event_kevent.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCB01D3C4CFB007DA2B4 /* event_kevent.c */; };
+		6EA962A01D48625100759D53 /* event_kevent.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCB01D3C4CFB007DA2B4 /* event_kevent.c */; };
+		6EA962A11D48625100759D53 /* event_kevent.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCB01D3C4CFB007DA2B4 /* event_kevent.c */; };
+		6EA962A21D48625200759D53 /* event_kevent.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCB01D3C4CFB007DA2B4 /* event_kevent.c */; };
+		6EA962A31D48625300759D53 /* event_kevent.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCB01D3C4CFB007DA2B4 /* event_kevent.c */; };
+		6EA962A41D48625300759D53 /* event_kevent.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCB01D3C4CFB007DA2B4 /* event_kevent.c */; };
+		6EA962A51D48625400759D53 /* event_kevent.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCB01D3C4CFB007DA2B4 /* event_kevent.c */; };
+		6EA962A61D48625500759D53 /* event_kevent.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCB01D3C4CFB007DA2B4 /* event_kevent.c */; };
 		6EB60D2C1BBB197B0092FA94 /* firehose_inline_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 6EB60D291BBB19640092FA94 /* firehose_inline_internal.h */; };
 		6EBEC7E51BBDD30C009B1596 /* firehose.defs in Sources */ = {isa = PBXBuildFile; fileRef = 72DEAA9B1AE1B0BD00289540 /* firehose.defs */; };
 		6EBEC7E61BBDD30D009B1596 /* firehose.defs in Sources */ = {isa = PBXBuildFile; fileRef = 72DEAA9B1AE1B0BD00289540 /* firehose.defs */; };
@@ -142,6 +181,7 @@
 		6EF2CAB31C8899ED001ABE83 /* lock.c in Sources */ = {isa = PBXBuildFile; fileRef = 6EF2CAAB1C8899D5001ABE83 /* lock.c */; };
 		6EF2CAB41C889D65001ABE83 /* lock.h in Headers */ = {isa = PBXBuildFile; fileRef = 6EF2CAA41C88998A001ABE83 /* lock.h */; };
 		6EF2CAB51C889D67001ABE83 /* lock.h in Headers */ = {isa = PBXBuildFile; fileRef = 6EF2CAA41C88998A001ABE83 /* lock.h */; };
+		6EFBDA4B1D61A0D600282887 /* priority.h in Headers */ = {isa = PBXBuildFile; fileRef = 6EFBDA4A1D61A0D600282887 /* priority.h */; };
 		721F5C5D0F15520500FF03A6 /* semaphore.h in Headers */ = {isa = PBXBuildFile; fileRef = 721F5C5C0F15520500FF03A6 /* semaphore.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		721F5CCF0F15553500FF03A6 /* semaphore.c in Sources */ = {isa = PBXBuildFile; fileRef = 721F5CCE0F15553500FF03A6 /* semaphore.c */; };
 		72CC94300ECCD8750031B751 /* base.h in Headers */ = {isa = PBXBuildFile; fileRef = 72CC942F0ECCD8750031B751 /* base.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -463,13 +503,6 @@
 			remoteGlobalIDString = 92F3FECA1BEC69E500025962;
 			remoteInfo = darwintests;
 		};
-		C00B0E101C5AEBBE000330B3 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 4552536E19B1384900B88766 /* libdispatchtest.xcodeproj */;
-			proxyType = 2;
-			remoteGlobalIDString = E4D01CB9108E6C7200FAA873;
-			remoteInfo = dispatch_deadname;
-		};
 		C00B0E131C5AEED6000330B3 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 08FB7793FE84155DC02AAC07 /* Project object */;
@@ -588,7 +621,12 @@
 		6E326B171C239431002A6505 /* dispatch_timer_timeout.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_timer_timeout.c; sourceTree = "<group>"; };
 		6E326B441C239B61002A6505 /* dispatch_priority.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_priority.c; sourceTree = "<group>"; };
 		6E4130C91B431697001A152D /* backward-compat.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = "backward-compat.xcconfig"; sourceTree = "<group>"; };
+		6E4BACBC1D48A41500B562AE /* mach.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = mach.c; sourceTree = "<group>"; };
+		6E4BACC91D48A89500B562AE /* mach_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = mach_internal.h; sourceTree = "<group>"; };
 		6E4FC9D11C84123600520351 /* os_venture_basic.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = os_venture_basic.c; sourceTree = "<group>"; };
+		6E5ACCB01D3C4CFB007DA2B4 /* event_kevent.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = event_kevent.c; sourceTree = "<group>"; };
+		6E5ACCB91D3C4D0B007DA2B4 /* event_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = event_internal.h; sourceTree = "<group>"; };
+		6E5ACCBD1D3C6719007DA2B4 /* event.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = event.c; sourceTree = "<group>"; };
 		6E62B0531C55806200D2C7C0 /* dispatch_trysync.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_trysync.c; sourceTree = "<group>"; };
 		6E67D8D31C16C20B00FC98AC /* dispatch_apply.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_apply.c; sourceTree = "<group>"; };
 		6E67D8D91C16C94B00FC98AC /* dispatch_cf_main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_cf_main.c; sourceTree = "<group>"; };
@@ -614,15 +652,21 @@
 		6E9B6B201BB4CC73009E324D /* firehose_buffer_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = firehose_buffer_internal.h; sourceTree = "<group>"; };
 		6EA283D01CAB93270041B2E0 /* libdispatch.codes */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = libdispatch.codes; sourceTree = "<group>"; };
 		6EA2CB841C005DEF0076794A /* dispatch_source.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_source.c; sourceTree = "<group>"; };
+		6EA7937D1D456D1300929B1B /* event_epoll.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = event_epoll.c; sourceTree = "<group>"; };
+		6EA793881D458A5800929B1B /* event_config.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = event_config.h; sourceTree = "<group>"; };
 		6EB4E4091BA8BCAD00D7B9D2 /* libfirehose_server.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libfirehose_server.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		6EB4E4421BA8BD7800D7B9D2 /* libfirehose.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = libfirehose.xcconfig; sourceTree = "<group>"; };
 		6EB60D291BBB19640092FA94 /* firehose_inline_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = firehose_inline_internal.h; sourceTree = "<group>"; };
+		6EC5ABE31D4436E4004F8674 /* dispatch_deadname.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_deadname.c; sourceTree = "<group>"; };
+		6EC670C71E37E201004F10D6 /* perf_mach_async.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = perf_mach_async.c; sourceTree = "<group>"; };
+		6EC670C81E37E201004F10D6 /* perf_pipepingpong.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = perf_pipepingpong.c; sourceTree = "<group>"; };
 		6EDB888D1CB73BDC006776D6 /* dispatch_kevent_cancel_races.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_kevent_cancel_races.c; sourceTree = "<group>"; };
 		6EDF10831BBB487E007F14BF /* firehose_buffer_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = firehose_buffer_private.h; sourceTree = "<group>"; };
 		6EE89F3D1BFAF5B000EB140D /* dispatch_state_machine.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_state_machine.c; sourceTree = "<group>"; };
 		6EF0B26A1BA8C4AE007FA4F6 /* firehose_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = firehose_internal.h; sourceTree = "<group>"; };
 		6EF2CAA41C88998A001ABE83 /* lock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = lock.h; sourceTree = "<group>"; };
 		6EF2CAAB1C8899D5001ABE83 /* lock.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = lock.c; path = shims/lock.c; sourceTree = "<group>"; };
+		6EFBDA4A1D61A0D600282887 /* priority.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = priority.h; sourceTree = "<group>"; };
 		721F5C5C0F15520500FF03A6 /* semaphore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = semaphore.h; sourceTree = "<group>"; };
 		721F5CCE0F15553500FF03A6 /* semaphore.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; lineEnding = 0; path = semaphore.c; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.c; };
 		72406A031AF95DF800DF4E2B /* firehose_reply.defs */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.mig; path = firehose_reply.defs; sourceTree = "<group>"; };
@@ -657,6 +701,9 @@
 		96BC39BC0F3EBAB100C59689 /* queue_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = queue_private.h; sourceTree = "<group>"; };
 		96C9553A0F3EAEDD000D2CA4 /* once.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = once.h; sourceTree = "<group>"; };
 		96DF70BD0F38FE3C0074BD99 /* once.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; lineEnding = 0; path = once.c; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.c; };
+		B6AE9A4A1D7F53B300AC007F /* dispatch_queue_create.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_queue_create.c; sourceTree = "<group>"; };
+		B6AE9A561D7F53C100AC007F /* perf_async_bench.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = perf_async_bench.m; sourceTree = "<group>"; };
+		B6AE9A581D7F53CB00AC007F /* perf_bench.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = perf_bench.m; sourceTree = "<group>"; };
 		C00B0E0A1C5AEBBE000330B3 /* libdispatch_dyld_stub.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libdispatch_dyld_stub.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		C00B0E121C5AEBF7000330B3 /* libdispatch-dyld-stub.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = "libdispatch-dyld-stub.xcconfig"; sourceTree = "<group>"; };
 		C01866BD1C5973210040FC07 /* libdispatch.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libdispatch.a; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -701,8 +748,6 @@
 		E49F24DF125D57FA0057C971 /* libdispatch.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = libdispatch.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
 		E49F251D125D630A0057C971 /* install-manpages.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = "install-manpages.sh"; sourceTree = "<group>"; };
 		E49F251E125D631D0057C971 /* mig-headers.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = "mig-headers.sh"; sourceTree = "<group>"; };
-		E4B2D42D17A7F0F90034A18F /* libdispatch-resolver_iphoneos.order */ = {isa = PBXFileReference; lastKnownFileType = text; path = "libdispatch-resolver_iphoneos.order"; sourceTree = "<group>"; };
-		E4B2D42E17A7F0F90034A18F /* libdispatch_iphoneos.order */ = {isa = PBXFileReference; lastKnownFileType = text; path = libdispatch_iphoneos.order; sourceTree = "<group>"; };
 		E4B3C3FD18C50D000039F49F /* voucher_activity_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = voucher_activity_private.h; sourceTree = "<group>"; };
 		E4B515D6164B2DA300E003AF /* libdispatch.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = libdispatch.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4B515D7164B2DFB00E003AF /* introspection_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = introspection_private.h; sourceTree = "<group>"; };
@@ -817,8 +862,6 @@
 				FC7BEDAF0E83626100161930 /* Dispatch Private Headers */,
 				FC7BEDB60E8363DC00161930 /* Dispatch Project Headers */,
 				08FB7795FE84155DC02AAC07 /* Dispatch Source */,
-				6EF0B2661BA8C43D007FA4F6 /* Firehose Project Headers */,
-				6EF0B2641BA8C3A0007FA4F6 /* Firehose Source */,
 				92F3FEC91BEC687200025962 /* Darwin Tests */,
 				C6A0FF2B0290797F04C91782 /* Documentation */,
 				1AB674ADFE9D54B511CA2CBB /* Products */,
@@ -845,6 +888,7 @@
 				E4B515DC164B32E000E003AF /* introspection.c */,
 				5A27262510F26F1900751FBC /* io.c */,
 				6EF2CAAB1C8899D5001ABE83 /* lock.c */,
+				6E4BACBC1D48A41500B562AE /* mach.c */,
 				9661E56A0F3E7DDF00749F3E /* object.c */,
 				E4FC3263145F46C9002FBDDB /* object.m */,
 				96DF70BD0F38FE3C0074BD99 /* once.c */,
@@ -858,6 +902,8 @@
 				6EA283D01CAB93270041B2E0 /* libdispatch.codes */,
 				FC7BED950E8361E600161930 /* protocol.defs */,
 				E43570B8126E93380097AB9F /* provider.d */,
+				6E5ACCAF1D3BF2A0007DA2B4 /* event */,
+				6EF0B2641BA8C3A0007FA4F6 /* firehose */,
 			);
 			name = "Dispatch Source";
 			path = src;
@@ -887,9 +933,27 @@
 				4552540519B1384900B88766 /* jsgc_bench */,
 				4552540719B1384900B88766 /* async_bench */,
 				4552540919B1384900B88766 /* apply_bench */,
-				C00B0E111C5AEBBE000330B3 /* dispatch_deadname */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		6E5ACCAE1D3BF27F007DA2B4 /* event */ = {
+			isa = PBXGroup;
+			children = (
+				6EA793881D458A5800929B1B /* event_config.h */,
+				6E5ACCB91D3C4D0B007DA2B4 /* event_internal.h */,
+			);
+			path = event;
+			sourceTree = "<group>";
+		};
+		6E5ACCAF1D3BF2A0007DA2B4 /* event */ = {
+			isa = PBXGroup;
+			children = (
+				6E5ACCBD1D3C6719007DA2B4 /* event.c */,
+				6E5ACCB01D3C4CFB007DA2B4 /* event_kevent.c */,
+				6EA7937D1D456D1300929B1B /* event_epoll.c */,
+			);
+			path = event;
 			sourceTree = "<group>";
 		};
 		6E9B6AE21BB39793009E324D /* OS Public Headers */ = {
@@ -901,7 +965,7 @@
 			path = os;
 			sourceTree = "<group>";
 		};
-		6EF0B2641BA8C3A0007FA4F6 /* Firehose Source */ = {
+		6EF0B2641BA8C3A0007FA4F6 /* firehose */ = {
 			isa = PBXGroup;
 			children = (
 				72406A391AF9926000DF4E2B /* firehose_types.defs */,
@@ -911,11 +975,10 @@
 				6E21F2E51BBB23F00000C6A5 /* firehose_server.c */,
 				72DEAA9D1AE1BB7300289540 /* firehose_server_object.m */,
 			);
-			name = "Firehose Source";
-			path = src/firehose;
+			path = firehose;
 			sourceTree = "<group>";
 		};
-		6EF0B2661BA8C43D007FA4F6 /* Firehose Project Headers */ = {
+		6EF0B2661BA8C43D007FA4F6 /* firehose */ = {
 			isa = PBXGroup;
 			children = (
 				6EF0B26A1BA8C4AE007FA4F6 /* firehose_internal.h */,
@@ -923,8 +986,7 @@
 				6E9B6B201BB4CC73009E324D /* firehose_buffer_internal.h */,
 				6E21F2E41BBB23F00000C6A5 /* firehose_server_internal.h */,
 			);
-			name = "Firehose Project Headers";
-			path = src/firehose;
+			path = firehose;
 			sourceTree = "<group>";
 		};
 		92F3FEC91BEC687200025962 /* Darwin Tests */ = {
@@ -941,18 +1003,20 @@
 				6E326ADE1C23451A002A6505 /* dispatch_concur.c */,
 				6E326AEF1C239303002A6505 /* dispatch_context_for_key.c */,
 				6E8E4EC71C1A61680004F5CC /* dispatch_data.m */,
+				6EC5ABE31D4436E4004F8674 /* dispatch_deadname.c */,
 				6E67D90D1C16CCEB00FC98AC /* dispatch_debug.c */,
 				6E8E4ECB1C1A72650004F5CC /* dispatch_drift.c */,
 				6E67D90F1C16CF0B00FC98AC /* dispatch_group.c */,
-				6EDB888D1CB73BDC006776D6 /* dispatch_kevent_cancel_races.c */,
 				6E326ABD1C22A577002A6505 /* dispatch_io_net.c */,
 				6E326ABE1C22A577002A6505 /* dispatch_io.c */,
+				6EDB888D1CB73BDC006776D6 /* dispatch_kevent_cancel_races.c */,
 				C96CE17A1CEB851600F4B8E6 /* dispatch_objc.m */,
 				6E67D9131C17676D00FC98AC /* dispatch_overcommit.c */,
 				6E67D9151C1768B300FC98AC /* dispatch_pingpong.c */,
 				6E326B441C239B61002A6505 /* dispatch_priority.c */,
 				6E326AB51C225477002A6505 /* dispatch_proc.c */,
 				6E326AB31C224870002A6505 /* dispatch_qos.c */,
+				B6AE9A4A1D7F53B300AC007F /* dispatch_queue_create.c */,
 				6E67D9111C17669C00FC98AC /* dispatch_queue_finalizer.c */,
 				6E1612691C79606E006FC9A9 /* dispatch_queue_label.c */,
 				6E326AB91C229866002A6505 /* dispatch_read.c */,
@@ -977,6 +1041,10 @@
 				6E326AB71C225FCA002A6505 /* dispatch_vnode.c */,
 				6E67D9171C17BA7200FC98AC /* nsoperation.m */,
 				6E4FC9D11C84123600520351 /* os_venture_basic.c */,
+				B6AE9A561D7F53C100AC007F /* perf_async_bench.m */,
+				B6AE9A581D7F53CB00AC007F /* perf_bench.m */,
+				6EC670C71E37E201004F10D6 /* perf_mach_async.c */,
+				6EC670C81E37E201004F10D6 /* perf_pipepingpong.c */,
 				92F3FE921BEC686300025962 /* Makefile */,
 				6E8E4E6E1C1A35EE0004F5CC /* test_lib.c */,
 				6E8E4E6F1C1A35EE0004F5CC /* test_lib.h */,
@@ -1033,8 +1101,6 @@
 				6E040C721C499C3600411A2E /* libfirehose_kernel.xcconfig */,
 				E422DA3614D2A7E7003C6EE4 /* libdispatch.aliases */,
 				E448727914C6215D00BB45C2 /* libdispatch.order */,
-				E4B2D42E17A7F0F90034A18F /* libdispatch_iphoneos.order */,
-				E4B2D42D17A7F0F90034A18F /* libdispatch-resolver_iphoneos.order */,
 				E421E5FD1716BEA70090DC9B /* libdispatch.interposable */,
 			);
 			path = xcodeconfig;
@@ -1055,8 +1121,8 @@
 			isa = PBXGroup;
 			children = (
 				E47D6BB5125F0F800070D91C /* resolved.h */,
-				E44EBE371251656400645D88 /* resolver.c */,
 				E44EBE331251654000645D88 /* resolver.h */,
+				E44EBE371251656400645D88 /* resolver.c */,
 			);
 			path = resolver;
 			sourceTree = "<group>";
@@ -1158,6 +1224,7 @@
 				E4128ED513BA9A1700ABB2CB /* hw_config.h */,
 				6EF2CAA41C88998A001ABE83 /* lock.h */,
 				FC1832A2109923C7003403D5 /* perfmon.h */,
+				6EFBDA4A1D61A0D600282887 /* priority.h */,
 				FC1832A3109923C7003403D5 /* time.h */,
 				FC1832A4109923C7003403D5 /* tsd.h */,
 				E48EC97B1835BADD00EAC4F1 /* yield.h */,
@@ -1213,6 +1280,7 @@
 				E44757D917F4572600B82CA1 /* inline_internal.h */,
 				E4C1ED6E1263E714000D3C8B /* data_internal.h */,
 				5A0095A110F274B0000E2A31 /* io_internal.h */,
+				6E4BACC91D48A89500B562AE /* mach_internal.h */,
 				965ECC200F3EAB71004DDD89 /* object_internal.h */,
 				96929D950F3EA2170041FF5D /* queue_internal.h */,
 				5A5D13AB0F6B280500197CC3 /* semaphore_internal.h */,
@@ -1222,6 +1290,8 @@
 				E422A0D412A557B5005E5BDB /* trace.h */,
 				E44F9DA816543F79001DCD38 /* introspection_internal.h */,
 				96929D830F3EA1020041FF5D /* shims.h */,
+				6E5ACCAE1D3BF27F007DA2B4 /* event */,
+				6EF0B2661BA8C43D007FA4F6 /* firehose */,
 				FC1832A0109923B3003403D5 /* shims */,
 			);
 			name = "Dispatch Project Headers";
@@ -1266,6 +1336,7 @@
 				E4B3C3FE18C50D000039F49F /* voucher_activity_private.h in Headers */,
 				721F5C5D0F15520500FF03A6 /* semaphore.h in Headers */,
 				FC5C9C1E0EADABE3006E462D /* group.h in Headers */,
+				6EFBDA4B1D61A0D600282887 /* priority.h in Headers */,
 				96C9553B0F3EAEDD000D2CA4 /* once.h in Headers */,
 				5AAB45C410D30CC7004407EA /* io.h in Headers */,
 				E44A8E7518066276009FFDB6 /* voucher_internal.h in Headers */,
@@ -1290,9 +1361,11 @@
 				E44A8E721805C473009FFDB6 /* voucher_private.h in Headers */,
 				5A0095A210F274B0000E2A31 /* io_internal.h in Headers */,
 				FC1832A8109923C7003403D5 /* tsd.h in Headers */,
+				6EA793891D458A5800929B1B /* event_config.h in Headers */,
 				96929D840F3EA1020041FF5D /* atomic.h in Headers */,
 				96929D850F3EA1020041FF5D /* shims.h in Headers */,
 				FC1832A7109923C7003403D5 /* time.h in Headers */,
+				6E4BACCA1D48A89500B562AE /* mach_internal.h in Headers */,
 				6ED64B511BBD8A2100C35F4D /* firehose_buffer_internal.h in Headers */,
 				E48EC97C1835BADD00EAC4F1 /* yield.h in Headers */,
 				2BE17C6418EA305E002CA4E8 /* layout_private.h in Headers */,
@@ -1302,6 +1375,7 @@
 				6EF2CAA51C88998A001ABE83 /* lock.h in Headers */,
 				E422A0D512A557B5005E5BDB /* trace.h in Headers */,
 				E4BA743B13A8911B0095BDF1 /* getprogname.h in Headers */,
+				6E5ACCBA1D3C4D0B007DA2B4 /* event_internal.h in Headers */,
 				6ED64B571BBD8A3B00C35F4D /* firehose_inline_internal.h in Headers */,
 				E4128ED613BA9A1700ABB2CB /* hw_config.h in Headers */,
 				E454569314746F1B00106147 /* object_private.h in Headers */,
@@ -1319,6 +1393,7 @@
 			files = (
 				E49F24AB125D57FA0057C971 /* dispatch.h in Headers */,
 				E49F24AC125D57FA0057C971 /* base.h in Headers */,
+				6E5ACCBB1D3C4D0E007DA2B4 /* event_internal.h in Headers */,
 				E49F24AD125D57FA0057C971 /* object.h in Headers */,
 				E44757DC17F4573600B82CA1 /* inline_internal.h in Headers */,
 				E49F24AE125D57FA0057C971 /* queue.h in Headers */,
@@ -1344,6 +1419,7 @@
 				E49F24BE125D57FA0057C971 /* source_internal.h in Headers */,
 				E49F24BD125D57FA0057C971 /* semaphore_internal.h in Headers */,
 				E4C1ED701263E714000D3C8B /* data_internal.h in Headers */,
+				6EA7938F1D458A5E00929B1B /* event_config.h in Headers */,
 				6ED64B501BBD8A1400C35F4D /* firehose_internal.h in Headers */,
 				E49F24BF125D57FA0057C971 /* io_internal.h in Headers */,
 				E44A8E731805C473009FFDB6 /* voucher_private.h in Headers */,
@@ -1385,6 +1461,7 @@
 				E44F9DB51654403F001DCD38 /* source_internal.h in Headers */,
 				E44F9DB41654403B001DCD38 /* semaphore_internal.h in Headers */,
 				E44F9DB01654402B001DCD38 /* data_internal.h in Headers */,
+				6E5ACCBC1D3C4D0F007DA2B4 /* event_internal.h in Headers */,
 				6E9956081C3B21B30071D40C /* venture_internal.h in Headers */,
 				E44F9DB11654402E001DCD38 /* io_internal.h in Headers */,
 				E4630251176162D200E11F4C /* atomic_sfb.h in Headers */,
@@ -1393,6 +1470,7 @@
 				6ED64B591BBD8A3F00C35F4D /* firehose_inline_internal.h in Headers */,
 				6EF2CAB51C889D67001ABE83 /* lock.h in Headers */,
 				E44757DB17F4573500B82CA1 /* inline_internal.h in Headers */,
+				6EA7938E1D458A5C00929B1B /* event_config.h in Headers */,
 				6ED64B4F1BBD8A1400C35F4D /* firehose_internal.h in Headers */,
 				E44F9DB71654404F001DCD38 /* shims.h in Headers */,
 				E44F9DBC1654405B001DCD38 /* perfmon.h in Headers */,
@@ -1614,7 +1692,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 0800;
+				LastUpgradeCheck = 0820;
 				TargetAttributes = {
 					3F3C9326128E637B0042B1F7 = {
 						ProvisioningStyle = Manual;
@@ -1706,10 +1784,10 @@
 				6E2ECAFD1C49C2FF00A30A32 /* libdispatch_kernel */,
 				C927F35A10FD7F0600C5AB8B /* libdispatch_tools */,
 				4552540A19B1389700B88766 /* libdispatch_tests */,
+				92CBD7201BED924F006E0892 /* libdispatch_tests_legacy */,
+				92F3FECA1BEC69E500025962 /* darwintests */,
 				6E040C621C499B1B00411A2E /* libfirehose_kernel */,
 				6EB4E4081BA8BCAD00D7B9D2 /* libfirehose_server */,
-				92F3FECA1BEC69E500025962 /* darwintests */,
-				92CBD7201BED924F006E0892 /* libdispatch_tests_legacy */,
 			);
 		};
 /* End PBXProject section */
@@ -1741,13 +1819,6 @@
 			fileType = "compiled.mach-o.executable";
 			path = apply_bench;
 			remoteRef = 4552540819B1384900B88766 /* PBXContainerItemProxy */;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-		C00B0E111C5AEBBE000330B3 /* dispatch_deadname */ = {
-			isa = PBXReferenceProxy;
-			fileType = "compiled.mach-o.executable";
-			path = dispatch_deadname;
-			remoteRef = C00B0E101C5AEBBE000330B3 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
 		C927F36710FD7F1000C5AB8B /* ddt */ = {
@@ -2038,6 +2109,7 @@
 			files = (
 				C00B0DF21C5AEBBE000330B3 /* protocol.defs in Sources */,
 				C00B0DF31C5AEBBE000330B3 /* resolver.c in Sources */,
+				6E4BACFC1D49A04A00B562AE /* event_epoll.c in Sources */,
 				6EF2CAB31C8899ED001ABE83 /* lock.c in Sources */,
 				C00B0DF41C5AEBBE000330B3 /* init.c in Sources */,
 				C00B0DF51C5AEBBE000330B3 /* queue.c in Sources */,
@@ -2045,6 +2117,7 @@
 				C00B0DF71C5AEBBE000330B3 /* firehose.defs in Sources */,
 				C00B0DF81C5AEBBE000330B3 /* block.cpp in Sources */,
 				C00B0DF91C5AEBBE000330B3 /* semaphore.c in Sources */,
+				6E4BACC81D48A42400B562AE /* mach.c in Sources */,
 				C00B0DFA1C5AEBBE000330B3 /* firehose_reply.defs in Sources */,
 				C00B0DFB1C5AEBBE000330B3 /* once.c in Sources */,
 				C00B0DFC1C5AEBBE000330B3 /* voucher.c in Sources */,
@@ -2054,8 +2127,10 @@
 				C00B0E001C5AEBBE000330B3 /* source.c in Sources */,
 				C00B0E011C5AEBBE000330B3 /* time.c in Sources */,
 				C00B0E021C5AEBBE000330B3 /* data.c in Sources */,
+				6EA962A61D48625500759D53 /* event_kevent.c in Sources */,
 				C00B0E031C5AEBBE000330B3 /* io.c in Sources */,
 				C00B0E041C5AEBBE000330B3 /* transform.c in Sources */,
+				6EA9629E1D48622C00759D53 /* event.c in Sources */,
 				C00B0E051C5AEBBE000330B3 /* allocator.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -2066,6 +2141,7 @@
 			files = (
 				C01866A61C5973210040FC07 /* protocol.defs in Sources */,
 				C01866A71C5973210040FC07 /* resolver.c in Sources */,
+				6E4BACFB1D49A04A00B562AE /* event_epoll.c in Sources */,
 				6EF2CAB21C8899EC001ABE83 /* lock.c in Sources */,
 				C01866A81C5973210040FC07 /* init.c in Sources */,
 				C01866A91C5973210040FC07 /* queue.c in Sources */,
@@ -2073,6 +2149,7 @@
 				C01866AB1C5973210040FC07 /* firehose.defs in Sources */,
 				C01866AC1C5973210040FC07 /* block.cpp in Sources */,
 				C01866AD1C5973210040FC07 /* semaphore.c in Sources */,
+				6E4BACC71D48A42300B562AE /* mach.c in Sources */,
 				C01866AE1C5973210040FC07 /* firehose_reply.defs in Sources */,
 				C01866AF1C5973210040FC07 /* once.c in Sources */,
 				C01866B01C5973210040FC07 /* voucher.c in Sources */,
@@ -2082,8 +2159,10 @@
 				C01866B41C5973210040FC07 /* source.c in Sources */,
 				C01866B51C5973210040FC07 /* time.c in Sources */,
 				C01866B61C5973210040FC07 /* data.c in Sources */,
+				6EA962A51D48625400759D53 /* event_kevent.c in Sources */,
 				C01866B71C5973210040FC07 /* io.c in Sources */,
 				C01866B81C5973210040FC07 /* transform.c in Sources */,
+				6EA9629D1D48622B00759D53 /* event.c in Sources */,
 				C01866B91C5973210040FC07 /* allocator.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -2097,7 +2176,9 @@
 				6E9955CF1C3B218E0071D40C /* venture.c in Sources */,
 				6ED64B471BBD89AF00C35F4D /* firehose.defs in Sources */,
 				6ED64B441BBD898700C35F4D /* firehose_buffer.c in Sources */,
+				6EA9629F1D48625000759D53 /* event_kevent.c in Sources */,
 				E49F2499125D48D80057C971 /* resolver.c in Sources */,
+				6E4BACBD1D48A41500B562AE /* mach.c in Sources */,
 				E44EBE3E1251659900645D88 /* init.c in Sources */,
 				FC7BED990E8361E600161930 /* queue.c in Sources */,
 				721F5CCF0F15553500FF03A6 /* semaphore.c in Sources */,
@@ -2107,11 +2188,13 @@
 				9676A0E10F3E755D00713ADB /* apply.c in Sources */,
 				9661E56B0F3E7DDF00749F3E /* object.c in Sources */,
 				965CD6350F3E806200D4E28D /* benchmark.c in Sources */,
+				6E4BACF51D49A04600B562AE /* event_epoll.c in Sources */,
 				96A8AA870F41E7A400CD570B /* source.c in Sources */,
 				96032E4B0F5CC8C700241C5F /* time.c in Sources */,
 				5AAB45C010D30B79004407EA /* data.c in Sources */,
 				5A27262610F26F1900751FBC /* io.c in Sources */,
 				E43A72501AF85BBC00BAA921 /* block.cpp in Sources */,
+				6EA962971D48622600759D53 /* event.c in Sources */,
 				C9C5F80E143C1771006DC718 /* transform.c in Sources */,
 				E4FC3264145F46C9002FBDDB /* object.m in Sources */,
 				2BBF5A63154B64F5002B20F9 /* allocator.c in Sources */,
@@ -2124,12 +2207,15 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6E4BACC61D48A42300B562AE /* mach.c in Sources */,
 				E46DBC4014EE10C80001F9F6 /* protocol.defs in Sources */,
 				E46DBC4114EE10C80001F9F6 /* resolver.c in Sources */,
 				6EF2CAB11C8899EC001ABE83 /* lock.c in Sources */,
 				E46DBC4214EE10C80001F9F6 /* init.c in Sources */,
 				E46DBC4314EE10C80001F9F6 /* queue.c in Sources */,
+				6EA962A41D48625300759D53 /* event_kevent.c in Sources */,
 				6EE664271BE2FD5C00ED7B1C /* firehose_buffer.c in Sources */,
+				6EA9629C1D48622A00759D53 /* event.c in Sources */,
 				6EBEC7E71BBDD30F009B1596 /* firehose.defs in Sources */,
 				E43A72881AF85BE900BAA921 /* block.cpp in Sources */,
 				E46DBC4414EE10C80001F9F6 /* semaphore.c in Sources */,
@@ -2146,6 +2232,7 @@
 				E46DBC4C14EE10C80001F9F6 /* io.c in Sources */,
 				E46DBC4D14EE10C80001F9F6 /* transform.c in Sources */,
 				2BBF5A67154B64F5002B20F9 /* allocator.c in Sources */,
+				6E4BACFA1D49A04900B562AE /* event_epoll.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2158,7 +2245,9 @@
 				6E9956051C3B219B0071D40C /* venture.c in Sources */,
 				6ED64B461BBD89AF00C35F4D /* firehose.defs in Sources */,
 				6ED64B401BBD898300C35F4D /* firehose_buffer.c in Sources */,
+				6EA962A01D48625100759D53 /* event_kevent.c in Sources */,
 				E49F24C9125D57FA0057C971 /* resolver.c in Sources */,
+				6E4BACC21D48A42000B562AE /* mach.c in Sources */,
 				E49F24CA125D57FA0057C971 /* init.c in Sources */,
 				E49F24CB125D57FA0057C971 /* queue.c in Sources */,
 				E49F24CC125D57FA0057C971 /* semaphore.c in Sources */,
@@ -2168,11 +2257,13 @@
 				E49F24CE125D57FA0057C971 /* apply.c in Sources */,
 				E49F24CF125D57FA0057C971 /* object.c in Sources */,
 				E49F24D0125D57FA0057C971 /* benchmark.c in Sources */,
+				6E4BACF61D49A04700B562AE /* event_epoll.c in Sources */,
 				E49F24D1125D57FA0057C971 /* source.c in Sources */,
 				E49F24D2125D57FA0057C971 /* time.c in Sources */,
 				E49F24D3125D57FA0057C971 /* data.c in Sources */,
 				E49F24D4125D57FA0057C971 /* io.c in Sources */,
 				E43A72841AF85BCB00BAA921 /* block.cpp in Sources */,
+				6EA962981D48622700759D53 /* event.c in Sources */,
 				C93D6165143E190E00EB9023 /* transform.c in Sources */,
 				E4FC3265145F46C9002FBDDB /* object.m in Sources */,
 				2BBF5A64154B64F5002B20F9 /* allocator.c in Sources */,
@@ -2186,11 +2277,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				E4B515BD164B2DA300E003AF /* provider.d in Sources */,
+				6EA962A31D48625300759D53 /* event_kevent.c in Sources */,
 				E4B515BE164B2DA300E003AF /* protocol.defs in Sources */,
 				E4B515BF164B2DA300E003AF /* resolver.c in Sources */,
 				6ED64B4B1BBD89BE00C35F4D /* firehose_reply.defs in Sources */,
 				6ED64B481BBD89B100C35F4D /* firehose.defs in Sources */,
 				E4B515C0164B2DA300E003AF /* init.c in Sources */,
+				6EA9629B1D48622900759D53 /* event.c in Sources */,
 				E4B515C1164B2DA300E003AF /* queue.c in Sources */,
 				6E9956021C3B21990071D40C /* venture.c in Sources */,
 				E4B515C2164B2DA300E003AF /* semaphore.c in Sources */,
@@ -2202,6 +2295,7 @@
 				E4B515C6164B2DA300E003AF /* benchmark.c in Sources */,
 				E4B515C7164B2DA300E003AF /* source.c in Sources */,
 				E4B515C8164B2DA300E003AF /* time.c in Sources */,
+				6E4BACC51D48A42200B562AE /* mach.c in Sources */,
 				E4B515C9164B2DA300E003AF /* data.c in Sources */,
 				E4B515CA164B2DA300E003AF /* io.c in Sources */,
 				E44A8E6F1805C3E0009FFDB6 /* voucher.c in Sources */,
@@ -2209,6 +2303,7 @@
 				6EF2CAB01C8899EB001ABE83 /* lock.c in Sources */,
 				E4B515CC164B2DA300E003AF /* object.m in Sources */,
 				E4B515CD164B2DA300E003AF /* allocator.c in Sources */,
+				6E4BACF91D49A04800B562AE /* event_epoll.c in Sources */,
 				E4B515CE164B2DA300E003AF /* data.m in Sources */,
 				E4B515DD164B32E000E003AF /* introspection.c in Sources */,
 			);
@@ -2223,7 +2318,9 @@
 				6E9956031C3B219A0071D40C /* venture.c in Sources */,
 				6EBEC7E61BBDD30D009B1596 /* firehose.defs in Sources */,
 				6ED64B421BBD898500C35F4D /* firehose_buffer.c in Sources */,
+				6EA962A21D48625200759D53 /* event_kevent.c in Sources */,
 				E49F2424125D3C970057C971 /* resolver.c in Sources */,
+				6E4BACC41D48A42200B562AE /* mach.c in Sources */,
 				E44EBE5512517EBE00645D88 /* init.c in Sources */,
 				E4EC11AE12514302000DDBD1 /* queue.c in Sources */,
 				E4EC11AF12514302000DDBD1 /* semaphore.c in Sources */,
@@ -2233,11 +2330,13 @@
 				E4EC11B112514302000DDBD1 /* apply.c in Sources */,
 				E4EC11B212514302000DDBD1 /* object.c in Sources */,
 				E4EC11B312514302000DDBD1 /* benchmark.c in Sources */,
+				6E4BACF81D49A04800B562AE /* event_epoll.c in Sources */,
 				E4EC11B412514302000DDBD1 /* source.c in Sources */,
 				E4EC11B512514302000DDBD1 /* time.c in Sources */,
 				E4EC11B712514302000DDBD1 /* data.c in Sources */,
 				E4EC11B812514302000DDBD1 /* io.c in Sources */,
 				E43A72861AF85BCC00BAA921 /* block.cpp in Sources */,
+				6EA9629A1D48622900759D53 /* event.c in Sources */,
 				C93D6166143E190F00EB9023 /* transform.c in Sources */,
 				E4FC3266145F46C9002FBDDB /* object.m in Sources */,
 				2BBF5A65154B64F5002B20F9 /* allocator.c in Sources */,
@@ -2255,7 +2354,9 @@
 				6E9956041C3B219B0071D40C /* venture.c in Sources */,
 				6EBEC7E51BBDD30C009B1596 /* firehose.defs in Sources */,
 				6ED64B411BBD898400C35F4D /* firehose_buffer.c in Sources */,
+				6EA962A11D48625100759D53 /* event_kevent.c in Sources */,
 				E49F2423125D3C960057C971 /* resolver.c in Sources */,
+				6E4BACC31D48A42100B562AE /* mach.c in Sources */,
 				E44EBE5712517EBE00645D88 /* init.c in Sources */,
 				E4EC121A12514715000DDBD1 /* queue.c in Sources */,
 				E4EC121B12514715000DDBD1 /* semaphore.c in Sources */,
@@ -2265,11 +2366,13 @@
 				E4EC121D12514715000DDBD1 /* apply.c in Sources */,
 				E4EC121E12514715000DDBD1 /* object.c in Sources */,
 				E4EC121F12514715000DDBD1 /* benchmark.c in Sources */,
+				6E4BACF71D49A04700B562AE /* event_epoll.c in Sources */,
 				E4EC122012514715000DDBD1 /* source.c in Sources */,
 				E4EC122112514715000DDBD1 /* time.c in Sources */,
 				E4EC122312514715000DDBD1 /* data.c in Sources */,
 				E4EC122412514715000DDBD1 /* io.c in Sources */,
 				E43A72851AF85BCC00BAA921 /* block.cpp in Sources */,
+				6EA962991D48622800759D53 /* event.c in Sources */,
 				C93D6167143E190F00EB9023 /* transform.c in Sources */,
 				E4FC3267145F46C9002FBDDB /* object.m in Sources */,
 				2BBF5A66154B64F5002B20F9 /* allocator.c in Sources */,
@@ -2513,12 +2616,20 @@
 		E49F24D9125D57FA0057C971 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				WARNING_CFLAGS = (
+					"-Weverything",
+					"$(inherited)",
+				);
 			};
 			name = Release;
 		};
 		E49F24DA125D57FA0057C971 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				WARNING_CFLAGS = (
+					"-Weverything",
+					"$(inherited)",
+				);
 			};
 			name = Debug;
 		};

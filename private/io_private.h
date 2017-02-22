@@ -79,7 +79,7 @@ __BEGIN_DECLS
  *		param error	An errno condition for the read operation or
  *				zero if the read was successful.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_NONNULL5 DISPATCH_NOTHROW
 void
 dispatch_read_f(dispatch_fd_t fd,
@@ -121,7 +121,7 @@ dispatch_read_f(dispatch_fd_t fd,
  *		param error	An errno condition for the write operation or
  *				zero if the write was successful.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NONNULL3 DISPATCH_NONNULL5
 DISPATCH_NOTHROW
 void
@@ -160,7 +160,7 @@ dispatch_write_f(dispatch_fd_t fd,
  * @result	The newly created dispatch I/O channel or NULL if an error
  *		occurred (invalid type specified).
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_io_t
@@ -200,7 +200,7 @@ dispatch_io_create_f(dispatch_io_type_t type,
  * @result	The newly created dispatch I/O channel or NULL if an error
  *		occurred (invalid type or non-absolute path specified).
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_io_t
@@ -244,7 +244,7 @@ dispatch_io_create_with_path_f(dispatch_io_type_t type,
  * @result	The newly created dispatch I/O channel or NULL if an error
  *		occurred (invalid type specified).
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_io_t
@@ -311,7 +311,7 @@ typedef void (*dispatch_io_handler_function_t)(void *_Nullable context,
  *	param error	An errno condition for the read operation or zero if
  *			the read was successful.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL4 DISPATCH_NONNULL6
 DISPATCH_NOTHROW
 void
@@ -368,7 +368,7 @@ dispatch_io_read_f(dispatch_io_t channel,
  *	param error	An errno condition for the write operation or zero
  *			if the write was successful.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NONNULL4
 DISPATCH_NONNULL6 DISPATCH_NOTHROW
 void
@@ -402,7 +402,7 @@ dispatch_io_write_f(dispatch_io_t channel,
  *			the barrier function.
  * @param barrier	The barrier function.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_io_barrier_f(dispatch_io_t channel,

@@ -92,7 +92,7 @@ public struct DispatchData : RandomAccessCollection {
 	}
 
 	public func enumerateBytes(
-		block: (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void) 
+		block: (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void)
 	{
 		// we know that capturing block in the closure being created/passed to dispatch_data_apply
 		// does not cause block to escape because dispatch_data_apply does not allow its

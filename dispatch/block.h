@@ -101,17 +101,17 @@ __BEGIN_DECLS
  */
 DISPATCH_ENUM(dispatch_block_flags, unsigned long,
 	DISPATCH_BLOCK_BARRIER
-			DISPATCH_ENUM_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0) = 0x1,
+			DISPATCH_ENUM_API_AVAILABLE(macos(10.10), ios(8.0)) = 0x1,
 	DISPATCH_BLOCK_DETACHED
-			DISPATCH_ENUM_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0) = 0x2,
+			DISPATCH_ENUM_API_AVAILABLE(macos(10.10), ios(8.0)) = 0x2,
 	DISPATCH_BLOCK_ASSIGN_CURRENT
-			DISPATCH_ENUM_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0) = 0x4,
+			DISPATCH_ENUM_API_AVAILABLE(macos(10.10), ios(8.0)) = 0x4,
 	DISPATCH_BLOCK_NO_QOS_CLASS
-			DISPATCH_ENUM_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0) = 0x8,
+			DISPATCH_ENUM_API_AVAILABLE(macos(10.10), ios(8.0)) = 0x8,
 	DISPATCH_BLOCK_INHERIT_QOS_CLASS
-			DISPATCH_ENUM_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0) = 0x10,
+			DISPATCH_ENUM_API_AVAILABLE(macos(10.10), ios(8.0)) = 0x10,
 	DISPATCH_BLOCK_ENFORCE_QOS_CLASS
-			DISPATCH_ENUM_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0) = 0x20,
+			DISPATCH_ENUM_API_AVAILABLE(macos(10.10), ios(8.0)) = 0x20,
 );
 
 /*!
@@ -164,7 +164,7 @@ DISPATCH_ENUM(dispatch_block_flags, unsigned long,
  * When not building with Objective-C ARC, must be released with a -[release]
  * message or the Block_release() function.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_RETURNS_RETAINED_BLOCK
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_block_t
@@ -236,7 +236,7 @@ dispatch_block_create(dispatch_block_flags_t flags, dispatch_block_t block);
  * When not building with Objective-C ARC, must be released with a -[release]
  * message or the Block_release() function.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_NONNULL4 DISPATCH_RETURNS_RETAINED_BLOCK
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_block_t
@@ -269,7 +269,7 @@ dispatch_block_create_with_qos_class(dispatch_block_flags_t flags,
  * @param block
  * The block to create the temporary block object from.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW
 void
 dispatch_block_perform(dispatch_block_flags_t flags,
@@ -320,7 +320,7 @@ dispatch_block_perform(dispatch_block_flags_t flags,
  * Returns zero on success (the dispatch block object completed within the
  * specified timeout) or non-zero on error (i.e. timed out).
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 long
 dispatch_block_wait(dispatch_block_t block, dispatch_time_t timeout);
@@ -361,7 +361,7 @@ dispatch_block_wait(dispatch_block_t block, dispatch_time_t timeout);
  * @param notification_block
  * The notification block to submit when the observed block object completes.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_block_notify(dispatch_block_t block, dispatch_queue_t queue,
@@ -393,7 +393,7 @@ dispatch_block_notify(dispatch_block_t block, dispatch_queue_t queue,
  * The result of passing NULL or a block object not returned by one of the
  * dispatch_block_create* functions is undefined.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_block_cancel(dispatch_block_t block);
@@ -412,7 +412,7 @@ dispatch_block_cancel(dispatch_block_t block);
  * @result
  * Non-zero if canceled and zero if not canceled.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
 DISPATCH_NOTHROW
 long

@@ -20,53 +20,6 @@
 
 #include "internal.h"
 
-// semaphores are too fundamental to use the dispatch_assume*() macros
-#if USE_WIN32_SEM
-// rdar://problem/8428132
-static DWORD best_resolution = 1; // 1ms
-
-DWORD
-_push_timer_resolution(DWORD ms)
-{
-	MMRESULT res;
-	static dispatch_once_t once;
-
-	if (ms > 16) {
-		// only update timer resolution if smaller than default 15.6ms
-		// zero means not updated
-		return 0;
-	}
-
-	// aim for the best resolution we can accomplish
-	dispatch_once(&once, ^{
-		TIMECAPS tc;
-		MMRESULT res;
-		res = timeGetDevCaps(&tc, sizeof(tc));
-		if (res == MMSYSERR_NOERROR) {
-			best_resolution = min(max(tc.wPeriodMin, best_resolution),
-					tc.wPeriodMax);
-		}
-	});
-
-	res = timeBeginPeriod(best_resolution);
-	if (res == TIMERR_NOERROR) {
-		return best_resolution;
-	}
-	// zero means not updated
-	return 0;
-}
-
-// match ms parameter to result from _push_timer_resolution
-void
-_pop_timer_resolution(DWORD ms)
-{
-	if (ms) {
-		timeEndPeriod(ms);
-	}
-}
-#endif	/* USE_WIN32_SEM */
-
-
 DISPATCH_WEAK // rdar://problem/8503746
 long _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema);
 
@@ -79,36 +32,9 @@ _dispatch_semaphore_class_init(long value, dispatch_semaphore_class_t dsemau)
 	struct dispatch_semaphore_header_s *dsema = dsemau._dsema_hdr;
 
 	dsema->do_next = DISPATCH_OBJECT_LISTLESS;
-	dsema->do_targetq = _dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT,
-			false);
+	dsema->do_targetq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false);
 	dsema->dsema_value = value;
-#if USE_POSIX_SEM
-	int ret = sem_init(&dsema->dsema_sem, 0, 0);
-	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#endif
-}
-
-static void
-_dispatch_semaphore_class_dispose(dispatch_semaphore_class_t dsemau)
-{
-	struct dispatch_semaphore_header_s *dsema = dsemau._dsema_hdr;
-
-#if USE_MACH_SEM
-	kern_return_t kr;
-	if (dsema->dsema_port) {
-		kr = semaphore_destroy(mach_task_self(), dsema->dsema_port);
-		DISPATCH_VERIFY_MIG(kr);
-		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
-	}
-	dsema->dsema_port = MACH_PORT_DEAD;
-#elif USE_POSIX_SEM
-	int ret = sem_destroy(&dsema->dsema_sem);
-	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_WIN32_SEM
-	if (dsema->dsema_handle) {
-		CloseHandle(dsema->dsema_handle);
-	}
-#endif
+	_dispatch_sema4_init(&dsema->dsema_sema, _DSEMA4_POLICY_FIFO);
 }
 
 #pragma mark -
@@ -133,59 +59,6 @@ dispatch_semaphore_create(long value)
 	return dsema;
 }
 
-#if USE_MACH_SEM
-static void
-_dispatch_semaphore_create_port(semaphore_t *s4)
-{
-	kern_return_t kr;
-	semaphore_t tmp;
-
-	if (*s4) {
-		return;
-	}
-	_dispatch_fork_becomes_unsafe();
-
-	// lazily allocate the semaphore port
-
-	// Someday:
-	// 1) Switch to a doubly-linked FIFO in user-space.
-	// 2) User-space timers for the timeout.
-	// 3) Use the per-thread semaphore port.
-
-	while ((kr = semaphore_create(mach_task_self(), &tmp,
-			SYNC_POLICY_FIFO, 0))) {
-		DISPATCH_VERIFY_MIG(kr);
-		_dispatch_temporary_resource_shortage();
-	}
-
-	if (!os_atomic_cmpxchg(s4, 0, tmp, relaxed)) {
-		kr = semaphore_destroy(mach_task_self(), tmp);
-		DISPATCH_VERIFY_MIG(kr);
-		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
-	}
-}
-#elif USE_WIN32_SEM
-static void
-_dispatch_semaphore_create_handle(HANDLE *s4)
-{
-	HANDLE tmp;
-
-	if (*s4) {
-		return;
-	}
-
-	// lazily allocate the semaphore port
-
-	while (!dispatch_assume(tmp = CreateSemaphore(NULL, 0, LONG_MAX, NULL))) {
-		_dispatch_temporary_resource_shortage();
-	}
-
-	if (!os_atomic_cmpxchg(s4, 0, tmp)) {
-		CloseHandle(tmp);
-	}
-}
-#endif
-
 void
 _dispatch_semaphore_dispose(dispatch_object_t dou)
 {
@@ -196,7 +69,7 @@ _dispatch_semaphore_dispose(dispatch_object_t dou)
 				"Semaphore object deallocated while in use");
 	}
 
-	_dispatch_semaphore_class_dispose(dsema);
+	_dispatch_sema4_dispose(&dsema->dsema_sema, _DSEMA4_POLICY_FIFO);
 }
 
 size_t
@@ -210,7 +83,7 @@ _dispatch_semaphore_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 	offset += _dispatch_object_debug_attr(dsema, &buf[offset], bufsiz - offset);
 #if USE_MACH_SEM
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "port = 0x%u, ",
-			dsema->dsema_port);
+			dsema->dsema_sema);
 #endif
 	offset += dsnprintf(&buf[offset], bufsiz - offset,
 			"value = %ld, orig = %ld }", dsema->dsema_value, dsema->dsema_orig);
@@ -221,18 +94,8 @@ DISPATCH_NOINLINE
 long
 _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 {
-#if USE_MACH_SEM
-	_dispatch_semaphore_create_port(&dsema->dsema_port);
-	kern_return_t kr = semaphore_signal(dsema->dsema_port);
-	DISPATCH_SEMAPHORE_VERIFY_KR(kr);
-#elif USE_POSIX_SEM
-	int ret = sem_post(&dsema->dsema_sem);
-	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_WIN32_SEM
-	_dispatch_semaphore_create_handle(&dsema->dsema_handle);
-	int ret = ReleaseSemaphore(dsema->dsema_handle, 1, NULL);
-	dispatch_assume(ret);
-#endif
+	_dispatch_sema4_create(&dsema->dsema_sema, _DSEMA4_POLICY_FIFO);
+	_dispatch_sema4_signal(&dsema->dsema_sema, 1);
 	return 1;
 }
 
@@ -257,61 +120,12 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 {
 	long orig;
 
-#if USE_MACH_SEM
-	mach_timespec_t _timeout;
-	kern_return_t kr;
-#elif USE_POSIX_SEM
-	struct timespec _timeout;
-	int ret;
-#elif USE_WIN32_SEM
-	uint64_t nsec;
-	DWORD msec;
-	DWORD resolution;
-	DWORD wait_result;
-#endif
-
-#if USE_MACH_SEM
-	_dispatch_semaphore_create_port(&dsema->dsema_port);
-#elif USE_WIN32_SEM
-	_dispatch_semaphore_create_handle(&dsema->dsema_handle);
-#endif
-
+	_dispatch_sema4_create(&dsema->dsema_sema, _DSEMA4_POLICY_FIFO);
 	switch (timeout) {
 	default:
-#if USE_MACH_SEM
-		do {
-			uint64_t nsec = _dispatch_timeout(timeout);
-			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
-			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
-			kr = slowpath(semaphore_timedwait(dsema->dsema_port, _timeout));
-		} while (kr == KERN_ABORTED);
-
-		if (kr != KERN_OPERATION_TIMED_OUT) {
-			DISPATCH_SEMAPHORE_VERIFY_KR(kr);
+		if (!_dispatch_sema4_timedwait(&dsema->dsema_sema, timeout)) {
 			break;
 		}
-#elif USE_POSIX_SEM
-		do {
-			uint64_t nsec = _dispatch_time_nanoseconds_since_epoch(timeout);
-			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
-			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
-			ret = slowpath(sem_timedwait(&dsema->dsema_sem, &_timeout));
-		} while (ret == -1 && errno == EINTR);
-
-		if (!(ret == -1 && errno == ETIMEDOUT)) {
-			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-			break;
-		}
-#elif USE_WIN32_SEM
-		nsec = _dispatch_timeout(timeout);
-		msec = (DWORD)(nsec / (uint64_t)1000000);
-		resolution = _push_timer_resolution(msec);
-		wait_result = WaitForSingleObject(dsema->dsema_handle, msec);
-		_pop_timer_resolution(resolution);
-		if (wait_result != WAIT_TIMEOUT) {
-			break;
-		}
-#endif
 		// Fall through and try to undo what the fast path did to
 		// dsema->dsema_value
 	case DISPATCH_TIME_NOW:
@@ -319,30 +133,13 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 		while (orig < 0) {
 			if (os_atomic_cmpxchgvw2o(dsema, dsema_value, orig, orig + 1,
 					&orig, relaxed)) {
-#if USE_MACH_SEM
-				return KERN_OPERATION_TIMED_OUT;
-#elif USE_POSIX_SEM || USE_WIN32_SEM
-				errno = ETIMEDOUT;
-				return -1;
-#endif
+				return _DSEMA4_TIMEOUT();
 			}
 		}
 		// Another thread called semaphore_signal().
 		// Fall through and drain the wakeup.
 	case DISPATCH_TIME_FOREVER:
-#if USE_MACH_SEM
-		do {
-			kr = semaphore_wait(dsema->dsema_port);
-		} while (kr == KERN_ABORTED);
-		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
-#elif USE_POSIX_SEM
-		do {
-			ret = sem_wait(&dsema->dsema_sem);
-		} while (ret != 0);
-		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_WIN32_SEM
-		WaitForSingleObject(dsema->dsema_handle, INFINITE);
-#endif
+		_dispatch_sema4_wait(&dsema->dsema_sema);
 		break;
 	}
 	return 0;
@@ -416,25 +213,8 @@ _dispatch_group_wake(dispatch_group_t dg, bool needs_release)
 	rval = (long)os_atomic_xchg2o(dg, dg_waiters, 0, relaxed);
 	if (rval) {
 		// wake group waiters
-#if USE_MACH_SEM
-		_dispatch_semaphore_create_port(&dg->dg_port);
-		do {
-			kern_return_t kr = semaphore_signal(dg->dg_port);
-			DISPATCH_GROUP_VERIFY_KR(kr);
-		} while (--rval);
-#elif USE_POSIX_SEM
-		do {
-			int ret = sem_post(&dg->dg_sem);
-			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-		} while (--rval);
-#elif USE_WIN32_SEM
-		_dispatch_semaphore_create_handle(&dg->dg_handle);
-		int ret;
-		ret = ReleaseSemaphore(dg->dg_handle, rval, NULL);
-		dispatch_assume(ret);
-#else
-#error "No supported semaphore type"
-#endif
+		_dispatch_sema4_create(&dg->dg_sema, _DSEMA4_POLICY_FIFO);
+		_dispatch_sema4_signal(&dg->dg_sema, rval);
 	}
 	if (head) {
 		// async group notify blocks
@@ -475,7 +255,7 @@ _dispatch_group_dispose(dispatch_object_t dou)
 				"Group object deallocated while in use");
 	}
 
-	_dispatch_semaphore_class_dispose(dg);
+	_dispatch_sema4_dispose(&dg->dg_sema, _DSEMA4_POLICY_FIFO);
 }
 
 size_t
@@ -489,7 +269,7 @@ _dispatch_group_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 	offset += _dispatch_object_debug_attr(dg, &buf[offset], bufsiz - offset);
 #if USE_MACH_SEM
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "port = 0x%u, ",
-			dg->dg_port);
+			dg->dg_sema);
 #endif
 	offset += dsnprintf(&buf[offset], bufsiz - offset,
 			"count = %ld, waiters = %d }", dg->dg_value, dg->dg_waiters);
@@ -502,19 +282,6 @@ _dispatch_group_wait_slow(dispatch_group_t dg, dispatch_time_t timeout)
 {
 	long value;
 	int orig_waiters;
-
-#if USE_MACH_SEM
-	mach_timespec_t _timeout;
-	kern_return_t kr;
-#elif USE_POSIX_SEM // KVV
-	struct timespec _timeout;
-	int ret;
-#elif USE_WIN32_SEM // KVV
-	uint64_t nsec;
-	DWORD msec;
-	DWORD resolution;
-	DWORD wait_result;
-#endif
 
 	// check before we cause another signal to be sent by incrementing
 	// dg->dg_waiters
@@ -533,48 +300,12 @@ _dispatch_group_wait_slow(dispatch_group_t dg, dispatch_time_t timeout)
 		timeout = DISPATCH_TIME_FOREVER;
 	}
 
-#if USE_MACH_SEM
-	_dispatch_semaphore_create_port(&dg->dg_port);
-#elif USE_WIN32_SEM
-	_dispatch_semaphore_create_handle(&dg->dg_handle);
-#endif
-
+	_dispatch_sema4_create(&dg->dg_sema, _DSEMA4_POLICY_FIFO);
 	switch (timeout) {
 	default:
-#if USE_MACH_SEM
-		do {
-			uint64_t nsec = _dispatch_timeout(timeout);
-			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
-			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
-			kr = slowpath(semaphore_timedwait(dg->dg_port, _timeout));
-		} while (kr == KERN_ABORTED);
-
-		if (kr != KERN_OPERATION_TIMED_OUT) {
-			DISPATCH_GROUP_VERIFY_KR(kr);
+		if (!_dispatch_sema4_timedwait(&dg->dg_sema, timeout)) {
 			break;
 		}
-#elif USE_POSIX_SEM
-		do {
-			uint64_t nsec = _dispatch_time_nanoseconds_since_epoch(timeout);
-			_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
-			_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
-			ret = slowpath(sem_timedwait(&dg->dg_sem, &_timeout));
-		} while (ret == -1 && errno == EINTR);
-
-		if (!(ret == -1 && errno == ETIMEDOUT)) {
-			DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-			break;
-		}
-#elif USE_WIN32_SEM
-		nsec = _dispatch_timeout(timeout);
-		msec = (DWORD)(nsec / (uint64_t)1000000);
-		resolution = _push_timer_resolution(msec);
-		wait_result = WaitForSingleObject(dg->dg_handle, msec);
-		_pop_timer_resolution(resolution);
-		if (wait_result != WAIT_TIMEOUT) {
-			break;
-		}
-#endif
 		// Fall through and try to undo the earlier change to
 		// dg->dg_waiters
 	case DISPATCH_TIME_NOW:
@@ -582,30 +313,13 @@ _dispatch_group_wait_slow(dispatch_group_t dg, dispatch_time_t timeout)
 		while (orig_waiters) {
 			if (os_atomic_cmpxchgvw2o(dg, dg_waiters, orig_waiters,
 					orig_waiters - 1, &orig_waiters, relaxed)) {
-#if USE_MACH_SEM
-				return KERN_OPERATION_TIMED_OUT;
-#elif USE_POSIX_SEM || USE_WIN32_SEM
-				errno = ETIMEDOUT;
-				return -1;
-#endif
+				return _DSEMA4_TIMEOUT();
 			}
 		}
-		// Another thread called semaphore_signal().
+		// Another thread is running _dispatch_group_wake()
 		// Fall through and drain the wakeup.
 	case DISPATCH_TIME_FOREVER:
-#if USE_MACH_SEM
-		do {
-			kr = semaphore_wait(dg->dg_port);
-		} while (kr == KERN_ABORTED);
-		DISPATCH_GROUP_VERIFY_KR(kr);
-#elif USE_POSIX_SEM
-		do {
-			ret = sem_wait(&dg->dg_sem);
-		} while (ret == -1 && errno == EINTR);
-		DISPATCH_SEMAPHORE_VERIFY_RET(ret);
-#elif USE_WIN32_SEM
-		WaitForSingleObject(dg->dg_handle, INFINITE);
-#endif
+		_dispatch_sema4_wait(&dg->dg_sema);
 		break;
 	}
 	return 0;
@@ -618,12 +332,7 @@ dispatch_group_wait(dispatch_group_t dg, dispatch_time_t timeout)
 		return 0;
 	}
 	if (timeout == 0) {
-#if USE_MACH_SEM
-		return KERN_OPERATION_TIMED_OUT;
-#elif USE_POSIX_SEM || USE_WIN32_SEM
-		errno = ETIMEDOUT;
-		return (-1);
-#endif
+		return _DSEMA4_TIMEOUT();
 	}
 	return _dispatch_group_wait_slow(dg, timeout);
 }

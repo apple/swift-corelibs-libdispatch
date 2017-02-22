@@ -92,14 +92,13 @@ typedef union {
 	struct dispatch_source_s *_ds;
 	struct dispatch_mach_s *_dm;
 	struct dispatch_mach_msg_s *_dmsg;
-	struct dispatch_timer_aggregate_s *_dta;
 	struct dispatch_source_attr_s *_dsa;
 	struct dispatch_semaphore_s *_dsema;
 	struct dispatch_data_s *_ddata;
 	struct dispatch_io_s *_dchannel;
 	struct dispatch_operation_s *_doperation;
 	struct dispatch_disk_s *_ddisk;
-} dispatch_object_t __attribute__((__transparent_union__));
+} dispatch_object_t DISPATCH_TRANSPARENT_UNION;
 /*! @parseOnly */
 #define DISPATCH_DECL(name) typedef struct name##_s *name##_t
 /*! @parseOnly */
@@ -201,7 +200,7 @@ __BEGIN_DECLS
  * The object to retain.
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 DISPATCH_SWIFT_UNAVAILABLE("Can't be used with ARC")
 void
@@ -229,7 +228,7 @@ dispatch_retain(dispatch_object_t object);
  * The object to release.
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 DISPATCH_SWIFT_UNAVAILABLE("Can't be used with ARC")
 void
@@ -253,7 +252,7 @@ dispatch_release(dispatch_object_t object);
  * @result
  * The context of the object; may be NULL.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_PURE DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 void *_Nullable
@@ -272,7 +271,7 @@ dispatch_get_context(dispatch_object_t object);
  * The new client defined context for the object. This may be NULL.
  *
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 dispatch_set_context(dispatch_object_t object, void *_Nullable context);
@@ -298,7 +297,7 @@ dispatch_set_context(dispatch_object_t object, void *_Nullable context);
  * The context parameter passed to the finalizer function is the current
  * context of the dispatch object at the time the finalizer call is made.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 dispatch_set_finalizer_f(dispatch_object_t object,
@@ -326,8 +325,7 @@ dispatch_set_finalizer_f(dispatch_object_t object,
  * The object to be activated.
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_activate(dispatch_object_t object);
@@ -350,7 +348,7 @@ dispatch_activate(dispatch_object_t object);
  * The object to be suspended.
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_suspend(dispatch_object_t object);
@@ -379,7 +377,7 @@ dispatch_suspend(dispatch_object_t object);
  * The object to be resumed.
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_resume(dispatch_object_t object);
@@ -541,13 +539,13 @@ dispatch_testcancel(void *object);
  * @param message
  * The message to log above and beyond the introspection.
  */
-__OSX_AVAILABLE_BUT_DEPRECATED(__MAC_10_6,__MAC_10_9,__IPHONE_4_0,__IPHONE_6_0)
+API_DEPRECATED("unsupported interface", macos(10.6,10.9), ios(4.0,6.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW
 __attribute__((__format__(printf,2,3)))
 void
 dispatch_debug(dispatch_object_t object, const char *message, ...);
 
-__OSX_AVAILABLE_BUT_DEPRECATED(__MAC_10_6,__MAC_10_9,__IPHONE_4_0,__IPHONE_6_0)
+API_DEPRECATED("unsupported interface", macos(10.6,10.9), ios(4.0,6.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW
 __attribute__((__format__(printf,2,0)))
 void

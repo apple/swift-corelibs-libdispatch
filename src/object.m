@@ -126,6 +126,24 @@ os_release(void *obj)
 	return objc_release(obj);
 }
 
+void
+_os_object_atfork_prepare(void)
+{
+	return _objc_atfork_prepare();
+}
+
+void
+_os_object_atfork_parent(void)
+{
+	return _objc_atfork_parent();
+}
+
+void
+_os_object_atfork_child(void)
+{
+	return _objc_atfork_child();
+}
+
 #pragma mark -
 #pragma mark _os_object
 
@@ -233,7 +251,7 @@ _dispatch_objc_debug(dispatch_object_t dou, char* buf, size_t bufsiz)
 	NSUInteger offset = 0;
 	NSString *desc = [dou debugDescription];
 	[desc getBytes:buf maxLength:bufsiz-1 usedLength:&offset
-			encoding:NSUTF8StringEncoding options:0
+			encoding:NSUTF8StringEncoding options:(NSStringEncodingConversionOptions)0
 			range:NSMakeRange(0, [desc length]) remainingRange:NULL];
 	if (offset) buf[offset] = 0;
 	return offset;
@@ -263,9 +281,9 @@ DISPATCH_UNAVAILABLE_INIT()
 	} else {
 		strlcpy(buf, dx_kind(obj), sizeof(buf));
 	}
-	return [nsstring stringWithFormat:
-			[nsstring stringWithUTF8String:"<%s: %s>"],
-			class_getName([self class]), buf];
+	NSString *format = [nsstring stringWithUTF8String:"<%s: %s>"];
+	if (!format) return nil;
+	return [nsstring stringWithFormat:format, class_getName([self class]), buf];
 }
 
 @end
@@ -277,9 +295,10 @@ DISPATCH_UNAVAILABLE_INIT()
 - (NSString *)description {
 	Class nsstring = objc_lookUpClass("NSString");
 	if (!nsstring) return nil;
-	return [nsstring stringWithFormat:
-			[nsstring stringWithUTF8String:"<%s: %s[%p]>"],
-			class_getName([self class]), dispatch_queue_get_label(self), self];
+	NSString *format = [nsstring stringWithUTF8String:"<%s: %s>"];
+	if (!format) return nil;
+	return [nsstring stringWithFormat:format, class_getName([self class]),
+			dispatch_queue_get_label(self), self];
 }
 
 - (void)_xref_dispose {
@@ -307,6 +326,7 @@ DISPATCH_UNAVAILABLE_INIT()
 
 - (void)_xref_dispose {
 	_dispatch_queue_xref_dispose((struct dispatch_queue_s *)self);
+	_dispatch_mach_xref_dispose((struct dispatch_mach_s *)self);
 	[super _xref_dispose];
 }
 
@@ -364,9 +384,9 @@ DISPATCH_OBJC_LOAD()
 	if (!nsstring) return nil;
 	char buf[2048];
 	_voucher_debug(self, buf, sizeof(buf));
-	return [nsstring stringWithFormat:
-			[nsstring stringWithUTF8String:"<%s: %s>"],
-			class_getName([self class]), buf];
+	NSString *format = [nsstring stringWithUTF8String:"<%s: %s>"];
+	if (!format) return nil;
+	return [nsstring stringWithFormat:format, class_getName([self class]), buf];
 }
 
 @end
@@ -448,6 +468,19 @@ _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 }
 
 #if HAVE_MACH
+#undef _dispatch_client_callout3
+void
+_dispatch_client_callout3(void *ctxt, dispatch_mach_reason_t reason,
+		dispatch_mach_msg_t dmsg, dispatch_mach_async_reply_callback_t f)
+{
+	@try {
+		return f(ctxt, reason, dmsg);
+	}
+	@catch (...) {
+		objc_terminate();
+	}
+}
+
 #undef _dispatch_client_callout4
 void
 _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,

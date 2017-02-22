@@ -89,21 +89,19 @@ _os_object_release(_os_object_t obj)
 bool
 _os_object_retain_weak(_os_object_t obj)
 {
-	int xref_cnt = obj->os_obj_xref_cnt;
-	if (slowpath(xref_cnt == _OS_OBJECT_GLOBAL_REFCNT)) {
-		return true; // global object
-	}
-retry:
-	if (slowpath(xref_cnt == -1)) {
-		return false;
-	}
-	if (slowpath(xref_cnt < -1)) {
-		goto overrelease;
-	}
-	if (slowpath(!os_atomic_cmpxchgvw2o(obj, os_obj_xref_cnt, xref_cnt,
-			xref_cnt + 1, &xref_cnt, relaxed))) {
-		goto retry;
-	}
+	int xref_cnt, nxref_cnt;
+	os_atomic_rmw_loop2o(obj, os_obj_xref_cnt, xref_cnt, nxref_cnt, relaxed, {
+		if (slowpath(xref_cnt == _OS_OBJECT_GLOBAL_REFCNT)) {
+			os_atomic_rmw_loop_give_up(return true); // global object
+		}
+		if (slowpath(xref_cnt == -1)) {
+			os_atomic_rmw_loop_give_up(return false);
+		}
+		if (slowpath(xref_cnt < -1)) {
+			os_atomic_rmw_loop_give_up(goto overrelease);
+		}
+		nxref_cnt = xref_cnt + 1;
+	});
 	return true;
 overrelease:
 	_OS_OBJECT_CLIENT_CRASH("Over-release of an object");
@@ -181,6 +179,10 @@ _dispatch_xref_dispose(dispatch_object_t dou)
 	}
 	if (dx_type(dou._do) == DISPATCH_SOURCE_KEVENT_TYPE) {
 		_dispatch_source_xref_dispose(dou._ds);
+#if HAVE_MACH
+	} else if (dx_type(dou._do) == DISPATCH_MACH_CHANNEL_TYPE) {
+		_dispatch_mach_xref_dispose(dou._dm);
+#endif
 	} else if (dx_type(dou._do) == DISPATCH_QUEUE_RUNLOOP_TYPE) {
 		_dispatch_runloop_queue_xref_dispose(dou._dq);
 	}
@@ -240,7 +242,7 @@ dispatch_set_target_queue(dispatch_object_t dou, dispatch_queue_t tq)
 	} else if (dou._do->do_ref_cnt != DISPATCH_OBJECT_GLOBAL_REFCNT &&
 			!slowpath(dx_hastypeflag(dou._do, QUEUE_ROOT))) {
 		if (slowpath(!tq)) {
-			tq = _dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT, false);
+			tq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false);
 		}
 		_dispatch_object_set_target_queue_inline(dou._do, tq);
 	}

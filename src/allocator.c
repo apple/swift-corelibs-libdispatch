@@ -274,22 +274,16 @@ mark_bitmap_as_full_if_still_full(volatile bitmap_t *supermap,
 	dispatch_assert(bitmap_index < BITMAPS_PER_SUPERMAP);
 #endif
 	const bitmap_t mask = BITMAP_C(1) << bitmap_index;
-	bitmap_t s, s_new, s_masked;
+	bitmap_t s, s_new;
 
-	if (!bitmap_is_full(*bitmap)) {
-		return;
-	}
-	s_new = *supermap;
-	for (;;) {
-		// No barriers because supermaps are only advisory, they
-		// don't protect access to other memory.
-		s = s_new;
-		s_masked = s | mask;
-		if (os_atomic_cmpxchgvw(supermap, s, s_masked, &s_new, relaxed) ||
-				!bitmap_is_full(*bitmap)) {
-			return;
+	// No barriers because supermaps are only advisory, they
+	// don't protect access to other memory.
+	os_atomic_rmw_loop(supermap, s, s_new, relaxed, {
+		if (!bitmap_is_full(*bitmap)) {
+			os_atomic_rmw_loop_give_up(return);
 		}
-	}
+		s_new = s | mask;
+	});
 }
 
 #pragma mark -

@@ -23,6 +23,13 @@
 .Fc
 .Sh DESCRIPTION
 Dispatch semaphores are used to synchronize threads.
+.Pp
+The
+.Fn dispatch_semaphore_wait
+function decrements the semaphore. If the resulting value is less than zero,
+it waits for a signal from a thread that increments the semaphore by calling
+.Fn dispatch_semaphore_signal
+before returning.
 The
 .Fa timeout
 parameter is creatable with the
@@ -30,6 +37,13 @@ parameter is creatable with the
 or
 .Xr dispatch_walltime 3
 functions.
+.Pp
+The
+.Fn dispatch_semaphore_signal
+function increments the counting semaphore. If the previous value was less than zero,
+it wakes one of the threads that are waiting in
+.Fn dispatch_semaphore_wait
+before returning.
 .Sh COMPLETION SYNCHRONIZATION
 If the
 .Fa count

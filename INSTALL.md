@@ -70,9 +70,9 @@ that includes libdispatch on Linux:
     ```
     ./swift/utils/build-toolchain local.swift
     ```
-    
+
 Note that adding libdispatch in build-presets.ini is for Linux only as Swift on macOS platforms uses the system installed libdispatch, so its not required.
-    
+
 ### Building and installing on OS X
 
 The following configure options may be of general interest:
@@ -151,9 +151,9 @@ Note that libdispatch development and testing is done only
 on Ubuntu; currently supported versions are 14.04, 15.10 and 16.04.
 
 1. The first thing to do is install required packages:
-    
+
     `sudo apt-get install autoconf libtool pkg-config clang systemtap-sdt-dev libbsd-dev`
- 
+
     Note: compiling libdispatch requires clang 3.8 or better and
 the gold linker. If the default clang on your Ubuntu version is
 too old, see http://apt.llvm.org/ to install a newer version.
@@ -168,7 +168,7 @@ to get the gold linker.
     git submodule init
     git submodule update
     ```
-    
+
 3. Build (as in the general instructions above)
 
     ```

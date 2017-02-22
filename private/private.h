@@ -66,7 +66,7 @@
 #endif /* !__DISPATCH_BUILDING_DISPATCH__ */
 
 // <rdar://problem/9627726> Check that public and private dispatch headers match
-#if DISPATCH_API_VERSION != 20160712 // Keep in sync with <dispatch/dispatch.h>
+#if DISPATCH_API_VERSION != 20160831 // Keep in sync with <dispatch/dispatch.h>
 #error "Dispatch header mismatch between /usr/include and /usr/local/include"
 #endif
 
@@ -93,7 +93,7 @@ __BEGIN_DECLS
  * Boolean indicating whether the process has used libdispatch and become
  * multithreaded.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_8,__IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
 bool _dispatch_is_multithreaded(void);
 
@@ -117,7 +117,7 @@ bool _dispatch_is_multithreaded(void);
  * Boolean indicating whether the parent process had used libdispatch and
  * become multithreaded at the time of fork.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
 bool _dispatch_is_fork_of_multithreaded_parent(void);
 
@@ -144,8 +144,7 @@ bool _dispatch_is_fork_of_multithreaded_parent(void);
  * If the program already used dispatch before the guard is enabled, then
  * this function will abort immediately.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void _dispatch_prohibit_transition_to_multithreaded(bool prohibit);
 
@@ -187,31 +186,23 @@ typedef int dispatch_runloop_handle_t;
 #endif
 
 #if TARGET_OS_MAC
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_CONST DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_runloop_handle_t
 _dispatch_get_main_queue_port_4CF(void);
 #endif
 
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
 dispatch_runloop_handle_t
 _dispatch_get_main_queue_handle_4CF(void);
 
-#if TARGET_OS_MAC
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
-DISPATCH_EXPORT DISPATCH_NOTHROW
-void
-_dispatch_main_queue_callback_4CF(mach_msg_header_t *_Null_unspecified msg);
-#else
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 _dispatch_main_queue_callback_4CF(void *_Null_unspecified msg);
-#endif
 
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
@@ -219,33 +210,33 @@ _dispatch_runloop_root_queue_create_4CF(const char *_Nullable label,
 		unsigned long flags);
 
 #if TARGET_OS_MAC
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 mach_port_t
 _dispatch_runloop_root_queue_get_port_4CF(dispatch_queue_t queue);
 #endif
 
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 _dispatch_runloop_root_queue_wakeup_4CF(dispatch_queue_t queue);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 bool
 _dispatch_runloop_root_queue_perform_4CF(dispatch_queue_t queue);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 _dispatch_source_set_runloop_timer_4CF(dispatch_source_t source,
 		dispatch_time_t start, uint64_t interval, uint64_t leeway);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT
 void *_Nonnull (*_Nullable _dispatch_begin_NSAutoReleasePool)(void);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT
 void (*_Nullable _dispatch_end_NSAutoReleasePool)(void *);
 

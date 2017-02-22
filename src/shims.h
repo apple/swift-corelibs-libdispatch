@@ -28,71 +28,6 @@
 #define __DISPATCH_OS_SHIMS__
 
 #include <pthread.h>
-#if HAVE_PTHREAD_QOS_H && __has_include(<pthread/qos.h>)
-#include <pthread/qos.h>
-#if __has_include(<pthread/qos_private.h>)
-#include <pthread/qos_private.h>
-#define _DISPATCH_QOS_CLASS_USER_INTERACTIVE QOS_CLASS_USER_INTERACTIVE
-#define _DISPATCH_QOS_CLASS_USER_INITIATED QOS_CLASS_USER_INITIATED
-#define _DISPATCH_QOS_CLASS_DEFAULT QOS_CLASS_DEFAULT
-#define _DISPATCH_QOS_CLASS_UTILITY QOS_CLASS_UTILITY
-#define _DISPATCH_QOS_CLASS_BACKGROUND QOS_CLASS_BACKGROUND
-#define _DISPATCH_QOS_CLASS_UNSPECIFIED QOS_CLASS_UNSPECIFIED
-#else // pthread/qos_private.h
-typedef unsigned long pthread_priority_t;
-#endif // pthread/qos_private.h
-#if __has_include(<sys/qos_private.h>)
-#include <sys/qos_private.h>
-#define _DISPATCH_QOS_CLASS_MAINTENANCE QOS_CLASS_MAINTENANCE
-#else // sys/qos_private.h
-#define _DISPATCH_QOS_CLASS_MAINTENANCE	0x05
-#endif // sys/qos_private.h
-#ifndef _PTHREAD_PRIORITY_OVERCOMMIT_FLAG
-#define _PTHREAD_PRIORITY_OVERCOMMIT_FLAG 0x80000000
-#endif
-#ifndef _PTHREAD_PRIORITY_INHERIT_FLAG
-#define _PTHREAD_PRIORITY_INHERIT_FLAG 0x40000000
-#endif
-#ifndef _PTHREAD_PRIORITY_ROOTQUEUE_FLAG
-#define _PTHREAD_PRIORITY_ROOTQUEUE_FLAG 0x20000000
-#endif
-#ifndef _PTHREAD_PRIORITY_SCHED_PRI_FLAG
-#define _PTHREAD_PRIORITY_SCHED_PRI_FLAG 0x20000000
-#endif
-#ifndef _PTHREAD_PRIORITY_ENFORCE_FLAG
-#define _PTHREAD_PRIORITY_ENFORCE_FLAG 0x10000000
-#endif
-#ifndef _PTHREAD_PRIORITY_OVERRIDE_FLAG
-#define _PTHREAD_PRIORITY_OVERRIDE_FLAG 0x08000000
-#endif
-#ifndef _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG
-#define _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG 0x04000000
-#endif
-#ifndef _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG
-#define _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG 0x02000000
-#endif
-#ifndef _PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG
-#define _PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG 0x01000000
-#endif
-
-#else // HAVE_PTHREAD_QOS_H
-typedef unsigned int qos_class_t;
-typedef unsigned long pthread_priority_t;
-#define QOS_MIN_RELATIVE_PRIORITY (-15)
-#define _PTHREAD_PRIORITY_FLAGS_MASK (~0xffffff)
-#define _PTHREAD_PRIORITY_QOS_CLASS_MASK 0x00ffff00
-#define _PTHREAD_PRIORITY_QOS_CLASS_SHIFT (8ull)
-#define _PTHREAD_PRIORITY_PRIORITY_MASK 0x000000ff
-#define _PTHREAD_PRIORITY_OVERCOMMIT_FLAG 0x80000000
-#define _PTHREAD_PRIORITY_INHERIT_FLAG 0x40000000
-#define _PTHREAD_PRIORITY_ROOTQUEUE_FLAG 0x20000000
-#define _PTHREAD_PRIORITY_ENFORCE_FLAG 0x10000000
-#define _PTHREAD_PRIORITY_OVERRIDE_FLAG 0x08000000
-#define _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG 0x04000000
-#define _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG 0x02000000
-#define _PTHREAD_PRIORITY_SCHED_PRI_FLAG 0x20000000
-#endif // HAVE_PTHREAD_QOS_H
-
 #ifdef __linux__
 #include "shims/linux_stubs.h"
 #endif
@@ -101,20 +36,8 @@ typedef unsigned long pthread_priority_t;
 #include "shims/android_stubs.h"
 #endif
 
-typedef uint32_t dispatch_priority_t;
-#define DISPATCH_SATURATED_OVERRIDE ((dispatch_priority_t)UINT32_MAX)
+#include "shims/priority.h"
 
-#ifndef _DISPATCH_QOS_CLASS_USER_INTERACTIVE
-enum {
-	_DISPATCH_QOS_CLASS_USER_INTERACTIVE = 0x21,
-	_DISPATCH_QOS_CLASS_USER_INITIATED = 0x19,
-	_DISPATCH_QOS_CLASS_DEFAULT = 0x15,
-	_DISPATCH_QOS_CLASS_UTILITY = 0x11,
-	_DISPATCH_QOS_CLASS_BACKGROUND = 0x09,
-	_DISPATCH_QOS_CLASS_MAINTENANCE = 0x05,
-	_DISPATCH_QOS_CLASS_UNSPECIFIED = 0x00,
-};
-#endif // _DISPATCH_QOS_CLASS_USER_INTERACTIVE
 #if HAVE_PTHREAD_WORKQUEUES
 #if __has_include(<pthread/workqueue_private.h>)
 #include <pthread/workqueue_private.h>
@@ -211,6 +134,15 @@ _pthread_qos_override_end_direct(mach_port_t thread, void *resource)
 #define _PTHREAD_SET_SELF_WQ_KEVENT_UNBIND 0
 #endif
 
+#if PTHREAD_WORKQUEUE_SPI_VERSION < 20160427
+static inline bool
+_pthread_workqueue_should_narrow(pthread_priority_t priority)
+{
+	(void)priority;
+	return false;
+}
+#endif
+
 #if !HAVE_NORETURN_BUILTIN_TRAP
 /*
  * XXXRW: Work-around for possible clang bug in which __builtin_trap() is not
@@ -231,6 +163,8 @@ void __builtin_trap(void);
 #ifndef __OS_INTERNAL_ATOMIC__
 #include "shims/atomic.h"
 #endif
+#define DISPATCH_ATOMIC64_ALIGN  __attribute__((aligned(8)))
+
 #include "shims/atomic_sfb.h"
 #include "shims/tsd.h"
 #include "shims/yield.h"
