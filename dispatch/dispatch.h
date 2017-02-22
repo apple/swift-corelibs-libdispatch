@@ -24,14 +24,20 @@
 #ifdef __APPLE__
 #include <Availability.h>
 #include <TargetConditionals.h>
-#endif
-
+#else
 #ifndef API_AVAILABLE
 #define API_AVAILABLE(...)
+#endif
+#ifndef API_DEPRECATED
 #define API_DEPRECATED(...)
+#endif
+#ifndef API_UNAVAILABLE
 #define API_UNAVAILABLE(...)
+#endif
+#ifndef API_DEPRECATED_WITH_REPLACEMENT
 #define API_DEPRECATED_WITH_REPLACEMENT(...)
-#endif // !API_AVAILABLE
+#endif
+#endif // __APPLE__
 
 #include <sys/cdefs.h>
 #include <sys/types.h>
