@@ -172,11 +172,11 @@ _dispatch_approximate_time(void)
 #if HAVE_MACH_APPROXIMATE_TIME
 	return mach_approximate_time();
 #elif HAVE_DECL_CLOCK_UPTIME_FAST && !defined(__linux__)
-	struct timesmec ts;
+	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_UPTIME_FAST, &ts));
 	return _dispatch_timespec_to_nano(ts);
 #elif defined(__linux__)
-	struct timesmec ts;
+	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_REALTIME_COARSE, &ts));
 	return _dispatch_timespec_to_nano(ts);
 #else

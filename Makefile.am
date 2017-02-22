@@ -8,10 +8,6 @@ if BUILD_OWN_PTHREAD_WORKQUEUES
   MAYBE_PTHREAD_WORKQUEUES = libpwq
 endif
 
-if BUILD_OWN_KQUEUES
-  MAYBE_KQUEUES = libkqueue
-endif
-
 if BUILD_TESTS
   MAYBE_TESTS = tests
 endif
@@ -19,7 +15,6 @@ endif
 SUBDIRS=						\
 	dispatch					\
 	$(MAYBE_PTHREAD_WORKQUEUES)	\
-	$(MAYBE_KQUEUES)			\
 	man							\
 	os							\
 	private						\

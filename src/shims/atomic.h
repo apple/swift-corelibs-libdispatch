@@ -43,14 +43,14 @@
 
 // This removes the _Atomic and volatile qualifiers on the type of *p
 #define _os_atomic_basetypeof(p) \
-		typeof(atomic_load(_os_atomic_c11_atomic(p), memory_order_relaxed))
+		typeof(atomic_load_explicit(_os_atomic_c11_atomic(p), memory_order_relaxed))
 
 #define os_atomic_load(p, m) \
 		atomic_load_explicit(_os_atomic_c11_atomic(p), memory_order_##m)
 #define os_atomic_store(p, v, m) \
-		atomic_store_explicit(_os_atomic_c11_atomic(p), _v, memory_order_##m)
+		atomic_store_explicit(_os_atomic_c11_atomic(p), v, memory_order_##m)
 #define os_atomic_xchg(p, v, m) \
-		atomic_exchange_explicit(_os_atomic_c11_atomic(p), _v, memory_order_##m)
+		atomic_exchange_explicit(_os_atomic_c11_atomic(p), v, memory_order_##m)
 #define os_atomic_cmpxchg(p, e, v, m) \
 		({ _os_atomic_basetypeof(p) _r = (e); \
 		atomic_compare_exchange_strong_explicit(_os_atomic_c11_atomic(p), \
@@ -69,7 +69,7 @@
 		atomic_fetch_##o##_explicit(_os_atomic_c11_atomic(p), _v, \
 		memory_order_##m); (typeof(*(p)))(_r op _v); })
 #define _os_atomic_c11_op_orig(p, v, m, o, op) \
-		atomic_fetch_##o##_explicit(_os_atomic_c11_atomic(p), _v, \
+		atomic_fetch_##o##_explicit(_os_atomic_c11_atomic(p), v, \
 		memory_order_##m)
 #define os_atomic_add(p, v, m) \
 		_os_atomic_c11_op((p), (v), m, add, +)

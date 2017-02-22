@@ -118,7 +118,7 @@ struct dispatch_tsd {
 #endif
 	void *dispatch_priority_key;
 	void *dispatch_r2k_key;
-	void *dispatch_wlh_key
+	void *dispatch_wlh_key;
 	void *dispatch_voucher_key;
 	void *dispatch_deferred_items_key;
 };

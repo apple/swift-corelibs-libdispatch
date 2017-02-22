@@ -134,8 +134,8 @@ dispatch_source_get_handle(dispatch_source_t ds)
 unsigned long
 dispatch_source_get_data(dispatch_source_t ds)
 {
-	dispatch_source_refs_t dr = ds->ds_refs;
 #if DISPATCH_USE_MEMORYSTATUS
+	dispatch_source_refs_t dr = ds->ds_refs;
 	if (dr->du_vmpressure_override) {
 		return NOTE_VM_PRESSURE;
 	}
@@ -2300,7 +2300,7 @@ _dispatch_mgr_invoke(void)
 #if DISPATCH_EVENT_BACKEND_KEVENT
 	ddi.ddi_nevents = 0;
 #endif
-	_dispatch_set_wlh(DISPATCH_WLH_GLOBAL);
+	dispatch_assert(_dispatch_get_wlh() == DISPATCH_WLH_GLOBAL);
 	_dispatch_deferred_items_set(&ddi);
 
 	for (;;) {
