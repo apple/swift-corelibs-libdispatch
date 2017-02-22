@@ -41,6 +41,7 @@ UNRELIABLE_TESTS=				\
 	dispatch_drift				\
 	dispatch_readsync			\
 	dispatch_cascade			\
+	dispatch_context_for_key	\
 	dispatch_io
 
 if EXTENDED_TEST_SUITE
@@ -59,7 +60,6 @@ TESTS=							\
 	dispatch_group				\
 	dispatch_overcommit			\
 	dispatch_plusplus			\
-	dispatch_context_for_key	\
 	dispatch_after				\
 	dispatch_timer				\
 	dispatch_timer_short		\
