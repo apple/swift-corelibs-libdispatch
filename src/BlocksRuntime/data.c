@@ -14,7 +14,7 @@ We allocate space and export a symbol to be used as the Class for the on-stack a
 
 We keep these in a separate file so that we can include the runtime code in test subprojects but not include the data so that compiled code that sees the data in libSystem doesn't get confused by a second copy.  Somehow these don't get unified in a common block.
 **********************/
-#define BLOCK_EXPORT extern __attribute__((visibility("default")))
+#define BLOCK_EXPORT __attribute__((visibility("default")))
 
 BLOCK_EXPORT void * _NSConcreteStackBlock[32] = { 0 };
 BLOCK_EXPORT void * _NSConcreteMallocBlock[32] = { 0 };

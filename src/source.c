@@ -2515,7 +2515,7 @@ _dispatch_source_debug_attr(dispatch_source_t ds, char* buf, size_t bufsiz)
 			"mask = 0x%x, pending_data = 0x%llx, registered = %d, "
 			"armed = %d, deleted = %d%s, canceled = %d, ",
 			target && target->dq_label ? target->dq_label : "", target,
-			dr->du_ident, dr->du_fflags, ds->ds_pending_data,
+			dr->du_ident, dr->du_fflags, (unsigned long long)ds->ds_pending_data,
 			ds->ds_is_installed, (bool)(ds->dq_atomic_flags & DSF_ARMED),
 			(bool)(ds->dq_atomic_flags & DSF_DELETED),
 			(ds->dq_atomic_flags & DSF_DEFERRED_DELETE) ? " (pending)" : "",
