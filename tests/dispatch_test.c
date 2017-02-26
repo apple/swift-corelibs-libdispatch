@@ -31,6 +31,8 @@
 #if __has_include(<sys/event.h>)
 #define HAS_SYS_EVENT_H 1
 #include <sys/event.h>
+#else
+#include <sys/poll.h>
 #endif
 #include <assert.h>
 
@@ -65,8 +67,16 @@ dispatch_test_check_evfilt_read_for_fd(int fd)
 	close(kq);
 	return r > 0;
 #else
-	// TODO: Need to write a real check for epoll-backend here
-	return true;
+	struct pollfd pfd = {
+		.fd = fd,
+		.events = POLLIN,
+	};
+	int rc;
+	do {
+		rc = poll(&pfd, 1, 0);
+	} while (rc == -1 && errno == EINTR);
+	assert(rc != -1);
+	return rc == 1;
 #endif
 }
 
