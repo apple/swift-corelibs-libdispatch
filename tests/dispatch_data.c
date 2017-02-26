@@ -79,13 +79,14 @@ test_concat(void)
 static void
 test_cleanup(void) // <rdar://problem/9843440>
 {
+	static char buffer4[16];
 	dispatch_group_enter(g);
 	dispatch_async(dispatch_get_main_queue(), ^{
 		void *buffer3 = malloc(1024);
 		dispatch_data_t data3 = dispatch_data_create(buffer3, 0,
 				dispatch_get_main_queue(), DISPATCH_DATA_DESTRUCTOR_FREE);
 		__block bool buffer4_destroyed = false;
-		dispatch_data_t data4 = dispatch_data_create(NULL, 1024,
+		dispatch_data_t data4 = dispatch_data_create(buffer4, 16,
 				dispatch_get_main_queue(), ^{
 			buffer4_destroyed = true;
 		});
