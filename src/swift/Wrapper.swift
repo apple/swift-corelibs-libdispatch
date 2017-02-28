@@ -158,7 +158,7 @@ public class DispatchSource : DispatchObject,
 	DispatchSourceProtocol,	DispatchSourceRead,
 	DispatchSourceSignal, DispatchSourceTimer,
 	DispatchSourceUserDataAdd, DispatchSourceUserDataOr,
-	DispatchSourceWrite {
+	DispatchSourceUserDataReplace, DispatchSourceWrite {
 	internal let __wrapped:dispatch_source_t
 
 	final internal override func wrapped() -> dispatch_object_t {
@@ -241,6 +241,10 @@ public protocol DispatchSourceUserDataAdd : DispatchSourceProtocol {
 
 public protocol DispatchSourceUserDataOr : DispatchSourceProtocol {
 	func or(data: UInt)
+}
+
+public protocol DispatchSourceUserDataReplace : DispatchSourceProtocol {
+	func replace(data: UInt)
 }
 
 #if HAVE_MACH
