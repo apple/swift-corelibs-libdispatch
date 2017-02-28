@@ -26,6 +26,7 @@
 @protocol OS_dispatch_source_timer;
 @protocol OS_dispatch_source_data_add;
 @protocol OS_dispatch_source_data_or;
+@protocol OS_dispatch_source_data_replace;
 @protocol OS_dispatch_source_vnode;
 @protocol OS_dispatch_source_write;
 
@@ -44,6 +45,7 @@ static void _dispatch_overlay_constructor() {
     class_addProtocol(source, @protocol(OS_dispatch_source_timer));
     class_addProtocol(source, @protocol(OS_dispatch_source_data_add));
     class_addProtocol(source, @protocol(OS_dispatch_source_data_or));
+    class_addProtocol(source, @protocol(OS_dispatch_source_data_replace));
     class_addProtocol(source, @protocol(OS_dispatch_source_vnode));
     class_addProtocol(source, @protocol(OS_dispatch_source_write));
   }
@@ -186,6 +188,7 @@ _swift_dispatch_retain(dispatch_object_t obj) {
 
 SOURCE(DATA_ADD)
 SOURCE(DATA_OR)
+SOURCE(DATA_REPLACE)
 #if HAVE_MACH
 SOURCE(MACH_SEND)
 SOURCE(MACH_RECV)

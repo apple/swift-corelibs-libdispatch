@@ -201,6 +201,11 @@ public extension DispatchSource {
 		let source = dispatch_source_create(_swift_dispatch_source_type_data_or(), 0, 0, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceUserDataOr
 	}
+    
+	public class func makeUserDataReplaceSource(queue: DispatchQueue? = nil) -> DispatchSourceUserDataReplace {
+		let source = dispatch_source_create(_swift_dispatch_source_type_data_replace(), 0, 0, queue?.__wrapped)
+		return DispatchSource(source: source) as DispatchSourceUserDataReplace
+	}
 
 #if !os(Linux) && !os(Android)
 	public class func makeFileSystemObjectSource(fileDescriptor: Int32, eventMask: FileSystemEvent, queue: DispatchQueue? = nil) -> DispatchSourceFileSystemObject {
@@ -318,35 +323,35 @@ public extension DispatchSourceFileSystemObject {
 #endif
 
 public extension DispatchSourceUserDataAdd {
-	/// @function mergeData
+	/// Merges data into a dispatch source of type `DISPATCH_SOURCE_TYPE_DATA_ADD`
+	/// and submits its event handler block to its target queue.
 	///
-	/// @abstract
-	/// Merges data into a dispatch source of type DISPATCH_SOURCE_TYPE_DATA_ADD or
-	/// DISPATCH_SOURCE_TYPE_DATA_OR and submits its event handler block to its
-	/// target queue.
-	///
-	/// @param value
-	/// The value to coalesce with the pending data using a logical OR or an ADD
-	/// as specified by the dispatch source type. A value of zero has no effect
-	/// and will not result in the submission of the event handler block.
+	/// - parameter data: the value to add to the current pending data. A value of zero
+	///		has no effect and will not result in the submission of the event handler block.
 	public func add(data: UInt) {
 		dispatch_source_merge_data((self as! DispatchSource).__wrapped, data)
 	}
 }
 
 public extension DispatchSourceUserDataOr {
-	/// @function mergeData
+	/// Merges data into a dispatch source of type `DISPATCH_SOURCE_TYPE_DATA_OR` and
+	/// submits its event handler block to its target queue.
 	///
-	/// @abstract
-	/// Merges data into a dispatch source of type DISPATCH_SOURCE_TYPE_DATA_ADD or
-	/// DISPATCH_SOURCE_TYPE_DATA_OR and submits its event handler block to its
-	/// target queue.
-	///
-	/// @param value
-	/// The value to coalesce with the pending data using a logical OR or an ADD
-	/// as specified by the dispatch source type. A value of zero has no effect
-	/// and will not result in the submission of the event handler block.
+	/// - parameter data: The value to OR into the current pending data. A value of zero
+	///		has no effect and will not result in the submission of the event handler block.
 	public func or(data: UInt) {
+		dispatch_source_merge_data((self as! DispatchSource).__wrapped, data)
+	}
+}
+
+public extension DispatchSourceUserDataReplace {
+	/// Merges data into a dispatch source of type `DISPATCH_SOURCE_TYPE_DATA_REPLACE`
+	/// and submits its event handler block to its target queue.
+	///
+	/// - parameter data: The value that will replace the current pending data.
+	///		A value of zero will be stored but will not result in the submission of the event
+	///		handler block.
+	public func replace(data: UInt) {
 		dispatch_source_merge_data((self as! DispatchSource).__wrapped, data)
 	}
 }
@@ -356,6 +361,9 @@ internal func _swift_dispatch_source_type_data_add() -> dispatch_source_type_t
 
 @_silgen_name("_swift_dispatch_source_type_DATA_OR")
 internal func _swift_dispatch_source_type_data_or() -> dispatch_source_type_t
+
+@_silgen_name("_swift_dispatch_source_type_DATA_REPLACE")
+internal func _swift_dispatch_source_type_data_replace() -> dispatch_source_type_t
 
 #if HAVE_MACH
 @_silgen_name("_swift_dispatch_source_type_MACH_SEND")
