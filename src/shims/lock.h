@@ -89,8 +89,10 @@ _dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
 
 #elif defined(__linux__)
 #include <linux/futex.h>
-#if !defined(__x86_64__) && !defined(__i386__)
+#if !defined(__x86_64__) && !defined(__i386__) && !defined(__ANDROID__)
 #include <linux/membarrier.h>
+#elif defined(__ANDROID__)
+#include "shims/android_membarrier.h"
 #endif
 #include <unistd.h>
 #include <sys/syscall.h>   /* For SYS_xxx definitions */
@@ -545,6 +547,9 @@ _dispatch_once_xchg_done(dispatch_once_t *pred)
 #if defined(__i386__) || defined(__x86_64__)
 	// On Intel, any load is a load-acquire, so we don't need to be fancy
 	return os_atomic_xchg(pred, DLOCK_ONCE_DONE, release);
+#elif defined(__ANDROID__)
+	ANDROID_MEMBAR_FULL();
+	return os_atomic_xchg(pred, DLOCK_ONCE_DONE, relaxed);
 #elif defined(__linux__)
 	if (unlikely(syscall(__NR_membarrier, MEMBARRIER_CMD_SHARED, 0) < 0)) {
 		DISPATCH_INTERNAL_CRASH(errno, "sys_membarrier not supported");
