@@ -990,6 +990,8 @@ extern int _dispatch_evfilt_machport_direct_enabled;
 #endif // DISPATCH_USE_EVFILT_MACHPORT_DIRECT
 
 
+int _dispatch_sigmask(void);
+
 /* #includes dependent on internal.h */
 #include "object_internal.h"
 #include "semaphore_internal.h"

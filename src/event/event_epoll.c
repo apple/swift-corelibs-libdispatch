@@ -117,9 +117,28 @@ _dispatch_muxnote_dispose(dispatch_muxnote_t dmn)
 	free(dmn);
 }
 
+static pthread_t manager_thread;
+
+static void
+_dispatch_muxnote_signal_block_and_raise(int signo)
+{
+	// On linux, for signals to be delivered to the signalfd, signals
+	// must be blocked, else any thread that hasn't them blocked may
+	// receive them.  Fix that by lazily noticing, blocking said signal,
+	// and raising the signal again when it happens
+	_dispatch_sigmask();
+	pthread_kill(manager_thread, signo);
+}
+
 static dispatch_muxnote_t
 _dispatch_muxnote_create(dispatch_unote_t du, uint32_t events)
 {
+	static sigset_t signals_with_unotes;
+	static struct sigaction sa = {
+		.sa_handler = _dispatch_muxnote_signal_block_and_raise,
+		.sa_flags = SA_RESTART,
+	};
+
 	dispatch_muxnote_t dmn;
 	struct stat sb;
 	int fd = du._du->du_ident;
@@ -129,13 +148,17 @@ _dispatch_muxnote_create(dispatch_unote_t du, uint32_t events)
 
 	switch (filter) {
 	case EVFILT_SIGNAL:
+		if (!sigismember(&signals_with_unotes, du._du->du_ident)) {
+			manager_thread = pthread_self();
+			sigaddset(&signals_with_unotes, du._du->du_ident);
+			sigaction(du._du->du_ident, &sa, NULL);
+		}
 		sigemptyset(&sigmask);
 		sigaddset(&sigmask, du._du->du_ident);
 		fd = signalfd(-1, &sigmask, SFD_NONBLOCK | SFD_CLOEXEC);
 		if (fd < 0) {
 			return NULL;
 		}
-		sigprocmask(SIG_BLOCK, &sigmask, NULL);
 		break;
 
 	case EVFILT_WRITE:
