@@ -89,7 +89,7 @@ _dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
 
 #elif defined(__linux__)
 #include <linux/futex.h>
-#if !defined(__x86_64__) && !defined(__i386__)
+#if !defined(__x86_64__) && !defined(__i386__) && !defined(__s390x__)
 #include <linux/membarrier.h>
 #endif
 #include <unistd.h>
@@ -542,8 +542,9 @@ DISPATCH_ALWAYS_INLINE
 static inline dispatch_once_t
 _dispatch_once_xchg_done(dispatch_once_t *pred)
 {
-#if defined(__i386__) || defined(__x86_64__)
+#if defined(__i386__) || defined(__x86_64__) || defined(__s390x__)
 	// On Intel, any load is a load-acquire, so we don't need to be fancy
+	// same for s390x
 	return os_atomic_xchg(pred, DLOCK_ONCE_DONE, release);
 #elif defined(__linux__)
 	if (unlikely(syscall(__NR_membarrier, MEMBARRIER_CMD_SHARED, 0) < 0)) {
