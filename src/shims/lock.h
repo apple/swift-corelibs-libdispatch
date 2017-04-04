@@ -547,7 +547,17 @@ _dispatch_once_xchg_done(dispatch_once_t *pred)
 	return os_atomic_xchg(pred, DLOCK_ONCE_DONE, release);
 #elif defined(__linux__)
 	if (unlikely(syscall(__NR_membarrier, MEMBARRIER_CMD_SHARED, 0) < 0)) {
-		DISPATCH_INTERNAL_CRASH(errno, "sys_membarrier not supported");
+		/*
+		 * sys_membarrier not supported
+		 *
+		 * Ideally we would call DISPATCH_INTERNAL_CRASH() here, but
+		 * due to ordering constraints in internal.h required by Darwin
+		 * the macro is undefined when this header is included.
+		 * Instead, open-code what would be a call to
+		 * _dispatch_hardware_crash() inside DISPATCH_INTERNAL_CRASH().
+		 */
+		__asm__("");
+		__builtin_trap();
 	}
 	return os_atomic_xchg(pred, DLOCK_ONCE_DONE, relaxed);
 #else
