@@ -1,7 +1,6 @@
 module DispatchPrivate [system] [extern_c] {
 	umbrella header "private.h"
 	exclude header "mach_private.h"
-	module * { export * }
 	export *
 }
 
