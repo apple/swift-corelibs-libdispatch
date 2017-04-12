@@ -277,7 +277,7 @@ main(int argc, char** argv)
 				// convenience method handlers should only be called once
 				if (remaining) {
 					fprintf(stderr, "Server-dispatch_write() incomplete .. "
-							"%lu bytes\n", dispatch_data_get_size(remaining));
+							"%zu bytes\n", dispatch_data_get_size(remaining));
 					close(read_fd);
 					close(clientfd);
 					close(sockfd);

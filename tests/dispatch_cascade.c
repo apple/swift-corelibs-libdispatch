@@ -79,7 +79,7 @@ histogram(void)
 		}
 	}
 
-	printf("maxcount = %ld\n", maxcount);
+	printf("maxcount = %zd\n", maxcount);
 
 	size_t x,y;
 	for (y = 20; y > 0; --y) {
