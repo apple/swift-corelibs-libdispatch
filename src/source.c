@@ -328,7 +328,7 @@ _dispatch_source_set_handler_slow(void *context)
 
 DISPATCH_NOINLINE
 static void
-_dispatch_source_set_handler(dispatch_source_t ds, long kind,
+_dispatch_source_set_handler(dispatch_source_t ds, uintptr_t kind,
 		dispatch_continuation_t dc)
 {
 	dispatch_assert(dx_type(ds) == DISPATCH_SOURCE_KEVENT_TYPE);
