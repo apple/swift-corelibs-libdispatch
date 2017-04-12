@@ -68,7 +68,7 @@ collect(void *context __attribute__((unused)))
 	math = delta;
 	math /= COUNT * COUNT * 2ul + COUNT * 2ul;
 
-	printf("lap: %ld\n", lap_count_down);
+	printf("lap: %zd\n", lap_count_down);
 	printf("count: %lu\n", COUNT);
 	printf("delta: %lu ns\n", delta);
 	printf("math: %Lf ns / lap\n", math);
@@ -144,7 +144,7 @@ do_test(void)
 	start = mach_absolute_time();
 
 	for (i = 0; i < COUNT; i++) {
-		snprintf(buf, sizeof(buf), "com.example.starfish-node#%ld", i);
+		snprintf(buf, sizeof(buf), "com.example.starfish-node#%zd", i);
 		queues[i] = dispatch_queue_create(buf, NULL);
 		dispatch_suspend(queues[i]);
 		dispatch_set_target_queue(queues[i], soup);
