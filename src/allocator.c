@@ -601,7 +601,6 @@ _dispatch_alloc_init(void)
 	// Double-check our math. These are all compile time checks and don't
 	// generate code.
 
-	dispatch_assert(sizeof(bitmap_t) == BYTES_PER_BITMAP);
 	dispatch_assert(sizeof(bitmap_t) == BYTES_PER_SUPERMAP);
 
 	dispatch_assert(sizeof(struct dispatch_continuation_s) <=

@@ -97,11 +97,7 @@
 // Use the largest type your platform is comfortable doing atomic ops with.
 // TODO: rdar://11477843
 typedef unsigned long bitmap_t;
-#if defined(__LP64__)
-#define BYTES_PER_BITMAP 8
-#else
-#define BYTES_PER_BITMAP 4
-#endif
+#define BYTES_PER_BITMAP sizeof(bitmap_t)
 
 #define BITMAP_C(v) ((bitmap_t)(v))
 #define BITMAP_ALL_ONES (~BITMAP_C(0))
@@ -115,7 +111,7 @@ typedef unsigned long bitmap_t;
 #define CONSUMED_BYTES_PER_BITMAP (BYTES_PER_BITMAP + \
 		(DISPATCH_CONTINUATION_SIZE * CONTINUATIONS_PER_BITMAP))
 
-#define BYTES_PER_SUPERMAP BYTES_PER_BITMAP
+#define BYTES_PER_SUPERMAP sizeof(bitmap_t)
 #define CONSUMED_BYTES_PER_SUPERMAP (BYTES_PER_SUPERMAP + \
 		(BITMAPS_PER_SUPERMAP * CONSUMED_BYTES_PER_BITMAP))
 
