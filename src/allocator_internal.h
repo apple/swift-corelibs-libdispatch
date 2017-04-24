@@ -147,11 +147,7 @@ typedef unsigned long bitmap_t;
 
 #define PADDING_TO_CONTINUATION_SIZE(x) (ROUND_UP_TO_CONTINUATION_SIZE(x) - (x))
 
-#if defined(__LP64__)
-#define SIZEOF_HEADER 16
-#else
-#define SIZEOF_HEADER 8
-#endif
+#define SIZEOF_HEADER (sizeof(struct dispatch_magazine_header_s))
 
 #define SIZEOF_SUPERMAPS (BYTES_PER_SUPERMAP * SUPERMAPS_PER_MAGAZINE)
 #define SIZEOF_MAPS (BYTES_PER_BITMAP * BITMAPS_PER_SUPERMAP * \
