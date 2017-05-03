@@ -50,7 +50,7 @@ main(void)
 {
 	dispatch_test_start("Dispatch Queue Finalizer");
 
-#ifdef __LP64__
+#if DISPATCH_SIZEOF_PTR == 8
 	ctxt_magic = (void*)((uintptr_t)arc4random() << 32 | arc4random());
 #else
 	ctxt_magic = (void*)arc4random();
