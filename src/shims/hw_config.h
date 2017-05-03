@@ -27,6 +27,22 @@
 #ifndef __DISPATCH_SHIMS_HW_CONFIG__
 #define __DISPATCH_SHIMS_HW_CONFIG__
 
+#ifdef __SIZEOF_POINTER__
+#define DISPATCH_SIZEOF_PTR __SIZEOF_POINTER__
+#elif defined(_WIN64)
+#define DISPATCH_SIZEOF_PTR 8
+#elif defined(_WIN32)
+#define DISPATCH_SIZEOF_PTR 4
+#elif defined(_MSC_VER)
+#error "could not determine pointer size as a constant int for MSVC"
+#elif defined(__LP64__) || defined(__LLP64__)
+#define DISPATCH_SIZEOF_PTR 8
+#elif defined(__ILP32__)
+#define DISPATCH_SIZEOF_PTR 4
+#else
+#error "could not determine pointer size as a constant int"
+#endif // __SIZEOF_POINTER__
+
 #if !TARGET_OS_WIN32
 
 typedef enum {

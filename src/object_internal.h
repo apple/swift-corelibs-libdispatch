@@ -225,7 +225,7 @@
 	.do_xref_cnt = DISPATCH_OBJECT_GLOBAL_REFCNT
 #endif
 
-#ifdef __LP64__
+#if DISPATCH_SIZEOF_PTR == 8
 // the bottom nibble must not be zero, the rest of the bits should be random
 // we sign extend the 64-bit version so that a better instruction encoding is
 // generated on Intel
