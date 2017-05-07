@@ -109,24 +109,47 @@ if(WITH_BLOCKS_RUNTIME)
                              SYSTEM BEFORE PRIVATE
                                "${WITH_BLOCKS_RUNTIME}")
 endif()
-# TODO(compnerd) make this portable
-target_compile_options(dispatch PRIVATE -fno-exceptions)
+if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+  target_compile_options(dispatch PRIVATE /EHsc-)
+else()
+  target_compile_options(dispatch PRIVATE -fno-exceptions)
+endif()
 if(DISPATCH_ENABLE_ASSERTS)
   target_compile_definitions(dispatch
                              PRIVATE
                                -DDISPATCH_DEBUG=1)
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+  target_compile_definitions(dispatch
+                             PRIVATE
+                               -D_CRT_SECURE_NO_WARNINGS)
 endif()
 if(BSD_OVERLAY_FOUND)
   target_compile_options(dispatch
                          PRIVATE
                            ${BSD_OVERLAY_CFLAGS})
 endif()
-# FIXME(compnerd) add check for -momit-leaf-frame-pointer?
-target_compile_options(dispatch
-                       PRIVATE
-                         -Wall
-                         -fblocks
-                         -momit-leaf-frame-pointer)
+if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+  target_compile_options(dispatch
+                         PRIVATE
+                           /W3)
+else()
+  target_compile_options(dispatch
+                         PRIVATE
+                           -Wall)
+endif()
+# FIXME(compnerd) add check for -fblocks?
+if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+  target_compile_options(dispatch
+                         PRIVATE
+                           -Xclang -fblocks)
+else()
+  # FIXME(compnerd) add check for -momit-leaf-frame-pointer?
+  target_compile_options(dispatch
+                         PRIVATE
+                           -fblocks
+                           -momit-leaf-frame-pointer)
+endif()
 if(BSD_OVERLAY_FOUND)
   target_link_libraries(dispatch PRIVATE ${BSD_OVERLAY_LDFLAGS})
 endif()
