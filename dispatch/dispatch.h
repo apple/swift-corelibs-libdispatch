@@ -39,13 +39,17 @@
 #endif
 #endif // __APPLE__
 
+#if HAVE_SYS_CDEFS_H
 #include <sys/cdefs.h>
+#endif
 #include <sys/types.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#if HAVE_UNISTD_H
 #include <unistd.h>
+#endif
 #include <fcntl.h>
 
 #if defined(__linux__) && defined(__has_feature)
