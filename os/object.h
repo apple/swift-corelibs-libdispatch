@@ -26,10 +26,10 @@
 #include <TargetConditionals.h>
 #include <os/availability.h>
 #endif
-#ifndef __linux__
-#include <os/base.h>
-#else
+#ifdef __linux__
 #include <os/linux_base.h>
+#else
+#include <os/base.h>
 #endif
 
 /*!
