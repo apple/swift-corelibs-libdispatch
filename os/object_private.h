@@ -27,7 +27,9 @@
 #ifndef __OS_OBJECT_PRIVATE__
 #define __OS_OBJECT_PRIVATE__
 
+#if HAVE_SYS_CDEFS_H
 #include <sys/cdefs.h>
+#endif
 #include <stddef.h>
 #include <os/object.h>
 
