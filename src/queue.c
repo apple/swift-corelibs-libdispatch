@@ -66,7 +66,6 @@ static void _dispatch_worker_thread2(int priority, int options, void *context);
 #endif
 #if DISPATCH_USE_PTHREAD_POOL
 static void *_dispatch_worker_thread(void *context);
-static int _dispatch_pthread_sigmask(int how, sigset_t *set, sigset_t *oset);
 #endif
 
 #if DISPATCH_COCOA_COMPAT
@@ -5466,13 +5465,8 @@ _dispatch_worker_thread(void *context)
 		pqc->dpq_thread_configure();
 	}
 
-	sigset_t mask;
-	int r;
 	// workaround tweaks the kernel workqueue does for us
-	r = sigfillset(&mask);
-	(void)dispatch_assume_zero(r);
-	r = _dispatch_pthread_sigmask(SIG_BLOCK, &mask, NULL);
-	(void)dispatch_assume_zero(r);
+	_dispatch_sigmask();
 	_dispatch_introspection_thread_add();
 
 	const int64_t timeout = 5ull * NSEC_PER_SEC;
@@ -5488,37 +5482,6 @@ _dispatch_worker_thread(void *context)
 	_dispatch_release(dq);
 
 	return NULL;
-}
-
-int
-_dispatch_pthread_sigmask(int how, sigset_t *set, sigset_t *oset)
-{
-	int r;
-
-	/* Workaround: 6269619 Not all signals can be delivered on any thread */
-
-	r = sigdelset(set, SIGILL);
-	(void)dispatch_assume_zero(r);
-	r = sigdelset(set, SIGTRAP);
-	(void)dispatch_assume_zero(r);
-#if HAVE_DECL_SIGEMT
-	r = sigdelset(set, SIGEMT);
-	(void)dispatch_assume_zero(r);
-#endif
-	r = sigdelset(set, SIGFPE);
-	(void)dispatch_assume_zero(r);
-	r = sigdelset(set, SIGBUS);
-	(void)dispatch_assume_zero(r);
-	r = sigdelset(set, SIGSEGV);
-	(void)dispatch_assume_zero(r);
-	r = sigdelset(set, SIGSYS);
-	(void)dispatch_assume_zero(r);
-	r = sigdelset(set, SIGPIPE);
-	(void)dispatch_assume_zero(r);
-	r = sigdelset(set, SIGPROF);
-	(void)dispatch_assume_zero(r);
-
-	return pthread_sigmask(how, set, oset);
 }
 #endif // DISPATCH_USE_PTHREAD_POOL
 
@@ -5749,6 +5712,7 @@ dispatch_main(void)
 		pthread_key_t dispatch_main_key;
 		pthread_key_create(&dispatch_main_key, _dispatch_sig_thread);
 		pthread_setspecific(dispatch_main_key, &dispatch_main_key);
+		_dispatch_sigmask();
 #endif
 		pthread_exit(NULL);
 		DISPATCH_INTERNAL_CRASH(errno, "pthread_exit() returned");

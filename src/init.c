@@ -72,6 +72,29 @@ dispatch_atfork_child(void)
 	_dispatch_unsafe_fork = 0;
 }
 
+int
+_dispatch_sigmask(void)
+{
+	sigset_t mask;
+	int r = 0;
+
+	/* Workaround: 6269619 Not all signals can be delivered on any thread */
+	r |= sigfillset(&mask);
+	r |= sigdelset(&mask, SIGILL);
+	r |= sigdelset(&mask, SIGTRAP);
+#if HAVE_DECL_SIGEMT
+	r |= sigdelset(&mask, SIGEMT);
+#endif
+	r |= sigdelset(&mask, SIGFPE);
+	r |= sigdelset(&mask, SIGBUS);
+	r |= sigdelset(&mask, SIGSEGV);
+	r |= sigdelset(&mask, SIGSYS);
+	r |= sigdelset(&mask, SIGPIPE);
+	r |= sigdelset(&mask, SIGPROF);
+	r |= pthread_sigmask(SIG_BLOCK, &mask, NULL);
+	(void)dispatch_assume_zero(r);
+}
+
 #pragma mark -
 #pragma mark dispatch_globals
 
