@@ -748,7 +748,6 @@ dispatch_queue_attr_t _dispatch_get_default_queue_attr(void);
 	void *dc_ctxt; \
 	void *dc_data; \
 	void *dc_other
-#define _DISPATCH_SIZEOF_PTR 8
 #elif OS_OBJECT_HAVE_OBJC1
 #define DISPATCH_CONTINUATION_HEADER(x) \
 	dispatch_function_t dc_func; \
@@ -766,7 +765,6 @@ dispatch_queue_attr_t _dispatch_get_default_queue_attr(void);
 	void *dc_ctxt; \
 	void *dc_data; \
 	void *dc_other
-#define _DISPATCH_SIZEOF_PTR 4
 #else
 #define DISPATCH_CONTINUATION_HEADER(x) \
 	union { \
@@ -784,17 +782,16 @@ dispatch_queue_attr_t _dispatch_get_default_queue_attr(void);
 	void *dc_ctxt; \
 	void *dc_data; \
 	void *dc_other
-#define _DISPATCH_SIZEOF_PTR 4
 #endif
 #define _DISPATCH_CONTINUATION_PTRS 8
 #if DISPATCH_HW_CONFIG_UP
 // UP devices don't contend on continuations so we don't need to force them to
 // occupy a whole cacheline (which is intended to avoid contention)
 #define DISPATCH_CONTINUATION_SIZE \
-		(_DISPATCH_CONTINUATION_PTRS * _DISPATCH_SIZEOF_PTR)
+		(_DISPATCH_CONTINUATION_PTRS * DISPATCH_SIZEOF_PTR)
 #else
 #define DISPATCH_CONTINUATION_SIZE  ROUND_UP_TO_CACHELINE_SIZE( \
-		(_DISPATCH_CONTINUATION_PTRS * _DISPATCH_SIZEOF_PTR))
+		(_DISPATCH_CONTINUATION_PTRS * DISPATCH_SIZEOF_PTR))
 #endif
 #define ROUND_UP_TO_CONTINUATION_SIZE(x) \
 		(((x) + (DISPATCH_CONTINUATION_SIZE - 1u)) & \

@@ -1557,7 +1557,7 @@ _dispatch_mach_notify_port_init(void *context DISPATCH_UNUSED)
 	kern_return_t kr;
 #if HAVE_MACH_PORT_CONSTRUCT
 	mach_port_options_t opts = { .flags = MPO_CONTEXT_AS_GUARD | MPO_STRICT };
-#ifdef __LP64__
+#if DISPATCH_SIZEOF_PTR == 8
 	const mach_port_context_t guard = 0xfeed09071f1ca7edull;
 #else
 	const mach_port_context_t guard = 0xff1ca7edull;
