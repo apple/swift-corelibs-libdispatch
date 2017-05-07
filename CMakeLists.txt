@@ -154,6 +154,10 @@ check_include_files("unistd.h" HAVE_UNISTD_H)
 check_include_files("objc/objc-internal.h" HAVE_OBJC)
 
 check_library_exists(pthread sem_init "" USE_POSIX_SEM)
+if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+  add_definitions(-DTARGET_OS_WIN32)
+  add_definitions(-DUSE_WIN32_SEM)
+endif()
 
 check_symbol_exists(CLOCK_UPTIME "time.h" HAVE_DECL_CLOCK_UPTIME)
 check_symbol_exists(CLOCK_UPTIME_FAST "time.h" HAVE_DECL_CLOCK_UPTIME_FAST)
