@@ -235,7 +235,7 @@ public extension DispatchQueue {
 		fn: (DispatchWorkItem) -> (),
 		flags: DispatchWorkItemFlags,
 		execute work: () throws -> T,
-		rescue: @escaping ((Swift.Error) throws -> (T))) rethrows -> T
+		rescue: ((Swift.Error) throws -> (T))) rethrows -> T
 	{
 		var result: T?
 		var error: Swift.Error?
