@@ -54,7 +54,7 @@ function(add_swift_library library)
   add_custom_command(OUTPUT
                        ${ASL_OUTPUT}
                        ${ASL_MODULE_PATH}
-                       ${moodule_directory}/${ASL_MODULE_NAME}.swiftdoc
+                       ${module_directory}/${ASL_MODULE_NAME}.swiftdoc
                      DEPENDS
                        ${ASL_SOURCES}
                      COMMAND
@@ -65,5 +65,5 @@ function(add_swift_library library)
                     DEPENDS
                        ${ASL_OUTPUT}
                        ${ASL_MODULE_PATH}
-                       ${moodule_directory}/${ASL_MODULE_NAME}.swiftdoc)
+                       ${module_directory}/${ASL_MODULE_NAME}.swiftdoc)
 endfunction()
