@@ -196,10 +196,7 @@ public struct DispatchData : RandomAccessCollection {
 		
 		guard !copyRange.isEmpty else { return 0 }
 		
-		let bufferCapacity = buffer.count * sizeof(DestinationType.self)
-		buffer.baseAddress?.withMemoryRebound(to: UInt8.self, capacity: bufferCapacity) {
-			_copyBytesHelper(to: $0, from: copyRange)
-		}
+		_copyBytesHelper(to: buffer.baseAddress!, from: copyRange)
 		return copyRange.count
 	}
 
