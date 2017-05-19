@@ -160,16 +160,7 @@ too old, see http://apt.llvm.org/ to install a newer version.
 On older Ubuntu releases, you may need to install binutils-gold
 to get the gold linker.
 
-2. Initialize git submodules.
-  We are using git submodules to incorporate specific revisions of the
-  upstream pthread_workqueue and libkqueue projects into the build.
-
-    ```
-    git submodule init
-    git submodule update
-    ```
-
-3. Build (as in the general instructions above)
+2. Build (as in the general instructions above)
 
     ```
     sh autogen.sh
