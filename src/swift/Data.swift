@@ -130,7 +130,7 @@ public struct DispatchData : RandomAccessCollection {
 	///
 	/// - parameter buffer: The buffer of bytes to append. The size is calculated from `SourceType` and `buffer.count`.
 	public mutating func append<SourceType>(_ buffer : UnsafeBufferPointer<SourceType>) {
-		let count = buffer.count * sizeof(SourceType.self)
+		let count = buffer.count * MemoryLayout<SourceType>.stride;
 		buffer.baseAddress?.withMemoryRebound(to: UInt8.self, capacity: count) {
 			self.append($0, count: count)
 		}
