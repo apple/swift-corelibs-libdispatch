@@ -92,7 +92,7 @@ _dispatch_sigmask(void)
 	r |= sigdelset(&mask, SIGPIPE);
 	r |= sigdelset(&mask, SIGPROF);
 	r |= pthread_sigmask(SIG_BLOCK, &mask, NULL);
-	(void)dispatch_assume_zero(r);
+	return dispatch_assume_zero(r);
 }
 
 #pragma mark -
