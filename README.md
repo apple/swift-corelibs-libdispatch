@@ -6,14 +6,14 @@ libdispatch is currently available on all Darwin platforms. This project aims to
 
 libdispatch on Darwin is a combination of logic in the `xnu` kernel alongside the user-space Library. The kernel has the most information available to balance workload across the entire system. As a first step, however, we believe it is useful to bring up the basic functionality of the library using user-space pthread primitives on Linux.  Eventually, a Linux kernel module could be developed to support more informed thread scheduling.
 
-## Project Goals
+## Project Status
 
-We are currently early in the development of this project. We began with a mirror of the open source drop that corresponds with OS X El Capitan (10.11) and have ported it to x86_64 Ubuntu 14.04 and 15.10. The next steps are:
+A port of libdispatch to Linux has been completed. On Linux, since Swift 3, swift-corelibs-libdispatch has been included in all Swift releases and is used by other swift-corelibs projects.
 
-1. Complete the work to adopt libdispatch in other Core Libraries projects, especially Foundation. This will validate our work and get immediate test coverage on basic functionality of the Swift API.
-2. Include libdispatch and libdispatch-enabled Core Libraries in the Swift CI environment and the pre-built Swift toolchains at Swift.org.
-3. Develop a test suite for the Swift APIs of libdispatch.
-4. Enhance libdispatch as needed to support Swift language evolution and the needs of the other Core Libraries projects.
+Opportunities to contribute and on-going work include:
+
+1. Develop a test suite for the Swift APIs of libdispatch.
+2. Enhance libdispatch as needed to support Swift language evolution and the needs of the other Core Libraries projects.
 
 ## Build and Install
 
