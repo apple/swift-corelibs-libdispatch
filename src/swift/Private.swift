@@ -158,7 +158,7 @@ public func dispatch_get_global_queue(_ identifier: Int, _ flags: UInt) -> Dispa
 	fatalError()
 }
 
-@available(*, unavailable, renamed: "DispatchQueue.main")
+@available(*, unavailable, renamed: "getter:DispatchQueue.main()")
 public func dispatch_get_main_queue() -> DispatchQueue
 {
 	fatalError()
