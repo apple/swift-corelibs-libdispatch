@@ -97,21 +97,25 @@
 // Use the largest type your platform is comfortable doing atomic ops with.
 // TODO: rdar://11477843
 typedef unsigned long bitmap_t;
-#define BYTES_PER_BITMAP sizeof(bitmap_t)
+#if defined(__LP64__)
+#define BYTES_PER_BITMAP 8
+#else
+#define BYTES_PER_BITMAP 4
+#endif
 
 #define BITMAP_C(v) ((bitmap_t)(v))
 #define BITMAP_ALL_ONES (~BITMAP_C(0))
 
 // Stop configuring.
 
-#define CONTINUATIONS_PER_BITMAP (BYTES_PER_BITMAP * CHAR_BIT)
-#define BITMAPS_PER_SUPERMAP (BYTES_PER_SUPERMAP * CHAR_BIT)
+#define CONTINUATIONS_PER_BITMAP (BYTES_PER_BITMAP * 8)
+#define BITMAPS_PER_SUPERMAP (BYTES_PER_SUPERMAP * 8)
 
 #define BYTES_PER_MAGAZINE (PAGES_PER_MAGAZINE * DISPATCH_ALLOCATOR_PAGE_SIZE)
 #define CONSUMED_BYTES_PER_BITMAP (BYTES_PER_BITMAP + \
 		(DISPATCH_CONTINUATION_SIZE * CONTINUATIONS_PER_BITMAP))
 
-#define BYTES_PER_SUPERMAP sizeof(bitmap_t)
+#define BYTES_PER_SUPERMAP BYTES_PER_BITMAP
 #define CONSUMED_BYTES_PER_SUPERMAP (BYTES_PER_SUPERMAP + \
 		(BITMAPS_PER_SUPERMAP * CONSUMED_BYTES_PER_BITMAP))
 
@@ -143,7 +147,11 @@ typedef unsigned long bitmap_t;
 
 #define PADDING_TO_CONTINUATION_SIZE(x) (ROUND_UP_TO_CONTINUATION_SIZE(x) - (x))
 
-#define SIZEOF_HEADER (sizeof(struct dispatch_magazine_header_s))
+#if defined(__LP64__)
+#define SIZEOF_HEADER 16
+#else
+#define SIZEOF_HEADER 8
+#endif
 
 #define SIZEOF_SUPERMAPS (BYTES_PER_SUPERMAP * SUPERMAPS_PER_MAGAZINE)
 #define SIZEOF_MAPS (BYTES_PER_BITMAP * BITMAPS_PER_SUPERMAP * \
