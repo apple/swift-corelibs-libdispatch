@@ -592,18 +592,18 @@ _dq_state_has_side_suspend_cnt(uint64_t dq_state)
 }
 
 DISPATCH_ALWAYS_INLINE
-static inline uint32_t
+static inline int32_t
 _dq_state_extract_width_bits(uint64_t dq_state)
 {
 	dq_state &= DISPATCH_QUEUE_WIDTH_MASK;
-	return (uint32_t)(dq_state >> DISPATCH_QUEUE_WIDTH_SHIFT);
+	return (int32_t)(dq_state >> DISPATCH_QUEUE_WIDTH_SHIFT);
 }
 
 DISPATCH_ALWAYS_INLINE
-static inline uint32_t
+static inline int32_t
 _dq_state_available_width(uint64_t dq_state)
 {
-	uint32_t full = DISPATCH_QUEUE_WIDTH_FULL;
+	int32_t full = DISPATCH_QUEUE_WIDTH_FULL;
 	if (likely(!(dq_state & DISPATCH_QUEUE_WIDTH_FULL_BIT))) {
 		return full - _dq_state_extract_width_bits(dq_state);
 	}
@@ -611,11 +611,11 @@ _dq_state_available_width(uint64_t dq_state)
 }
 
 DISPATCH_ALWAYS_INLINE
-static inline uint32_t
+static inline int32_t
 _dq_state_used_width(uint64_t dq_state, uint16_t dq_width)
 {
-	uint32_t full = DISPATCH_QUEUE_WIDTH_FULL;
-	uint32_t width = _dq_state_extract_width_bits(dq_state);
+	int32_t full = DISPATCH_QUEUE_WIDTH_FULL;
+	int32_t width = _dq_state_extract_width_bits(dq_state);
 
 	if (dq_state & DISPATCH_QUEUE_PENDING_BARRIER) {
 		// DISPATCH_QUEUE_PENDING_BARRIER means (dq_width - 1) of the used width
@@ -1030,21 +1030,21 @@ _dispatch_queue_try_reserve_sync_width(dispatch_queue_t dq)
  * possibly 0
  */
 DISPATCH_ALWAYS_INLINE DISPATCH_WARN_RESULT
-static inline uint32_t
-_dispatch_queue_try_reserve_apply_width(dispatch_queue_t dq, uint32_t da_width)
+static inline int32_t
+_dispatch_queue_try_reserve_apply_width(dispatch_queue_t dq, int32_t da_width)
 {
 	uint64_t old_state, new_state;
-	uint32_t width;
+	int32_t width;
 
 	(void)os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, relaxed, {
-		width = _dq_state_available_width(old_state);
+		width = (int32_t)_dq_state_available_width(old_state);
 		if (unlikely(!width)) {
 			os_atomic_rmw_loop_give_up(return 0);
 		}
 		if (width > da_width) {
 			width = da_width;
 		}
-		new_state = old_state + width * DISPATCH_QUEUE_WIDTH_INTERVAL;
+		new_state = old_state + (uint64_t)width * DISPATCH_QUEUE_WIDTH_INTERVAL;
 	});
 	return width;
 }
@@ -1055,10 +1055,10 @@ _dispatch_queue_try_reserve_apply_width(dispatch_queue_t dq, uint32_t da_width)
  */
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_queue_relinquish_width(dispatch_queue_t dq, uint32_t da_width)
+_dispatch_queue_relinquish_width(dispatch_queue_t dq, int32_t da_width)
 {
 	(void)os_atomic_sub2o(dq, dq_state,
-			da_width * DISPATCH_QUEUE_WIDTH_INTERVAL, relaxed);
+			(uint64_t)da_width * DISPATCH_QUEUE_WIDTH_INTERVAL, relaxed);
 }
 
 /* Used by target-queue recursing code
@@ -1474,7 +1474,7 @@ _dispatch_queue_push_update_head(dispatch_queue_t dq,
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_root_queue_push_inline(dispatch_queue_t dq, dispatch_object_t _head,
-		dispatch_object_t _tail, unsigned int n)
+		dispatch_object_t _tail, int n)
 {
 	struct dispatch_object_s *head = _head._do, *tail = _tail._do;
 	if (unlikely(_dispatch_queue_push_update_tail_list(dq, head, tail))) {
