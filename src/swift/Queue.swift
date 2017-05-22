@@ -330,6 +330,17 @@ public extension DispatchQueue {
 		let p = Unmanaged.passRetained(v).toOpaque()
 		dispatch_queue_set_specific(self.__wrapped, k, p, _destructDispatchSpecificValue)
 	}
+
+	#if os(Android)
+	public static var threadCleanupCallback: @convention(c) () -> Void {
+		get {
+			return dispatch_thread_detach_handler
+		}
+		set(newValue) {
+			dispatch_thread_detach_handler = newValue
+		}
+	}
+	#endif
 }
 
 private func _destructDispatchSpecificValue(ptr: UnsafeMutableRawPointer?) {
