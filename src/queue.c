@@ -861,6 +861,18 @@ gettid(void)
 		if ((f) && tsd->k) ((void(*)(void*))(f))(tsd->k); \
 	} while (0)
 
+#ifdef __ANDROID__
+static void (*_dispatch_thread_detach_callback)(void);
+
+void
+_dispatch_install_thread_detach_callback(dispatch_function_t cb)
+{
+    if (os_atomic_xchg(&_dispatch_thread_detach_callback, cb, relaxed)) {
+        DISPATCH_CLIENT_CRASH(0, "Installing a thread detach callback twice");
+    }
+}
+#endif
+
 void
 _libdispatch_tsd_cleanup(void *ctx)
 {
@@ -885,6 +897,11 @@ _libdispatch_tsd_cleanup(void *ctx)
 	_tsd_call_cleanup(dispatch_voucher_key, _voucher_thread_cleanup);
 	_tsd_call_cleanup(dispatch_deferred_items_key,
 			_dispatch_deferred_items_cleanup);
+#ifdef __ANDROID__
+	if (_dispatch_thread_detach_callback) {
+		_dispatch_thread_detach_callback();
+	}
+#endif
 	tsd->tid = 0;
 }
 
