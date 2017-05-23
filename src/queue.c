@@ -861,7 +861,9 @@ gettid(void)
 		if ((f) && tsd->k) ((void(*)(void*))(f))(tsd->k); \
 	} while (0)
 
-void (*dispatch_thread_detach_handler)();
+#ifdef __ANDROID__
+void (*_dispatch_thread_detach_handler)(void);
+#endif
 
 void
 _libdispatch_tsd_cleanup(void *ctx)
@@ -887,8 +889,10 @@ _libdispatch_tsd_cleanup(void *ctx)
 	_tsd_call_cleanup(dispatch_voucher_key, _voucher_thread_cleanup);
 	_tsd_call_cleanup(dispatch_deferred_items_key,
 			_dispatch_deferred_items_cleanup);
-	if (dispatch_thread_detach_handler)
-	  dispatch_thread_detach_handler();
+#ifdef __ANDROID__
+	if (_dispatch_thread_detach_handler)
+	  _dispatch_thread_detach_handler();
+#endif
 	tsd->tid = 0;
 }
 

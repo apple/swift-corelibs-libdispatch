@@ -1346,6 +1346,8 @@ dispatch_assert_queue_not(dispatch_queue_t queue)
 #define dispatch_assert_queue_not_debug(q) dispatch_assert_queue_not(q)
 #endif
 
+
+#ifdef __ANDROID__
 /*!
  * @handler dispatch_thread_detach_handler
  *
@@ -1354,10 +1356,9 @@ dispatch_assert_queue_not(dispatch_queue_t queue)
  * "detached" before the thread exits or the application will crash.
  */
 DISPATCH_EXPORT
-void (*dispatch_thread_detach_handler)();
-
+void (*_dispatch_thread_detach_handler)(void);
+#endif
 __END_DECLS
 
 DISPATCH_ASSUME_NONNULL_END
-
 #endif
