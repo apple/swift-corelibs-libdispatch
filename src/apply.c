@@ -234,20 +234,21 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 	if (slowpath(iterations == 0)) {
 		return;
 	}
-	int32_t thr_cnt = dispatch_hw_config(active_cpus);
-	dispatch_thread_context_t dtctxt = _dispatch_thread_context_find(_dispatch_apply_key);
+	int32_t thr_cnt = (int32_t)dispatch_hw_config(active_cpus);
+	dispatch_thread_context_t dtctxt =
+			_dispatch_thread_context_find(_dispatch_apply_key);
 	size_t nested = dtctxt ? dtctxt->dtc_apply_nesting : 0;
 	dispatch_queue_t old_dq = _dispatch_queue_get_current();
 
 	if (!slowpath(nested)) {
 		nested = iterations;
 	} else {
-		thr_cnt = nested < thr_cnt ? thr_cnt / nested : 1;
+		thr_cnt = nested < (size_t)thr_cnt ? thr_cnt / (int32_t)nested : 1;
 		nested = nested < DISPATCH_APPLY_MAX && iterations < DISPATCH_APPLY_MAX
 				? nested * iterations : DISPATCH_APPLY_MAX;
 	}
-	if (iterations < thr_cnt) {
-		thr_cnt = iterations;
+	if (iterations < (size_t)thr_cnt) {
+		thr_cnt = (int32_t)iterations;
 	}
 	if (slowpath(dq == DISPATCH_APPLY_CURRENT_ROOT_QUEUE)) {
 		dq = old_dq ? old_dq : _dispatch_get_root_queue(

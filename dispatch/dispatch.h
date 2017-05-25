@@ -24,30 +24,17 @@
 #ifdef __APPLE__
 #include <Availability.h>
 #include <TargetConditionals.h>
-#else
-#ifndef API_AVAILABLE
-#define API_AVAILABLE(...)
+#include <os/base.h>
+#elif defined(__linux__)
+#include <os/linux_base.h>
 #endif
-#ifndef API_DEPRECATED
-#define API_DEPRECATED(...)
-#endif
-#ifndef API_UNAVAILABLE
-#define API_UNAVAILABLE(...)
-#endif
-#ifndef API_DEPRECATED_WITH_REPLACEMENT
-#define API_DEPRECATED_WITH_REPLACEMENT(...)
-#endif
-#endif // __APPLE__
 
-#if HAVE_SYS_CDEFS_H
-#include <sys/cdefs.h>
-#endif
 #include <sys/types.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
-#if HAVE_UNISTD_H
+#if !defined(HAVE_UNISTD_H) || HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 #include <fcntl.h>

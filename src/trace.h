@@ -132,7 +132,7 @@ _dispatch_trace_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_trace_root_queue_push_list(dispatch_queue_t dq,
-		dispatch_object_t _head, dispatch_object_t _tail, unsigned int n)
+		dispatch_object_t _head, dispatch_object_t _tail, int n)
 {
 	if (slowpath(DISPATCH_QUEUE_PUSH_ENABLED())) {
 		struct dispatch_object_s *dou = _head._do;

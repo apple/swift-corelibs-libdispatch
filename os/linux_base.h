@@ -15,6 +15,23 @@
 
 #include <sys/param.h>
 
+#if HAVE_SYS_CDEFS_H
+#include <sys/cdefs.h>
+#endif
+
+#ifndef API_AVAILABLE
+#define API_AVAILABLE(...)
+#endif
+#ifndef API_DEPRECATED
+#define API_DEPRECATED(...)
+#endif
+#ifndef API_UNAVAILABLE
+#define API_UNAVAILABLE(...)
+#endif
+#ifndef API_DEPRECATED_WITH_REPLACEMENT
+#define API_DEPRECATED_WITH_REPLACEMENT(...)
+#endif
+
 #if __GNUC__
 #define OS_EXPECT(x, v) __builtin_expect((x), (v))
 #define OS_UNUSED __attribute__((__unused__))
