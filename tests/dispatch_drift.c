@@ -32,7 +32,11 @@
 #include <bsdtests.h>
 #include "dispatch_test.h"
 
+#if LENIENT_DEADLINES
+#define ACCEPTABLE_DRIFT 0.1
+#else
 #define ACCEPTABLE_DRIFT 0.001
+#endif
 
 int
 main(int argc __attribute__((unused)), char* argv[] __attribute__((unused)))

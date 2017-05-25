@@ -74,6 +74,11 @@ TESTS=							\
 	dispatch_select				\
 	$(ADDITIONAL_TESTS)
 
+# For testing in swift.org CI system; make deadlines lenient by default
+# to reduce probability of test failures due to machine load.
+if HAVE_SWIFT
+CI_CFLAGS=-DLENIENT_DEADLINES=1
+endif
 
 dispatch_c99_CFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CBLOCKS_FLAGS) -std=c99
 dispatch_plusplus_SOURCES=dispatch_plusplus.cpp
@@ -82,7 +87,7 @@ dispatch_priority2_CPPFLAGS=$(AM_CPPFLAGS) -DUSE_SET_TARGET_QUEUE=1
 
 AM_CPPFLAGS=-I$(top_builddir) -I$(top_srcdir)
 
-DISPATCH_TESTS_CFLAGS=-Wall -Wno-deprecated-declarations $(MARCH_FLAGS)
+DISPATCH_TESTS_CFLAGS=-Wall -Wno-deprecated-declarations $(MARCH_FLAGS) $(CI_CFLAGS)
 AM_CFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CBLOCKS_FLAGS) $(BSD_OVERLAY_CFLAGS)
 AM_OBJCFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CBLOCKS_FLAGS)
 AM_CXXFLAGS=$(DISPATCH_TESTS_CFLAGS) $(CXXBLOCKS_FLAGS) $(BSD_OVERLAY_CFLAGS)
