@@ -332,12 +332,12 @@ public extension DispatchQueue {
 	}
 
 	#if os(Android)
-	public static var threadCleanupCallback: @convention(c) () -> Void {
+	public static var threadDetachCallback: @convention(c) () -> Void {
 		get {
-			return _dispatch_thread_detach_handler
+			return _dispatch_thread_detach_callback
 		}
 		set(newValue) {
-			_dispatch_thread_detach_handler = newValue
+			_dispatch_thread_detach_callback = newValue
 		}
 	}
 	#endif

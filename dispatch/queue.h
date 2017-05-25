@@ -1349,14 +1349,14 @@ dispatch_assert_queue_not(dispatch_queue_t queue)
 
 #ifdef __ANDROID__
 /*!
- * @handler dispatch_thread_detach_handler
+ * @handler dispatch_thread_detach_callback
  *
  * Hook to be able to detach threads before they exit from the Java JVM.
  * If JNI has been used on a thread on Android it needs to have been
  * "detached" before the thread exits or the application will crash.
  */
 DISPATCH_EXPORT
-void (*_dispatch_thread_detach_handler)(void);
+void (*_dispatch_thread_detach_callback)(void);
 #endif
 __END_DECLS
 
