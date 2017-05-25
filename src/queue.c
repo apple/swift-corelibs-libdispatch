@@ -23,8 +23,10 @@
 #include "protocol.h" // _dispatch_send_wakeup_runloop_thread
 #endif
 
-#if (!HAVE_PTHREAD_WORKQUEUES || DISPATCH_DEBUG || DISPATCH_USE_INTERNAL_WORKQUEUE) && \
-		!defined(DISPATCH_ENABLE_THREAD_POOL)
+#if HAVE_PTHREAD_WORKQUEUES || DISPATCH_USE_INTERNAL_WORKQUEUE
+#define DISPATCH_USE_WORKQUEUES 1
+#endif
+#if (!HAVE_PTHREAD_WORKQUEUES || DISPATCH_DEBUG) && !defined(DISPATCH_ENABLE_THREAD_POOL)
 #define DISPATCH_ENABLE_THREAD_POOL 1
 #endif
 #if DISPATCH_ENABLE_PTHREAD_ROOT_QUEUES || DISPATCH_ENABLE_THREAD_POOL
@@ -32,11 +34,10 @@
 #endif
 #if HAVE_PTHREAD_WORKQUEUES && (!HAVE_PTHREAD_WORKQUEUE_QOS || DISPATCH_DEBUG) && \
 		!HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP && \
-		!DISPATCH_USE_INTERNAL_WORKQUEUE && \
 		!defined(DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK)
 #define DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK 1
 #endif
-#if HAVE_PTHREAD_WORKQUEUES && DISPATCH_USE_PTHREAD_POOL && \
+#if DISPATCH_USE_WORKQUEUES && DISPATCH_USE_PTHREAD_POOL && \
 		!DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK
 #define pthread_workqueue_t void*
 #endif
@@ -151,13 +152,13 @@ struct dispatch_root_queue_context_s {
 	union {
 		struct {
 			int volatile dgq_pending;
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 			qos_class_t dgq_qos;
 			int dgq_wq_priority, dgq_wq_options;
 #if DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK || DISPATCH_USE_PTHREAD_POOL
 			pthread_workqueue_t dgq_kworkqueue;
 #endif
-#endif // HAVE_PTHREAD_WORKQUEUES
+#endif // DISPATCH_USE_WORKQUEUES
 #if DISPATCH_USE_PTHREAD_POOL
 			void *dgq_ctxt;
 			int32_t volatile dgq_thread_pool_size;
@@ -179,7 +180,7 @@ typedef struct dispatch_root_queue_context_s *dispatch_root_queue_context_t;
 DISPATCH_CACHELINE_ALIGN
 static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_MAINTENANCE,
 		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE,
 		.dgq_wq_options = 0,
@@ -190,7 +191,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS_OVERCOMMIT] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_MAINTENANCE,
 		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE,
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
@@ -201,7 +202,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_BACKGROUND,
 		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE_CONDITIONAL,
 		.dgq_wq_options = 0,
@@ -212,7 +213,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS_OVERCOMMIT] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_BACKGROUND,
 		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE_CONDITIONAL,
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
@@ -223,7 +224,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_UTILITY_QOS] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_UTILITY,
 		.dgq_wq_priority = WORKQ_LOW_PRIOQUEUE,
 		.dgq_wq_options = 0,
@@ -234,7 +235,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_UTILITY_QOS_OVERCOMMIT] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_UTILITY,
 		.dgq_wq_priority = WORKQ_LOW_PRIOQUEUE,
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
@@ -245,7 +246,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_DEFAULT,
 		.dgq_wq_priority = WORKQ_DEFAULT_PRIOQUEUE,
 		.dgq_wq_options = 0,
@@ -256,7 +257,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS_OVERCOMMIT] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_DEFAULT,
 		.dgq_wq_priority = WORKQ_DEFAULT_PRIOQUEUE,
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
@@ -267,7 +268,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_USER_INITIATED_QOS] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_USER_INITIATED,
 		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE,
 		.dgq_wq_options = 0,
@@ -278,7 +279,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_USER_INITIATED_QOS_OVERCOMMIT] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_USER_INITIATED,
 		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE,
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
@@ -289,7 +290,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_USER_INTERACTIVE,
 		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE_CONDITIONAL,
 		.dgq_wq_options = 0,
@@ -300,7 +301,7 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 #endif
 	}}},
 	[DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS_OVERCOMMIT] = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_USER_INTERACTIVE,
 		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE_CONDITIONAL,
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
@@ -576,11 +577,11 @@ dispatch_assert_queue_barrier(dispatch_queue_t dq)
 static inline bool
 _dispatch_root_queues_init_workq(int *wq_supported)
 {
-	int r;
+	int r; (void)r;
 	bool result = false;
 	*wq_supported = 0;
-#if HAVE_PTHREAD_WORKQUEUES
-	bool disable_wq = false;
+#if DISPATCH_USE_WORKQUEUES
+	bool disable_wq = false; (void)disable_wq;
 #if DISPATCH_ENABLE_THREAD_POOL && DISPATCH_DEBUG
 	disable_wq = slowpath(getenv("LIBDISPATCH_DISABLE_KWQ"));
 #endif
@@ -683,7 +684,7 @@ _dispatch_root_queues_init_workq(int *wq_supported)
 #endif
 	}
 #endif // DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK || DISPATCH_ENABLE_THREAD_POOL
-#endif // HAVE_PTHREAD_WORKQUEUES
+#endif // DISPATCH_USE_WORKQUEUES
 	return result;
 }
 
@@ -699,7 +700,7 @@ _dispatch_root_queue_init_pthread_pool(dispatch_root_queue_context_t qc,
 		thread_pool_size = pool_size;
 	}
 	qc->dgq_thread_pool_size = thread_pool_size;
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 	if (qc->dgq_qos) {
 		(void)dispatch_assume_zero(pthread_attr_init(&pqc->dpq_thread_attr));
 		(void)dispatch_assume_zero(pthread_attr_setdetachstate(
@@ -1757,7 +1758,7 @@ static struct dispatch_pthread_root_queue_context_s
 		_dispatch_mgr_root_queue_pthread_context;
 static struct dispatch_root_queue_context_s
 		_dispatch_mgr_root_queue_context = {{{
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 	.dgq_kworkqueue = (void*)(~0ul),
 #endif
 	.dgq_ctxt = &_dispatch_mgr_root_queue_pthread_context,
@@ -2019,7 +2020,7 @@ _dispatch_pthread_root_queue_create(const char *label, unsigned long flags,
 
 	pqc->dpq_thread_mediator.do_vtable = DISPATCH_VTABLE(semaphore);
 	qc->dgq_ctxt = pqc;
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 	qc->dgq_kworkqueue = (void*)(~0ul);
 #endif
 	_dispatch_root_queue_init_pthread_pool(qc, pool_size, true);
@@ -3963,7 +3964,7 @@ _dispatch_global_queue_poke_slow(dispatch_queue_t dq, int n, int floor)
 
 	_dispatch_root_queues_init();
 	_dispatch_debug_root_queue(dq, __func__);
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 #if DISPATCH_USE_PTHREAD_POOL
 	if (qc->dgq_kworkqueue != (void*)(~0ul))
 #endif
@@ -3992,7 +3993,7 @@ _dispatch_global_queue_poke_slow(dispatch_queue_t dq, int n, int floor)
 		(void)dispatch_assume_zero(r);
 		return;
 	}
-#endif // HAVE_PTHREAD_WORKQUEUES
+#endif // DISPATCH_USE_WORKQUEUES
 #if DISPATCH_USE_PTHREAD_POOL
 	dispatch_pthread_root_queue_context_t pqc = qc->dgq_ctxt;
 	if (fastpath(pqc->dpq_thread_mediator.do_vtable)) {
@@ -4061,7 +4062,7 @@ _dispatch_global_queue_poke(dispatch_queue_t dq, int n, int floor)
 	if (!_dispatch_queue_class_probe(dq)) {
 		return;
 	}
-#if HAVE_PTHREAD_WORKQUEUES
+#if DISPATCH_USE_WORKQUEUES
 	dispatch_root_queue_context_t qc = dq->do_ctxt;
 	if (
 #if DISPATCH_USE_PTHREAD_POOL
@@ -4072,7 +4073,7 @@ _dispatch_global_queue_poke(dispatch_queue_t dq, int n, int floor)
 				"global queue: %p", dq);
 		return;
 	}
-#endif // HAVE_PTHREAD_WORKQUEUES
+#endif // DISPATCH_USE_WORKQUEUES
 	return _dispatch_global_queue_poke_slow(dq, n, floor);
 }
 
