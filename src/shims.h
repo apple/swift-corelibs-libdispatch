@@ -41,8 +41,6 @@
 #if HAVE_PTHREAD_WORKQUEUES
 #if __has_include(<pthread/workqueue_private.h>)
 #include <pthread/workqueue_private.h>
-#elif DISPATCH_USE_INTERNAL_WORKQUEUE
-#include <event/workqueue_internal.h>
 #else
 #include <pthread_workqueue.h>
 #endif
@@ -50,6 +48,10 @@
 #define WORKQ_FEATURE_MAINTENANCE 0x10
 #endif
 #endif // HAVE_PTHREAD_WORKQUEUES
+
+#if DISPATCH_USE_INTERNAL_WORKQUEUE
+#include <event/workqueue_internal.h>
+#endif
 
 #if HAVE_PTHREAD_NP_H
 #include <pthread_np.h>

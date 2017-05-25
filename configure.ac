@@ -320,7 +320,11 @@ AS_IF([test -n "$apple_libpthread_source_path" -a -n "$apple_xnu_source_osfmk_pa
 AC_CHECK_HEADERS([pthread_machdep.h pthread/qos.h])
 
 # pthread_workqueues.
-# Look for own version first, than see if there is a system version.
+# We can either use libdispatch's internal_workqueue or pthread_workqueue.
+# If not specifically configured, default to internal_workqueues on
+# Linux and pthread_workqueue on all other platforms.
+# On any platform, if pthread_workqueue is not available, fall back
+# to using internal_workqueue.
 AC_ARG_ENABLE([internal-libpwq],
   [AS_HELP_STRING([--enable-internal-libpwq],
     [Use libdispatch's own implementation of pthread workqueues.])],,
@@ -333,15 +337,15 @@ AC_ARG_ENABLE([internal-libpwq],
    esac]
 )
 AS_IF([test "x$enable_internal_libpwq" = "xyes"],
-  [AC_DEFINE(DISPATCH_USE_INTERNAL_WORKQUEUE, 1, [Use libdispatch's own implementation of pthread_workqueue API])
-   AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])
-   dispatch_use_internal_workqueue=true
-   have_pthread_workqueues=true],
-  [dispatch_use_internal_workqueue=false
-   AC_CHECK_HEADERS([pthread/workqueue_private.h pthread_workqueue.h],
+  [AC_DEFINE(DISPATCH_USE_INTERNAL_WORKQUEUE, 1, [Use libdispatch's own implementation of pthread workqueues])
+   have_pthread_workqueues=false,
+   dispatch_use_internal_workqueue=true],
+  [AC_CHECK_HEADERS([pthread/workqueue_private.h pthread_workqueue.h],
      [AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])
-      have_pthread_workqueues=true],
-     [have_pthread_workqueues=false]
+      have_pthread_workqueues=true,
+	  dispatch_use_internal_workqueue=false],
+     [have_pthread_workqueues=false,
+	  dispatch_use_internal_workqueue=true]
   )]
 )
 AM_CONDITIONAL(DISPATCH_USE_INTERNAL_WORKQUEUE, $dispatch_use_internal_workqueue)
