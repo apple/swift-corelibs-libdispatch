@@ -23,13 +23,11 @@
 
 #ifdef __APPLE__
 #include <Availability.h>
-#include <TargetConditionals.h>
 #include <os/availability.h>
-#endif
-#ifdef __linux__
-#include <os/linux_base.h>
-#else
+#include <TargetConditionals.h>
 #include <os/base.h>
+#elif defined(__linux__)
+#include <os/linux_base.h>
 #endif
 
 /*!

@@ -695,7 +695,7 @@ _dispatch_root_queue_init_pthread_pool(dispatch_root_queue_context_t qc,
 {
 	dispatch_pthread_root_queue_context_t pqc = qc->dgq_ctxt;
 	int32_t thread_pool_size = overcommit ? DISPATCH_WORKQ_MAX_PTHREAD_COUNT :
-			dispatch_hw_config(active_cpus);
+			(int32_t)dispatch_hw_config(active_cpus);
 	if (slowpath(pool_size) && pool_size < thread_pool_size) {
 		thread_pool_size = pool_size;
 	}

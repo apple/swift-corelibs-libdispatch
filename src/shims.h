@@ -50,7 +50,7 @@
 #endif // HAVE_PTHREAD_WORKQUEUES
 
 #if DISPATCH_USE_INTERNAL_WORKQUEUE
-#include <event/workqueue_internal.h>
+#include "event/workqueue_internal.h"
 #endif
 
 #if HAVE_PTHREAD_NP_H
