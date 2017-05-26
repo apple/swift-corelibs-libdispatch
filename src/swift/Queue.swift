@@ -332,12 +332,15 @@ public extension DispatchQueue {
 	}
 
 	#if os(Android)
-	public static var threadDetachCallback: @convention(c) () -> Void {
+	@_silgen_name("_dispatch_set_detach_callback")
+	private static func _dispatch_set_detach_callback( _ callback: (@convention(c) () -> Void)? )
+
+	public static var threadDetachCallback: (@convention(c) () -> Void)? {
 		get {
-			return _dispatch_thread_detach_callback
+			return nil
 		}
 		set(newValue) {
-			_dispatch_thread_detach_callback = newValue
+			_dispatch_set_detach_callback( newValue )
 		}
 	}
 	#endif
