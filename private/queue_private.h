@@ -332,6 +332,8 @@ dispatch_async_enforce_qos_class_f(dispatch_queue_t queue,
  */
 DISPATCH_EXPORT
 void _dispatch_set_detach_callback( void (*callback)(void) );
+DISPATCH_EXPORT
+void (*_dispatch_get_detach_callback(void))(void);
 #endif
 
 __END_DECLS
