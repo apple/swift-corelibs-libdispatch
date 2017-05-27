@@ -864,11 +864,9 @@ gettid(void)
 #ifdef __ANDROID__
 static void (*_dispatch_thread_detach_callback)(void);
 
-void _dispatch_set_detach_callback( void (*callback)(void) ) {
-	_dispatch_thread_detach_callback = callback;
-}
-void (*_dispatch_get_detach_callback(void))(void) {
-	return _dispatch_thread_detach_callback;
+void
+*(*_dispatch_thread_detach_callback_ptr(void))(void) {
+	return &_dispatch_thread_detach_callback;
 }
 #endif
 
