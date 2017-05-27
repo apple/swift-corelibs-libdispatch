@@ -1039,15 +1039,4 @@ _dispatch_queue_is_exclusively_owned_by_current_thread_4IOHID(
 
 #endif // __APPLE__
 
-#ifdef __ANDROID__
-/*!
- * @handler dispatch_thread_detach_callback
- *
- * Hook to be able to detach threads from the Java JVM before they exit.
- * If JNI has been used on a thread on Android it needs to have been
- * "detached" before the thread exits or the application will crash.
- */
-DISPATCH_EXPORT
-void _dispatch_set_detach_callback( void (*callback)(void) );
-#endif
 #endif
