@@ -865,8 +865,11 @@ gettid(void)
 static void (*_dispatch_thread_detach_callback)(void);
 
 void
-*(*_dispatch_thread_detach_callback_ptr(void))(void) {
-	return &_dispatch_thread_detach_callback;
+_dispatch_install_thread_detach_callback(dispatch_function_t cb)
+{
+    if (os_atomic_xchg(&_dispatch_thread_detach_callback, cb, relaxed)) {
+        DISPATCH_CLIENT_CRASH(0, "Installing a thread detach callback twice");
+    }
 }
 #endif
 

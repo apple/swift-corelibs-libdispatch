@@ -332,16 +332,11 @@ public extension DispatchQueue {
 	}
 
 	#if os(Android)
-	@_silgen_name("_dispatch_thread_detach_callback_ptr")
-	private static func _dispatch_thread_detach_callback_ptr() -> UnsafeMutablePointer<(@convention(c) () -> Void)?>
+	@_silgen_name("_dispatch_install_thread_detach_callback")
+	private static func _dispatch_install_thread_detach_callback(_ cb: @escaping @convention(c) () -> Void)
 
-	public static var threadDetachCallback: (@convention(c) () -> Void)? {
-		get {
-			return _dispatch_thread_detach_callback_ptr().pointee
-		}
-		set(newValue) {
-			_dispatch_thread_detach_callback_ptr().pointee = newValue
-		}
+	public static func setThreadDetachCallback(_ cb: @escaping @convention(c) () -> Void) {
+		_dispatch_install_thread_detach_callback(cb)
 	}
 	#endif
 }
