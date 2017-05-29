@@ -37,6 +37,9 @@
 		!defined(DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK)
 #define DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK 1
 #endif
+#if HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP || DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK
+#define DISPATCH_USE_WORKQ_PRIORITY 1
+#endif
 #if DISPATCH_USE_WORKQUEUES && DISPATCH_USE_PTHREAD_POOL && \
 		!DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK
 #define pthread_workqueue_t void*
@@ -158,7 +161,10 @@ struct dispatch_root_queue_context_s {
 			int volatile dgq_pending;
 #if DISPATCH_USE_WORKQUEUES
 			qos_class_t dgq_qos;
-			int dgq_wq_priority, dgq_wq_options;
+#if DISPATCH_USE_WORKQ_PRIORITY
+			int dgq_wq_priority;
+#endif
+			int dgq_wq_options;
 #if DISPATCH_USE_LEGACY_WORKQUEUE_FALLBACK || DISPATCH_USE_PTHREAD_POOL
 			pthread_workqueue_t dgq_kworkqueue;
 #endif
@@ -186,7 +192,9 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS] = {{{
 #if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_MAINTENANCE,
+#if DISPATCH_USE_WORKQ_PRIORITY
 		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE,
+#endif
 		.dgq_wq_options = 0,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -197,7 +205,9 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS_OVERCOMMIT] = {{{
 #if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_MAINTENANCE,
+#if DISPATCH_USE_WORKQ_PRIORITY
 		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE,
+#endif
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -208,7 +218,9 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS] = {{{
 #if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_BACKGROUND,
+#if DISPATCH_USE_WORKQ_PRIORITY
 		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE_CONDITIONAL,
+#endif
 		.dgq_wq_options = 0,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -219,7 +231,9 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS_OVERCOMMIT] = {{{
 #if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_BACKGROUND,
+#if DISPATCH_USE_WORKQ_PRIORITY
 		.dgq_wq_priority = WORKQ_BG_PRIOQUEUE_CONDITIONAL,
+#endif
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -230,7 +244,9 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_UTILITY_QOS] = {{{
 #if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_UTILITY,
+#if DISPATCH_USE_WORKQ_PRIORITY
 		.dgq_wq_priority = WORKQ_LOW_PRIOQUEUE,
+#endif
 		.dgq_wq_options = 0,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -241,7 +257,9 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_UTILITY_QOS_OVERCOMMIT] = {{{
 #if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_UTILITY,
+#if DISPATCH_USE_WORKQ_PRIORITY
 		.dgq_wq_priority = WORKQ_LOW_PRIOQUEUE,
+#endif
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -252,7 +270,9 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS] = {{{
 #if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_DEFAULT,
+#if DISPATCH_USE_WORKQ_PRIORITY
 		.dgq_wq_priority = WORKQ_DEFAULT_PRIOQUEUE,
+#endif
 		.dgq_wq_options = 0,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -263,7 +283,9 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS_OVERCOMMIT] = {{{
 #if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_DEFAULT,
+#if DISPATCH_USE_WORKQ_PRIORITY
 		.dgq_wq_priority = WORKQ_DEFAULT_PRIOQUEUE,
+#endif
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -274,7 +296,9 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_USER_INITIATED_QOS] = {{{
 #if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_USER_INITIATED,
+#if DISPATCH_USE_WORKQ_PRIORITY
 		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE,
+#endif
 		.dgq_wq_options = 0,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -285,7 +309,9 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_USER_INITIATED_QOS_OVERCOMMIT] = {{{
 #if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_USER_INITIATED,
+#if DISPATCH_USE_WORKQ_PRIORITY
 		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE,
+#endif
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -296,7 +322,9 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS] = {{{
 #if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_USER_INTERACTIVE,
+#if DISPATCH_USE_WORKQ_PRIORITY
 		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE_CONDITIONAL,
+#endif
 		.dgq_wq_options = 0,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -307,7 +335,9 @@ static struct dispatch_root_queue_context_s _dispatch_root_queue_contexts[] = {
 	[DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS_OVERCOMMIT] = {{{
 #if DISPATCH_USE_WORKQUEUES
 		.dgq_qos = QOS_CLASS_USER_INTERACTIVE,
+#if DISPATCH_USE_WORKQ_PRIORITY
 		.dgq_wq_priority = WORKQ_HIGH_PRIOQUEUE_CONDITIONAL,
+#endif
 		.dgq_wq_options = WORKQ_ADDTHREADS_OPTION_OVERCOMMIT,
 #endif
 #if DISPATCH_ENABLE_THREAD_POOL
@@ -5809,7 +5839,7 @@ _dispatch_worker_thread(void *context)
 	bool manager = (dq == &_dispatch_mgr_root_queue);
 	bool monitored = !(overcommit || manager);
 	if (monitored) {
-		_dispatch_workq_worker_register(dq, qc->dgq_wq_priority);
+		_dispatch_workq_worker_register(dq, qc->dgq_qos);
 	}
 #endif
 
@@ -5823,7 +5853,7 @@ _dispatch_worker_thread(void *context)
 
 #if DISPATCH_USE_INTERNAL_WORKQUEUE
 	if (monitored) {
-		_dispatch_workq_worker_unregister(dq,  qc->dgq_wq_priority);
+		_dispatch_workq_worker_unregister(dq,  qc->dgq_qos);
 	}
 #endif
 	(void)os_atomic_inc2o(qc, dgq_thread_pool_size, release);
