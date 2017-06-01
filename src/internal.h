@@ -454,7 +454,7 @@ void _dispatch_log(const char *msg, ...);
  * For reporting bugs within libdispatch when using the "_debug" version of the
  * library.
  */
-#if __GNUC__
+#if __APPLE__
 #define dispatch_assert(e) do { \
 		if (__builtin_constant_p(e)) { \
 			dispatch_static_assert(e); \
@@ -472,7 +472,7 @@ static inline void _dispatch_assert(long e, long line) {
 #define dispatch_assert(e) _dispatch_assert((long)(e), __LINE__)
 #endif	/* __GNUC__ */
 
-#if __GNUC__
+#if __APPLE__
 /*
  * A lot of API return zero upon success and not-zero on fail. Let's capture
  * and log the non-zero value
@@ -491,7 +491,7 @@ static inline void _dispatch_assert(long e, long line) {
 static inline void _dispatch_assert_zero(long e, long line) {
 	if (DISPATCH_DEBUG && e) _dispatch_abort(line, e);
 }
-#define dispatch_assert_zero(e) _dispatch_assert((long)(e), __LINE__)
+#define dispatch_assert_zero(e) _dispatch_assert_zero((long)(e), __LINE__)
 #endif	/* __GNUC__ */
 
 /*

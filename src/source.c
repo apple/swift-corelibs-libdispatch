@@ -2321,7 +2321,6 @@ _dispatch_mgr_thread(dispatch_queue_t dq DISPATCH_UNUSED,
 	}
 #endif
 #if DISPATCH_USE_MGR_THREAD
-	_dispatch_adopt_wlh_anon();
 	_dispatch_queue_set_current(&_dispatch_mgr_q);
 	_dispatch_mgr_priority_init();
 	_dispatch_queue_mgr_lock(&_dispatch_mgr_q);

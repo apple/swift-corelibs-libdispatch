@@ -601,9 +601,9 @@ _dispatch_gate_wait_slow(dispatch_gate_t dgl, dispatch_lock value,
 #if HAVE_UL_UNFAIR_LOCK
 		_dispatch_unfair_lock_wait(&dgl->dgl_lock, new_value, 0, flags);
 #elif HAVE_FUTEX
-		_dispatch_futex_wait(&dgl->dgl_lock, tid_new, NULL, FUTEX_PRIVATE_FLAG);
+		_dispatch_futex_wait(&dgl->dgl_lock, new_value, NULL, FUTEX_PRIVATE_FLAG);
 #else
-		_dispatch_thread_switch(tid_new, flags, timeout++);
+		_dispatch_thread_switch(new_value, flags, timeout++);
 #endif
 		(void)timeout;
 	}
