@@ -4523,10 +4523,12 @@ _dispatch_return_to_kernel(void)
 void
 _dispatch_poll_for_events_4launchd(void)
 {
+#if DISPATCH_USE_KEVENT_WORKQUEUE
 	if (_dispatch_get_wlh()) {
 		dispatch_assert(_dispatch_deferred_items_get()->ddi_wlh_servicing);
 		_dispatch_event_loop_drain(KEVENT_FLAG_IMMEDIATE);
 	}
+#endif
 }
 
 #if HAVE_PTHREAD_WORKQUEUE_NARROWING
