@@ -38,6 +38,7 @@
 
 #ifdef __APPLE__
 #include <Availability.h>
+#include <os/availability.h>
 #include <TargetConditionals.h>
 
 #ifndef TARGET_OS_MAC_DESKTOP
@@ -48,15 +49,15 @@
 #if TARGET_OS_MAC_DESKTOP
 #  define DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(x) \
 		(__MAC_OS_X_VERSION_MIN_REQUIRED >= (x))
-#  if !DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101100)
-#    error "OS X hosts older than OS X 10.11 aren't supported anymore"
-#  endif // !DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101000)
+#  if !DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
+#    error "OS X hosts older than OS X 10.12 aren't supported anymore"
+#  endif // !DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
 #elif TARGET_OS_SIMULATOR
 #  define DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(x) \
 		(IPHONE_SIMULATOR_HOST_MIN_VERSION_REQUIRED >= (x))
-#  if !DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101100)
-#    error "Simulator hosts older than OS X 10.11 aren't supported anymore"
-#  endif // !DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101000)
+#  if !DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
+#    error "Simulator hosts older than OS X 10.12 aren't supported anymore"
+#  endif // !DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
 #else
 #  define DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(x) 1
 #  if __IPHONE_OS_VERSION_MIN_REQUIRED < 90000
@@ -188,6 +189,8 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #define DISPATCH_USE_CLIENT_CALLOUT 1
 #endif
 
+#define DISPATCH_ALLOW_NON_LEAF_RETARGET 1
+
 /* The "_debug" library build */
 #ifndef DISPATCH_DEBUG
 #define DISPATCH_DEBUG 0
@@ -239,9 +242,6 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #if HAVE_MALLOC_MALLOC_H
 #include <malloc/malloc.h>
 #endif
-#if __has_include(<malloc_private.h>)
-#include <malloc_private.h>
-#endif // __has_include(<malloc_private.h)
 
 #include <sys/stat.h>
 
@@ -260,7 +260,11 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #endif
 
 #ifdef __BLOCKS__
+#if __has_include(<Block_private.h>)
 #include <Block_private.h>
+#else
+#include "BlocksRuntime/Block_private.h"
+#endif // __has_include(<Block_private.h>)
 #include <Block.h>
 #endif /* __BLOCKS__ */
 
@@ -456,8 +460,8 @@ void _dispatch_log(const char *msg, ...);
 			dispatch_static_assert(e); \
 		} else { \
 			typeof(e) _e = fastpath(e); /* always eval 'e' */ \
-			if (DISPATCH_DEBUG && !_e) { \
-				_dispatch_abort(__LINE__, (long)_e); \
+			if (!_e) { \
+				__assert_rtn(__func__, __FILE__, __LINE__, #e); \
 			} \
 		} \
 	} while (0)
@@ -478,8 +482,8 @@ static inline void _dispatch_assert(long e, long line) {
 			dispatch_static_assert(e); \
 		} else { \
 			typeof(e) _e = slowpath(e); /* always eval 'e' */ \
-			if (DISPATCH_DEBUG && _e) { \
-				_dispatch_abort(__LINE__, (long)_e); \
+			if (_e) { \
+				__assert_rtn(__func__, __FILE__, __LINE__, #e); \
 			} \
 		} \
 	} while (0)
@@ -596,6 +600,7 @@ void *_dispatch_calloc(size_t num_items, size_t size);
 const char *_dispatch_strdup_if_mutable(const char *str);
 void _dispatch_vtable_init(void);
 char *_dispatch_get_build(void);
+int _dispatch_sigmask(void);
 
 uint64_t _dispatch_timeout(dispatch_time_t when);
 uint64_t _dispatch_time_nanoseconds_since_epoch(dispatch_time_t when);
@@ -630,34 +635,15 @@ _dispatch_fork_becomes_unsafe(void)
 
 // Older Mac OS X and iOS Simulator fallbacks
 
-#if HAVE_PTHREAD_WORKQUEUES || DISPATCH_USE_INTERNAL_WORKQUEUE
-#ifndef WORKQ_ADDTHREADS_OPTION_OVERCOMMIT
-#define WORKQ_ADDTHREADS_OPTION_OVERCOMMIT 0x00000001
-#endif
-#endif // HAVE_PTHREAD_WORKQUEUES || DISPATCH_USE_INTERNAL_WORKQUEUE
 #if HAVE__PTHREAD_WORKQUEUE_INIT && PTHREAD_WORKQUEUE_SPI_VERSION >= 20140213 \
 		&& !defined(HAVE_PTHREAD_WORKQUEUE_QOS)
 #define HAVE_PTHREAD_WORKQUEUE_QOS 1
 #endif
-#if HAVE__PTHREAD_WORKQUEUE_INIT && (PTHREAD_WORKQUEUE_SPI_VERSION >= 20150304 \
-		|| (PTHREAD_WORKQUEUE_SPI_VERSION == 20140730 && \
-			defined(WORKQ_FEATURE_KEVENT))) \
+#if HAVE__PTHREAD_WORKQUEUE_INIT && PTHREAD_WORKQUEUE_SPI_VERSION >= 20150304 \
 		&& !defined(HAVE_PTHREAD_WORKQUEUE_KEVENT)
-#if PTHREAD_WORKQUEUE_SPI_VERSION == 20140730
-// rdar://problem/20609877
-typedef pthread_worqueue_function_kevent_t pthread_workqueue_function_kevent_t;
-#endif
 #define HAVE_PTHREAD_WORKQUEUE_KEVENT 1
 #endif
 
-
-#ifndef PTHREAD_WORKQUEUE_RESETS_VOUCHER_AND_PRIORITY_ON_PARK
-#if HAVE_PTHREAD_WORKQUEUE_QOS && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
-#define PTHREAD_WORKQUEUE_RESETS_VOUCHER_AND_PRIORITY_ON_PARK 1
-#else
-#define PTHREAD_WORKQUEUE_RESETS_VOUCHER_AND_PRIORITY_ON_PARK 0
-#endif
-#endif // PTHREAD_WORKQUEUE_RESETS_VOUCHER_AND_PRIORITY_ON_PARK
 
 #ifndef HAVE_PTHREAD_WORKQUEUE_NARROWING
 #if !DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(109900)
@@ -681,31 +667,29 @@ typedef pthread_worqueue_function_kevent_t pthread_workqueue_function_kevent_t;
 #define DISPATCH_USE_MEMORYPRESSURE_SOURCE 1
 #endif
 #if DISPATCH_USE_MEMORYPRESSURE_SOURCE
+#if __has_include(<malloc_private.h>)
+#include <malloc_private.h>
+#else
+extern void malloc_memory_event_handler(unsigned long);
+#endif // __has_include(<malloc_private.h)
 extern bool _dispatch_memory_warn;
 #endif
 
 #if HAVE_PTHREAD_WORKQUEUE_KEVENT && defined(KEVENT_FLAG_WORKQ) && \
-		DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200) && \
 		!defined(DISPATCH_USE_KEVENT_WORKQUEUE)
 #define DISPATCH_USE_KEVENT_WORKQUEUE 1
 #endif
 
-
-#if (!DISPATCH_USE_KEVENT_WORKQUEUE || DISPATCH_DEBUG) && \
+#if (!DISPATCH_USE_KEVENT_WORKQUEUE || DISPATCH_DEBUG || DISPATCH_PROFILE) && \
 		!defined(DISPATCH_USE_MGR_THREAD)
 #define DISPATCH_USE_MGR_THREAD 1
 #endif
 
-#if DISPATCH_USE_KEVENT_WORKQUEUE && \
-		DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200) && \
-		!defined(DISPATCH_USE_EVFILT_MACHPORT_DIRECT)
-#define DISPATCH_USE_EVFILT_MACHPORT_DIRECT 1
-#endif
 
-
-#if (!DISPATCH_USE_EVFILT_MACHPORT_DIRECT || DISPATCH_DEBUG) && \
-		!defined(DISPATCH_EVFILT_MACHPORT_PORTSET_FALLBACK)
-#define DISPATCH_EVFILT_MACHPORT_PORTSET_FALLBACK 1
+#if defined(MACH_SEND_SYNC_OVERRIDE) && defined(MACH_RCV_SYNC_WAIT) && \
+		DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(109900) && \
+		!defined(DISPATCH_USE_MACH_SEND_SYNC_OVERRIDE)
+#define DISPATCH_USE_MACH_SEND_SYNC_OVERRIDE 1
 #endif
 
 #if defined(F_SETNOSIGPIPE) && defined(F_GETNOSIGPIPE)
@@ -761,7 +745,8 @@ extern bool _dispatch_memory_warn;
 #else
 #define ARIADNE_ENTER_DISPATCH_MAIN_CODE 0
 #endif
-#if !defined(DISPATCH_USE_VOUCHER_KDEBUG_TRACE) && DISPATCH_INTROSPECTION
+#if !defined(DISPATCH_USE_VOUCHER_KDEBUG_TRACE) && \
+		(DISPATCH_INTROSPECTION || DISPATCH_PROFILE)
 #define DISPATCH_USE_VOUCHER_KDEBUG_TRACE 1
 #endif
 
@@ -777,7 +762,6 @@ extern bool _dispatch_memory_warn;
 #define DISPATCH_PERF_delayed_registration DISPATCH_CODE(PERF, 4)
 #define DISPATCH_PERF_mutable_target DISPATCH_CODE(PERF, 5)
 #define DISPATCH_PERF_strict_bg_timer DISPATCH_CODE(PERF, 6)
-#define DISPATCH_PERF_wlh_change DISPATCH_CODE(PERF, 7)
 
 #define DISPATCH_MACH_MSG_hdr_move DISPATCH_CODE(MACH_MSG, 1)
 
@@ -837,32 +821,12 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 #endif
 #endif // VOUCHER_USE_MACH_VOUCHER
 
+#ifndef VOUCHER_USE_EMPTY_MACH_BASE_VOUCHER
 #if RDAR_24272659 // FIXME: <rdar://problem/24272659>
-#if !VOUCHER_USE_MACH_VOUCHER || !DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
-#undef VOUCHER_USE_EMPTY_MACH_BASE_VOUCHER
-#define VOUCHER_USE_EMPTY_MACH_BASE_VOUCHER 0
-#elif !defined(VOUCHER_USE_EMPTY_MACH_BASE_VOUCHER)
 #define VOUCHER_USE_EMPTY_MACH_BASE_VOUCHER 1
-#endif
 #else // RDAR_24272659
-#undef VOUCHER_USE_EMPTY_MACH_BASE_VOUCHER
 #define VOUCHER_USE_EMPTY_MACH_BASE_VOUCHER 0
 #endif // RDAR_24272659
-
-#if !VOUCHER_USE_MACH_VOUCHER || !DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
-#undef VOUCHER_USE_BANK_AUTOREDEEM
-#define VOUCHER_USE_BANK_AUTOREDEEM 0
-#elif !defined(VOUCHER_USE_BANK_AUTOREDEEM)
-#define VOUCHER_USE_BANK_AUTOREDEEM 1
-#endif
-
-#if !VOUCHER_USE_MACH_VOUCHER || \
-		!__has_include(<voucher/ipc_pthread_priority_types.h>) || \
-		!DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
-#undef VOUCHER_USE_MACH_VOUCHER_PRIORITY
-#define VOUCHER_USE_MACH_VOUCHER_PRIORITY 0
-#elif !defined(VOUCHER_USE_MACH_VOUCHER_PRIORITY)
-#define VOUCHER_USE_MACH_VOUCHER_PRIORITY 1
 #endif
 
 #ifndef VOUCHER_USE_PERSONA
@@ -975,22 +939,6 @@ extern int _dispatch_kevent_workqueue_enabled;
 #define _dispatch_kevent_workqueue_enabled (0)
 #endif // DISPATCH_USE_KEVENT_WORKQUEUE
 
-
-#if DISPATCH_USE_EVFILT_MACHPORT_DIRECT
-#if !DISPATCH_USE_KEVENT_WORKQUEUE || !EV_UDATA_SPECIFIC
-#error Invalid build configuration
-#endif
-#if DISPATCH_EVFILT_MACHPORT_PORTSET_FALLBACK
-extern int _dispatch_evfilt_machport_direct_enabled;
-#else
-#define _dispatch_evfilt_machport_direct_enabled (1)
-#endif
-#else
-#define _dispatch_evfilt_machport_direct_enabled (0)
-#endif // DISPATCH_USE_EVFILT_MACHPORT_DIRECT
-
-
-int _dispatch_sigmask(void);
 
 /* #includes dependent on internal.h */
 #include "object_internal.h"

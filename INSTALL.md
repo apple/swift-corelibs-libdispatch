@@ -87,11 +87,6 @@ Specify the path to Apple's libpthread package, so that appropriate headers
 Specify the path to Apple's libplatform package, so that appropriate headers
 	can be found and used.
 
-`--with-apple-libclosure-source`
-
-Specify the path to Apple's Libclosure package, so that appropriate headers
-	can be found and used.
-
 `--with-apple-xnu-source`
 
 Specify the path to Apple's XNU package, so that appropriate headers can be
@@ -103,11 +98,6 @@ On systems where -fblocks is supported, specify an additional library path in wh
 
 The following options are likely to only be useful when building libdispatch on
 OS X as a replacement for /usr/lib/system/libdispatch.dylib:
-
-`--with-apple-objc4-source`
-
-Specify the path to Apple's objc4 package, so that appropriate headers can
-	be found and used.
 
 `--disable-libdispatch-init-constructor`
 
@@ -131,9 +121,7 @@ libdispatch for /usr/lib/system on OS X El Capitan:
 		--enable-apple-tsd-optimizations \
 		--with-apple-libpthread-source=/path/to/10.11.0/libpthread-137.1.1 \
 		--with-apple-libplatform-source=/path/to/10.11.0/libplatform-73.1.1 \
-		--with-apple-libclosure-source=/path/to/10.11.0/libclosure-65 \
 		--with-apple-xnu-source=/path/to/10.11.0/xnu-3247.1.106 \
-		--with-apple-objc4-source=/path/to/10.11.0/objc4-680
 	make check
 
 ### Building and installing for FreeBSD

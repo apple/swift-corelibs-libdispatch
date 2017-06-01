@@ -34,6 +34,7 @@
 _Static_assert(DLOCK_LOCK_DATA_CONTENTION == ULF_WAIT_WORKQ_DATA_CONTENTION,
 		"values should be the same");
 
+#if !HAVE_UL_UNFAIR_LOCK
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
@@ -47,6 +48,7 @@ _dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
 	}
 	thread_switch(_dispatch_lock_owner(value), option, timeout);
 }
+#endif // HAVE_UL_UNFAIR_LOCK
 #endif
 
 #pragma mark - semaphores
@@ -315,12 +317,13 @@ static int
 _dispatch_ulock_wait(uint32_t *uaddr, uint32_t val, uint32_t timeout,
 		uint32_t flags)
 {
-	dispatch_assert(!DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK);
 	int rc;
 	_dlock_syscall_switch(err,
 		rc = __ulock_wait(UL_COMPARE_AND_WAIT | flags, uaddr, val, timeout),
 		case 0: return rc > 0 ? ENOTEMPTY : 0;
 		case ETIMEDOUT: case EFAULT: return err;
+		case EOWNERDEAD: DISPATCH_CLIENT_CRASH(*uaddr,
+				"corruption of lock owner");
 		default: DISPATCH_INTERNAL_CRASH(err, "ulock_wait() failed");
 	);
 }
@@ -328,7 +331,6 @@ _dispatch_ulock_wait(uint32_t *uaddr, uint32_t val, uint32_t timeout,
 static void
 _dispatch_ulock_wake(uint32_t *uaddr, uint32_t flags)
 {
-	dispatch_assert(!DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK);
 	_dlock_syscall_switch(err,
 		__ulock_wake(UL_COMPARE_AND_WAIT | flags, uaddr, 0),
 		case 0: case ENOENT: break;
@@ -344,17 +346,13 @@ static int
 _dispatch_unfair_lock_wait(uint32_t *uaddr, uint32_t val, uint32_t timeout,
 		dispatch_lock_options_t flags)
 {
-	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
-		// <rdar://problem/25075359>
-		timeout =  timeout < 1000 ? 1 : timeout / 1000;
-		_dispatch_thread_switch(val, flags, timeout);
-		return 0;
-	}
 	int rc;
 	_dlock_syscall_switch(err,
 		rc = __ulock_wait(UL_UNFAIR_LOCK | flags, uaddr, val, timeout),
 		case 0: return rc > 0 ? ENOTEMPTY : 0;
 		case ETIMEDOUT: case EFAULT: return err;
+		case EOWNERDEAD: DISPATCH_CLIENT_CRASH(*uaddr,
+				"corruption of lock owner");
 		default: DISPATCH_INTERNAL_CRASH(err, "ulock_wait() failed");
 	);
 }
@@ -362,10 +360,6 @@ _dispatch_unfair_lock_wait(uint32_t *uaddr, uint32_t val, uint32_t timeout,
 static void
 _dispatch_unfair_lock_wake(uint32_t *uaddr, uint32_t flags)
 {
-	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
-		// <rdar://problem/25075359>
-		return;
-	}
 	_dlock_syscall_switch(err, __ulock_wake(UL_UNFAIR_LOCK | flags, uaddr, 0),
 		case 0: case ENOENT: break;
 		default: DISPATCH_INTERNAL_CRASH(err, "ulock_wake() failed");
@@ -472,13 +466,6 @@ _dispatch_wake_by_address(uint32_t volatile *address)
 void
 _dispatch_thread_event_signal_slow(dispatch_thread_event_t dte)
 {
-#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
-	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
-		kern_return_t kr = semaphore_signal(dte->dte_sema);
-		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
-		return;
-	}
-#endif
 #if HAVE_UL_COMPARE_AND_WAIT
 	_dispatch_ulock_wake(&dte->dte_value, 0);
 #elif HAVE_FUTEX
@@ -491,16 +478,6 @@ _dispatch_thread_event_signal_slow(dispatch_thread_event_t dte)
 void
 _dispatch_thread_event_wait_slow(dispatch_thread_event_t dte)
 {
-#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
-	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
-		kern_return_t kr;
-		do {
-			kr = semaphore_wait(dte->dte_sema);
-		} while (unlikely(kr == KERN_ABORTED));
-		DISPATCH_SEMAPHORE_VERIFY_KR(kr);
-		return;
-	}
-#endif
 #if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
 	for (;;) {
 		uint32_t value = os_atomic_load(&dte->dte_value, acquire);
@@ -528,30 +505,30 @@ void
 _dispatch_unfair_lock_lock_slow(dispatch_unfair_lock_t dul,
 		dispatch_lock_options_t flags)
 {
-	dispatch_lock tid_self = _dispatch_tid_self(), next = tid_self;
-	dispatch_lock tid_old, tid_new;
+	dispatch_lock value_self = _dispatch_lock_value_for_self();
+	dispatch_lock old_value, new_value, next = value_self;
 	int rc;
 
 	for (;;) {
-		os_atomic_rmw_loop(&dul->dul_lock, tid_old, tid_new, acquire, {
-			if (likely(!_dispatch_lock_is_locked(tid_old))) {
-				tid_new = next;
+		os_atomic_rmw_loop(&dul->dul_lock, old_value, new_value, acquire, {
+			if (likely(!_dispatch_lock_is_locked(old_value))) {
+				new_value = next;
 			} else {
-				tid_new = tid_old & ~DLOCK_NOWAITERS_BIT;
-				if (tid_new == tid_old) os_atomic_rmw_loop_give_up(break);
+				new_value = old_value | DLOCK_WAITERS_BIT;
+				if (new_value == old_value) os_atomic_rmw_loop_give_up(break);
 			}
 		});
-		if (unlikely(_dispatch_lock_is_locked_by(tid_old, tid_self))) {
+		if (unlikely(_dispatch_lock_is_locked_by(old_value, value_self))) {
 			DISPATCH_CLIENT_CRASH(0, "trying to lock recursively");
 		}
-		if (tid_new == next) {
+		if (new_value == next) {
 			return;
 		}
-		rc = _dispatch_unfair_lock_wait(&dul->dul_lock, tid_new, 0, flags);
+		rc = _dispatch_unfair_lock_wait(&dul->dul_lock, new_value, 0, flags);
 		if (rc == ENOTEMPTY) {
-			next = tid_self & ~DLOCK_NOWAITERS_BIT;
+			next = value_self | DLOCK_WAITERS_BIT;
 		} else {
-			next = tid_self;
+			next = value_self;
 		}
 	}
 }
@@ -568,30 +545,28 @@ void
 _dispatch_unfair_lock_lock_slow(dispatch_unfair_lock_t dul,
 		dispatch_lock_options_t flags)
 {
-	dispatch_lock tid_cur, tid_self = _dispatch_tid_self();
+	dispatch_lock cur, value_self = _dispatch_lock_value_for_self();
 	uint32_t timeout = 1;
 
 	while (unlikely(!os_atomic_cmpxchgv(&dul->dul_lock,
-			DLOCK_OWNER_NULL, tid_self, &tid_cur, acquire))) {
-		if (unlikely(_dispatch_lock_is_locked_by(tid_cur, tid_self))) {
+			DLOCK_OWNER_NULL, value_self, &cur, acquire))) {
+		if (unlikely(_dispatch_lock_is_locked_by(cur, self))) {
 			DISPATCH_CLIENT_CRASH(0, "trying to lock recursively");
 		}
-		_dispatch_thread_switch(tid_cur, flags, timeout++);
+		_dispatch_thread_switch(cur, flags, timeout++);
 	}
 }
 #endif
 
 void
-_dispatch_unfair_lock_unlock_slow(dispatch_unfair_lock_t dul,
-		dispatch_lock tid_cur)
+_dispatch_unfair_lock_unlock_slow(dispatch_unfair_lock_t dul, dispatch_lock cur)
 {
-	dispatch_lock_owner tid_self = _dispatch_tid_self();
-	if (unlikely(!_dispatch_lock_is_locked_by(tid_cur, tid_self))) {
-		DISPATCH_CLIENT_CRASH(tid_cur, "lock not owned by current thread");
+	if (unlikely(!_dispatch_lock_is_locked_by_self(cur))) {
+		DISPATCH_CLIENT_CRASH(cur, "lock not owned by current thread");
 	}
 
 #if HAVE_UL_UNFAIR_LOCK
-	if (!(tid_cur & DLOCK_NOWAITERS_BIT)) {
+	if (_dispatch_lock_has_waiters(cur)) {
 		_dispatch_unfair_lock_wake(&dul->dul_lock, 0);
 	}
 #elif HAVE_FUTEX
@@ -608,26 +583,23 @@ void
 _dispatch_gate_wait_slow(dispatch_gate_t dgl, dispatch_lock value,
 		dispatch_lock_options_t flags)
 {
-	dispatch_lock tid_self = _dispatch_tid_self(), tid_old, tid_new;
+	dispatch_lock self = _dispatch_lock_value_for_self();
+	dispatch_lock old_value, new_value;
 	uint32_t timeout = 1;
 
 	for (;;) {
-		os_atomic_rmw_loop(&dgl->dgl_lock, tid_old, tid_new, acquire, {
-			if (likely(tid_old == value)) {
+		os_atomic_rmw_loop(&dgl->dgl_lock, old_value, new_value, acquire, {
+			if (likely(old_value == value)) {
 				os_atomic_rmw_loop_give_up_with_fence(acquire, return);
 			}
-#ifdef DLOCK_NOWAITERS_BIT
-			tid_new = tid_old & ~DLOCK_NOWAITERS_BIT;
-#else
-			tid_new = tid_old | DLOCK_WAITERS_BIT;
-#endif
-			if (tid_new == tid_old) os_atomic_rmw_loop_give_up(break);
+			new_value = old_value | DLOCK_WAITERS_BIT;
+			if (new_value == old_value) os_atomic_rmw_loop_give_up(break);
 		});
-		if (unlikely(_dispatch_lock_is_locked_by(tid_old, tid_self))) {
+		if (unlikely(_dispatch_lock_is_locked_by(old_value, self))) {
 			DISPATCH_CLIENT_CRASH(0, "trying to lock recursively");
 		}
 #if HAVE_UL_UNFAIR_LOCK
-		_dispatch_unfair_lock_wait(&dgl->dgl_lock, tid_new, 0, flags);
+		_dispatch_unfair_lock_wait(&dgl->dgl_lock, new_value, 0, flags);
 #elif HAVE_FUTEX
 		_dispatch_futex_wait(&dgl->dgl_lock, tid_new, NULL, FUTEX_PRIVATE_FLAG);
 #else
@@ -638,11 +610,10 @@ _dispatch_gate_wait_slow(dispatch_gate_t dgl, dispatch_lock value,
 }
 
 void
-_dispatch_gate_broadcast_slow(dispatch_gate_t dgl, dispatch_lock tid_cur)
+_dispatch_gate_broadcast_slow(dispatch_gate_t dgl, dispatch_lock cur)
 {
-	dispatch_lock_owner tid_self = _dispatch_tid_self();
-	if (unlikely(!_dispatch_lock_is_locked_by(tid_cur, tid_self))) {
-		DISPATCH_CLIENT_CRASH(tid_cur, "lock not owned by current thread");
+	if (unlikely(!_dispatch_lock_is_locked_by_self(cur))) {
+		DISPATCH_CLIENT_CRASH(cur, "lock not owned by current thread");
 	}
 
 #if HAVE_UL_UNFAIR_LOCK

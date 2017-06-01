@@ -228,6 +228,23 @@ void *
 firehose_client_set_context(firehose_client_t client, void *ctxt);
 
 /*!
+ * @function firehose_client_initiate_quarantine
+ *
+ * @abstract
+ * Starts the procedure to move the given client to the high volume quarantine
+ *
+ * @discussion
+ * When the client is in the high volume quarantine, their firehose chunks
+ * have the fcp_quarantined bit set to 1.
+ *
+ * @param client
+ * The specified client.
+ */
+OS_NOTHROW OS_NONNULL1
+void
+firehose_client_initiate_quarantine(firehose_client_t client);
+
+/*!
  * @function firehose_client_metadata_stream_peek
  *
  * @abstract
@@ -360,6 +377,36 @@ OS_ENUM(firehose_server_queue, unsigned long,
 OS_NOTHROW OS_OBJECT_RETURNS_RETAINED
 dispatch_queue_t
 firehose_server_copy_queue(firehose_server_queue_t which);
+
+/*!
+ * @function firehose_server_quarantined_suspend
+ *
+ * @abstract
+ * Suspends processing of quarantined clients until
+ * firehose_server_quarantined_resume() is called for the same queue.
+ *
+ * @discussion
+ * Suspending processing of quarantined clients causes firehose_snapshot()
+ * to block until the processing is enabled again.
+ *
+ * However if this is used to pace the processing, it is a good idea to disable
+ * this pacing until the snapshot has completed.
+ *
+ * Similarly, quarantine suspension must be off during shutdown.
+ */
+OS_NOTHROW
+void
+firehose_server_quarantined_suspend(firehose_server_queue_t q);
+
+/*!
+ * @function firehose_server_quarantined_resume
+ *
+ * @abstract
+ * Resumes processing of quarantined clients.
+ */
+OS_NOTHROW
+void
+firehose_server_quarantined_resume(firehose_server_queue_t q);
 
 #pragma mark - Firehose Snapshot
 

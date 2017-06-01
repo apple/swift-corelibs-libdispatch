@@ -23,6 +23,7 @@
 
 #ifdef __APPLE__
 #include <Availability.h>
+#include <os/availability.h>
 #include <TargetConditionals.h>
 #include <os/base.h>
 #elif defined(__linux__)
@@ -47,7 +48,7 @@
 #endif
 #endif
 
-#define DISPATCH_API_VERSION 20160831
+#define DISPATCH_API_VERSION 20170124
 
 #ifndef __DISPATCH_BUILDING_DISPATCH__
 

@@ -99,8 +99,8 @@ _dispatch_source_create_mach_msg_direct_recv(mach_port_t recvp,
 
 void _dispatch_mach_msg_async_reply_invoke(dispatch_continuation_t dc,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
-void _dispatch_mach_dispose(dispatch_mach_t dm);
-void _dispatch_mach_finalize_activation(dispatch_mach_t dm);
+void _dispatch_mach_dispose(dispatch_mach_t dm, bool *allow_free);
+void _dispatch_mach_finalize_activation(dispatch_mach_t dm, bool *allow_resume);
 void _dispatch_mach_invoke(dispatch_mach_t dm, dispatch_invoke_context_t dic,
 		dispatch_invoke_flags_t flags);
 void _dispatch_mach_wakeup(dispatch_mach_t dm, dispatch_qos_t qos,
@@ -116,7 +116,7 @@ void _dispatch_mach_reply_merge_msg(dispatch_unote_t du, uint32_t flags,
 void _dispatch_xpc_sigterm_merge(dispatch_unote_t du, uint32_t flags,
 		uintptr_t data, uintptr_t status, pthread_priority_t pp);
 
-void _dispatch_mach_msg_dispose(dispatch_mach_msg_t dmsg);
+void _dispatch_mach_msg_dispose(dispatch_mach_msg_t dmsg, bool *allow_free);
 void _dispatch_mach_msg_invoke(dispatch_mach_msg_t dmsg,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 size_t _dispatch_mach_msg_debug(dispatch_mach_msg_t dmsg, char* buf,

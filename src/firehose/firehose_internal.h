@@ -29,6 +29,8 @@
 #define __MigTypeCheck 1
 #endif
 
+#define fcp_quarntined fcp_quarantined
+
 #include <limits.h>
 #include <machine/endian.h>
 #include <mach/mach_types.h>

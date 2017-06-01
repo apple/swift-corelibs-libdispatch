@@ -171,6 +171,11 @@ typedef struct firehose_buffer_header_s {
 	dispatch_once_t					fbh_notifs_pred OS_ALIGNED(64);
 	dispatch_source_t				fbh_notifs_source;
 	dispatch_unfair_lock_s			fbh_logd_lock;
+#define FBH_QUARANTINE_NONE		0
+#define FBH_QUARANTINE_PENDING	1
+#define FBH_QUARANTINE_STARTED	2
+	uint8_t volatile				fbh_quarantined_state;
+	bool							fbh_quarantined;
 #endif
 	uint64_t						fbh_unused[0];
 } OS_ALIGNED(FIREHOSE_CHUNK_SIZE) *firehose_buffer_header_t;
@@ -187,6 +192,7 @@ typedef struct firehose_tracepoint_query_s {
 	firehose_stream_t stream;
 	bool	 is_bank_ok;
 	bool     for_io;
+	bool     quarantined;
 	uint64_t stamp;
 } *firehose_tracepoint_query_t;
 
