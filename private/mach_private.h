@@ -114,7 +114,9 @@ DISPATCH_DECL(dispatch_mach);
  * A SIGTERM signal has been received. This notification is delivered at most
  * once during the lifetime of the channel. This event is sent only for XPC
  * channels (i.e. channels that were created by calling
- * dispatch_mach_create_4libxpc()).
+ * dispatch_mach_create_4libxpc()) and only if the
+ * dmxh_enable_sigterm_notification function in the XPC hooks structure is not
+ * set or it returned true when it was called at channel activation time.
  *
  * @const DISPATCH_MACH_ASYNC_WAITER_DISCONNECTED
  * The channel has been disconnected by a call to dispatch_mach_reconnect() or
@@ -811,7 +813,7 @@ typedef void (*_Nonnull dispatch_mach_async_reply_callback_t)(void *context,
 
 API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 typedef const struct dispatch_mach_xpc_hooks_s {
-#define DISPATCH_MACH_XPC_HOOKS_VERSION     2
+#define DISPATCH_MACH_XPC_HOOKS_VERSION     3
 	unsigned long version;
 
 	/* Fields available in version 1. */
@@ -827,8 +829,8 @@ typedef const struct dispatch_mach_xpc_hooks_s {
 	 * throw an exception.
 	 */
 	bool (* _Nonnull dmxh_direct_message_handler)(void *_Nullable context,
-		dispatch_mach_reason_t reason, dispatch_mach_msg_t message,
-		mach_error_t error);
+			dispatch_mach_reason_t reason, dispatch_mach_msg_t message,
+			mach_error_t error);
 
 	/* Fields available in version 2. */
 
@@ -844,7 +846,7 @@ typedef const struct dispatch_mach_xpc_hooks_s {
 	 * other code.
 	 */
 	dispatch_queue_t _Nullable (*_Nonnull dmxh_msg_context_reply_queue)(
-		void *_Nonnull msg_context);
+			void *_Nonnull msg_context);
 
 	/*
 	 * Called when a reply to a message sent by
@@ -861,6 +863,15 @@ typedef const struct dispatch_mach_xpc_hooks_s {
 	 * details.
 	 */
 	dispatch_mach_async_reply_callback_t dmxh_async_reply_handler;
+
+	/* Fields available in version 3. */
+	/**
+	 * Called once when the Mach channel has been activated. If this function
+	 * returns true, a DISPATCH_MACH_SIGTERM_RECEIVED notification will be
+	 * delivered to the channel's event handler when a SIGTERM is received.
+	 */
+	bool (* _Nullable dmxh_enable_sigterm_notification)(
+			void *_Nullable context);
 } *dispatch_mach_xpc_hooks_t;
 
 #define DISPATCH_MACH_XPC_SUPPORTS_ASYNC_REPLIES(hooks) ((hooks)->version >= 2)

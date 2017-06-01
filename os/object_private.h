@@ -36,7 +36,9 @@
 #define OS_OBJECT_NONNULL __attribute__((__nonnull__))
 #define OS_OBJECT_WARN_RESULT __attribute__((__warn_unused_result__))
 #define OS_OBJECT_MALLOC __attribute__((__malloc__))
+#ifndef OS_OBJECT_EXPORT
 #define OS_OBJECT_EXPORT extern __attribute__((visibility("default")))
+#endif
 #else
 /*! @parseOnly */
 #define OS_OBJECT_NOTHROW
@@ -46,7 +48,10 @@
 #define OS_OBJECT_WARN_RESULT
 /*! @parseOnly */
 #define OS_OBJECT_MALLOC
+#ifndef OS_OBJECT_EXPORT
+/*! @parseOnly */
 #define OS_OBJECT_EXPORT extern
+#endif
 #endif
 
 #if OS_OBJECT_USE_OBJC && __has_feature(objc_arc)
@@ -178,6 +183,18 @@ OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
 OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 void
 _os_object_release_internal(_os_object_t object);
+
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
+OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
+_os_object_t
+_os_object_retain_internal_n(_os_object_t object, uint16_t n);
+
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
+OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
+void
+_os_object_release_internal_n(_os_object_t object, uint16_t n);
 
 #endif // !_OS_OBJECT_OBJC_ARC
 
