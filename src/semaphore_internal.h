@@ -63,11 +63,11 @@ typedef union {
 } dispatch_semaphore_class_t DISPATCH_TRANSPARENT_UNION;
 
 dispatch_group_t _dispatch_group_create_and_enter(void);
-void _dispatch_group_dispose(dispatch_object_t dou);
+void _dispatch_group_dispose(dispatch_object_t dou, bool *allow_free);
 size_t _dispatch_group_debug(dispatch_object_t dou, char *buf,
 		size_t bufsiz);
 
-void _dispatch_semaphore_dispose(dispatch_object_t dou);
+void _dispatch_semaphore_dispose(dispatch_object_t dou, bool *allow_free);
 size_t _dispatch_semaphore_debug(dispatch_object_t dou, char *buf,
 		size_t bufsiz);
 

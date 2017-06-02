@@ -69,6 +69,8 @@ typedef struct dispatch_gate_s {
 #define DLOCK_LOCK_DATA_CONTENTION 0
 static void _dispatch_gate_wait(dispatch_gate_t l, uint32_t flags);
 
+#define fcp_quarntined fcp_quarantined
+
 #include <kern/debug.h>
 #include <machine/cpu_number.h>
 #include <kern/thread.h>
@@ -450,23 +452,58 @@ firehose_client_send_push_async(firehose_buffer_t fb, qos_class_t qos,
 		}
 	}
 }
+
+OS_NOINLINE
+static void
+firehose_client_start_quarantine(firehose_buffer_t fb)
+{
+	if (_voucher_libtrace_hooks->vah_version < 5) return;
+	if (!_voucher_libtrace_hooks->vah_quarantine_starts) return;
+
+	_voucher_libtrace_hooks->vah_quarantine_starts();
+
+	fb->fb_header.fbh_quarantined = true;
+	firehose_buffer_stream_flush(fb, firehose_stream_special);
+	firehose_buffer_stream_flush(fb, firehose_stream_persist);
+	firehose_buffer_stream_flush(fb, firehose_stream_memory);
+}
 #endif // !KERNEL
 
 static void
 firehose_client_merge_updates(firehose_buffer_t fb, bool async_notif,
-		firehose_push_reply_t reply, firehose_bank_state_u *state_out)
+		firehose_push_reply_t reply, bool quarantined,
+		firehose_bank_state_u *state_out)
 {
+	firehose_buffer_header_t fbh = &fb->fb_header;
 	firehose_bank_state_u state;
 	firehose_ring_tail_u otail, ntail;
 	uint64_t old_flushed_pos, bank_updates;
 	uint16_t io_delta = 0;
 	uint16_t mem_delta = 0;
 
-	if (firehose_atomic_maxv2o(&fb->fb_header, fbh_bank.fbb_mem_flushed,
+	if (quarantined) {
+#ifndef KERNEL
+		// this isn't a dispatch_once so that the upcall to libtrace
+		// can actually log itself without blocking on the gate.
+		if (async_notif) {
+			if (os_atomic_xchg(&fbh->fbh_quarantined_state,
+					FBH_QUARANTINE_STARTED, relaxed) !=
+					FBH_QUARANTINE_STARTED) {
+				firehose_client_start_quarantine(fb);
+			}
+		} else if (os_atomic_load(&fbh->fbh_quarantined_state, relaxed) ==
+				FBH_QUARANTINE_NONE) {
+			os_atomic_cmpxchg(&fbh->fbh_quarantined_state, FBH_QUARANTINE_NONE,
+					FBH_QUARANTINE_PENDING, relaxed);
+		}
+#endif
+	}
+
+	if (firehose_atomic_maxv2o(fbh, fbh_bank.fbb_mem_flushed,
 			reply.fpr_mem_flushed_pos, &old_flushed_pos, relaxed)) {
 		mem_delta = (uint16_t)(reply.fpr_mem_flushed_pos - old_flushed_pos);
 	}
-	if (firehose_atomic_maxv2o(&fb->fb_header, fbh_bank.fbb_io_flushed,
+	if (firehose_atomic_maxv2o(fbh, fbh_bank.fbb_io_flushed,
 			reply.fpr_io_flushed_pos, &old_flushed_pos, relaxed)) {
 		io_delta = (uint16_t)(reply.fpr_io_flushed_pos - old_flushed_pos);
 	}
@@ -478,14 +515,14 @@ firehose_client_merge_updates(firehose_buffer_t fb, bool async_notif,
 
 	if (!mem_delta && !io_delta) {
 		if (state_out) {
-			state_out->fbs_atomic_state = os_atomic_load2o(&fb->fb_header,
+			state_out->fbs_atomic_state = os_atomic_load2o(fbh,
 					fbh_bank.fbb_state.fbs_atomic_state, relaxed);
 		}
 		return;
 	}
 
 	__firehose_critical_region_enter();
-	os_atomic_rmw_loop2o(&fb->fb_header, fbh_ring_tail.frp_atomic_tail,
+	os_atomic_rmw_loop2o(fbh, fbh_ring_tail.frp_atomic_tail,
 			otail.frp_atomic_tail, ntail.frp_atomic_tail, relaxed, {
 		ntail = otail;
 		// overflow handles the generation wraps
@@ -495,7 +532,7 @@ firehose_client_merge_updates(firehose_buffer_t fb, bool async_notif,
 
 	bank_updates = ((uint64_t)mem_delta << FIREHOSE_BANK_SHIFT(0)) |
 			((uint64_t)io_delta << FIREHOSE_BANK_SHIFT(1));
-	state.fbs_atomic_state = os_atomic_sub2o(&fb->fb_header,
+	state.fbs_atomic_state = os_atomic_sub2o(fbh,
 			fbh_bank.fbb_state.fbs_atomic_state, bank_updates, release);
 	__firehose_critical_region_leave();
 
@@ -503,29 +540,32 @@ firehose_client_merge_updates(firehose_buffer_t fb, bool async_notif,
 
 	if (async_notif) {
 		if (io_delta) {
-			os_atomic_inc2o(&fb->fb_header, fbh_bank.fbb_io_notifs, relaxed);
+			os_atomic_inc2o(fbh, fbh_bank.fbb_io_notifs, relaxed);
 		}
 		if (mem_delta) {
-			os_atomic_inc2o(&fb->fb_header, fbh_bank.fbb_mem_notifs, relaxed);
+			os_atomic_inc2o(fbh, fbh_bank.fbb_mem_notifs, relaxed);
 		}
 	}
 }
 
 #ifndef KERNEL
+OS_NOT_TAIL_CALLED OS_NOINLINE
 static void
-firehose_client_send_push(firehose_buffer_t fb, bool for_io,
+firehose_client_send_push_and_wait(firehose_buffer_t fb, bool for_io,
 		firehose_bank_state_u *state_out)
 {
 	mach_port_t sendp = fb->fb_header.fbh_sendp;
 	firehose_push_reply_t push_reply = { };
 	qos_class_t qos = qos_class_self();
+	boolean_t quarantined = false;
 	kern_return_t kr;
 
 	if (slowpath(sendp == MACH_PORT_DEAD)) {
 		return;
 	}
 	if (fastpath(sendp)) {
-		kr = firehose_send_push(sendp, qos, for_io, &push_reply);
+		kr = firehose_send_push_and_wait(sendp, qos, for_io,
+				&push_reply, &quarantined);
 		if (likely(kr == KERN_SUCCESS)) {
 			goto success;
 		}
@@ -537,7 +577,8 @@ firehose_client_send_push(firehose_buffer_t fb, bool for_io,
 
 	sendp = firehose_client_reconnect(fb, sendp);
 	if (fastpath(MACH_PORT_VALID(sendp))) {
-		kr = firehose_send_push(sendp, qos, for_io, &push_reply);
+		kr = firehose_send_push_and_wait(sendp, qos, for_io,
+				&push_reply, &quarantined);
 		if (likely(kr == KERN_SUCCESS)) {
 			goto success;
 		}
@@ -573,12 +614,22 @@ success:
 	// There only is a point for multithreaded clients if:
 	// - enough samples (total_flushes above some limits)
 	// - the ratio is really bad (a push per cycle is definitely a problem)
-	return firehose_client_merge_updates(fb, false, push_reply, state_out);
+	return firehose_client_merge_updates(fb, false, push_reply, quarantined,
+			state_out);
+}
+
+OS_NOT_TAIL_CALLED OS_NOINLINE
+static void
+__FIREHOSE_CLIENT_THROTTLED_DUE_TO_HEAVY_LOGGING__(firehose_buffer_t fb,
+		bool for_io, firehose_bank_state_u *state_out)
+{
+	firehose_client_send_push_and_wait(fb, for_io, state_out);
 }
 
 kern_return_t
 firehose_client_push_reply(mach_port_t req_port OS_UNUSED,
-	kern_return_t rtc, firehose_push_reply_t push_reply OS_UNUSED)
+	kern_return_t rtc, firehose_push_reply_t push_reply OS_UNUSED,
+	boolean_t quarantined OS_UNUSED)
 {
 	DISPATCH_INTERNAL_CRASH(rtc, "firehose_push_reply should never be sent "
 			"to the buffer receive port");
@@ -586,12 +637,12 @@ firehose_client_push_reply(mach_port_t req_port OS_UNUSED,
 
 kern_return_t
 firehose_client_push_notify_async(mach_port_t server_port OS_UNUSED,
-	firehose_push_reply_t push_reply)
+	firehose_push_reply_t push_reply, boolean_t quarantined)
 {
 	// see _dispatch_source_merge_mach_msg_direct
 	dispatch_queue_t dq = _dispatch_queue_get_current();
 	firehose_buffer_t fb = dispatch_get_context(dq);
-	firehose_client_merge_updates(fb, true, push_reply, NULL);
+	firehose_client_merge_updates(fb, true, push_reply, quarantined, NULL);
 	return KERN_SUCCESS;
 }
 
@@ -653,6 +704,7 @@ firehose_buffer_chunk_init(firehose_chunk_t fc,
 		.fcp_qos = firehose_buffer_qos_bits_propagate(),
 		.fcp_stream = ask->stream,
 		.fcp_flag_io = ask->for_io,
+		.fcp_quarantined = ask->quarantined,
 	};
 
 	if (privptr) {
@@ -668,7 +720,8 @@ firehose_buffer_stream_chunk_install(firehose_buffer_t fb,
 {
 	firehose_stream_state_u state, new_state;
 	firehose_tracepoint_t ft;
-	firehose_buffer_stream_t fbs = &fb->fb_header.fbh_stream[ask->stream];
+	firehose_buffer_header_t fbh = &fb->fb_header;
+	firehose_buffer_stream_t fbs = &fbh->fbh_stream[ask->stream];
 	uint64_t stamp_and_len;
 
 	if (fastpath(ref)) {
@@ -685,7 +738,7 @@ firehose_buffer_stream_chunk_install(firehose_buffer_t fb,
 		ft->ft_thread = _pthread_threadid_self_np_direct();
 #endif
 		if (ask->stream == firehose_stream_metadata) {
-			os_atomic_or2o(fb, fb_header.fbh_bank.fbb_metadata_bitmap,
+			os_atomic_or2o(fbh, fbh_bank.fbb_metadata_bitmap,
 					1ULL << ref, relaxed);
 		}
 		// release barrier to make the chunk init visible
@@ -716,8 +769,11 @@ firehose_buffer_stream_chunk_install(firehose_buffer_t fb,
 		ft = NULL;
 	}
 
+	// pairs with the one in firehose_buffer_tracepoint_reserve()
+	__firehose_critical_region_leave();
+
 #ifndef KERNEL
-	if (unlikely(state.fss_gate.dgl_lock != _dispatch_tid_self())) {
+	if (unlikely(_dispatch_lock_is_locked_by_self(state.fss_gate.dgl_lock))) {
 		_dispatch_gate_broadcast_slow(&fbs->fbs_state.fss_gate,
 				state.fss_gate.dgl_lock);
 	}
@@ -725,10 +781,16 @@ firehose_buffer_stream_chunk_install(firehose_buffer_t fb,
 	if (unlikely(state.fss_current == FIREHOSE_STREAM_STATE_PRISTINE)) {
 		firehose_buffer_update_limits(fb);
 	}
+
+	if (unlikely(os_atomic_load2o(fbh, fbh_quarantined_state, relaxed) ==
+			FBH_QUARANTINE_PENDING)) {
+		if (os_atomic_cmpxchg2o(fbh, fbh_quarantined_state,
+				FBH_QUARANTINE_PENDING, FBH_QUARANTINE_STARTED, relaxed)) {
+			firehose_client_start_quarantine(fb);
+		}
+	}
 #endif // KERNEL
 
-	// pairs with the one in firehose_buffer_tracepoint_reserve()
-	__firehose_critical_region_leave();
 	return ft;
 }
 
@@ -967,7 +1029,12 @@ firehose_buffer_tracepoint_reserve_wait_for_chunks_from_logd(firehose_buffer_t f
 		state.fbs_atomic_state =
 				os_atomic_load2o(fbb, fbb_state.fbs_atomic_state, relaxed);
 		while ((state.fbs_atomic_state - bank_inc) & bank_unavail_mask) {
-			firehose_client_send_push(fb, ask->for_io, &state);
+			if (ask->quarantined) {
+				__FIREHOSE_CLIENT_THROTTLED_DUE_TO_HEAVY_LOGGING__(fb,
+						ask->for_io, &state);
+			} else {
+				firehose_client_send_push_and_wait(fb, ask->for_io, &state);
+			}
 			if (slowpath(fb->fb_header.fbh_sendp == MACH_PORT_DEAD)) {
 				// logd was unloaded, give up
 				return NULL;
@@ -999,7 +1066,12 @@ firehose_buffer_tracepoint_reserve_wait_for_chunks_from_logd(firehose_buffer_t f
 		if (fastpath(ref = firehose_buffer_ring_try_grow(fbb, fbs_max_ref))) {
 			break;
 		}
-		firehose_client_send_push(fb, ask->for_io, NULL);
+		if (ask->quarantined) {
+			__FIREHOSE_CLIENT_THROTTLED_DUE_TO_HEAVY_LOGGING__(fb,
+					ask->for_io, &state);
+		} else {
+			firehose_client_send_push_and_wait(fb, ask->for_io, NULL);
+		}
 		if (slowpath(fb->fb_header.fbh_sendp == MACH_PORT_DEAD)) {
 			// logd was unloaded, give up
 			break;
@@ -1108,7 +1180,7 @@ __firehose_merge_updates(firehose_push_reply_t update)
 {
 	firehose_buffer_t fb = kernel_firehose_buffer;
 	if (fastpath(fb)) {
-		firehose_client_merge_updates(fb, true, update, NULL);
+		firehose_client_merge_updates(fb, true, update, false, NULL);
 	}
 }
 #endif // KERNEL

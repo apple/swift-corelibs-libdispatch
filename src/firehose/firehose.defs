@@ -40,12 +40,13 @@ register(
 );
 
 routine
-push(
+push_and_wait(
 RequestPort	comm_port		: mach_port_t;
 SReplyPort	reply_port		: mach_port_make_send_once_t;
 			qos_class		: qos_class_t;
 			for_io			: boolean_t;
-out			push_reply		: firehose_push_reply_t
+out			push_reply		: firehose_push_reply_t;
+out			quarantinedOut	: boolean_t
 );
 
 simpleroutine

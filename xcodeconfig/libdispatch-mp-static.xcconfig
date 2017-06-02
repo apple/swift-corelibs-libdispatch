@@ -18,13 +18,12 @@
 // @APPLE_APACHE_LICENSE_HEADER_END@
 //
 
-OTHER_LDFLAGS =
-BUILD_VARIANTS = normal debug
-GCC_PREPROCESSOR_DEFINITIONS = $(inherited) DISPATCH_VARIANT_STATIC=1 USE_OBJC=0 DISPATCH_USE_DTRACE=0
-PRODUCT_NAME = libdispatch
-INSTALL_PATH = /usr/local/lib/system
-
 // skip simulator
 SUPPORTED_PLATFORMS = macosx iphoneos appletvos watchos
+PRODUCT_NAME = libdispatch
+INSTALL_PATH = /usr/local/lib/system
+BUILD_VARIANTS = normal debug
+GCC_PREPROCESSOR_DEFINITIONS = $(inherited) $(STATICLIB_PREPROCESSOR_DEFINITIONS)
+OTHER_LDFLAGS =
 SKIP_INSTALL[sdk=*simulator*] = YES
 EXCLUDED_SOURCE_FILE_NAMES[sdk=*simulator*] = *
