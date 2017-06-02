@@ -123,7 +123,9 @@ void voucher_release(voucher_t voucher);
 #define DISPATCH_VOUCHER_ACTIVITY_DEBUG 1
 #endif
 
+#if VOUCHER_USE_MACH_VOUCHER_PRIORITY
 #include <voucher/ipc_pthread_priority_types.h>
+#endif
 
 typedef uint32_t _voucher_magic_t;
 typedef uint32_t _voucher_priority_t;
@@ -261,14 +263,6 @@ typedef struct voucher_recipe_s {
 #define _dispatch_kvoucher_debug(msg, kv, ...)
 #define _dispatch_voucher_debug_machport(name) ((void)(name))
 #endif
-
-#ifndef DISPATCH_VOUCHER_OBJC_DEBUG
-#if DISPATCH_INTROSPECTION || DISPATCH_DEBUG
-#define DISPATCH_VOUCHER_OBJC_DEBUG 1
-#else
-#define DISPATCH_VOUCHER_OBJC_DEBUG 0
-#endif
-#endif // DISPATCH_VOUCHER_OBJC_DEBUG
 
 #if DISPATCH_PURE_C
 

@@ -344,5 +344,8 @@ internal func _swift_dispatch_queue_concurrent() -> dispatch_queue_attr_t
 @_silgen_name("_swift_dispatch_get_main_queue")
 internal func _swift_dispatch_get_main_queue() -> dispatch_queue_t
 
+@_silgen_name("_swift_dispatch_apply_current_root_queue")
+internal func _swift_dispatch_apply_current_root_queue() -> dispatch_queue_t
+
 @_silgen_name("_swift_dispatch_apply_current")
 internal func _swift_dispatch_apply_current(_ iterations: Int, _ block: @convention(block) (Int) -> Void)

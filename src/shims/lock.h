@@ -30,87 +30,43 @@
 #pragma mark - platform macros
 
 DISPATCH_ENUM(dispatch_lock_options, uint32_t,
-	DLOCK_LOCK_NONE				= 0x00000000,
-	DLOCK_LOCK_DATA_CONTENTION  = 0x00010000,
+		DLOCK_LOCK_NONE				= 0x00000000,
+		DLOCK_LOCK_DATA_CONTENTION  = 0x00010000,
 );
 
 #if TARGET_OS_MAC
 
-typedef mach_port_t dispatch_tid;
+typedef mach_port_t dispatch_lock_owner;
 typedef uint32_t dispatch_lock;
 
+#define DLOCK_OWNER_NULL			((dispatch_lock_owner)MACH_PORT_NULL)
 #define DLOCK_OWNER_MASK			((dispatch_lock)0xfffffffc)
-#define DLOCK_WAITERS_BIT			((dispatch_lock)0x00000001)
-#define DLOCK_FAILED_TRYLOCK_BIT	((dispatch_lock)0x00000002)
-
-#define DLOCK_OWNER_NULL			((dispatch_tid)MACH_PORT_NULL)
-#define _dispatch_tid_self()		((dispatch_tid)_dispatch_thread_port())
-
-DISPATCH_ALWAYS_INLINE
-static inline dispatch_tid
-_dispatch_lock_owner(dispatch_lock lock_value)
-{
-	if (lock_value & DLOCK_OWNER_MASK) {
-		return lock_value | DLOCK_WAITERS_BIT | DLOCK_FAILED_TRYLOCK_BIT;
-	}
-	return DLOCK_OWNER_NULL;
-}
-
-#elif defined(__linux__)
-
-#include <linux/futex.h>
-#if !defined(__x86_64__) && !defined(__i386__) && !defined(__s390x__)
-#include <linux/membarrier.h>
-#endif
-#include <unistd.h>
-#include <sys/syscall.h>   /* For SYS_xxx definitions */
-
-typedef pid_t dispatch_tid;
-typedef uint32_t dispatch_lock;
-
-#define DLOCK_OWNER_MASK			((dispatch_lock)FUTEX_TID_MASK)
-#define DLOCK_WAITERS_BIT			((dispatch_lock)FUTEX_WAITERS)
-#define DLOCK_FAILED_TRYLOCK_BIT	((dispatch_lock)FUTEX_OWNER_DIED)
-
-#define DLOCK_OWNER_NULL			((dispatch_tid)0)
-#define _dispatch_tid_self()        ((dispatch_tid)(_dispatch_get_tsd_base()->tid))
-
-DISPATCH_ALWAYS_INLINE
-static inline dispatch_tid
-_dispatch_lock_owner(dispatch_lock lock_value)
-{
-	return lock_value & DLOCK_OWNER_MASK;
-}
-
-#else
-#  error define _dispatch_lock encoding scheme for your platform here
-#endif
-
-DISPATCH_ALWAYS_INLINE
-static inline dispatch_lock
-_dispatch_lock_value_from_tid(dispatch_tid tid)
-{
-	return tid & DLOCK_OWNER_MASK;
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline dispatch_lock
-_dispatch_lock_value_for_self(void)
-{
-	return _dispatch_lock_value_from_tid(_dispatch_tid_self());
-}
+#define DLOCK_OWNER_INVALID			((dispatch_lock)0xffffffff)
+#define DLOCK_NOWAITERS_BIT			((dispatch_lock)0x00000001)
+#define DLOCK_NOFAILED_TRYLOCK_BIT	((dispatch_lock)0x00000002)
+#define _dispatch_tid_self()		((dispatch_lock_owner)_dispatch_thread_port())
 
 DISPATCH_ALWAYS_INLINE
 static inline bool
 _dispatch_lock_is_locked(dispatch_lock lock_value)
 {
-	// equivalent to _dispatch_lock_owner(lock_value) == 0
 	return (lock_value & DLOCK_OWNER_MASK) != 0;
 }
 
 DISPATCH_ALWAYS_INLINE
+static inline dispatch_lock_owner
+_dispatch_lock_owner(dispatch_lock lock_value)
+{
+	lock_value &= DLOCK_OWNER_MASK;
+	if (lock_value) {
+		lock_value |= DLOCK_NOWAITERS_BIT | DLOCK_NOFAILED_TRYLOCK_BIT;
+	}
+	return lock_value;
+}
+
+DISPATCH_ALWAYS_INLINE
 static inline bool
-_dispatch_lock_is_locked_by(dispatch_lock lock_value, dispatch_tid tid)
+_dispatch_lock_is_locked_by(dispatch_lock lock_value, dispatch_lock_owner tid)
 {
 	// equivalent to _dispatch_lock_owner(lock_value) == tid
 	return ((lock_value ^ tid) & DLOCK_OWNER_MASK) == 0;
@@ -118,10 +74,57 @@ _dispatch_lock_is_locked_by(dispatch_lock lock_value, dispatch_tid tid)
 
 DISPATCH_ALWAYS_INLINE
 static inline bool
-_dispatch_lock_is_locked_by_self(dispatch_lock lock_value)
+_dispatch_lock_has_waiters(dispatch_lock lock_value)
 {
-	// equivalent to _dispatch_lock_owner(lock_value) == tid
-	return ((lock_value ^ _dispatch_tid_self()) & DLOCK_OWNER_MASK) == 0;
+	bool nowaiters_bit = (lock_value & DLOCK_NOWAITERS_BIT);
+	return _dispatch_lock_is_locked(lock_value) != nowaiters_bit;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
+{
+	return !(lock_value & DLOCK_NOFAILED_TRYLOCK_BIT);
+}
+
+#elif defined(__linux__)
+#include <linux/futex.h>
+#if !defined(__x86_64__) && !defined(__i386__) && !defined(__s390x__)
+#include <linux/membarrier.h>
+#endif
+#include <unistd.h>
+#include <sys/syscall.h>   /* For SYS_xxx definitions */
+
+typedef uint32_t dispatch_lock;
+typedef pid_t dispatch_lock_owner;
+
+#define DLOCK_OWNER_NULL			((dispatch_lock_owner)0)
+#define DLOCK_OWNER_MASK			((dispatch_lock)FUTEX_TID_MASK)
+#define DLOCK_OWNER_INVALID			((dispatch_lock)DLOCK_OWNER_MASK)
+#define DLOCK_WAITERS_BIT			((dispatch_lock)FUTEX_WAITERS)
+#define DLOCK_FAILED_TRYLOCK_BIT	((dispatch_lock)FUTEX_OWNER_DIED)
+#define _dispatch_tid_self() \
+		((dispatch_lock_owner)(_dispatch_get_tsd_base()->tid))
+
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_lock_is_locked(dispatch_lock lock_value)
+{
+	return (lock_value & DLOCK_OWNER_MASK) != 0;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline dispatch_lock_owner
+_dispatch_lock_owner(dispatch_lock lock_value)
+{
+	return (lock_value & DLOCK_OWNER_MASK);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_lock_is_locked_by(dispatch_lock lock_value, dispatch_lock_owner tid)
+{
+	return _dispatch_lock_owner(lock_value) == tid;
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -135,18 +138,32 @@ DISPATCH_ALWAYS_INLINE
 static inline bool
 _dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
 {
-	return (lock_value & DLOCK_FAILED_TRYLOCK_BIT);
+	return !(lock_value & DLOCK_FAILED_TRYLOCK_BIT);
 }
+
+#else
+#  error define _dispatch_lock encoding scheme for your platform here
+#endif
 
 #if __has_include(<sys/ulock.h>)
 #include <sys/ulock.h>
-#ifdef UL_COMPARE_AND_WAIT
-#define HAVE_UL_COMPARE_AND_WAIT 1
 #endif
-#ifdef UL_UNFAIR_LOCK
-#define HAVE_UL_UNFAIR_LOCK 1
+
+#ifndef HAVE_UL_COMPARE_AND_WAIT
+#if defined(UL_COMPARE_AND_WAIT) && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
+#  define HAVE_UL_COMPARE_AND_WAIT 1
+#else
+#  define HAVE_UL_COMPARE_AND_WAIT 0
 #endif
+#endif // HAVE_UL_COMPARE_AND_WAIT
+
+#ifndef HAVE_UL_UNFAIR_LOCK
+#if defined(UL_UNFAIR_LOCK) && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
+#  define HAVE_UL_UNFAIR_LOCK 1
+#else
+#  define HAVE_UL_UNFAIR_LOCK 0
 #endif
+#endif // HAVE_UL_UNFAIR_LOCK
 
 #ifndef HAVE_FUTEX
 #ifdef __linux__
@@ -157,6 +174,14 @@ _dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
 #endif // HAVE_FUTEX
 
 #pragma mark - semaphores
+
+#ifndef DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
+#if TARGET_OS_MAC
+#define DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK (!HAVE_UL_COMPARE_AND_WAIT)
+#else
+#define DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK 0
+#endif
+#endif
 
 #if USE_MACH_SEM
 
@@ -245,7 +270,12 @@ void _dispatch_wake_by_address(uint32_t volatile *address);
  * This locking primitive has no notion of ownership
  */
 typedef struct dispatch_thread_event_s {
-#if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
+#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
+	union {
+		_dispatch_sema4_t dte_sema;
+		uint32_t dte_value;
+	};
+#elif HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
 	// 1 means signalled but not waited on yet
 	// UINT32_MAX means waited on, but not signalled yet
 	// 0 is the initial and final state
@@ -263,6 +293,13 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_thread_event_init(dispatch_thread_event_t dte)
 {
+#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
+	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
+		_dispatch_sema4_init(&dte->dte_sema, _DSEMA4_POLICY_FIFO);
+		_dispatch_sema4_create(&dte->dte_sema, _DSEMA4_POLICY_FIFO);
+		return;
+	}
+#endif
 #if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
 	dte->dte_value = 0;
 #else
@@ -274,6 +311,12 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_thread_event_signal(dispatch_thread_event_t dte)
 {
+#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
+	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
+		_dispatch_thread_event_signal_slow(dte);
+		return;
+	}
+#endif
 #if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
 	if (os_atomic_inc_orig(&dte->dte_value, release) == 0) {
 		// 0 -> 1 transition doesn't need a signal
@@ -292,6 +335,12 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_thread_event_wait(dispatch_thread_event_t dte)
 {
+#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
+	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
+		_dispatch_thread_event_wait_slow(dte);
+		return;
+	}
+#endif
 #if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
 	if (os_atomic_dec(&dte->dte_value, acquire) == 0) {
 		// 1 -> 0 is always a valid transition, so we can return
@@ -308,6 +357,12 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_thread_event_destroy(dispatch_thread_event_t dte)
 {
+#if DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK
+	if (DISPATCH_LOCK_USE_SEMAPHORE_FALLBACK) {
+		_dispatch_sema4_dispose(&dte->dte_sema, _DSEMA4_POLICY_FIFO);
+		return;
+	}
+#endif
 #if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
 	// nothing to do
 	dispatch_assert(dte->dte_value == 0);
@@ -332,9 +387,9 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_unfair_lock_lock(dispatch_unfair_lock_t l)
 {
-	dispatch_lock value_self = _dispatch_lock_value_for_self();
+	dispatch_lock tid_self = _dispatch_tid_self();
 	if (likely(os_atomic_cmpxchg(&l->dul_lock,
-			DLOCK_OWNER_NULL, value_self, acquire))) {
+			DLOCK_OWNER_NULL, tid_self, acquire))) {
 		return;
 	}
 	return _dispatch_unfair_lock_lock_slow(l, DLOCK_LOCK_NONE);
@@ -342,42 +397,54 @@ _dispatch_unfair_lock_lock(dispatch_unfair_lock_t l)
 
 DISPATCH_ALWAYS_INLINE
 static inline bool
-_dispatch_unfair_lock_trylock(dispatch_unfair_lock_t l, dispatch_tid *owner)
+_dispatch_unfair_lock_trylock(dispatch_unfair_lock_t l,
+		dispatch_lock_owner *owner)
 {
-	dispatch_lock value_self = _dispatch_lock_value_for_self();
-	dispatch_lock old_value, new_value;
+	dispatch_lock tid_old, tid_new, tid_self = _dispatch_tid_self();
 
-	os_atomic_rmw_loop(&l->dul_lock, old_value, new_value, acquire, {
-		if (likely(!_dispatch_lock_is_locked(old_value))) {
-			new_value = value_self;
+	os_atomic_rmw_loop(&l->dul_lock, tid_old, tid_new, acquire, {
+		if (likely(!_dispatch_lock_is_locked(tid_old))) {
+			tid_new = tid_self;
 		} else {
-			new_value = old_value | DLOCK_FAILED_TRYLOCK_BIT;
+#ifdef DLOCK_NOFAILED_TRYLOCK_BIT
+			tid_new = tid_old & ~DLOCK_NOFAILED_TRYLOCK_BIT;
+#else
+			tid_new = tid_old | DLOCK_FAILED_TRYLOCK_BIT;
+#endif
 		}
 	});
-	if (owner) *owner = _dispatch_lock_owner(new_value);
-	return !_dispatch_lock_is_locked(old_value);
+	if (owner) *owner = _dispatch_lock_owner(tid_new);
+	return !_dispatch_lock_is_locked(tid_old);
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline bool
 _dispatch_unfair_lock_tryunlock(dispatch_unfair_lock_t l)
 {
-	dispatch_lock old_value, new_value;
+	dispatch_lock tid_old, tid_new;
 
-	os_atomic_rmw_loop(&l->dul_lock, old_value, new_value, release, {
-		if (unlikely(old_value & DLOCK_FAILED_TRYLOCK_BIT)) {
-			new_value = old_value ^ DLOCK_FAILED_TRYLOCK_BIT;
+	os_atomic_rmw_loop(&l->dul_lock, tid_old, tid_new, release, {
+#ifdef DLOCK_NOFAILED_TRYLOCK_BIT
+		if (likely(tid_old & DLOCK_NOFAILED_TRYLOCK_BIT)) {
+			tid_new = DLOCK_OWNER_NULL;
 		} else {
-			new_value = DLOCK_OWNER_NULL;
+			tid_new = tid_old | DLOCK_NOFAILED_TRYLOCK_BIT;
 		}
+#else
+		if (likely(!(tid_old & DLOCK_FAILED_TRYLOCK_BIT))) {
+			tid_new = DLOCK_OWNER_NULL;
+		} else {
+			tid_new = tid_old & ~DLOCK_FAILED_TRYLOCK_BIT;
+		}
+#endif
 	});
-	if (unlikely(new_value)) {
+	if (unlikely(tid_new)) {
 		// unlock failed, renew the lock, which needs an acquire barrier
 		os_atomic_thread_fence(acquire);
 		return false;
 	}
-	if (unlikely(_dispatch_lock_has_waiters(old_value))) {
-		_dispatch_unfair_lock_unlock_slow(l, old_value);
+	if (unlikely(_dispatch_lock_has_waiters(tid_old))) {
+		_dispatch_unfair_lock_unlock_slow(l, tid_old);
 	}
 	return true;
 }
@@ -386,18 +453,18 @@ DISPATCH_ALWAYS_INLINE
 static inline bool
 _dispatch_unfair_lock_unlock_had_failed_trylock(dispatch_unfair_lock_t l)
 {
-	dispatch_lock cur, value_self = _dispatch_lock_value_for_self();
+	dispatch_lock tid_cur, tid_self = _dispatch_tid_self();
 #if HAVE_FUTEX
 	if (likely(os_atomic_cmpxchgv(&l->dul_lock,
-			value_self, DLOCK_OWNER_NULL, &cur, release))) {
+			tid_self, DLOCK_OWNER_NULL, &tid_cur, release))) {
 		return false;
 	}
 #else
-	cur = os_atomic_xchg(&l->dul_lock, DLOCK_OWNER_NULL, release);
-	if (likely(cur == value_self)) return false;
+	tid_cur = os_atomic_xchg(&l->dul_lock, DLOCK_OWNER_NULL, release);
+	if (likely(tid_cur == tid_self)) return false;
 #endif
-	_dispatch_unfair_lock_unlock_slow(l, cur);
-	return _dispatch_lock_has_failed_trylock(cur);
+	_dispatch_unfair_lock_unlock_slow(l, tid_cur);
+	return _dispatch_lock_has_failed_trylock(tid_cur);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -440,8 +507,9 @@ DISPATCH_ALWAYS_INLINE
 static inline bool
 _dispatch_gate_tryenter(dispatch_gate_t l)
 {
-	return os_atomic_cmpxchg(&l->dgl_lock, DLOCK_GATE_UNLOCKED,
-			_dispatch_lock_value_for_self(), acquire);
+	dispatch_lock tid_self = _dispatch_tid_self();
+	return likely(os_atomic_cmpxchg(&l->dgl_lock,
+			DLOCK_GATE_UNLOCKED, tid_self, acquire));
 }
 
 #define _dispatch_gate_wait(l, flags) \
@@ -451,18 +519,19 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_gate_broadcast(dispatch_gate_t l)
 {
-	dispatch_lock cur, value_self = _dispatch_lock_value_for_self();
-	cur = os_atomic_xchg(&l->dgl_lock, DLOCK_GATE_UNLOCKED, release);
-	if (likely(cur == value_self)) return;
-	_dispatch_gate_broadcast_slow(l, cur);
+	dispatch_lock tid_cur, tid_self = _dispatch_tid_self();
+	tid_cur = os_atomic_xchg(&l->dgl_lock, DLOCK_GATE_UNLOCKED, release);
+	if (likely(tid_cur == tid_self)) return;
+	_dispatch_gate_broadcast_slow(l, tid_cur);
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline bool
 _dispatch_once_gate_tryenter(dispatch_once_gate_t l)
 {
-	return os_atomic_cmpxchg(&l->dgo_once, DLOCK_ONCE_UNLOCKED,
-			(dispatch_once_t)_dispatch_lock_value_for_self(), acquire);
+	dispatch_once_t tid_self = (dispatch_once_t)_dispatch_tid_self();
+	return likely(os_atomic_cmpxchg(&l->dgo_once,
+			DLOCK_ONCE_UNLOCKED, tid_self, acquire));
 }
 
 #define _dispatch_once_gate_wait(l) \
@@ -501,10 +570,11 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_once_gate_broadcast(dispatch_once_gate_t l)
 {
-	dispatch_lock value_self = _dispatch_lock_value_for_self();
-	dispatch_once_t cur = _dispatch_once_xchg_done(&l->dgo_once);
-	if (likely(cur == (dispatch_once_t)value_self)) return;
-	_dispatch_gate_broadcast_slow(&l->dgo_gate, (dispatch_lock)cur);
+	dispatch_once_t tid_cur, tid_self = (dispatch_once_t)_dispatch_tid_self();
+
+	tid_cur = _dispatch_once_xchg_done(&l->dgo_once);
+	if (likely(tid_cur == tid_self)) return;
+	_dispatch_gate_broadcast_slow(&l->dgo_gate, (dispatch_lock)tid_cur);
 }
 
 #endif // __DISPATCH_SHIMS_LOCK__

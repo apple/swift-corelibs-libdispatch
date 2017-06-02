@@ -278,12 +278,11 @@ dispatch_pthread_root_queue_copy_current(void);
 
 /*!
  * @constant DISPATCH_APPLY_CURRENT_ROOT_QUEUE
- *
- * @discussion
- * This constant is deprecated, please use DISPATCH_APPLY_AUTO.
- *
- * DISPATCH_APPLY_AUTO also selects the current pthread root queue if
- * applicable.
+ * @discussion Constant to pass to the dispatch_apply() and dispatch_apply_f()
+ * functions to indicate that the root queue for the current thread should be
+ * used (i.e. one of the global concurrent queues or a queue created with
+ * dispatch_pthread_root_queue_create()). If there is no such queue, the
+ * default priority global concurrent queue will be used.
  */
 #define DISPATCH_APPLY_CURRENT_ROOT_QUEUE ((dispatch_queue_t _Nonnull)0)
 

@@ -211,8 +211,8 @@ _dispatch_epoll_update(dispatch_muxnote_t dmn, int op)
 }
 
 bool
-_dispatch_unote_register(dispatch_unote_t du,
-		DISPATCH_UNUSED dispatch_wlh_t wlh, dispatch_priority_t pri)
+_dispatch_unote_register(dispatch_unote_t du, dispatch_wlh_t wlh,
+		dispatch_priority_t pri)
 {
 	struct dispatch_muxnote_bucket_s *dmb;
 	dispatch_muxnote_t dmn;
@@ -225,7 +225,7 @@ _dispatch_unote_register(dispatch_unote_t du,
 	case DISPATCH_EVFILT_CUSTOM_ADD:
 	case DISPATCH_EVFILT_CUSTOM_OR:
 	case DISPATCH_EVFILT_CUSTOM_REPLACE:
-		du._du->du_wlh = DISPATCH_WLH_ANON;
+		du._du->du_wlh = wlh;
 		return true;
 	case EVFILT_WRITE:
 		events |= EPOLLOUT;
@@ -268,8 +268,7 @@ _dispatch_unote_register(dispatch_unote_t du,
 			TAILQ_INSERT_TAIL(&dmn->dmn_readers_head, dul, du_link);
 		}
 		dul->du_muxnote = dmn;
-		dispatch_assert(du._du->du_wlh == NULL);
-		du._du->du_wlh = DISPATCH_WLH_ANON;
+		du._du->du_wlh = DISPATCH_WLH_GLOBAL;
 	}
 	return dmn != NULL;
 }
@@ -322,7 +321,6 @@ _dispatch_unote_unregister(dispatch_unote_t du, uint32_t flags)
 			TAILQ_REMOVE(_dispatch_unote_muxnote_bucket(du), dmn, dmn_list);
 			_dispatch_muxnote_dispose(dmn);
 		}
-		dispatch_assert(du._du->du_wlh == DISPATCH_WLH_ANON);
 		du._du->du_wlh = NULL;
 	}
 	return true;
@@ -420,6 +418,11 @@ _dispatch_event_loop_atfork_child(void)
 {
 }
 
+void
+_dispatch_event_loop_init(void)
+{
+}
+
 static void
 _dispatch_epoll_init(void *context DISPATCH_UNUSED)
 {
@@ -456,7 +459,7 @@ _dispatch_epoll_init(void *context DISPATCH_UNUSED)
 
 void
 _dispatch_event_loop_poke(dispatch_wlh_t wlh DISPATCH_UNUSED,
-		uint64_t dq_state DISPATCH_UNUSED, uint32_t flags DISPATCH_UNUSED)
+		dispatch_priority_t pri DISPATCH_UNUSED, uint32_t flags DISPATCH_UNUSED)
 {
 	dispatch_once_f(&epoll_init_pred, NULL, _dispatch_epoll_init);
 	dispatch_assume_zero(eventfd_write(_dispatch_eventfd, 1));
@@ -576,42 +579,6 @@ retry:
 			}
 		}
 	}
-}
-
-void
-_dispatch_event_loop_wake_owner(dispatch_sync_context_t dsc,
-		dispatch_wlh_t wlh, uint64_t old_state, uint64_t new_state)
-{
-	(void)dsc; (void)wlh; (void)old_state; (void)new_state;
-}
-
-void
-_dispatch_event_loop_wait_for_ownership(dispatch_sync_context_t dsc)
-{
-	if (dsc->dsc_release_storage) {
-		_dispatch_queue_release_storage(dsc->dc_data);
-	}
-}
-
-void
-_dispatch_event_loop_end_ownership(dispatch_wlh_t wlh, uint64_t old_state,
-		uint64_t new_state, uint32_t flags)
-{
-	(void)wlh; (void)old_state; (void)new_state; (void)flags;
-}
-
-#if DISPATCH_WLH_DEBUG
-void
-_dispatch_event_loop_assert_not_owned(dispatch_wlh_t wlh)
-{
-	(void)wlh;
-}
-#endif
-
-void
-_dispatch_event_loop_leave_immediate(dispatch_wlh_t wlh, uint64_t dq_state)
-{
-	(void)wlh; (void)dq_state;
 }
 
 #endif // DISPATCH_EVENT_BACKEND_EPOLL

@@ -188,14 +188,14 @@
 	DISPATCH_INVOKABLE_VTABLE_HEADER(x); \
 	void (*const do_wakeup)(struct x##_s *, \
 			dispatch_qos_t, dispatch_wakeup_flags_t); \
-	void (*const do_dispose)(struct x##_s *, bool *allow_free)
+	void (*const do_dispose)(struct x##_s *)
 
 #define DISPATCH_OBJECT_VTABLE_HEADER(x) \
 	DISPATCH_QUEUEABLE_VTABLE_HEADER(x); \
 	void (*const do_set_targetq)(struct x##_s *, dispatch_queue_t); \
 	void (*const do_suspend)(struct x##_s *); \
 	void (*const do_resume)(struct x##_s *, bool activate); \
-	void (*const do_finalize_activation)(struct x##_s *, bool *allow_resume); \
+	void (*const do_finalize_activation)(struct x##_s *); \
 	size_t (*const do_debug)(struct x##_s *, char *, size_t)
 
 #define dx_vtable(x) (&(x)->do_vtable->_os_obj_vtable)
@@ -205,7 +205,7 @@
 #define dx_hastypeflag(x, f) (dx_vtable(x)->do_type & _DISPATCH_##f##_TYPEFLAG)
 #define dx_kind(x) dx_vtable(x)->do_kind
 #define dx_debug(x, y, z) dx_vtable(x)->do_debug((x), (y), (z))
-#define dx_dispose(x, y) dx_vtable(x)->do_dispose(x, y)
+#define dx_dispose(x) dx_vtable(x)->do_dispose(x)
 #define dx_invoke(x, y, z) dx_vtable(x)->do_invoke(x, y, z)
 #define dx_push(x, y, z) dx_vtable(x)->do_push(x, y, z)
 #define dx_wakeup(x, y, z) dx_vtable(x)->do_wakeup(x, y, z)
@@ -230,29 +230,32 @@
 // we sign extend the 64-bit version so that a better instruction encoding is
 // generated on Intel
 #define DISPATCH_OBJECT_LISTLESS ((void *)0xffffffff89abcdef)
+#define DISPATCH_OBJECT_WLH_REQ  ((void *)0xffffffff7009cdef)
 #else
 #define DISPATCH_OBJECT_LISTLESS ((void *)0x89abcdef)
+#define DISPATCH_OBJECT_WLH_REQ  ((void *)0x7009cdef)
 #endif
 
 DISPATCH_ENUM(dispatch_wakeup_flags, uint32_t,
-	// The caller of dx_wakeup owns two internal refcounts on the object being
-	// woken up. Two are needed for WLH wakeups where two threads need
-	// the object to remain valid in a non-coordinated way
-	// - the thread doing the poke for the duration of the poke
-	// - drainers for the duration of their drain
-	DISPATCH_WAKEUP_CONSUME_2               = 0x00000001,
+	// The caller of dx_wakeup owns an internal refcount on the object being
+	// woken up
+	DISPATCH_WAKEUP_CONSUME                 = 0x00000001,
 
 	// Some change to the object needs to be published to drainers.
 	// If the drainer isn't the same thread, some scheme such as the dispatch
 	// queue DIRTY bit must be used and a release barrier likely has to be
 	// involved before dx_wakeup returns
-	DISPATCH_WAKEUP_MAKE_DIRTY              = 0x00000002,
+	DISPATCH_WAKEUP_FLUSH					= 0x00000002,
 
-	// This wakeup is made by a sync owner that still holds the drain lock
-	DISPATCH_WAKEUP_BARRIER_COMPLETE        = 0x00000004,
+	// The caller desires to apply an override on the object being woken up.
+	// When this flag is passed, the qos passed to dx_wakeup() should not be 0
+	DISPATCH_WAKEUP_OVERRIDING              = 0x00000004,
+
+	// This wakeup is caused by a handoff from a slow waiter.
+	DISPATCH_WAKEUP_WAITER_HANDOFF          = 0x00000008,
 
 	// This wakeup is caused by a dispatch_block_wait()
-	DISPATCH_WAKEUP_BLOCK_WAIT              = 0x00000008,
+	DISPATCH_WAKEUP_BLOCK_WAIT              = 0x00000010,
 );
 
 typedef struct dispatch_invoke_context_s {
@@ -260,12 +263,11 @@ typedef struct dispatch_invoke_context_s {
 #if HAVE_PTHREAD_WORKQUEUE_NARROWING
 	uint64_t dic_next_narrow_check;
 #endif
-#if DISPATCH_COCOA_COMPAT
-	void *dic_autorelease_pool;
-#endif
 } dispatch_invoke_context_s, *dispatch_invoke_context_t;
 
 #if HAVE_PTHREAD_WORKQUEUE_NARROWING
+#define DISPATCH_NARROW_CHECK_INTERVAL \
+		_dispatch_time_nano2mach(50 * NSEC_PER_MSEC)
 #define DISPATCH_THREAD_IS_NARROWING 1
 
 #define dispatch_with_disabled_narrowing(dic, ...) ({ \
@@ -287,11 +289,12 @@ DISPATCH_ENUM(dispatch_invoke_flags, uint32_t,
 	// This invoke is a stealer, meaning that it doesn't own the
 	// enqueue lock at drain lock time.
 	//
-	// @const DISPATCH_INVOKE_WLH
-	// This invoke is for a bottom WLH
+	// @const DISPATCH_INVOKE_OVERRIDING
+	// This invoke is draining the hierarchy on another root queue and needs
+	// to fake the identity of the original one.
 	//
 	DISPATCH_INVOKE_STEALING				= 0x00000001,
-	DISPATCH_INVOKE_WLH						= 0x00000002,
+	DISPATCH_INVOKE_OVERRIDING				= 0x00000002,
 
 	// Misc flags
 	//
@@ -358,31 +361,29 @@ enum {
 
 #define DISPATCH_CONTINUATION_TYPE(name)  \
 		(_DISPATCH_CONTINUATION_TYPE | DC_##name##_TYPE)
-	DISPATCH_DATA_TYPE					= 1 | _DISPATCH_NODE_TYPE,
-	DISPATCH_MACH_MSG_TYPE				= 2 | _DISPATCH_NODE_TYPE,
-	DISPATCH_QUEUE_ATTR_TYPE			= 3 | _DISPATCH_NODE_TYPE,
+	DISPATCH_DATA_TYPE				= 1 | _DISPATCH_NODE_TYPE,
+	DISPATCH_MACH_MSG_TYPE			= 2 | _DISPATCH_NODE_TYPE,
+	DISPATCH_QUEUE_ATTR_TYPE		= 3 | _DISPATCH_NODE_TYPE,
 
-	DISPATCH_IO_TYPE					= 0 | _DISPATCH_IO_TYPE,
-	DISPATCH_OPERATION_TYPE				= 0 | _DISPATCH_OPERATION_TYPE,
-	DISPATCH_DISK_TYPE					= 0 | _DISPATCH_DISK_TYPE,
+	DISPATCH_IO_TYPE				= 0 | _DISPATCH_IO_TYPE,
+	DISPATCH_OPERATION_TYPE			= 0 | _DISPATCH_OPERATION_TYPE,
+	DISPATCH_DISK_TYPE				= 0 | _DISPATCH_DISK_TYPE,
 
-	DISPATCH_QUEUE_LEGACY_TYPE			= 1 | _DISPATCH_QUEUE_TYPE,
-	DISPATCH_QUEUE_SERIAL_TYPE			= 2 | _DISPATCH_QUEUE_TYPE,
-	DISPATCH_QUEUE_CONCURRENT_TYPE		= 3 | _DISPATCH_QUEUE_TYPE,
-	DISPATCH_QUEUE_GLOBAL_ROOT_TYPE		= 4 | _DISPATCH_QUEUE_TYPE |
+	DISPATCH_QUEUE_LEGACY_TYPE		= 1 | _DISPATCH_QUEUE_TYPE,
+	DISPATCH_QUEUE_SERIAL_TYPE		= 2 | _DISPATCH_QUEUE_TYPE,
+	DISPATCH_QUEUE_CONCURRENT_TYPE	= 3 | _DISPATCH_QUEUE_TYPE,
+	DISPATCH_QUEUE_GLOBAL_ROOT_TYPE	= 4 | _DISPATCH_QUEUE_TYPE |
 			_DISPATCH_QUEUE_ROOT_TYPEFLAG,
-	DISPATCH_QUEUE_NETWORK_EVENT_TYPE	= 5 | _DISPATCH_QUEUE_TYPE |
+	DISPATCH_QUEUE_RUNLOOP_TYPE		= 5 | _DISPATCH_QUEUE_TYPE |
 			_DISPATCH_QUEUE_ROOT_TYPEFLAG,
-	DISPATCH_QUEUE_RUNLOOP_TYPE			= 6 | _DISPATCH_QUEUE_TYPE |
-			_DISPATCH_QUEUE_ROOT_TYPEFLAG,
-	DISPATCH_QUEUE_MGR_TYPE				= 7 | _DISPATCH_QUEUE_TYPE,
-	DISPATCH_QUEUE_SPECIFIC_TYPE		= 8 | _DISPATCH_QUEUE_TYPE,
+	DISPATCH_QUEUE_MGR_TYPE			= 6 | _DISPATCH_QUEUE_TYPE,
+	DISPATCH_QUEUE_SPECIFIC_TYPE	= 7 | _DISPATCH_QUEUE_TYPE,
 
-	DISPATCH_SEMAPHORE_TYPE				= 1 | _DISPATCH_SEMAPHORE_TYPE,
-	DISPATCH_GROUP_TYPE					= 2 | _DISPATCH_SEMAPHORE_TYPE,
+	DISPATCH_SEMAPHORE_TYPE			= 1 | _DISPATCH_SEMAPHORE_TYPE,
+	DISPATCH_GROUP_TYPE				= 2 | _DISPATCH_SEMAPHORE_TYPE,
 
-	DISPATCH_SOURCE_KEVENT_TYPE			= 1 | _DISPATCH_SOURCE_TYPE,
-	DISPATCH_MACH_CHANNEL_TYPE			= 2 | _DISPATCH_SOURCE_TYPE,
+	DISPATCH_SOURCE_KEVENT_TYPE		= 1 | _DISPATCH_SOURCE_TYPE,
+	DISPATCH_MACH_CHANNEL_TYPE		= 2 | _DISPATCH_SOURCE_TYPE,
 
 };
 
@@ -449,9 +450,9 @@ struct dispatch_object_s {
 	struct dispatch_object_s *volatile ns##_items_head; \
 	unsigned long ns##_serialnum; \
 	const char *ns##_label; \
+	dispatch_wlh_t ns##_wlh; \
 	struct dispatch_object_s *volatile ns##_items_tail; \
-	dispatch_priority_t ns##_priority; \
-	int volatile ns##_sref_cnt
+	dispatch_priority_t ns##_priority
 #else
 #define _OS_MPSC_QUEUE_FIELDS(ns, __state_field__) \
 	struct dispatch_object_s *volatile ns##_items_head; \
@@ -462,9 +463,10 @@ struct dispatch_object_s {
 	/* LP64 global queue cacheline boundary */ \
 	unsigned long ns##_serialnum; \
 	const char *ns##_label; \
+	dispatch_wlh_t ns##_wlh; \
 	struct dispatch_object_s *volatile ns##_items_tail; \
-	dispatch_priority_t ns##_priority; \
-	int volatile ns##_sref_cnt
+	dispatch_priority_t ns##_priority
+	/* LP64: 32bit hole */
 #endif
 
 OS_OBJECT_INTERNAL_CLASS_DECL(os_mpsc_queue, object,
@@ -482,9 +484,7 @@ struct os_mpsc_queue_s {
 
 size_t _dispatch_object_debug_attr(dispatch_object_t dou, char* buf,
 		size_t bufsiz);
-void *_dispatch_object_alloc(const void *vtable, size_t size);
-void _dispatch_object_finalize(dispatch_object_t dou);
-void _dispatch_object_dealloc(dispatch_object_t dou);
+void *_dispatch_alloc(const void *vtable, size_t size);
 #if !USE_OBJC
 void _dispatch_xref_dispose(dispatch_object_t dou);
 #endif
@@ -492,22 +492,17 @@ void _dispatch_dispose(dispatch_object_t dou);
 #if DISPATCH_COCOA_COMPAT
 #if USE_OBJC
 #include <objc/runtime.h>
-#if __has_include(<objc/objc-internal.h>)
 #include <objc/objc-internal.h>
-#else
-extern void *objc_autoreleasePoolPush(void);
-extern void objc_autoreleasePoolPop(void *context);
-#endif // __has_include(<objc/objc-internal.h>)
 #define _dispatch_autorelease_pool_push() \
-		objc_autoreleasePoolPush()
+	objc_autoreleasePoolPush()
 #define _dispatch_autorelease_pool_pop(context) \
-		objc_autoreleasePoolPop(context)
+	objc_autoreleasePoolPop(context)
 #else
 void *_dispatch_autorelease_pool_push(void);
 void _dispatch_autorelease_pool_pop(void *context);
 #endif
-void _dispatch_last_resort_autorelease_pool_push(dispatch_invoke_context_t dic);
-void _dispatch_last_resort_autorelease_pool_pop(dispatch_invoke_context_t dic);
+void *_dispatch_last_resort_autorelease_pool_push(void);
+void _dispatch_last_resort_autorelease_pool_pop(void *context);
 
 #define dispatch_invoke_with_autoreleasepool(flags, ...)  ({ \
 		void *pool = NULL; \
@@ -522,6 +517,7 @@ void _dispatch_last_resort_autorelease_pool_pop(dispatch_invoke_context_t dic);
 #define dispatch_invoke_with_autoreleasepool(flags, ...) \
 	do { (void)flags; __VA_ARGS__; } while (0)
 #endif
+
 
 #if USE_OBJC
 OS_OBJECT_OBJC_CLASS_DECL(object);
@@ -586,20 +582,20 @@ size_t _dispatch_objc_debug(dispatch_object_t dou, char* buf, size_t bufsiz);
  *   a barrier to perform prior to tearing down an object when the refcount
  *   reached -1.
  */
-#define _os_atomic_refcnt_perform2o(o, f, op, n, m)   ({ \
+#define _os_atomic_refcnt_perform2o(o, f, op, m)   ({ \
 		typeof(o) _o = (o); \
 		int _ref_cnt = _o->f; \
 		if (fastpath(_ref_cnt != _OS_OBJECT_GLOBAL_REFCNT)) { \
-			_ref_cnt = os_atomic_##op##2o(_o, f, n, m); \
+			_ref_cnt = os_atomic_##op##2o(_o, f, m); \
 		} \
 		_ref_cnt; \
 	})
 
-#define _os_atomic_refcnt_add2o(o, m, n) \
-		_os_atomic_refcnt_perform2o(o, m, add, n, relaxed)
+#define _os_atomic_refcnt_inc2o(o, m) \
+		_os_atomic_refcnt_perform2o(o, m, inc, relaxed)
 
-#define _os_atomic_refcnt_sub2o(o, m, n) \
-		_os_atomic_refcnt_perform2o(o, m, sub, n, release)
+#define _os_atomic_refcnt_dec2o(o, m) \
+		_os_atomic_refcnt_perform2o(o, m, dec, release)
 
 #define _os_atomic_refcnt_dispose_barrier2o(o, m) \
 		(void)os_atomic_load2o(o, m, acquire)
@@ -622,19 +618,19 @@ size_t _dispatch_objc_debug(dispatch_object_t dou, char* buf, size_t bufsiz);
  *
  */
 #define _os_object_xrefcnt_inc(o) \
-		_os_atomic_refcnt_add2o(o, os_obj_xref_cnt, 1)
+		_os_atomic_refcnt_inc2o(o, os_obj_xref_cnt)
 
 #define _os_object_xrefcnt_dec(o) \
-		_os_atomic_refcnt_sub2o(o, os_obj_xref_cnt, 1)
+		_os_atomic_refcnt_dec2o(o, os_obj_xref_cnt)
 
 #define _os_object_xrefcnt_dispose_barrier(o) \
 		_os_atomic_refcnt_dispose_barrier2o(o, os_obj_xref_cnt)
 
-#define _os_object_refcnt_add(o, n) \
-		_os_atomic_refcnt_add2o(o, os_obj_ref_cnt, n)
+#define _os_object_refcnt_inc(o) \
+		_os_atomic_refcnt_inc2o(o, os_obj_ref_cnt)
 
-#define _os_object_refcnt_sub(o, n) \
-		_os_atomic_refcnt_sub2o(o, os_obj_ref_cnt, n)
+#define _os_object_refcnt_dec(o) \
+		_os_atomic_refcnt_dec2o(o, os_obj_ref_cnt)
 
 #define _os_object_refcnt_dispose_barrier(o) \
 		_os_atomic_refcnt_dispose_barrier2o(o, os_obj_ref_cnt)
