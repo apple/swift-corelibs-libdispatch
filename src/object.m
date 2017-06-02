@@ -29,20 +29,9 @@
 #error Objective C GC isn't supported anymore
 #endif
 
-#if __has_include(<objc/objc-internal.h>)
 #include <objc/objc-internal.h>
-#else
-extern id _Nullable objc_retain(id _Nullable obj) __asm__("_objc_retain");
-extern void objc_release(id _Nullable obj) __asm__("_objc_release");
-extern void _objc_init(void);
-extern void _objc_atfork_prepare(void);
-extern void _objc_atfork_parent(void);
-extern void _objc_atfork_child(void);
-#endif // __has_include(<objc/objc-internal.h>)
 #include <objc/objc-exception.h>
 #include <Foundation/NSString.h>
-
-// NOTE: this file must not contain any atomic operations
 
 #pragma mark -
 #pragma mark _os_object_t
@@ -297,11 +286,6 @@ DISPATCH_UNAVAILABLE_INIT()
 	return [nsstring stringWithFormat:format, class_getName([self class]), buf];
 }
 
-- (void)dealloc DISPATCH_NORETURN {
-	DISPATCH_INTERNAL_CRASH(0, "Calling dealloc on a dispatch object");
-	[super dealloc]; // make clang happy
-}
-
 @end
 
 @implementation DISPATCH_CLASS(queue)
@@ -429,20 +413,20 @@ DISPATCH_OBJC_LOAD()
 
 #if DISPATCH_COCOA_COMPAT
 
-void
-_dispatch_last_resort_autorelease_pool_push(dispatch_invoke_context_t dic)
+void *
+_dispatch_last_resort_autorelease_pool_push(void)
 {
 	if (!slowpath(_os_object_debug_missing_pools)) {
-		dic->dic_autorelease_pool = _dispatch_autorelease_pool_push();
+		return _dispatch_autorelease_pool_push();
 	}
+	return NULL;
 }
 
 void
-_dispatch_last_resort_autorelease_pool_pop(dispatch_invoke_context_t dic)
+_dispatch_last_resort_autorelease_pool_pop(void *context)
 {
 	if (!slowpath(_os_object_debug_missing_pools)) {
-		_dispatch_autorelease_pool_pop(dic->dic_autorelease_pool);
-		dic->dic_autorelease_pool = NULL;
+		return _dispatch_autorelease_pool_pop(context);
 	}
 }
 

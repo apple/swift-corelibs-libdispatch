@@ -206,49 +206,15 @@ dispatch_sync_f(dispatch_queue_t queue,
 	void *_Nullable context,
 	dispatch_function_t work);
 
-
-#if !defined(__APPLE__) || TARGET_OS_WATCH || TARGET_OS_TV || \
-		(defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && \
-		__IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_7_0) || \
-		(defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && \
-		__MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_9)
-#define DISPATCH_APPLY_AUTO_AVAILABLE 1
-#else
-#define DISPATCH_APPLY_AUTO_AVAILABLE 0
-#endif
-
-/*!
- * @constant DISPATCH_APPLY_AUTO
- *
- * @abstract
- * Constant to pass to dispatch_apply() or dispatch_apply_f() to request that
- * the system automatically use worker threads that match the configuration of
- * the current thread most closely.
- *
- * @discussion
- * When submitting a block for parallel invocation, passing this constant as the
- * queue argument will automatically use the global concurrent queue that
- * matches the Quality of Service of the caller most closely.
- *
- * No assumptions should be made about which global concurrent queue will
- * actually be used.
- *
- * Using this constant deploys backward to macOS 10.9, iOS 7.0 and any tvOS or
- * watchOS version.
- */
-#if DISPATCH_APPLY_AUTO_AVAILABLE
-#define DISPATCH_APPLY_AUTO ((dispatch_queue_t _Nonnull)0)
-#endif
-
 /*!
  * @function dispatch_apply
  *
  * @abstract
- * Submits a block to a dispatch queue for parallel invocation.
+ * Submits a block to a dispatch queue for multiple invocations.
  *
  * @discussion
- * Submits a block to a dispatch queue for parallel invocation. This function
- * waits for the task block to complete before returning. If the specified queue
+ * Submits a block to a dispatch queue for multiple invocations. This function
+ * waits for the task block to complete before returning. If the target queue
  * is concurrent, the block may be invoked concurrently, and it must therefore
  * be reentrant safe.
  *
@@ -258,9 +224,8 @@ dispatch_sync_f(dispatch_queue_t queue,
  * The number of iterations to perform.
  *
  * @param queue
- * The dispatch queue to which the block is submitted.
- * The preferred value to pass is DISPATCH_APPLY_AUTO to automatically use
- * a queue appropriate for the calling thread.
+ * The target dispatch queue to which the block is submitted.
+ * The result of passing NULL in this parameter is undefined.
  *
  * @param block
  * The block to be invoked the specified number of iterations.
@@ -278,7 +243,7 @@ dispatch_apply(size_t iterations, dispatch_queue_t queue,
  * @function dispatch_apply_f
  *
  * @abstract
- * Submits a function to a dispatch queue for parallel invocation.
+ * Submits a function to a dispatch queue for multiple invocations.
  *
  * @discussion
  * See dispatch_apply() for details.
@@ -287,15 +252,14 @@ dispatch_apply(size_t iterations, dispatch_queue_t queue,
  * The number of iterations to perform.
  *
  * @param queue
- * The dispatch queue to which the function is submitted.
- * The preferred value to pass is DISPATCH_APPLY_AUTO to automatically use
- * a queue appropriate for the calling thread.
+ * The target dispatch queue to which the function is submitted.
+ * The result of passing NULL in this parameter is undefined.
  *
  * @param context
  * The application-defined context parameter to pass to the function.
  *
  * @param work
- * The application-defined function to invoke on the specified queue. The first
+ * The application-defined function to invoke on the target queue. The first
  * parameter passed to this function is the context provided to
  * dispatch_apply_f(). The second parameter passed to this function is the
  * current index of iteration.

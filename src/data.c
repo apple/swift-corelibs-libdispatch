@@ -100,22 +100,51 @@
 #define _dispatch_data_release(x) dispatch_release(x)
 #endif
 
+const dispatch_block_t _dispatch_data_destructor_free = ^{
+	DISPATCH_INTERNAL_CRASH(0, "free destructor called");
+};
+
+const dispatch_block_t _dispatch_data_destructor_none = ^{
+	DISPATCH_INTERNAL_CRASH(0, "none destructor called");
+};
+
+#if !HAVE_MACH
+const dispatch_block_t _dispatch_data_destructor_munmap = ^{
+	DISPATCH_INTERNAL_CRASH(0, "munmap destructor called");
+};
+#else
+// _dispatch_data_destructor_munmap is a linker alias to the following
+const dispatch_block_t _dispatch_data_destructor_vm_deallocate = ^{
+	DISPATCH_INTERNAL_CRASH(0, "vmdeallocate destructor called");
+};
+#endif
+
+const dispatch_block_t _dispatch_data_destructor_inline = ^{
+	DISPATCH_INTERNAL_CRASH(0, "inline destructor called");
+};
+
+struct dispatch_data_s _dispatch_data_empty = {
+#if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
+	.do_vtable = DISPATCH_DATA_EMPTY_CLASS,
+#else
+	DISPATCH_GLOBAL_OBJECT_HEADER(data),
+	.do_next = DISPATCH_OBJECT_LISTLESS,
+#endif
+};
+
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_data_t
 _dispatch_data_alloc(size_t n, size_t extra)
 {
 	dispatch_data_t data;
 	size_t size;
-	size_t base_size;
 
-	if (os_add_overflow(sizeof(struct dispatch_data_s), extra, &base_size)) {
-		return DISPATCH_OUT_OF_MEMORY;
-	}
-	if (os_mul_and_add_overflow(n, sizeof(range_record), base_size, &size)) {
+	if (os_mul_and_add_overflow(n, sizeof(range_record),
+			sizeof(struct dispatch_data_s) + extra, &size)) {
 		return DISPATCH_OUT_OF_MEMORY;
 	}
 
-	data = _dispatch_object_alloc(DISPATCH_DATA_CLASS, size);
+	data = _dispatch_alloc(DISPATCH_DATA_CLASS, size);
 	data->num_records = n;
 #if !DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 	data->do_targetq = dispatch_get_global_queue(
@@ -163,8 +192,8 @@ _dispatch_data_init(dispatch_data_t data, const void *buffer, size_t size,
 }
 
 void
-_dispatch_data_init_with_bytes(dispatch_data_t data, const void *buffer,
-		size_t size, dispatch_block_t destructor)
+dispatch_data_init(dispatch_data_t data, const void *buffer, size_t size,
+		dispatch_block_t destructor)
 {
 	if (!buffer || !size) {
 		if (destructor) {
@@ -255,7 +284,7 @@ out:
 }
 
 void
-_dispatch_data_dispose(dispatch_data_t dd, DISPATCH_UNUSED bool *allow_free)
+_dispatch_data_dispose(dispatch_data_t dd)
 {
 	if (_dispatch_data_leaf(dd)) {
 		_dispatch_data_destroy_buffer(dd->buf, dd->size, dd->do_targetq,
@@ -267,18 +296,6 @@ _dispatch_data_dispose(dispatch_data_t dd, DISPATCH_UNUSED bool *allow_free)
 		}
 		free((void *)dd->buf);
 	}
-}
-
-void
-_dispatch_data_set_target_queue(dispatch_data_t dd, dispatch_queue_t tq)
-{
-#if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
-	_dispatch_retain(tq);
-	tq = os_atomic_xchg2o(dd, do_targetq, tq, release);
-	if (tq) _dispatch_release(tq);
-#else
-	_dispatch_object_set_target_queue_inline(dd, tq);
-#endif
 }
 
 size_t

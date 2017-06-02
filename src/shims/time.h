@@ -46,15 +46,7 @@ typedef enum {
 #define DISPATCH_CLOCK_COUNT  (DISPATCH_CLOCK_MACH + 1)
 } dispatch_clock_t;
 
-void _dispatch_time_init(void);
-
 #if defined(__i386__) || defined(__x86_64__) || !HAVE_MACH_ABSOLUTE_TIME
-#define DISPATCH_TIME_UNIT_USES_NANOSECONDS 1
-#else
-#define DISPATCH_TIME_UNIT_USES_NANOSECONDS 0
-#endif
-
-#if DISPATCH_TIME_UNIT_USES_NANOSECONDS
 // x86 currently implements mach time in nanoseconds
 // this is NOT likely to change
 DISPATCH_ALWAYS_INLINE
@@ -71,21 +63,52 @@ _dispatch_time_nano2mach(uint64_t nsec)
 	return nsec;
 }
 #else
-#define DISPATCH_USE_HOST_TIME 1
-extern uint64_t (*_dispatch_host_time_mach2nano)(uint64_t machtime);
-extern uint64_t (*_dispatch_host_time_nano2mach)(uint64_t nsec);
+typedef struct _dispatch_host_time_data_s {
+	dispatch_once_t pred;
+	long double frac;
+	bool ratio_1_to_1;
+} _dispatch_host_time_data_s;
+extern _dispatch_host_time_data_s _dispatch_host_time_data;
+void _dispatch_get_host_time_init(void *context);
+
 static inline uint64_t
 _dispatch_time_mach2nano(uint64_t machtime)
 {
-	return _dispatch_host_time_mach2nano(machtime);
+	_dispatch_host_time_data_s *const data = &_dispatch_host_time_data;
+	dispatch_once_f(&data->pred, NULL, _dispatch_get_host_time_init);
+
+	if (unlikely(!machtime || data->ratio_1_to_1)) {
+		return machtime;
+	}
+	if (machtime >= INT64_MAX) {
+		return INT64_MAX;
+	}
+	long double big_tmp = ((long double)machtime * data->frac) + .5L;
+	if (unlikely(big_tmp >= INT64_MAX)) {
+		return INT64_MAX;
+	}
+	return (uint64_t)big_tmp;
 }
 
 static inline uint64_t
 _dispatch_time_nano2mach(uint64_t nsec)
 {
-	return _dispatch_host_time_nano2mach(nsec);
+	_dispatch_host_time_data_s *const data = &_dispatch_host_time_data;
+	dispatch_once_f(&data->pred, NULL, _dispatch_get_host_time_init);
+
+	if (unlikely(!nsec || data->ratio_1_to_1)) {
+		return nsec;
+	}
+	if (nsec >= INT64_MAX) {
+		return INT64_MAX;
+	}
+	long double big_tmp = ((long double)nsec / data->frac) + .5L;
+	if (unlikely(big_tmp >= INT64_MAX)) {
+		return INT64_MAX;
+	}
+	return (uint64_t)big_tmp;
 }
-#endif // DISPATCH_USE_HOST_TIME
+#endif
 
 /* XXXRW: Some kind of overflow detection needed? */
 #define _dispatch_timespec_to_nano(ts) \
@@ -100,7 +123,7 @@ _dispatch_get_nanoseconds(void)
 	dispatch_static_assert(sizeof(NSEC_PER_SEC) == 8);
 	dispatch_static_assert(sizeof(USEC_PER_SEC) == 8);
 
-#if TARGET_OS_MAC
+#if TARGET_OS_MAC && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
 	return clock_gettime_nsec_np(CLOCK_REALTIME);
 #elif HAVE_DECL_CLOCK_REALTIME
 	struct timespec ts;

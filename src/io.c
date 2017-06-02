@@ -233,7 +233,7 @@ _dispatch_iocntl(uint32_t param, uint64_t value)
 static dispatch_io_t
 _dispatch_io_create(dispatch_io_type_t type)
 {
-	dispatch_io_t channel = _dispatch_object_alloc(DISPATCH_VTABLE(io),
+	dispatch_io_t channel = _dispatch_alloc(DISPATCH_VTABLE(io),
 			sizeof(struct dispatch_io_s));
 	channel->do_next = DISPATCH_OBJECT_LISTLESS;
 	channel->do_targetq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, true);
@@ -278,7 +278,7 @@ _dispatch_io_init(dispatch_io_t channel, dispatch_fd_entry_t fd_entry,
 }
 
 void
-_dispatch_io_dispose(dispatch_io_t channel, DISPATCH_UNUSED bool *allow_free)
+_dispatch_io_dispose(dispatch_io_t channel)
 {
 	_dispatch_object_debug(channel, "%s", __func__);
 	if (channel->fd_entry &&
@@ -682,9 +682,6 @@ _dispatch_io_stop(dispatch_io_t channel)
 				_dispatch_channel_debug("stop cleanup", channel);
 				_dispatch_fd_entry_cleanup_operations(fd_entry, channel);
 				if (!(channel->atomic_flags & DIO_CLOSED)) {
-					if (fd_entry->path_data) {
-						fd_entry->path_data->channel = NULL;
-					}
 					channel->fd_entry = NULL;
 					_dispatch_fd_entry_release(fd_entry);
 				}
@@ -735,10 +732,9 @@ dispatch_io_close(dispatch_io_t channel, unsigned long flags)
 						relaxed);
 				dispatch_fd_entry_t fd_entry = channel->fd_entry;
 				if (fd_entry) {
-					if (fd_entry->path_data) {
-						fd_entry->path_data->channel = NULL;
+					if (!fd_entry->path_data) {
+						channel->fd_entry = NULL;
 					}
-					channel->fd_entry = NULL;
 					_dispatch_fd_entry_release(fd_entry);
 				}
 			}
@@ -1023,13 +1019,14 @@ _dispatch_operation_create(dispatch_op_direction_t direction,
 		});
 		return NULL;
 	}
-	dispatch_operation_t op = _dispatch_object_alloc(DISPATCH_VTABLE(operation),
+	dispatch_operation_t op = _dispatch_alloc(DISPATCH_VTABLE(operation),
 			sizeof(struct dispatch_operation_s));
 	_dispatch_channel_debug("operation create: %p", channel, op);
 	op->do_next = DISPATCH_OBJECT_LISTLESS;
 	op->do_xref_cnt = -1; // operation object is not exposed externally
-	op->op_q = dispatch_queue_create_with_target("com.apple.libdispatch-io.opq",
-			NULL, queue);
+	op->op_q = dispatch_queue_create("com.apple.libdispatch-io.opq", NULL);
+	op->op_q->do_targetq = queue;
+	_dispatch_retain(queue);
 	op->active = false;
 	op->direction = direction;
 	op->offset = offset + channel->f_ptr;
@@ -1050,8 +1047,7 @@ _dispatch_operation_create(dispatch_op_direction_t direction,
 }
 
 void
-_dispatch_operation_dispose(dispatch_operation_t op,
-		DISPATCH_UNUSED bool *allow_free)
+_dispatch_operation_dispose(dispatch_operation_t op)
 {
 	_dispatch_object_debug(op, "%s", __func__);
 	_dispatch_op_debug("dispose", op);
@@ -1309,10 +1305,12 @@ _dispatch_fd_entry_create(dispatch_queue_t q)
 {
 	dispatch_fd_entry_t fd_entry;
 	fd_entry = _dispatch_calloc(1ul, sizeof(struct dispatch_fd_entry_s));
+	fd_entry->close_queue = dispatch_queue_create(
+			"com.apple.libdispatch-io.closeq", NULL);
 	// Use target queue to ensure that no concurrent lookups are going on when
 	// the close queue is running
-	fd_entry->close_queue = dispatch_queue_create_with_target(
-			"com.apple.libdispatch-io.closeq", NULL, q);
+	fd_entry->close_queue->do_targetq = q;
+	_dispatch_retain(q);
 	// Suspend the cleanup queue until closing
 	_dispatch_fd_entry_retain(fd_entry);
 	return fd_entry;
@@ -1586,9 +1584,11 @@ _dispatch_stream_init(dispatch_fd_entry_t fd_entry, dispatch_queue_t tq)
 	for (direction = 0; direction < DOP_DIR_MAX; direction++) {
 		dispatch_stream_t stream;
 		stream = _dispatch_calloc(1ul, sizeof(struct dispatch_stream_s));
-		stream->dq = dispatch_queue_create_with_target(
-				"com.apple.libdispatch-io.streamq", NULL, tq);
+		stream->dq = dispatch_queue_create("com.apple.libdispatch-io.streamq",
+				NULL);
 		dispatch_set_context(stream->dq, stream);
+		_dispatch_retain(tq);
+		stream->dq->do_targetq = tq;
 		TAILQ_INIT(&stream->operations[DISPATCH_IO_RANDOM]);
 		TAILQ_INIT(&stream->operations[DISPATCH_IO_STREAM]);
 		fd_entry->streams[direction] = stream;
@@ -1633,7 +1633,7 @@ _dispatch_disk_init(dispatch_fd_entry_t fd_entry, dev_t dev)
 	}
 	// Otherwise create a new entry
 	size_t pending_reqs_depth = dispatch_io_defaults.max_pending_io_reqs;
-	disk = _dispatch_object_alloc(DISPATCH_VTABLE(disk),
+	disk = _dispatch_alloc(DISPATCH_VTABLE(disk),
 			sizeof(struct dispatch_disk_s) +
 			(pending_reqs_depth * sizeof(dispatch_operation_t)));
 	disk->do_next = DISPATCH_OBJECT_LISTLESS;
@@ -1654,7 +1654,7 @@ out:
 }
 
 void
-_dispatch_disk_dispose(dispatch_disk_t disk, DISPATCH_UNUSED bool *allow_free)
+_dispatch_disk_dispose(dispatch_disk_t disk)
 {
 	uintptr_t hash = DIO_HASH(disk->dev);
 	TAILQ_REMOVE(&_dispatch_io_devs[hash], disk, disk_list);

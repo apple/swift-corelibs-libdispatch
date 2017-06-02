@@ -23,9 +23,7 @@
 static void _dispatch_source_handler_free(dispatch_source_t ds, long kind);
 static void _dispatch_source_set_interval(dispatch_source_t ds, uint64_t interval);
 
-#define DISPATCH_TIMERS_UNREGISTER 0x1
-#define DISPATCH_TIMERS_RETAIN_2 0x2
-static void _dispatch_timers_update(dispatch_unote_t du, uint32_t flags);
+static void _dispatch_timers_update(dispatch_unote_t du);
 static void _dispatch_timers_unregister(dispatch_timer_source_refs_t dt);
 
 static void _dispatch_source_timer_configure(dispatch_source_t ds);
@@ -42,16 +40,18 @@ dispatch_source_create(dispatch_source_type_t dst, uintptr_t handle,
 	dispatch_source_refs_t dr;
 	dispatch_source_t ds;
 
+	// ensure _dispatch_evfilt_machport_direct_enabled is initialized
+	_dispatch_root_queues_init();
+
 	dr = dux_create(dst, handle, mask)._dr;
 	if (unlikely(!dr)) {
 		return DISPATCH_BAD_INPUT;
 	}
 
-	ds = _dispatch_object_alloc(DISPATCH_VTABLE(source),
+	ds = _dispatch_alloc(DISPATCH_VTABLE(source),
 			sizeof(struct dispatch_source_s));
 	// Initialize as a queue first, then override some settings below.
-	_dispatch_queue_init(ds->_as_dq, DQF_LEGACY, 1,
-			DISPATCH_QUEUE_INACTIVE | DISPATCH_QUEUE_ROLE_INNER);
+	_dispatch_queue_init(ds->_as_dq, DQF_LEGACY, 1, true);
 	ds->dq_label = "source";
 	ds->do_ref_cnt++; // the reference the manager queue holds
 	ds->ds_refs = dr;
@@ -71,7 +71,7 @@ dispatch_source_create(dispatch_source_type_t dst, uintptr_t handle,
 }
 
 void
-_dispatch_source_dispose(dispatch_source_t ds, bool *allow_free)
+_dispatch_source_dispose(dispatch_source_t ds)
 {
 	_dispatch_object_debug(ds, "%s", __func__);
 	_dispatch_source_handler_free(ds, DS_REGISTN_HANDLER);
@@ -79,7 +79,7 @@ _dispatch_source_dispose(dispatch_source_t ds, bool *allow_free)
 	_dispatch_source_handler_free(ds, DS_CANCEL_HANDLER);
 	_dispatch_unote_dispose(ds->ds_refs);
 	ds->ds_refs = NULL;
-	_dispatch_queue_destroy(ds->_as_dq, allow_free);
+	_dispatch_queue_destroy(ds->_as_dq);
 }
 
 void
@@ -90,7 +90,7 @@ _dispatch_source_xref_dispose(dispatch_source_t ds)
 		DISPATCH_CLIENT_CRASH(ds, "Release of a source that has not been "
 				"cancelled, but has a mandatory cancel handler");
 	}
-	dx_wakeup(ds, 0, DISPATCH_WAKEUP_MAKE_DIRTY);
+	dx_wakeup(ds, 0, DISPATCH_WAKEUP_FLUSH);
 }
 
 long
@@ -210,7 +210,7 @@ _dispatch_source_merge_data(dispatch_source_t ds, pthread_priority_t pp,
 		DISPATCH_CLIENT_CRASH(filter, "Invalid source type");
 	}
 
-	dx_wakeup(ds, _dispatch_qos_from_pp(pp), DISPATCH_WAKEUP_MAKE_DIRTY);
+	dx_wakeup(ds, _dispatch_qos_from_pp(pp), DISPATCH_WAKEUP_FLUSH);
 }
 
 void
@@ -534,7 +534,6 @@ _dispatch_source_refs_unregister(dispatch_source_t ds, uint32_t options)
 		// to tell the truth, it may not have happened yet
 		if (dqf & DSF_ARMED) {
 			_dispatch_timers_unregister(ds->ds_timer_refs);
-			_dispatch_release_2(ds);
 		}
 		dr->du_ident = DISPATCH_TIMER_IDENT_CANCELED;
 	} else {
@@ -556,7 +555,7 @@ _dispatch_source_refs_unregister(dispatch_source_t ds, uint32_t options)
 	}
 	ds->ds_is_installed = true;
 	_dispatch_debug("kevent-source[%p]: disarmed kevent[%p]", ds, dr);
-	_dispatch_release_tailcall(ds); // the retain is done at creation time
+	_dispatch_release(ds); // the retain is done at creation time
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -580,7 +579,7 @@ _dispatch_source_refs_resume(dispatch_source_t ds)
 {
 	dispatch_source_refs_t dr = ds->ds_refs;
 	if (dr->du_is_timer) {
-		_dispatch_timers_update(dr, 0);
+		_dispatch_timers_update(dr);
 		return true;
 	}
 	if (unlikely(!_dispatch_source_tryarm(ds))) {
@@ -592,17 +591,14 @@ _dispatch_source_refs_resume(dispatch_source_t ds)
 }
 
 void
-_dispatch_source_refs_register(dispatch_source_t ds, dispatch_wlh_t wlh,
-		dispatch_priority_t pri)
+_dispatch_source_refs_register(dispatch_source_t ds, dispatch_priority_t pri)
 {
 	dispatch_source_refs_t dr = ds->ds_refs;
-	dispatch_priority_t kbp;
 
 	dispatch_assert(!ds->ds_is_installed);
 
 	if (dr->du_is_timer) {
-		dispatch_queue_t dq = ds->_as_dq;
-		kbp = _dispatch_queue_compute_priority_and_wlh(dq, NULL);
+		dispatch_priority_t kbp = _dispatch_source_compute_kevent_priority(ds);
 		// aggressively coalesce background/maintenance QoS timers
 		// <rdar://problem/12200216&27342536>
 		if (_dispatch_qos_is_background(_dispatch_priority_qos(kbp))) {
@@ -613,12 +609,12 @@ _dispatch_source_refs_register(dispatch_source_t ds, dispatch_wlh_t wlh,
 				dr->du_ident = _dispatch_source_timer_idx(dr);
 			}
 		}
-		_dispatch_timers_update(dr, 0);
+		_dispatch_timers_update(dr);
 		return;
 	}
 
 	if (unlikely(!_dispatch_source_tryarm(ds) ||
-			!_dispatch_unote_register(dr, wlh, pri))) {
+			!_dispatch_unote_register(dr, ds->dq_wlh, pri))) {
 		_dispatch_queue_atomic_flags_set_and_clear(ds->_as_dq, DSF_DELETED,
 				DSF_ARMED | DSF_DEFERRED_DELETE);
 	} else {
@@ -638,22 +634,65 @@ _dispatch_source_set_event_handler_context(void *ctxt)
 	}
 }
 
-DISPATCH_ALWAYS_INLINE
-static inline void
-_dispatch_source_install(dispatch_source_t ds, dispatch_wlh_t wlh,
-		dispatch_priority_t pri)
+dispatch_priority_t
+_dispatch_source_compute_kevent_priority(dispatch_source_t ds)
 {
-	_dispatch_source_refs_register(ds, wlh, pri);
+	dispatch_priority_t p = ds->dq_priority & DISPATCH_PRIORITY_REQUESTED_MASK;
+	dispatch_queue_t tq = ds->do_targetq;
+	dispatch_priority_t tqp = tq->dq_priority & DISPATCH_PRIORITY_REQUESTED_MASK;
+
+	while (unlikely(!dx_hastypeflag(tq, QUEUE_ROOT))) {
+		if (unlikely(tq == &_dispatch_mgr_q)) {
+			return DISPATCH_PRIORITY_FLAG_MANAGER;
+		}
+		if (unlikely(_dispatch_queue_is_thread_bound(tq))) {
+			// thread-bound hierarchies are weird, we need to install
+			// from the context of the thread this hierarchy is bound to
+			return 0;
+		}
+		if (unlikely(DISPATCH_QUEUE_IS_SUSPENDED(tq))) {
+			// this queue may not be activated yet, so the queue graph may not
+			// have stabilized yet
+			_dispatch_ktrace1(DISPATCH_PERF_delayed_registration, ds);
+			return 0;
+		}
+		if (unlikely(_dispatch_queue_is_legacy(tq))) {
+			if (!_dispatch_is_in_root_queues_array(tq->do_targetq)) {
+				// we're not allowed to dereference tq->do_targetq
+				_dispatch_ktrace1(DISPATCH_PERF_delayed_registration, ds);
+				return 0;
+			}
+		}
+		if (!(tq->dq_priority & DISPATCH_PRIORITY_FLAG_INHERIT)) {
+			if (p < tqp) p = tqp;
+		}
+		tq = tq->do_targetq;
+		tqp = tq->dq_priority & DISPATCH_PRIORITY_REQUESTED_MASK;
+	}
+
+	if (unlikely(!tqp)) {
+		// pthread root queues opt out of QoS
+		return 0;
+	}
+	return _dispatch_priority_inherit_from_root_queue(p, tq);
+}
+
+static void
+_dispatch_source_install(dispatch_source_t ds, dispatch_priority_t pri,
+		dispatch_wlh_t wlh)
+{
+	if (!ds->dq_wlh && wlh) {
+		_dispatch_queue_class_record_wlh_hierarchy(ds, wlh);
+	}
+	_dispatch_source_refs_register(ds, pri);
 	ds->ds_is_installed = true;
 }
 
 void
-_dispatch_source_finalize_activation(dispatch_source_t ds, bool *allow_resume)
+_dispatch_source_finalize_activation(dispatch_source_t ds)
 {
 	dispatch_continuation_t dc;
 	dispatch_source_refs_t dr = ds->ds_refs;
-	dispatch_priority_t pri;
-	dispatch_wlh_t wlh;
 
 	if (unlikely(dr->du_is_direct &&
 			(_dispatch_queue_atomic_flags(ds->_as_dq) & DSF_CANCELED))) {
@@ -673,12 +712,15 @@ _dispatch_source_finalize_activation(dispatch_source_t ds, bool *allow_resume)
 	}
 
 	// call "super"
-	_dispatch_queue_finalize_activation(ds->_as_dq, allow_resume);
+	_dispatch_queue_finalize_activation(ds->_as_dq);
 
 	if (dr->du_is_direct && !ds->ds_is_installed) {
-		dispatch_queue_t dq = ds->_as_dq;
-		pri = _dispatch_queue_compute_priority_and_wlh(dq, &wlh);
-		if (pri) _dispatch_source_install(ds, wlh, pri);
+		dispatch_priority_t pri = _dispatch_source_compute_kevent_priority(ds);
+		if (pri) {
+			dispatch_wlh_t wlh = ds->dq_wlh;
+			if (!wlh) wlh = _dispatch_queue_class_compute_wlh(ds);
+			_dispatch_source_install(ds, pri, wlh);
+		}
 	}
 }
 
@@ -690,18 +732,8 @@ _dispatch_source_invoke2(dispatch_object_t dou, dispatch_invoke_context_t dic,
 	dispatch_source_t ds = dou._ds;
 	dispatch_queue_wakeup_target_t retq = DISPATCH_QUEUE_WAKEUP_NONE;
 	dispatch_queue_t dq = _dispatch_queue_get_current();
-	dispatch_source_refs_t dr = ds->ds_refs;
-	dispatch_queue_flags_t dqf;
 
-	if (!(flags & DISPATCH_INVOKE_MANAGER_DRAIN) &&
-			_dispatch_unote_wlh_changed(dr, _dispatch_get_wlh())) {
-		dqf = _dispatch_queue_atomic_flags_set_orig(ds->_as_dq,
-				DSF_WLH_CHANGED);
-		if (!(dqf & DSF_WLH_CHANGED)) {
-			_dispatch_bug_deprecated("Changing target queue "
-					"hierarchy after source was activated");
-		}
-	}
+	flags |= DISPATCH_INVOKE_DISALLOW_SYNC_WAITERS;
 
 	if (_dispatch_queue_class_probe(ds)) {
 		// Intentionally always drain even when on the manager queue
@@ -719,7 +751,9 @@ _dispatch_source_invoke2(dispatch_object_t dou, dispatch_invoke_context_t dic,
 
 	// The order of tests here in invoke and in wakeup should be consistent.
 
+	dispatch_source_refs_t dr = ds->ds_refs;
 	dispatch_queue_t dkq = &_dispatch_mgr_q;
+	dispatch_queue_flags_t dqf;
 	bool prevent_starvation = false;
 
 	if (dr->du_is_direct) {
@@ -743,8 +777,8 @@ _dispatch_source_invoke2(dispatch_object_t dou, dispatch_invoke_context_t dic,
 		if (dq != dkq) {
 			return dkq;
 		}
-		_dispatch_source_install(ds, _dispatch_get_wlh(),
-				_dispatch_get_basepri());
+		_dispatch_source_install(ds, _dispatch_get_basepri(),
+				_dispatch_get_wlh());
 	}
 
 	if (unlikely(DISPATCH_QUEUE_IS_SUSPENDED(ds))) {
@@ -851,7 +885,7 @@ unregister_event:
 			// from the source handler
 			return ds->do_targetq;
 		}
-		if (prevent_starvation && dr->du_wlh == DISPATCH_WLH_ANON) {
+		if (prevent_starvation && dr->du_wlh == DISPATCH_WLH_GLOBAL) {
 			// keep the old behavior to force re-enqueue to our target queue
 			// for the rearm.
 			//
@@ -863,7 +897,7 @@ unregister_event:
 		if (unlikely(!_dispatch_source_refs_resume(ds))) {
 			goto unregister_event;
 		}
-		if (!prevent_starvation && _dispatch_wlh_should_poll_unote(dr)) {
+		if (!prevent_starvation && dr->du_wlh != DISPATCH_WLH_GLOBAL) {
 			// try to redrive the drain from under the lock for sources
 			// targeting an overcommit root queue to avoid parking
 			// when the next event has already fired
@@ -879,8 +913,7 @@ void
 _dispatch_source_invoke(dispatch_source_t ds, dispatch_invoke_context_t dic,
 		dispatch_invoke_flags_t flags)
 {
-	_dispatch_queue_class_invoke(ds, dic, flags,
-			DISPATCH_INVOKE_DISALLOW_SYNC_WAITERS, _dispatch_source_invoke2);
+	_dispatch_queue_class_invoke(ds, dic, flags, _dispatch_source_invoke2);
 }
 
 void
@@ -945,12 +978,13 @@ _dispatch_source_wakeup(dispatch_source_t ds, dispatch_qos_t qos,
 		tq = DISPATCH_QUEUE_WAKEUP_TARGET;
 	}
 
-	if ((tq == DISPATCH_QUEUE_WAKEUP_TARGET) &&
-			ds->do_targetq == &_dispatch_mgr_q) {
-		tq = DISPATCH_QUEUE_WAKEUP_MGR;
+	if (tq) {
+		return _dispatch_queue_class_wakeup(ds->_as_dq, qos, flags, tq);
+	} else if (qos) {
+		return _dispatch_queue_class_override_drainer(ds->_as_dq, qos, flags);
+	} else if (flags & DISPATCH_WAKEUP_CONSUME) {
+		return _dispatch_release_tailcall(ds);
 	}
-
-	return _dispatch_queue_class_wakeup(ds->_as_dq, qos, flags, tq);
 }
 
 void
@@ -961,13 +995,13 @@ dispatch_source_cancel(dispatch_source_t ds)
 	// could potentially invoke the source, do the cancellation,
 	// unregister the source, and deallocate it. We would
 	// need to therefore retain/release before setting the bit
-	_dispatch_retain_2(ds);
+	_dispatch_retain(ds);
 
 	dispatch_queue_t q = ds->_as_dq;
 	if (_dispatch_queue_atomic_flags_set_orig(q, DSF_CANCELED) & DSF_CANCELED) {
-		_dispatch_release_2_tailcall(ds);
+		_dispatch_release_tailcall(ds);
 	} else {
-		dx_wakeup(ds, 0, DISPATCH_WAKEUP_MAKE_DIRTY | DISPATCH_WAKEUP_CONSUME_2);
+		dx_wakeup(ds, 0, DISPATCH_WAKEUP_FLUSH | DISPATCH_WAKEUP_CONSUME);
 	}
 }
 
@@ -1002,12 +1036,13 @@ dispatch_source_cancel_and_wait(dispatch_source_t ds)
 		return;
 	}
 	if (dqf & DSF_CANCEL_WAITER) {
-		goto wakeup;
+		goto override;
 	}
 
 	// simplified version of _dispatch_queue_drain_try_lock
 	// that also sets the DIRTY bit on failure to lock
-	uint64_t set_owner_and_set_full_width = _dispatch_lock_value_for_self() |
+	dispatch_lock_owner tid_self = _dispatch_tid_self();
+	uint64_t xor_owner_and_set_full_width = tid_self |
 			DISPATCH_QUEUE_WIDTH_FULL_BIT | DISPATCH_QUEUE_IN_BARRIER;
 	uint64_t old_state, new_state;
 
@@ -1016,7 +1051,7 @@ dispatch_source_cancel_and_wait(dispatch_source_t ds)
 		if (likely(_dq_state_is_runnable(old_state) &&
 				!_dq_state_drain_locked(old_state))) {
 			new_state &= DISPATCH_QUEUE_DRAIN_PRESERVED_BITS_MASK;
-			new_state |= set_owner_and_set_full_width;
+			new_state ^= xor_owner_and_set_full_width;
 		} else if (old_dqf & DSF_CANCELED) {
 			os_atomic_rmw_loop_give_up(break);
 		} else {
@@ -1046,15 +1081,15 @@ dispatch_source_cancel_and_wait(dispatch_source_t ds)
 				_dispatch_source_cancel_callout(ds, NULL, DISPATCH_INVOKE_NONE);
 			}
 		}
-		dx_wakeup(ds, 0, DISPATCH_WAKEUP_BARRIER_COMPLETE);
-	} else if (unlikely(_dq_state_drain_locked_by_self(old_state))) {
+		_dispatch_try_lock_transfer_or_wakeup(ds->_as_dq);
+	} else if (unlikely(_dq_state_drain_locked_by(old_state, tid_self))) {
 		DISPATCH_CLIENT_CRASH(ds, "dispatch_source_cancel_and_wait "
 				"called from a source handler");
 	} else {
 		dispatch_qos_t qos;
-wakeup:
+override:
 		qos = _dispatch_qos_from_pp(_dispatch_get_priority());
-		dx_wakeup(ds, qos, DISPATCH_WAKEUP_MAKE_DIRTY);
+		dx_wakeup(ds, qos, DISPATCH_WAKEUP_OVERRIDING | DISPATCH_WAKEUP_FLUSH);
 		dispatch_activate(ds);
 	}
 
@@ -1086,8 +1121,8 @@ _dispatch_source_merge_evt(dispatch_unote_t du, uint32_t flags, uintptr_t data,
 		// threads running _dispatch_source_invoke2 to dispose of the source,
 		// so we can't safely borrow the reference we get from the muxnote udata
 		// anymore, and need our own
-		wflags = DISPATCH_WAKEUP_CONSUME_2;
-		_dispatch_retain_2(ds); // rdar://20382435
+		wflags = DISPATCH_WAKEUP_CONSUME;
+		_dispatch_retain(ds); // rdar://20382435
 	}
 
 	if ((flags & EV_UDATA_SPECIFIC) && (flags & EV_ONESHOT) &&
@@ -1153,7 +1188,7 @@ _dispatch_source_merge_evt(dispatch_unote_t du, uint32_t flags, uintptr_t data,
 
 done:
 	_dispatch_object_debug(ds, "%s", __func__);
-	dx_wakeup(ds, _dispatch_qos_from_pp(pp), wflags | DISPATCH_WAKEUP_MAKE_DIRTY);
+	dx_wakeup(ds, _dispatch_qos_from_pp(pp), wflags | DISPATCH_WAKEUP_FLUSH);
 }
 
 #pragma mark -
@@ -1232,7 +1267,7 @@ _dispatch_source_timer_configure(dispatch_source_t ds)
 		// Clear any pending data that might have accumulated on
 		// older timer params <rdar://problem/8574886>
 		os_atomic_store2o(ds, ds_pending_data, 0, relaxed);
-		_dispatch_timers_update(dt, 0);
+		_dispatch_timers_update(dt);
 	}
 }
 
@@ -1308,7 +1343,7 @@ dispatch_source_set_timer(dispatch_source_t ds, dispatch_time_t start,
 	_dispatch_source_timer_telemetry(ds, dtc->dtc_clock, &dtc->dtc_timer);
 	dtc = os_atomic_xchg2o(dt, dt_pending_config, dtc, release);
 	if (dtc) free(dtc);
-	dx_wakeup(ds, 0, DISPATCH_WAKEUP_MAKE_DIRTY);
+	dx_wakeup(ds, 0, DISPATCH_WAKEUP_FLUSH);
 }
 
 static void
@@ -1761,9 +1796,6 @@ _dispatch_timer_heap_insert(dispatch_timer_heap_t dth,
 {
 	uint32_t idx = (dth->dth_count += DTH_ID_COUNT) - DTH_ID_COUNT;
 
-	dispatch_assert(dt->dt_heap_entry[DTH_TARGET_ID] == DTH_INVALID_ID);
-	dispatch_assert(dt->dt_heap_entry[DTH_DEADLINE_ID] == DTH_INVALID_ID);
-
 	if (idx == 0) {
 		dt->dt_heap_entry[DTH_TARGET_ID] = DTH_TARGET_ID;
 		dt->dt_heap_entry[DTH_DEADLINE_ID] = DTH_DEADLINE_ID;
@@ -1782,36 +1814,27 @@ _dispatch_timer_heap_insert(dispatch_timer_heap_t dth,
 DISPATCH_NOINLINE
 static void
 _dispatch_timer_heap_remove(dispatch_timer_heap_t dth,
-		dispatch_timer_source_refs_t dt)
+		dispatch_timer_source_refs_t removed_dt)
 {
 	uint32_t idx = (dth->dth_count -= DTH_ID_COUNT);
 
-	dispatch_assert(dt->dt_heap_entry[DTH_TARGET_ID] != DTH_INVALID_ID);
-	dispatch_assert(dt->dt_heap_entry[DTH_DEADLINE_ID] != DTH_INVALID_ID);
-
 	if (idx == 0) {
-		dispatch_assert(dth->dth_min[DTH_TARGET_ID] == dt);
-		dispatch_assert(dth->dth_min[DTH_DEADLINE_ID] == dt);
 		dth->dth_min[DTH_TARGET_ID] = dth->dth_min[DTH_DEADLINE_ID] = NULL;
-		goto clear_heap_entry;
+		return;
 	}
 
 	for (uint32_t heap_id = 0; heap_id < DTH_ID_COUNT; heap_id++) {
-		dispatch_timer_source_refs_t *slot, last_dt;
+		dispatch_timer_source_refs_t *slot, dt;
 		slot = _dispatch_timer_heap_get_slot(dth, idx + heap_id);
-		last_dt = *slot; *slot = NULL;
-		if (last_dt != dt) {
-			uint32_t removed_idx = dt->dt_heap_entry[heap_id];
-			_dispatch_timer_heap_resift(dth, last_dt, removed_idx);
+		dt = *slot; *slot = NULL;
+		if (dt != removed_dt) {
+			uint32_t removed_idx = removed_dt->dt_heap_entry[heap_id];
+			_dispatch_timer_heap_resift(dth, dt, removed_idx);
 		}
 	}
 	if (unlikely(idx <= _dispatch_timer_heap_capacity(dth->dth_segments - 1))) {
 		_dispatch_timer_heap_shrink(dth);
 	}
-
-clear_heap_entry:
-	dt->dt_heap_entry[DTH_TARGET_ID] = DTH_INVALID_ID;
-	dt->dt_heap_entry[DTH_DEADLINE_ID] = DTH_INVALID_ID;
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -1819,9 +1842,6 @@ static inline void
 _dispatch_timer_heap_update(dispatch_timer_heap_t dth,
 		dispatch_timer_source_refs_t dt)
 {
-	dispatch_assert(dt->dt_heap_entry[DTH_TARGET_ID] != DTH_INVALID_ID);
-	dispatch_assert(dt->dt_heap_entry[DTH_DEADLINE_ID] != DTH_INVALID_ID);
-
 	_dispatch_timer_heap_resift(dth, dt, dt->dt_heap_entry[DTH_TARGET_ID]);
 	_dispatch_timer_heap_resift(dth, dt, dt->dt_heap_entry[DTH_DEADLINE_ID]);
 }
@@ -1866,7 +1886,6 @@ _dispatch_timers_unregister(dispatch_timer_source_refs_t dt)
 	_dispatch_timer_heap_remove(heap, dt);
 	_dispatch_timers_reconfigure = true;
 	_dispatch_timers_processing_mask |= 1 << tidx;
-	dispatch_assert(dt->du_wlh == NULL || dt->du_wlh == DISPATCH_WLH_ANON);
 	dt->du_wlh = NULL;
 }
 
@@ -1883,8 +1902,7 @@ _dispatch_timers_register(dispatch_timer_source_refs_t dt, uint32_t tidx)
 	}
 	_dispatch_timers_reconfigure = true;
 	_dispatch_timers_processing_mask |= 1 << tidx;
-	dispatch_assert(dt->du_wlh == NULL || dt->du_wlh == DISPATCH_WLH_ANON);
-	dt->du_wlh = DISPATCH_WLH_ANON;
+	dt->du_wlh = DISPATCH_WLH_GLOBAL;
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -1904,7 +1922,7 @@ _dispatch_source_timer_tryarm(dispatch_source_t ds)
 // Updates the ordered list of timers based on next fire date for changes to ds.
 // Should only be called from the context of _dispatch_mgr_q.
 static void
-_dispatch_timers_update(dispatch_unote_t du, uint32_t flags)
+_dispatch_timers_update(dispatch_unote_t du)
 {
 	dispatch_timer_source_refs_t dr = du._dt;
 	dispatch_source_t ds = _dispatch_source_from_refs(dr);
@@ -1914,45 +1932,24 @@ _dispatch_timers_update(dispatch_unote_t du, uint32_t flags)
 	DISPATCH_ASSERT_ON_MANAGER_QUEUE();
 
 	if (unlikely(dr->du_ident == DISPATCH_TIMER_IDENT_CANCELED)) {
-		dispatch_assert((flags & DISPATCH_TIMERS_RETAIN_2) == 0);
 		return;
 	}
 
 	// Unregister timers that are unconfigured, disabled, suspended or have
 	// missed intervals. Rearm after dispatch_set_timer(), resume or source
 	// invoke will reenable them
-	will_register = !(flags & DISPATCH_TIMERS_UNREGISTER) &&
-			dr->dt_timer.target < INT64_MAX &&
+	will_register = dr->dt_timer.target < INT64_MAX &&
 			!os_atomic_load2o(ds, ds_pending_data, relaxed) &&
 			!DISPATCH_QUEUE_IS_SUSPENDED(ds) &&
 			!os_atomic_load2o(dr, dt_pending_config, relaxed);
-	if (likely(!_dispatch_unote_registered(dr))) {
-		dispatch_assert((flags & DISPATCH_TIMERS_RETAIN_2) == 0);
-		if (unlikely(!will_register || !_dispatch_source_timer_tryarm(ds))) {
+	if (!_dispatch_unote_registered(dr) && will_register) {
+		if (unlikely(!_dispatch_source_timer_tryarm(ds))) {
 			return;
 		}
 		verb = "armed";
-	} else if (unlikely(!will_register)) {
+	} else if (unlikely(_dispatch_unote_registered(dr) && !will_register)) {
 		disarm = true;
 		verb = "disarmed";
-	}
-
-	// The heap owns a +2 on dispatch sources it references
-	//
-	// _dispatch_timers_run2() also sometimes passes DISPATCH_TIMERS_RETAIN_2
-	// when it wants to take over this +2 at the same time we are unregistering
-	// the timer from the heap.
-	//
-	// Compute our refcount balance according to these rules, if our balance
-	// would become negative we retain the source upfront, if it is positive, we
-	// get rid of the extraneous refcounts after we're done touching the source.
-	int refs = will_register ? -2 : 0;
-	if (_dispatch_unote_registered(dr) && !(flags & DISPATCH_TIMERS_RETAIN_2)) {
-		refs += 2;
-	}
-	if (refs < 0) {
-		dispatch_assert(refs == -2);
-		_dispatch_retain_2(ds);
 	}
 
 	uint32_t tidx = _dispatch_source_timer_idx(dr);
@@ -1969,10 +1966,6 @@ _dispatch_timers_update(dispatch_unote_t du, uint32_t flags)
 	}
 	_dispatch_debug("kevent-source[%p]: %s timer[%p]", ds, verb, dr);
 	_dispatch_object_debug(ds, "%s", __func__);
-	if (refs > 0) {
-		dispatch_assert(refs == 2);
-		_dispatch_release_2_tailcall(ds);
-	}
 }
 
 #define DISPATCH_TIMER_MISSED_MARKER  1ul
@@ -2065,19 +2058,21 @@ _dispatch_timers_run2(dispatch_clock_now_cache_t nows, uint32_t tidx)
 			continue;
 		}
 
+		_dispatch_retain(ds);
 		data = os_atomic_load2o(ds, ds_pending_data, relaxed);
 		if (unlikely(data)) {
 			// the release barrier is required to make the changes
 			// to `ds_timer` visible to _dispatch_source_timer_data()
 			if (os_atomic_cmpxchg2o(ds, ds_pending_data, data,
 					data | DISPATCH_TIMER_MISSED_MARKER, release)) {
-				_dispatch_timers_update(dr, DISPATCH_TIMERS_UNREGISTER);
+				_dispatch_timers_update(dr);
+				_dispatch_release(ds);
 				continue;
 			}
 		}
 
 		data = _dispatch_source_timer_compute_missed(dr, now, 0);
-		_dispatch_timers_update(dr, DISPATCH_TIMERS_RETAIN_2);
+		_dispatch_timers_update(dr);
 		pending_data = data << 1;
 		if (!_dispatch_unote_registered(dr) && dr->dt_timer.target < INT64_MAX){
 			// if we unregistered because of suspension we have to fake we
@@ -2090,7 +2085,7 @@ _dispatch_timers_run2(dispatch_clock_now_cache_t nows, uint32_t tidx)
 		_dispatch_trace_timer_fire(dr, data, data);
 		_dispatch_debug("kevent-source[%p]: fired timer[%p]", ds, dr);
 		_dispatch_object_debug(ds, "%s", __func__);
-		dx_wakeup(ds, 0, DISPATCH_WAKEUP_MAKE_DIRTY | DISPATCH_WAKEUP_CONSUME_2);
+		dx_wakeup(ds, 0, DISPATCH_WAKEUP_FLUSH | DISPATCH_WAKEUP_CONSUME);
 	}
 }
 
@@ -2259,46 +2254,55 @@ _dispatch_mgr_timers(void)
 #pragma mark dispatch_mgr
 
 void
-_dispatch_mgr_queue_push(dispatch_queue_t dq, dispatch_object_t dou,
-		DISPATCH_UNUSED dispatch_qos_t qos)
+_dispatch_mgr_queue_wakeup(dispatch_queue_t dq,
+		dispatch_qos_t qos, dispatch_wakeup_flags_t flags)
 {
-	uint64_t dq_state;
-	_dispatch_trace_continuation_push(dq, dou._do);
-	if (unlikely(_dispatch_queue_push_update_tail(dq, dou._do))) {
-		_dispatch_queue_push_update_head(dq, dou._do);
-		dq_state = os_atomic_or2o(dq, dq_state, DISPATCH_QUEUE_DIRTY, release);
-		if (!_dq_state_drain_locked_by_self(dq_state)) {
-			_dispatch_event_loop_poke(DISPATCH_WLH_MANAGER, 0, 0);
-		}
+	if (flags & DISPATCH_WAKEUP_FLUSH) {
+		os_atomic_or2o(dq, dq_state, DISPATCH_QUEUE_DIRTY, release);
 	}
-}
 
-DISPATCH_NORETURN
-void
-_dispatch_mgr_queue_wakeup(DISPATCH_UNUSED dispatch_queue_t dq,
-		DISPATCH_UNUSED dispatch_qos_t qos,
-		DISPATCH_UNUSED dispatch_wakeup_flags_t flags)
-{
-	DISPATCH_INTERNAL_CRASH(0, "Don't try to wake up or override the manager");
+	if (_dispatch_queue_get_current() == &_dispatch_mgr_q) {
+		return;
+	}
+
+	if (!_dispatch_queue_class_probe(&_dispatch_mgr_q)) {
+		return;
+	}
+
+	_dispatch_event_loop_poke(DISPATCH_WLH_MANAGER, qos, 0);
 }
 
 #if DISPATCH_USE_MGR_THREAD
+DISPATCH_NOINLINE
+static void
+_dispatch_mgr_init(void)
+{
+	uint64_t owned = DISPATCH_QUEUE_SERIAL_DRAIN_OWNED;
+	_dispatch_queue_set_current(&_dispatch_mgr_q);
+	if (_dispatch_queue_drain_try_lock(&_dispatch_mgr_q,
+			DISPATCH_INVOKE_STEALING, NULL) != owned) {
+		DISPATCH_INTERNAL_CRASH(0, "Locking the manager should not fail");
+	}
+	_dispatch_mgr_priority_init();
+	_dispatch_event_loop_init();
+}
+
 DISPATCH_NOINLINE DISPATCH_NORETURN
 static void
 _dispatch_mgr_invoke(void)
 {
-#if DISPATCH_EVENT_BACKEND_KEVENT
-	dispatch_kevent_s evbuf[DISPATCH_DEFERRED_ITEMS_EVENT_COUNT];
-#endif
-	dispatch_deferred_items_s ddi = {
-#if DISPATCH_EVENT_BACKEND_KEVENT
-		.ddi_maxevents = DISPATCH_DEFERRED_ITEMS_EVENT_COUNT,
-		.ddi_eventlist = evbuf,
-#endif
-	};
+	dispatch_deferred_items_s ddi;
 	bool poll;
 
+	ddi.ddi_stashed_pri = DISPATCH_PRIORITY_NOSTASH;
+	ddi.ddi_stashed_dq = NULL;
+	ddi.ddi_stashed_rq = NULL;
+#if DISPATCH_EVENT_BACKEND_KEVENT
+	ddi.ddi_nevents = 0;
+#endif
+	dispatch_assert(_dispatch_get_wlh() == DISPATCH_WLH_GLOBAL);
 	_dispatch_deferred_items_set(&ddi);
+
 	for (;;) {
 		_dispatch_mgr_queue_drain();
 		poll = _dispatch_mgr_timers();
@@ -2321,9 +2325,7 @@ _dispatch_mgr_thread(dispatch_queue_t dq DISPATCH_UNUSED,
 	}
 #endif
 #if DISPATCH_USE_MGR_THREAD
-	_dispatch_queue_set_current(&_dispatch_mgr_q);
-	_dispatch_mgr_priority_init();
-	_dispatch_queue_mgr_lock(&_dispatch_mgr_q);
+	_dispatch_mgr_init();
 	// never returns, so burn bridges behind us & clear stack 2k ahead
 	_dispatch_clear_stack(2048);
 	_dispatch_mgr_invoke();
@@ -2344,7 +2346,13 @@ _dispatch_wlh_worker_thread_init(dispatch_wlh_t wlh,
 		dispatch_deferred_items_t ddi)
 {
 	dispatch_assert(wlh);
+	uint64_t owned = DISPATCH_QUEUE_SERIAL_DRAIN_OWNED;
 	dispatch_priority_t old_dbp;
+
+	ddi->ddi_stashed_pri = DISPATCH_PRIORITY_NOSTASH;
+	ddi->ddi_stashed_dq = NULL;
+	ddi->ddi_stashed_rq = NULL;
+	ddi->ddi_nevents = 0;
 
 	pthread_priority_t pp = _dispatch_get_priority();
 	if (!(pp & _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG)) {
@@ -2355,7 +2363,7 @@ _dispatch_wlh_worker_thread_init(dispatch_wlh_t wlh,
 		// Also add the NEEDS_UNBIND flag so that
 		// _dispatch_priority_compute_update knows it has to unbind
 		pp &= _PTHREAD_PRIORITY_OVERCOMMIT_FLAG | ~_PTHREAD_PRIORITY_FLAGS_MASK;
-		if (wlh == DISPATCH_WLH_ANON) {
+		if (wlh == DISPATCH_WLH_GLOBAL) {
 			pp |= _PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG;
 		} else {
 			// pthread sets the flag when it is an event delivery thread
@@ -2364,10 +2372,9 @@ _dispatch_wlh_worker_thread_init(dispatch_wlh_t wlh,
 		}
 		_dispatch_thread_setspecific(dispatch_priority_key,
 				(void *)(uintptr_t)pp);
-		if (wlh != DISPATCH_WLH_ANON) {
+		ddi->ddi_stashed_pri = 0;
+		if (wlh != DISPATCH_WLH_GLOBAL) {
 			_dispatch_debug("wlh[%p]: handling events", wlh);
-		} else {
-			ddi->ddi_can_stash = true;
 		}
 		return DISPATCH_KEVENT_WORKER_IS_NOT_MANAGER;
 	}
@@ -2397,7 +2404,15 @@ _dispatch_wlh_worker_thread_init(dispatch_wlh_t wlh,
 	// ensure kevents registered from this thread are registered at manager QoS
 	old_dbp = _dispatch_set_basepri(DISPATCH_PRIORITY_FLAG_MANAGER);
 	_dispatch_queue_set_current(&_dispatch_mgr_q);
-	_dispatch_queue_mgr_lock(&_dispatch_mgr_q);
+	if (_dispatch_queue_drain_try_lock(&_dispatch_mgr_q,
+			DISPATCH_INVOKE_STEALING, NULL) != owned) {
+		DISPATCH_INTERNAL_CRASH(0, "Locking the manager should not fail");
+	}
+	static int event_thread_init;
+	if (!event_thread_init) {
+		event_thread_init = 1;
+		_dispatch_event_loop_init();
+	}
 	return old_dbp;
 }
 
@@ -2405,35 +2420,38 @@ DISPATCH_ALWAYS_INLINE DISPATCH_WARN_RESULT
 static inline bool
 _dispatch_wlh_worker_thread_reset(dispatch_priority_t old_dbp)
 {
-	bool needs_poll = _dispatch_queue_mgr_unlock(&_dispatch_mgr_q);
+	dispatch_queue_t dq = &_dispatch_mgr_q;
+	uint64_t orig_dq_state = DISPATCH_QUEUE_SERIAL_DRAIN_OWNED;
+
+	orig_dq_state = _dispatch_queue_drain_unlock(dq, orig_dq_state);
 	_dispatch_reset_basepri(old_dbp);
-	_dispatch_reset_basepri_override();
 	_dispatch_queue_set_current(NULL);
-	return needs_poll;
+	return _dq_state_is_dirty(orig_dq_state);
 }
 
 DISPATCH_ALWAYS_INLINE
 static void
-_dispatch_wlh_worker_thread(dispatch_wlh_t wlh, dispatch_kevent_t events,
+_dispatch_wlh_worker_thread(dispatch_wlh_t wlh, dispatch_kevent_t *events,
 		int *nevents)
 {
 	_dispatch_introspection_thread_add();
-	DISPATCH_PERF_MON_VAR_INIT
 
-	dispatch_deferred_items_s ddi = {
-		.ddi_eventlist = events,
-	};
-	dispatch_priority_t old_dbp;
+	dispatch_kevent_t ke = *events;
+	DISPATCH_PERF_MON_VAR
+	int n = *nevents;
+	if (!dispatch_assume(n) || !dispatch_assume(*events)) return;
 
-	old_dbp = _dispatch_wlh_worker_thread_init(wlh, &ddi);
+	dispatch_deferred_items_s ddi;
+	dispatch_priority_t old_dbp = _dispatch_wlh_worker_thread_init(wlh, &ddi);
 	if (old_dbp == DISPATCH_KEVENT_WORKER_IS_NOT_MANAGER) {
 		_dispatch_perfmon_start_impl(true);
 	} else {
-		dispatch_assert(wlh == DISPATCH_WLH_ANON);
-		wlh = DISPATCH_WLH_ANON;
+		dispatch_assert(wlh == DISPATCH_WLH_GLOBAL);
+		wlh = DISPATCH_WLH_GLOBAL;
 	}
+	_dispatch_set_wlh(wlh);
 	_dispatch_deferred_items_set(&ddi);
-	_dispatch_event_loop_merge(events, *nevents);
+	_dispatch_event_loop_merge(ke, n);
 
 	if (old_dbp != DISPATCH_KEVENT_WORKER_IS_NOT_MANAGER) {
 		_dispatch_mgr_queue_drain();
@@ -2442,27 +2460,34 @@ _dispatch_wlh_worker_thread(dispatch_wlh_t wlh, dispatch_kevent_t events,
 			poll = true;
 		}
 		if (poll) _dispatch_event_loop_poke(DISPATCH_WLH_MANAGER, 0, 0);
-	} else if (ddi.ddi_stashed_dou._do) {
-		_dispatch_debug("wlh[%p]: draining deferred item %p", wlh,
-				ddi.ddi_stashed_dou._do);
-		if (wlh == DISPATCH_WLH_ANON) {
-			dispatch_assert(ddi.ddi_nevents == 0);
+	} else if (ddi.ddi_stashed_dq) {
+		if (wlh == DISPATCH_WLH_GLOBAL) {
+			if (ddi.ddi_nevents) _dispatch_event_loop_update();
 			_dispatch_deferred_items_set(NULL);
-			_dispatch_root_queue_drain_deferred_item(&ddi
-					DISPATCH_PERF_MON_ARGS);
 		} else {
-			_dispatch_root_queue_drain_deferred_wlh(&ddi
-					DISPATCH_PERF_MON_ARGS);
+			ddi.ddi_stashed_pri = DISPATCH_PRIORITY_NOSTASH;
 		}
+
+		_dispatch_debug("wlh[%p]: draining deferred item %p", wlh,
+				ddi.ddi_stashed_dq);
+		_dispatch_root_queue_drain_deferred_item(ddi.ddi_stashed_rq,
+				ddi.ddi_stashed_dq DISPATCH_PERF_MON_ARGS);
 	}
 
 	_dispatch_deferred_items_set(NULL);
-	if (old_dbp == DISPATCH_KEVENT_WORKER_IS_NOT_MANAGER &&
-			!ddi.ddi_stashed_dou._do) {
+	_dispatch_reset_wlh();
+
+	if (ddi.ddi_nevents) {
+		_dispatch_debug("flushing %d deferred kevents", ddi.ddi_nevents);
+	}
+	*nevents = ddi.ddi_nevents;
+	dispatch_static_assert(__builtin_types_compatible_p(typeof(**events),
+			typeof(*ddi.ddi_eventlist)));
+	memcpy(*events, ddi.ddi_eventlist,
+		 (size_t)ddi.ddi_nevents * sizeof(*ddi.ddi_eventlist));
+	if (old_dbp == DISPATCH_KEVENT_WORKER_IS_NOT_MANAGER && !ddi.ddi_stashed_dq) {
 		_dispatch_perfmon_end(perfmon_thread_event_no_steal);
 	}
-	_dispatch_debug("returning %d deferred kevents", ddi.ddi_nevents);
-	*nevents = ddi.ddi_nevents;
 }
 
 DISPATCH_NOINLINE
@@ -2473,10 +2498,7 @@ _dispatch_kevent_worker_thread(dispatch_kevent_t *events, int *nevents)
 		// events for worker thread request have already been delivered earlier
 		return;
 	}
-	if (!dispatch_assume(*nevents && *events)) return;
-	_dispatch_adopt_wlh_anon();
-	_dispatch_wlh_worker_thread(DISPATCH_WLH_ANON, *events, nevents);
-	_dispatch_reset_wlh();
+	return _dispatch_wlh_worker_thread(DISPATCH_WLH_GLOBAL, events, nevents);
 }
 
 

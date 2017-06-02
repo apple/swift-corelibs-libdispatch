@@ -359,11 +359,18 @@ voucher_replace_default_voucher(void)
 #define _voucher_mach_recipe_size(payload_size) \
 	(sizeof(mach_voucher_attr_recipe_data_t) + (payload_size))
 
+#if VOUCHER_USE_MACH_VOUCHER_PRIORITY
 #define _voucher_mach_recipe_alloca(v) ((mach_voucher_attr_recipe_t)alloca(\
 		_voucher_mach_recipe_size(0) + \
 		_voucher_mach_recipe_size(sizeof(ipc_pthread_priority_value_t)) + \
 		_voucher_mach_recipe_size(sizeof(_voucher_mach_udata_s)) + \
 		_voucher_extra_size(v)))
+#else
+#define _voucher_mach_recipe_alloca(v) ((mach_voucher_attr_recipe_t)alloca(\
+		_voucher_mach_recipe_size(0) + \
+		_voucher_mach_recipe_size(sizeof(_voucher_mach_udata_s)) + \
+		_voucher_extra_size(v)))
+#endif
 
 DISPATCH_ALWAYS_INLINE
 static inline mach_voucher_attr_recipe_size_t
@@ -384,6 +391,7 @@ _voucher_mach_recipe_init(mach_voucher_attr_recipe_t mvar_buf, voucher_s *v,
 	};
 	size += _voucher_mach_recipe_size(0);
 
+#if VOUCHER_USE_MACH_VOUCHER_PRIORITY
 	if (pp) {
 		ipc_pthread_priority_value_t value = (ipc_pthread_priority_value_t)pp;
 		*mvar_buf++ = (mach_voucher_attr_recipe_data_t){
@@ -394,6 +402,7 @@ _voucher_mach_recipe_init(mach_voucher_attr_recipe_t mvar_buf, voucher_s *v,
 		mvar_buf = _dispatch_memappend(mvar_buf, &value);
 		size += _voucher_mach_recipe_size(sizeof(value));
 	}
+#endif // VOUCHER_USE_MACH_VOUCHER_PRIORITY
 
 	if ((v && v->v_activity) || pp) {
 		_voucher_mach_udata_s *udata_buf;
@@ -508,6 +517,29 @@ _voucher_create_with_mach_voucher(mach_voucher_t kv, mach_msg_bits_t msgh_bits)
 	mach_voucher_attr_recipe_size_t kvr_size = 0;
 	mach_voucher_attr_content_size_t udata_sz = 0;
 	_voucher_mach_udata_s *udata = NULL;
+#if !VOUCHER_USE_BANK_AUTOREDEEM
+	mach_voucher_t rkv;
+	const mach_voucher_attr_recipe_data_t redeem_recipe[] = {
+		[0] = {
+			.key = MACH_VOUCHER_ATTR_KEY_ALL,
+			.command = MACH_VOUCHER_ATTR_COPY,
+			.previous_voucher = kv,
+		},
+		[1] = {
+			.key = MACH_VOUCHER_ATTR_KEY_BANK,
+			.command = MACH_VOUCHER_ATTR_REDEEM,
+		},
+	};
+	kr = _voucher_create_mach_voucher(redeem_recipe, sizeof(redeem_recipe),
+			&rkv);
+	if (!dispatch_assume_zero(kr)) {
+		_voucher_dealloc_mach_voucher(kv);
+		_dispatch_kvoucher_debug("redeemed from 0x%08x", rkv, kv);
+		kv = rkv;
+	} else {
+		_dispatch_voucher_debug_machport(kv);
+	}
+#endif
 	voucher_t v = _voucher_find_and_retain(kv);
 	if (v) {
 		_dispatch_voucher_debug("kvoucher[0x%08x] found", v, kv);
@@ -562,12 +594,15 @@ _voucher_create_with_mach_voucher(mach_voucher_t kv, mach_msg_bits_t msgh_bits)
 				.key = MACH_VOUCHER_ATTR_KEY_USER_DATA,
 				.command = MACH_VOUCHER_ATTR_REMOVE,
 			},
+#if VOUCHER_USE_MACH_VOUCHER_PRIORITY
 			[2] = {
 				.key = MACH_VOUCHER_ATTR_KEY_PTHPRIORITY,
 				.command = MACH_VOUCHER_ATTR_REMOVE,
 			},
+#endif
 		};
 		mach_voucher_attr_recipe_size_t size = sizeof(remove_userdata_recipe);
+
 		kr = _voucher_create_mach_voucher(remove_userdata_recipe, size, &nkv);
 		if (!dispatch_assume_zero(kr)) {
 			_dispatch_voucher_debug("kvoucher[0x%08x] udata removal "
@@ -768,7 +803,7 @@ _voucher_xref_dispose(voucher_t voucher)
 {
 	_dispatch_voucher_debug("xref_dispose", voucher);
 	_voucher_remove(voucher);
-	return _os_object_release_internal_n_inline((_os_object_t)voucher, 1);
+	return _os_object_release_internal_inline((_os_object_t)voucher);
 }
 
 void
@@ -834,7 +869,6 @@ _voucher_activity_debug_channel_init(void)
 	if (dbgp) {
 		dm = dispatch_mach_create_f("com.apple.debug-channel",
 				DISPATCH_TARGET_QUEUE_DEFAULT, NULL, handler);
-		dm->dm_recv_refs->du_can_be_wlh = false; // 29906118
 		dispatch_mach_connect(dm, dbgp, MACH_PORT_NULL, NULL);
 		// will force the DISPATCH_MACH_CONNECTED event
 		dispatch_mach_send_barrier_f(dm, NULL,
@@ -1091,13 +1125,7 @@ _firehose_task_buffer_init(void *ctx OS_UNUSED)
 	info_size = proc_pidinfo(getpid(), PROC_PIDUNIQIDENTIFIERINFO, 1,
 			&p_uniqinfo, PROC_PIDUNIQIDENTIFIERINFO_SIZE);
 	if (slowpath(info_size != PROC_PIDUNIQIDENTIFIERINFO_SIZE)) {
-		if (info_size == 0) {
-			DISPATCH_INTERNAL_CRASH(errno,
-				"Unable to get the unique pid (error)");
-		} else {
-			DISPATCH_INTERNAL_CRASH(info_size,
-				"Unable to get the unique pid (size)");
-		}
+		DISPATCH_INTERNAL_CRASH(info_size, "Unable to get the unique pid");
 	}
 	_voucher_unique_pid = p_uniqinfo.p_uniqueid;
 
@@ -1429,7 +1457,7 @@ _voucher_debug(voucher_t v, char* buf, size_t bufsiz)
 	size_t offset = 0;
 	#define bufprintf(...) \
 			offset += dsnprintf(&buf[offset], bufsiz - offset, ##__VA_ARGS__)
-	bufprintf("voucher[%p] = { xref = %d, ref = %d", v,
+	bufprintf("voucher[%p] = { xrefcnt = 0x%x, refcnt = 0x%x", v,
 			v->os_obj_xref_cnt + 1, v->os_obj_ref_cnt + 1);
 
 	if (v->v_kvbase) {

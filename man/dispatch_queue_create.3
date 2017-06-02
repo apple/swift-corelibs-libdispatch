@@ -72,8 +72,7 @@ debugging and performance analysis. If a label is provided, it is copied.
 By convention, clients should pass a reverse DNS style label. For example:
 .Pp
 .Bd -literal -offset indent
-my_queue = dispatch_queue_create("com.example.subsystem.taskXYZ",
-				 DISPATCH_QUEUE_SERIAL);
+my_queue = dispatch_queue_create("com.example.subsystem.taskXYZ", NULL);
 .Ed
 .Pp
 The

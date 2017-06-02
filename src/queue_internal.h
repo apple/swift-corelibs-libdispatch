@@ -44,9 +44,6 @@
 #define DISPATCH_CACHELINE_ALIGN \
 		__attribute__((__aligned__(DISPATCH_CACHELINE_SIZE)))
 
-#define DISPATCH_CACHELINE_PAD_SIZE(type) \
-		(roundup(sizeof(type), DISPATCH_CACHELINE_SIZE) - sizeof(type))
-
 
 #pragma mark -
 #pragma mark dispatch_queue_t
@@ -63,6 +60,7 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
 	DQF_CANNOT_TRYSYNC      = 0x00400000,
 	DQF_RELEASED            = 0x00800000, // xref_cnt == -1
 	DQF_LEGACY              = 0x01000000,
+	DQF_WLH_CHANGED         = 0x02000000, // queue wlh changed from initial value
 
 	// only applies to sources
 	//
@@ -101,7 +99,6 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
 	//    `a` cannot do a cleared -> set transition anymore
 	//    (see _dispatch_source_try_set_armed).
 	//
-	DSF_WLH_CHANGED         = 0x04000000,
 	DSF_CANCEL_WAITER       = 0x08000000, // synchronous waiters for cancel
 	DSF_CANCELED            = 0x10000000, // cancellation has been requested
 	DSF_ARMED               = 0x20000000, // source is armed
@@ -118,6 +115,10 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
 	struct os_mpsc_queue_s _as_oq[0]; \
 	DISPATCH_OBJECT_HEADER(x); \
 	_OS_MPSC_QUEUE_FIELDS(dq, dq_state); \
+	DISPATCH_UNION_LE(uint32_t volatile dq_atomic_flags, \
+		const uint16_t dq_width, \
+		const uint16_t __dq_opaque \
+	); \
 	uint32_t dq_side_suspend_cnt; \
 	dispatch_unfair_lock_s dq_sidelock; \
 	union { \
@@ -126,26 +127,27 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
 		struct dispatch_timer_source_refs_s *ds_timer_refs; \
 		struct dispatch_mach_recv_refs_s *dm_recv_refs; \
 	}; \
-	DISPATCH_UNION_LE(uint32_t volatile dq_atomic_flags, \
-		const uint16_t dq_width, \
-		const uint16_t __dq_opaque \
-	); \
 	DISPATCH_INTROSPECTION_QUEUE_HEADER
-	/* LP64: 32bit hole */
 
 #define DISPATCH_QUEUE_HEADER(x) \
 	struct dispatch_queue_s _as_dq[0]; \
 	_DISPATCH_QUEUE_HEADER(x)
 
-struct _dispatch_unpadded_queue_s {
-	_DISPATCH_QUEUE_HEADER(dummy);
-};
-
-#define DISPATCH_QUEUE_CACHELINE_PAD \
-		DISPATCH_CACHELINE_PAD_SIZE(struct _dispatch_unpadded_queue_s)
-
 #define DISPATCH_QUEUE_CACHELINE_PADDING \
 		char _dq_pad[DISPATCH_QUEUE_CACHELINE_PAD]
+#ifdef __LP64__
+#define DISPATCH_QUEUE_CACHELINE_PAD (( \
+		(sizeof(uint32_t) - DISPATCH_INTROSPECTION_QUEUE_HEADER_SIZE) \
+		+ DISPATCH_CACHELINE_SIZE) % DISPATCH_CACHELINE_SIZE)
+#elif OS_OBJECT_HAVE_OBJC1
+#define DISPATCH_QUEUE_CACHELINE_PAD (( \
+		(11*sizeof(void*) - DISPATCH_INTROSPECTION_QUEUE_HEADER_SIZE) \
+		+ DISPATCH_CACHELINE_SIZE) % DISPATCH_CACHELINE_SIZE)
+#else
+#define DISPATCH_QUEUE_CACHELINE_PAD (( \
+		(12*sizeof(void*) - DISPATCH_INTROSPECTION_QUEUE_HEADER_SIZE) \
+		+ DISPATCH_CACHELINE_SIZE) % DISPATCH_CACHELINE_SIZE)
+#endif
 
 /*
  * dispatch queues `dq_state` demystified
@@ -155,27 +157,27 @@ struct _dispatch_unpadded_queue_s {
  * Most Significant 32 bit Word
  * ----------------------------
  *
- * sc: suspend count (bits 63 - 58)
+ * sc: suspend count (bits 63 - 57)
  *    The suspend count unsurprisingly holds the suspend count of the queue
  *    Only 7 bits are stored inline. Extra counts are transfered in a side
  *    suspend count and when that has happened, the ssc: bit is set.
  */
-#define DISPATCH_QUEUE_SUSPEND_INTERVAL		0x0400000000000000ull
-#define DISPATCH_QUEUE_SUSPEND_HALF			0x20u
+#define DISPATCH_QUEUE_SUSPEND_INTERVAL		0x0200000000000000ull
+#define DISPATCH_QUEUE_SUSPEND_HALF			0x40u
 /*
- * ssc: side suspend count (bit 57)
+ * ssc: side suspend count (bit 56)
  *    This bit means that the total suspend count didn't fit in the inline
  *    suspend count, and that there are additional suspend counts stored in the
  *    `dq_side_suspend_cnt` field.
  */
-#define DISPATCH_QUEUE_HAS_SIDE_SUSPEND_CNT	0x0200000000000000ull
+#define DISPATCH_QUEUE_HAS_SIDE_SUSPEND_CNT	0x0100000000000000ull
 /*
- * i: inactive bit (bit 56)
+ * i: inactive bit (bit 55)
  *    This bit means that the object is inactive (see dispatch_activate)
  */
-#define DISPATCH_QUEUE_INACTIVE				0x0100000000000000ull
+#define DISPATCH_QUEUE_INACTIVE				0x0080000000000000ull
 /*
- * na: needs activation (bit 55)
+ * na: needs activation (bit 54)
  *    This bit is set if the object is created inactive. It tells
  *    dispatch_queue_wakeup to perform various tasks at first wakeup.
  *
@@ -183,24 +185,24 @@ struct _dispatch_unpadded_queue_s {
  *    the object from being woken up (because _dq_state_should_wakeup will say
  *    no), except in the dispatch_activate/dispatch_resume codepath.
  */
-#define DISPATCH_QUEUE_NEEDS_ACTIVATION		0x0080000000000000ull
+#define DISPATCH_QUEUE_NEEDS_ACTIVATION		0x0040000000000000ull
 /*
  * This mask covers the suspend count (sc), side suspend count bit (ssc),
  * inactive (i) and needs activation (na) bits
  */
-#define DISPATCH_QUEUE_SUSPEND_BITS_MASK	0xff80000000000000ull
+#define DISPATCH_QUEUE_SUSPEND_BITS_MASK	0xffc0000000000000ull
 /*
- * ib: in barrier (bit 54)
+ * ib: in barrier (bit 53)
  *    This bit is set when the queue is currently executing a barrier
  */
-#define DISPATCH_QUEUE_IN_BARRIER			0x0040000000000000ull
+#define DISPATCH_QUEUE_IN_BARRIER			0x0020000000000000ull
 /*
- * qf: queue full (bit 53)
+ * qf: queue full (bit 52)
  *    This bit is a subtle hack that allows to check for any queue width whether
  *    the full width of the queue is used or reserved (depending on the context)
  *    In other words that the queue has reached or overflown its capacity.
  */
-#define DISPATCH_QUEUE_WIDTH_FULL_BIT		0x0020000000000000ull
+#define DISPATCH_QUEUE_WIDTH_FULL_BIT		0x0010000000000000ull
 #define DISPATCH_QUEUE_WIDTH_FULL			0x1000ull
 #define DISPATCH_QUEUE_WIDTH_POOL (DISPATCH_QUEUE_WIDTH_FULL - 1)
 #define DISPATCH_QUEUE_WIDTH_MAX  (DISPATCH_QUEUE_WIDTH_FULL - 2)
@@ -208,7 +210,7 @@ struct _dispatch_unpadded_queue_s {
 		({ uint16_t _width = (width); \
 		_width > 1 && _width < DISPATCH_QUEUE_WIDTH_POOL; })
 /*
- * w:  width (bits 52 - 41)
+ * w:  width (bits 51 - 40)
  *    This encodes how many work items are in flight. Barriers hold `dq_width`
  *    of them while they run. This is encoded as a signed offset with respect,
  *    to full use, where the negative values represent how many available slots
@@ -217,19 +219,29 @@ struct _dispatch_unpadded_queue_s {
  *
  *    When this value is positive, then `wo` is always set to 1.
  */
-#define DISPATCH_QUEUE_WIDTH_INTERVAL		0x0000020000000000ull
-#define DISPATCH_QUEUE_WIDTH_MASK			0x003ffe0000000000ull
-#define DISPATCH_QUEUE_WIDTH_SHIFT			41
+#define DISPATCH_QUEUE_WIDTH_INTERVAL		0x0000010000000000ull
+#define DISPATCH_QUEUE_WIDTH_MASK			0x001fff0000000000ull
+#define DISPATCH_QUEUE_WIDTH_SHIFT			40
 /*
- * pb: pending barrier (bit 40)
+ * pb: pending barrier (bit 39)
  *    Drainers set this bit when they couldn't run the next work item and it is
  *    a barrier. When this bit is set, `dq_width - 1` work item slots are
  *    reserved so that no wakeup happens until the last work item in flight
  *    completes.
  */
-#define DISPATCH_QUEUE_PENDING_BARRIER		0x0000010000000000ull
+#define DISPATCH_QUEUE_PENDING_BARRIER		0x0000008000000000ull
 /*
- * d: dirty bit (bit 39)
+ * p: pended bit (bit 38)
+ *    Set when a drain lock has been pended. When this bit is set,
+ *    the drain lock is taken and ENQUEUED is never set.
+ *
+ *    This bit marks a queue that needs further processing but was kept pended
+ *    by an async drainer (not reenqueued) in the hope of being able to drain
+ *    it further later.
+ */
+#define DISPATCH_QUEUE_DRAIN_PENDED			0x0000004000000000ull
+/*
+ * d: dirty bit (bit 37)
  *    This bit is set when a queue transitions from empty to not empty.
  *    This bit is set before dq_items_head is set, with appropriate barriers.
  *    Any thread looking at a queue head is responsible for unblocking any
@@ -341,40 +353,18 @@ struct _dispatch_unpadded_queue_s {
  *
  *    So on the async "acquire" side, there is no subtlety at all.
  */
-#define DISPATCH_QUEUE_DIRTY				0x0000008000000000ull
+#define DISPATCH_QUEUE_DIRTY				0x0000002000000000ull
 /*
- * md: enqueued/draining on manager (bit 38)
- *    Set when enqueued and draining on the manager hierarchy.
- *
- *    Unlike the ENQUEUED bit, it is kept until the queue is unlocked from its
- *    invoke call on the manager. This is used to prevent stealing, and
- *    overrides to be applied down the target queue chain.
+ * e: enqueued bit (bit 36)
+ *    Set when a queue is enqueued on its target queue
  */
-#define DISPATCH_QUEUE_ENQUEUED_ON_MGR		0x0000004000000000ull
+#define DISPATCH_QUEUE_ENQUEUED				0x0000001000000000ull
 /*
- * r: queue graph role (bits 37 - 36)
- *    Queue role in the target queue graph
- *
- *    11: unused
- *    10: WLH base
- *    01: non wlh base
- *    00: inner queue
- */
-#define DISPATCH_QUEUE_ROLE_MASK			0x0000003000000000ull
-#define DISPATCH_QUEUE_ROLE_BASE_WLH		0x0000002000000000ull
-#define DISPATCH_QUEUE_ROLE_BASE_ANON		0x0000001000000000ull
-#define DISPATCH_QUEUE_ROLE_INNER			0x0000000000000000ull
-/*
- * o: has override (bit 35, if role is DISPATCH_QUEUE_ROLE_BASE_ANON)
+ * o: has override (bits 34)
  *    Set when a queue has received a QOS override and needs to reset it.
  *    This bit is only cleared when the final drain_try_unlock() succeeds.
- *
- * sw: has received sync wait (bit 35, if role DISPATCH_QUEUE_ROLE_BASE_WLH)
- *    Set when a queue owner has been exposed to the kernel because of
- *    dispatch_sync() contention.
  */
 #define DISPATCH_QUEUE_RECEIVED_OVERRIDE	0x0000000800000000ull
-#define DISPATCH_QUEUE_RECEIVED_SYNC_WAIT	0x0000000800000000ull
 /*
  * max_qos: max qos (bits 34 - 32)
  *   This is the maximum qos that has been enqueued on the queue
@@ -386,25 +376,27 @@ struct _dispatch_unpadded_queue_s {
  *    This is used by the normal drain to drain exlusively relative to other
  *    drain stealers (like the QoS Override codepath). It holds the identity
  *    (thread port) of the current drainer.
- *
- * st: sync transfer (bit 1 or 30)
- *    Set when a dispatch_sync() is transferred to
- *
- * e: enqueued bit (bit 0 or 31)
- *    Set when a queue is enqueued on its target queue
  */
-#define DISPATCH_QUEUE_DRAIN_OWNER_MASK		((uint64_t)DLOCK_OWNER_MASK)
-#define DISPATCH_QUEUE_SYNC_TRANSFER		((uint64_t)DLOCK_FAILED_TRYLOCK_BIT)
-#define DISPATCH_QUEUE_ENQUEUED				((uint64_t)DLOCK_WAITERS_BIT)
-
+#define DISPATCH_QUEUE_DRAIN_UNLOCK_MASK	(DISPATCH_QUEUE_DRAIN_PENDED | ~0u)
+#ifdef DLOCK_NOWAITERS_BIT
+#define DISPATCH_QUEUE_DRAIN_OWNER_MASK \
+		((uint64_t)(DLOCK_OWNER_MASK | DLOCK_NOFAILED_TRYLOCK_BIT))
+#define DISPATCH_QUEUE_DRAIN_UNLOCK(v) \
+		(((v) & ~(DISPATCH_QUEUE_DIRTY | DISPATCH_QUEUE_DRAIN_PENDED \
+				| DISPATCH_QUEUE_DRAIN_OWNER_MASK)) ^ DLOCK_NOWAITERS_BIT)
 #define DISPATCH_QUEUE_DRAIN_PRESERVED_BITS_MASK \
-		(DISPATCH_QUEUE_ENQUEUED_ON_MGR | DISPATCH_QUEUE_ENQUEUED | \
-		DISPATCH_QUEUE_ROLE_MASK | DISPATCH_QUEUE_MAX_QOS_MASK)
-
-#define DISPATCH_QUEUE_DRAIN_UNLOCK_MASK \
-		(DISPATCH_QUEUE_DRAIN_OWNER_MASK | DISPATCH_QUEUE_RECEIVED_OVERRIDE | \
-		DISPATCH_QUEUE_RECEIVED_SYNC_WAIT | DISPATCH_QUEUE_SYNC_TRANSFER)
-
+		(DISPATCH_QUEUE_ENQUEUED | DISPATCH_QUEUE_MAX_QOS_MASK | \
+				DLOCK_NOWAITERS_BIT)
+#else
+#define DISPATCH_QUEUE_DRAIN_OWNER_MASK \
+		((uint64_t)(DLOCK_OWNER_MASK | DLOCK_FAILED_TRYLOCK_BIT))
+#define DISPATCH_QUEUE_DRAIN_UNLOCK(v) \
+		((v) & ~(DISPATCH_QUEUE_DIRTY | DISPATCH_QUEUE_DRAIN_PENDED | \
+				DISPATCH_QUEUE_DRAIN_OWNER_MASK))
+#define DISPATCH_QUEUE_DRAIN_PRESERVED_BITS_MASK \
+		(DISPATCH_QUEUE_ENQUEUED | DISPATCH_QUEUE_MAX_QOS_MASK | \
+				DLOCK_WAITERS_BIT)
+#endif
 /*
  *******************************************************************************
  *
@@ -425,6 +417,8 @@ struct _dispatch_unpadded_queue_s {
  * possible next `slow` work item, and if there is no such item, they reliquish
  * that right. To do so, prior to taking any decision, they also try to own
  * the full "barrier" width on the given queue.
+ *
+ * see _dispatch_try_lock_transfer_or_wakeup
  *
  *******************************************************************************
  *
@@ -496,16 +490,11 @@ struct _dispatch_unpadded_queue_s {
 		(DISPATCH_QUEUE_IN_BARRIER | DISPATCH_QUEUE_WIDTH_INTERVAL)
 
 DISPATCH_CLASS_DECL(queue);
-
 #if !defined(__cplusplus) || !DISPATCH_INTROSPECTION
 struct dispatch_queue_s {
 	_DISPATCH_QUEUE_HEADER(queue);
 	DISPATCH_QUEUE_CACHELINE_PADDING; // for static queues only
 } DISPATCH_ATOMIC64_ALIGN;
-
-#if __has_feature(c_static_assert) && !DISPATCH_INTROSPECTION
-_Static_assert(sizeof(struct dispatch_queue_s) <= 128, "dispatch queue size");
-#endif
 #endif // !defined(__cplusplus) || !DISPATCH_INTROSPECTION
 
 DISPATCH_INTERNAL_SUBCLASS_DECL(queue_serial, queue);
@@ -556,51 +545,51 @@ typedef dispatch_queue_t dispatch_queue_wakeup_target_t;
 #define DISPATCH_QUEUE_WAKEUP_MGR            (&_dispatch_mgr_q)
 #define DISPATCH_QUEUE_WAKEUP_WAIT_FOR_EVENT ((dispatch_queue_wakeup_target_t)-1)
 
+void _dispatch_queue_class_wakeup_with_override(dispatch_queue_t dq,
+		dispatch_qos_t qos, dispatch_wakeup_flags_t flags, uint64_t dq_state);
+void _dispatch_queue_class_override_drainer(dispatch_queue_t dqu,
+		dispatch_qos_t qos, dispatch_wakeup_flags_t flags);
+void _dispatch_queue_class_wakeup_enqueue(dispatch_queue_t dq,
+		dispatch_qos_t qos, dispatch_wakeup_flags_t flags,
+		dispatch_queue_wakeup_target_t target);
 void _dispatch_queue_class_wakeup(dispatch_queue_t dqu, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags, dispatch_queue_wakeup_target_t target);
-dispatch_priority_t _dispatch_queue_compute_priority_and_wlh(
-		dispatch_queue_t dq, dispatch_wlh_t *wlh_out);
-void _dispatch_queue_destroy(dispatch_queue_t dq, bool *allow_free);
-void _dispatch_queue_dispose(dispatch_queue_t dq, bool *allow_free);
-void _dispatch_queue_xref_dispose(struct dispatch_queue_s *dq);
+
+void _dispatch_queue_destroy(dispatch_queue_t dq);
+void _dispatch_queue_dispose(dispatch_queue_t dq);
 void _dispatch_queue_set_target_queue(dispatch_queue_t dq, dispatch_queue_t tq);
 void _dispatch_queue_suspend(dispatch_queue_t dq);
 void _dispatch_queue_resume(dispatch_queue_t dq, bool activate);
-void _dispatch_queue_finalize_activation(dispatch_queue_t dq,
-		bool *allow_resume);
+void _dispatch_queue_finalize_activation(dispatch_queue_t dq);
 void _dispatch_queue_invoke(dispatch_queue_t dq,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 void _dispatch_global_queue_poke(dispatch_queue_t dq, int n, int floor);
 void _dispatch_queue_push(dispatch_queue_t dq, dispatch_object_t dou,
 		dispatch_qos_t qos);
+void _dispatch_try_lock_transfer_or_wakeup(dispatch_queue_t dq);
 void _dispatch_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
 dispatch_queue_wakeup_target_t _dispatch_queue_serial_drain(dispatch_queue_t dq,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags,
 		uint64_t *owned);
-void _dispatch_queue_drain_sync_waiter(dispatch_queue_t dq,
+void _dispatch_queue_drain_deferred_invoke(dispatch_queue_t dq,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags,
-		uint64_t owned);
-void _dispatch_queue_specific_queue_dispose(
-		dispatch_queue_specific_queue_t dqsq, bool *allow_free);
+		uint64_t to_unlock);
+void _dispatch_queue_specific_queue_dispose(dispatch_queue_specific_queue_t
+		dqsq);
 void _dispatch_root_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
 void _dispatch_root_queue_push(dispatch_queue_t dq, dispatch_object_t dou,
 		dispatch_qos_t qos);
-#if DISPATCH_USE_KEVENT_WORKQUEUE
-void _dispatch_root_queue_drain_deferred_item(dispatch_deferred_items_t ddi
-		DISPATCH_PERF_MON_ARGS_PROTO);
-void _dispatch_root_queue_drain_deferred_wlh(dispatch_deferred_items_t ddi
-		DISPATCH_PERF_MON_ARGS_PROTO);
-#endif
-void _dispatch_pthread_root_queue_dispose(dispatch_queue_t dq,
-		bool *allow_free);
+void _dispatch_root_queue_drain_deferred_item(dispatch_queue_t rq,
+		dispatch_queue_t dq DISPATCH_PERF_MON_ARGS_PROTO);
+void _dispatch_pthread_root_queue_dispose(dispatch_queue_t dq);
 void _dispatch_main_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
 void _dispatch_runloop_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
 void _dispatch_runloop_queue_xref_dispose(dispatch_queue_t dq);
-void _dispatch_runloop_queue_dispose(dispatch_queue_t dq, bool *allow_free);
+void _dispatch_runloop_queue_dispose(dispatch_queue_t dq);
 void _dispatch_mgr_queue_drain(void);
 #if DISPATCH_USE_MGR_THREAD && DISPATCH_ENABLE_PTHREAD_ROOT_QUEUES
 void _dispatch_mgr_priority_init(void);
@@ -651,13 +640,6 @@ enum {
 	_DISPATCH_ROOT_QUEUE_IDX_COUNT,
 };
 
-// skip zero
-// 1 - main_q
-// 2 - mgr_q
-// 3 - mgr_root_q
-// 4,5,6,7,8,9,10,11,12,13,14,15 - global queues
-// we use 'xadd' on Intel, so the initial value == next assigned
-#define DISPATCH_QUEUE_SERIAL_NUMBER_INIT 16
 extern unsigned long volatile _dispatch_queue_serial_numbers;
 extern struct dispatch_queue_s _dispatch_root_queues[];
 extern struct dispatch_queue_s _dispatch_mgr_q;
@@ -848,11 +830,8 @@ typedef struct dispatch_sync_context_s {
 	dispatch_thread_frame_s dsc_dtf;
 #endif
 	dispatch_thread_event_s dsc_event;
-	dispatch_tid dsc_waiter;
 	dispatch_qos_t dsc_override_qos_floor;
 	dispatch_qos_t dsc_override_qos;
-	bool dsc_wlh_was_first;
-	bool dsc_release_storage;
 } *dispatch_sync_context_t;
 
 typedef struct dispatch_continuation_vtable_s {
