@@ -98,13 +98,13 @@ struct dispatch_source_s {
 
 #endif // __cplusplus
 
-dispatch_priority_t
-_dispatch_source_compute_kevent_priority(dispatch_source_t ds);
-void _dispatch_source_refs_register(dispatch_source_t ds, dispatch_priority_t bp);
+void _dispatch_source_refs_register(dispatch_source_t ds,
+		dispatch_wlh_t wlh, dispatch_priority_t bp);
 void _dispatch_source_refs_unregister(dispatch_source_t ds, uint32_t options);
 void _dispatch_source_xref_dispose(dispatch_source_t ds);
-void _dispatch_source_dispose(dispatch_source_t ds);
-void _dispatch_source_finalize_activation(dispatch_source_t ds);
+void _dispatch_source_dispose(dispatch_source_t ds, bool *allow_free);
+void _dispatch_source_finalize_activation(dispatch_source_t ds,
+		bool *allow_resume);
 void _dispatch_source_invoke(dispatch_source_t ds,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 void _dispatch_source_wakeup(dispatch_source_t ds, dispatch_qos_t qos,
@@ -117,6 +117,8 @@ DISPATCH_EXPORT // for firehose server
 void _dispatch_source_merge_data(dispatch_source_t ds, pthread_priority_t pp,
 		unsigned long val);
 
+void _dispatch_mgr_queue_push(dispatch_queue_t dq, dispatch_object_t dou,
+		dispatch_qos_t qos);
 void _dispatch_mgr_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
 void _dispatch_mgr_thread(dispatch_queue_t dq, dispatch_invoke_context_t dic,

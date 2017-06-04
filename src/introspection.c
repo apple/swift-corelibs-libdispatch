@@ -219,7 +219,7 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 	} else {
 		if (flags & DISPATCH_OBJ_SYNC_WAITER_BIT) {
 			dispatch_sync_context_t dsc = (dispatch_sync_context_t)dc;
-			waiter = pthread_from_mach_thread_np((mach_port_t)dc->dc_data);
+			waiter = pthread_from_mach_thread_np(dsc->dsc_waiter);
 			ctxt = dsc->dsc_ctxt;
 			func = dsc->dsc_func;
 		}

@@ -63,6 +63,7 @@ _dispatch_perfmon_workitem_dec(void)
 #define DISPATCH_PERF_MON_ARGS_PROTO  , uint64_t perfmon_start
 #define DISPATCH_PERF_MON_ARGS        , perfmon_start
 #define DISPATCH_PERF_MON_VAR         uint64_t perfmon_start;
+#define DISPATCH_PERF_MON_VAR_INIT    uint64_t perfmon_start = 0;
 
 #define _dispatch_perfmon_start_impl(trace) ({ \
 		if (trace) _dispatch_ktrace0(DISPATCH_PERF_MON_worker_thread_start); \
@@ -84,6 +85,7 @@ void _dispatch_queue_merge_stats(uint64_t start, bool trace, perfmon_thread_type
 #define DISPATCH_PERF_MON_ARGS_PROTO
 #define DISPATCH_PERF_MON_ARGS
 #define DISPATCH_PERF_MON_VAR
+#define DISPATCH_PERF_MON_VAR_INIT
 #define _dispatch_perfmon_workitem_inc()
 #define _dispatch_perfmon_workitem_dec()
 #define _dispatch_perfmon_start_impl(trace)

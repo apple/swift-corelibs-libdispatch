@@ -52,15 +52,16 @@ dispatch_semaphore_create(long value)
 		return DISPATCH_BAD_INPUT;
 	}
 
-	dsema = (dispatch_semaphore_t)_dispatch_alloc(DISPATCH_VTABLE(semaphore),
-			sizeof(struct dispatch_semaphore_s));
+	dsema = (dispatch_semaphore_t)_dispatch_object_alloc(
+			DISPATCH_VTABLE(semaphore), sizeof(struct dispatch_semaphore_s));
 	_dispatch_semaphore_class_init(value, dsema);
 	dsema->dsema_orig = value;
 	return dsema;
 }
 
 void
-_dispatch_semaphore_dispose(dispatch_object_t dou)
+_dispatch_semaphore_dispose(dispatch_object_t dou,
+		DISPATCH_UNUSED bool *allow_free)
 {
 	dispatch_semaphore_t dsema = dou._dsema;
 
@@ -162,7 +163,7 @@ DISPATCH_ALWAYS_INLINE
 static inline dispatch_group_t
 _dispatch_group_create_with_count(long count)
 {
-	dispatch_group_t dg = (dispatch_group_t)_dispatch_alloc(
+	dispatch_group_t dg = (dispatch_group_t)_dispatch_object_alloc(
 			DISPATCH_VTABLE(group), sizeof(struct dispatch_group_s));
 	_dispatch_semaphore_class_init(count, dg);
 	if (count) {
@@ -216,6 +217,7 @@ _dispatch_group_wake(dispatch_group_t dg, bool needs_release)
 		_dispatch_sema4_create(&dg->dg_sema, _DSEMA4_POLICY_FIFO);
 		_dispatch_sema4_signal(&dg->dg_sema, rval);
 	}
+	uint16_t refs = needs_release ? 1 : 0; // <rdar://problem/22318411>
 	if (head) {
 		// async group notify blocks
 		do {
@@ -224,11 +226,9 @@ _dispatch_group_wake(dispatch_group_t dg, bool needs_release)
 			_dispatch_continuation_async(dsn_queue, head);
 			_dispatch_release(dsn_queue);
 		} while ((head = next));
-		_dispatch_release(dg);
+		refs++;
 	}
-	if (needs_release) {
-		_dispatch_release(dg); // <rdar://problem/22318411>
-	}
+	if (refs) _dispatch_release_n(dg, refs);
 	return 0;
 }
 
@@ -246,7 +246,7 @@ dispatch_group_leave(dispatch_group_t dg)
 }
 
 void
-_dispatch_group_dispose(dispatch_object_t dou)
+_dispatch_group_dispose(dispatch_object_t dou, DISPATCH_UNUSED bool *allow_free)
 {
 	dispatch_group_t dg = dou._dg;
 

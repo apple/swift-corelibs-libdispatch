@@ -65,6 +65,9 @@ typedef struct { void *a; void *b; } dispatch_tsd_pair_t;
 #ifndef __TSD_RETURN_TO_KERNEL
 #define __TSD_RETURN_TO_KERNEL 5
 #endif
+#ifndef __TSD_MACH_SPECIAL_REPLY
+#define __TSD_MACH_SPECIAL_REPLY 8
+#endif
 
 static const unsigned long dispatch_priority_key	= __TSD_THREAD_QOS_CLASS;
 static const unsigned long dispatch_r2k_key			= __TSD_RETURN_TO_KERNEL;
@@ -309,6 +312,11 @@ _dispatch_thread_setspecific_packed_pair(pthread_key_t k1, pthread_key_t k2,
 		_dispatch_thread_getspecific(_PTHREAD_TSD_SLOT_MIG_REPLY))
 #define _dispatch_set_thread_mig_reply_port(p) ( \
 		_dispatch_thread_setspecific(_PTHREAD_TSD_SLOT_MIG_REPLY, \
+		(void*)(uintptr_t)(p)))
+#define _dispatch_get_thread_special_reply_port() ((mach_port_t)(uintptr_t) \
+		_dispatch_thread_getspecific(__TSD_MACH_SPECIAL_REPLY))
+#define _dispatch_set_thread_special_reply_port(p) ( \
+		_dispatch_thread_setspecific(__TSD_MACH_SPECIAL_REPLY, \
 		(void*)(uintptr_t)(p)))
 #endif
 
