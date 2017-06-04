@@ -374,10 +374,9 @@ AC_CHECK_HEADER([Foundation/Foundation.h],
   [have_foundation=true], [have_foundation=false]
 )
 AM_CONDITIONAL(HAVE_FOUNDATION, $have_foundation)
-AC_CHECK_HEADER([objc/runtime.h], [
+AC_CHECK_HEADER([objc/NSObject.h], [
   AC_DEFINE(HAVE_OBJC, 1, [Define if you have the Objective-C runtime])
-  have_objc=true], [have_objc=false],
-  [#include <objc/runtime.h>]
+  have_objc=true], [have_objc=false]
 )
 AM_CONDITIONAL(USE_OBJC, $have_objc)
 AC_LANG_POP([Objective C])
@@ -417,7 +416,10 @@ AC_CHECK_FUNC([sem_init],
   [have_sem_init=true], [have_sem_init=false]
 )
 
-AC_CHECK_HEADER(linux/futex.h, [have_futex=true], [have_futex=false])
+AC_CHECK_HEADER([linux/futex.h], [
+  AC_DEFINE(HAVE_FUTEX, 1, [Define if linux/futex.h is present])
+  have_futex=true], [have_futex=false]
+)
 
 #
 # We support both Mach semaphores and POSIX semaphores; if the former are
