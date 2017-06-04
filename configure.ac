@@ -125,13 +125,6 @@ AC_ARG_WITH([apple-libplatform-source],
   CPPFLAGS="$CPPFLAGS -isystem $apple_libplatform_source_include_path"
 ])
 
-AC_ARG_WITH([apple-libclosure-source],
-  [AS_HELP_STRING([--with-apple-libclosure-source],
-    [Specify path to Apple libclosure source])], [
-  apple_libclosure_source_path=${withval}
-  CPPFLAGS="$CPPFLAGS -isystem $apple_libclosure_source_path"
-])
-
 AC_ARG_WITH([apple-xnu-source],
   [AS_HELP_STRING([--with-apple-xnu-source],
     [Specify path to Apple XNU source])], [
@@ -141,12 +134,6 @@ AC_ARG_WITH([apple-xnu-source],
   apple_xnu_source_bsd_path=${withval}/bsd
   apple_xnu_source_osfmk_path=${withval}/osfmk
   CPPFLAGS="$CPPFLAGS -idirafter $apple_xnu_source_libkern_path -isystem $apple_xnu_source_bsd_path -isystem $apple_xnu_source_libsyscall_path -isystem $apple_xnu_source_libproc_path "
-])
-
-AC_ARG_WITH([apple-objc4-source],
-  [AS_HELP_STRING([--with-apple-objc4-source],
-    [Specify path to Apple objc4 source])], [
-  apple_objc4_source_runtime_path=${withval}/runtime
 ])
 
 AC_CACHE_CHECK([for System.framework/PrivateHeaders], dispatch_cv_system_privateheaders,
@@ -387,24 +374,10 @@ AC_CHECK_HEADER([Foundation/Foundation.h],
   [have_foundation=true], [have_foundation=false]
 )
 AM_CONDITIONAL(HAVE_FOUNDATION, $have_foundation)
-# hack for objc4/runtime/objc-internal.h
-AS_IF([test -n "$apple_objc4_source_runtime_path"], [
-  saveCPPFLAGS="$CPPFLAGS"
-  CPPFLAGS="$CPPFLAGS -I."
-  ln -fsh "$apple_objc4_source_runtime_path" objc
-])
-AC_CHECK_HEADER([objc/objc-internal.h], [
+AC_CHECK_HEADER([objc/NSObject.h], [
   AC_DEFINE(HAVE_OBJC, 1, [Define if you have the Objective-C runtime])
-  have_objc=true], [have_objc=false],
-  [#include <objc/runtime.h>]
+  have_objc=true], [have_objc=false]
 )
-AS_IF([test -n "$apple_objc4_source_runtime_path"], [
-  rm -f objc
-  CPPFLAGS="$saveCPPFLAGS"
-  AC_CONFIG_COMMANDS([src/objc],
-    [ln -fsh "$apple_objc4_source_runtime_path" src/objc],
-    [apple_objc4_source_runtime_path="$apple_objc4_source_runtime_path"])
-])
 AM_CONDITIONAL(USE_OBJC, $have_objc)
 AC_LANG_POP([Objective C])
 
@@ -443,7 +416,10 @@ AC_CHECK_FUNC([sem_init],
   [have_sem_init=true], [have_sem_init=false]
 )
 
-AC_CHECK_HEADER(linux/futex.h, [have_futex=true], [have_futex=false])
+AC_CHECK_HEADER([linux/futex.h], [
+  AC_DEFINE(HAVE_FUTEX, 1, [Define if linux/futex.h is present])
+  have_futex=true], [have_futex=false]
+)
 
 #
 # We support both Mach semaphores and POSIX semaphores; if the former are

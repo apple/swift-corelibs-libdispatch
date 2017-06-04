@@ -178,10 +178,11 @@ struct dispatch_io_s {
 
 void _dispatch_io_set_target_queue(dispatch_io_t channel, dispatch_queue_t dq);
 size_t _dispatch_io_debug(dispatch_io_t channel, char* buf, size_t bufsiz);
-void _dispatch_io_dispose(dispatch_io_t channel);
+void _dispatch_io_dispose(dispatch_io_t channel, bool *allow_free);
 size_t _dispatch_operation_debug(dispatch_operation_t op, char* buf,
 		size_t bufsiz);
-void _dispatch_operation_dispose(dispatch_operation_t operation);
-void _dispatch_disk_dispose(dispatch_disk_t disk);
+void _dispatch_operation_dispose(dispatch_operation_t operation,
+		bool *allow_free);
+void _dispatch_disk_dispose(dispatch_disk_t disk, bool *allow_free);
 
 #endif // __DISPATCH_IO_INTERNAL__

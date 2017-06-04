@@ -324,10 +324,10 @@ public extension DispatchQueue {
 		return nil
 	}
 
-	public func setSpecific<T>(key: DispatchSpecificKey<T>, value: T) {
-		let v = _DispatchSpecificValue(value: value)
+	public func setSpecific<T>(key: DispatchSpecificKey<T>, value: T?) {
 		let k = Unmanaged.passUnretained(key).toOpaque()
-		let p = Unmanaged.passRetained(v).toOpaque()
+		let v = value.flatMap { _DispatchSpecificValue(value: $0) }
+		let p = v.flatMap { Unmanaged.passRetained($0).toOpaque() }
 		dispatch_queue_set_specific(self.__wrapped, k, p, _destructDispatchSpecificValue)
 	}
 }
@@ -343,9 +343,6 @@ internal func _swift_dispatch_queue_concurrent() -> dispatch_queue_attr_t
 
 @_silgen_name("_swift_dispatch_get_main_queue")
 internal func _swift_dispatch_get_main_queue() -> dispatch_queue_t
-
-@_silgen_name("_swift_dispatch_apply_current_root_queue")
-internal func _swift_dispatch_apply_current_root_queue() -> dispatch_queue_t
 
 @_silgen_name("_swift_dispatch_apply_current")
 internal func _swift_dispatch_apply_current(_ iterations: Int, _ block: @convention(block) (Int) -> Void)

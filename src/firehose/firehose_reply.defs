@@ -33,11 +33,13 @@ skip; // firehose_register
 simpleroutine push_reply(
 RequestPort	req_port		: mach_port_move_send_once_t;
 in			rtc				: kern_return_t;
-in			push_reply		: firehose_push_reply_t
+in			push_reply		: firehose_push_reply_t;
+in			quarantined		: boolean_t
 );
 
 simpleroutine push_notify_async(
 RequestPort	comm_port		: mach_port_t;
 in			push_reply		: firehose_push_reply_t;
+in			quarantined		: boolean_t;
 WaitTime	timeout			: natural_t
 );

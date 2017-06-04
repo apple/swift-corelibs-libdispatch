@@ -27,6 +27,8 @@
 #ifndef __DISPATCH_WORKQUEUE_INTERNAL__
 #define __DISPATCH_WORKQUEUE_INTERNAL__
 
+#define WORKQ_ADDTHREADS_OPTION_OVERCOMMIT 0x1
+
 #define DISPATCH_WORKQ_MAX_PTHREAD_COUNT 255
 
 void _dispatch_workq_worker_register(dispatch_queue_t root_q, qos_class_t cls);
