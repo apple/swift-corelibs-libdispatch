@@ -36,6 +36,7 @@ struct firehose_client_s {
 		struct _os_object_s fc_as_os_object;
 	};
 	TAILQ_ENTRY(firehose_client_s) fc_entry;
+	struct firehose_client_s *volatile fc_next[2];
 
 	firehose_buffer_t	fc_buffer;
 	uint64_t volatile	fc_mem_sent_flushed_pos;
@@ -43,14 +44,27 @@ struct firehose_client_s {
 	uint64_t volatile	fc_io_sent_flushed_pos;
 	uint64_t volatile	fc_io_flushed_pos;
 
+#define FC_STATE_ENQUEUED(for_io)      (0x0001u << (for_io))
+#define FC_STATE_MEM_ENQUEUED           0x0001
+#define FC_STATE_IO_ENQUEUED            0x0002
+
+#define FC_STATE_CANCELING(for_io)     (0x0010u << (for_io))
+#define FC_STATE_MEM_CANCELING          0x0010
+#define FC_STATE_IO_CANCELING           0x0020
+
+#define FC_STATE_CANCELED(for_io)      (0x0100u << (for_io))
+#define FC_STATE_MEM_CANCELED           0x0100
+#define FC_STATE_IO_CANCELED            0x0200
+#define FC_STATE_CANCELED_MASK          0x0300
+
+	uintptr_t volatile	fc_state;
+
 	void *volatile		fc_ctxt;
 
 	union {
 		dispatch_mach_t	fc_mach_channel;
 		dispatch_source_t fc_kernel_source;
 	};
-	dispatch_source_t	fc_io_source;
-	dispatch_source_t	fc_mem_source;
 	mach_port_t			fc_recvp;
 	mach_port_t			fc_sendp;
 	os_unfair_lock      fc_lock;
@@ -61,6 +75,7 @@ struct firehose_client_s {
 	bool				fc_memory_corrupted;
 	bool				fc_needs_io_snapshot;
 	bool				fc_needs_mem_snapshot;
+	bool				fc_quarantined;
 };
 
 void

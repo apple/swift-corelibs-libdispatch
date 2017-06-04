@@ -37,14 +37,28 @@ DISPATCH_NOINLINE
 _os_object_t
 _os_object_retain_internal(_os_object_t obj)
 {
-	return _os_object_retain_internal_inline(obj);
+	return _os_object_retain_internal_n_inline(obj, 1);
+}
+
+DISPATCH_NOINLINE
+_os_object_t
+_os_object_retain_internal_n(_os_object_t obj, uint16_t n)
+{
+	return _os_object_retain_internal_n_inline(obj, n);
 }
 
 DISPATCH_NOINLINE
 void
 _os_object_release_internal(_os_object_t obj)
 {
-	return _os_object_release_internal_inline(obj);
+	return _os_object_release_internal_n_inline(obj, 1);
+}
+
+DISPATCH_NOINLINE
+void
+_os_object_release_internal_n(_os_object_t obj, uint16_t n)
+{
+	return _os_object_release_internal_n_inline(obj, n);
 }
 
 DISPATCH_NOINLINE
@@ -124,7 +138,7 @@ _os_object_allows_weak_reference(_os_object_t obj)
 #pragma mark dispatch_object_t
 
 void *
-_dispatch_alloc(const void *vtable, size_t size)
+_dispatch_object_alloc(const void *vtable, size_t size)
 {
 #if OS_OBJECT_HAVE_OBJC1
 	const struct dispatch_object_vtable_s *_vtable = vtable;
@@ -135,6 +149,27 @@ _dispatch_alloc(const void *vtable, size_t size)
 #else
 	return _os_object_alloc_realized(vtable, size);
 #endif
+}
+
+void
+_dispatch_object_finalize(dispatch_object_t dou)
+{
+#if USE_OBJC
+	objc_destructInstance((id)dou._do);
+#else
+	(void)dou;
+#endif
+}
+
+void
+_dispatch_object_dealloc(dispatch_object_t dou)
+{
+	// so that ddt doesn't pick up bad objects when malloc reuses this memory
+	dou._os_obj->os_obj_isa = NULL;
+#if OS_OBJECT_HAVE_OBJC1
+	dou._do->do_vtable = NULL;
+#endif
+	free(dou._os_obj);
 }
 
 void
@@ -149,24 +184,6 @@ dispatch_release(dispatch_object_t dou)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_release, dou);
 	_os_object_release(dou._os_obj);
-}
-
-static void
-_dispatch_dealloc(dispatch_object_t dou)
-{
-	dispatch_queue_t tq = dou._do->do_targetq;
-	dispatch_function_t func = dou._do->do_finalizer;
-	void *ctxt = dou._do->do_ctxt;
-#if OS_OBJECT_HAVE_OBJC1
-	// so that ddt doesn't pick up bad objects when malloc reuses this memory
-	dou._do->do_vtable = NULL;
-#endif
-	_os_object_dealloc(dou._os_obj);
-
-	if (func && ctxt) {
-		dispatch_async_f(tq, ctxt, func);
-	}
-	_dispatch_release_tailcall(tq);
 }
 
 #if !USE_OBJC
@@ -193,11 +210,26 @@ _dispatch_xref_dispose(dispatch_object_t dou)
 void
 _dispatch_dispose(dispatch_object_t dou)
 {
+	dispatch_queue_t tq = dou._do->do_targetq;
+	dispatch_function_t func = dou._do->do_finalizer;
+	void *ctxt = dou._do->do_ctxt;
+	bool allow_free = true;
+
 	if (slowpath(dou._do->do_next != DISPATCH_OBJECT_LISTLESS)) {
 		DISPATCH_INTERNAL_CRASH(dou._do->do_next, "Release while enqueued");
 	}
-	dx_dispose(dou._do);
-	return _dispatch_dealloc(dou);
+
+	dx_dispose(dou._do, &allow_free);
+
+	// Past this point, the only thing left of the object is its memory
+	if (likely(allow_free)) {
+		_dispatch_object_finalize(dou);
+		_dispatch_object_dealloc(dou);
+	}
+	if (func && ctxt) {
+		dispatch_async_f(tq, ctxt, func);
+	}
+	if (tq) _dispatch_release_tailcall(tq);
 }
 
 void *
@@ -270,7 +302,9 @@ void
 dispatch_resume(dispatch_object_t dou)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_resume, dou);
-	if (dx_vtable(dou._do)->do_resume) {
+	// the do_suspend below is not a typo. Having a do_resume but no do_suspend
+	// allows for objects to support activate, but have no-ops suspend/resume
+	if (dx_vtable(dou._do)->do_suspend) {
 		dx_vtable(dou._do)->do_resume(dou._do, false);
 	}
 }
@@ -278,6 +312,6 @@ dispatch_resume(dispatch_object_t dou)
 size_t
 _dispatch_object_debug_attr(dispatch_object_t dou, char* buf, size_t bufsiz)
 {
-	return dsnprintf(buf, bufsiz, "xrefcnt = 0x%x, refcnt = 0x%x, ",
+	return dsnprintf(buf, bufsiz, "xref = %d, ref = %d, ",
 			dou._do->do_xref_cnt + 1, dou._do->do_ref_cnt + 1);
 }

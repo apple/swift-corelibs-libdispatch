@@ -165,15 +165,6 @@ enum {
 	DISPATCH_SOCK_NOTIFY_ACK = 0x00004000,
 };
 
-/*!
- * @enum dispatch_source_nw_channel_flags_t
- *
- * @constant DISPATCH_NW_CHANNEL_FLOW_ADV_UPDATE
- * Received network channel flow advisory.
- */
-enum {
-	DISPATCH_NW_CHANNEL_FLOW_ADV_UPDATE = 0x00000001,
-};
 
 /*!
  * @enum dispatch_source_vfs_flags_t
@@ -341,11 +332,16 @@ enum {
  *
  * @constant DISPATCH_MEMORYPRESSURE_PROC_LIMIT_CRITICAL
  * The memory of the process has reached 100% of its high watermark limit.
+ *
+ * @constant DISPATCH_MEMORYPRESSURE_MSL_STATUS
+ * Mask for enabling/disabling malloc stack logging.
  */
 enum {
-	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_WARN DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.10), tvos(10.10), watchos(3.0)) = 0x10,
+	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_WARN DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 0x10,
 
-	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_CRITICAL DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.10), tvos(10.10), watchos(3.0)) = 0x20,
+	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_CRITICAL DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 0x20,
+	
+	DISPATCH_MEMORYPRESSURE_MSL_STATUS DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 0xf0000000,
 };
 
 /*!

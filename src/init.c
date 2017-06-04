@@ -21,6 +21,8 @@
 // Contains exported global data and initialization & other routines that must
 // only exist once in the shared library even when resolvers are used.
 
+// NOTE: this file must not contain any atomic operations
+
 #include "internal.h"
 
 #if HAVE_MACH
@@ -146,10 +148,6 @@ int _dispatch_set_qos_class_enabled;
 #if DISPATCH_USE_KEVENT_WORKQUEUE && DISPATCH_USE_MGR_THREAD
 int _dispatch_kevent_workqueue_enabled;
 #endif
-#if DISPATCH_USE_EVFILT_MACHPORT_DIRECT && \
-		DISPATCH_EVFILT_MACHPORT_PORTSET_FALLBACK
-int _dispatch_evfilt_machport_direct_enabled;
-#endif
 
 DISPATCH_HW_CONFIG();
 uint8_t _dispatch_unsafe_fork;
@@ -171,33 +169,6 @@ bool
 _dispatch_is_fork_of_multithreaded_parent(void)
 {
 	return _dispatch_child_of_unsafe_fork;
-}
-
-DISPATCH_NOINLINE
-void
-_dispatch_fork_becomes_unsafe_slow(void)
-{
-	uint8_t value = os_atomic_or(&_dispatch_unsafe_fork,
-			_DISPATCH_UNSAFE_FORK_MULTITHREADED, relaxed);
-	if (value & _DISPATCH_UNSAFE_FORK_PROHIBIT) {
-		DISPATCH_CLIENT_CRASH(0, "Transition to multithreaded is prohibited");
-	}
-}
-
-DISPATCH_NOINLINE
-void
-_dispatch_prohibit_transition_to_multithreaded(bool prohibit)
-{
-	if (prohibit) {
-		uint8_t value = os_atomic_or(&_dispatch_unsafe_fork,
-				_DISPATCH_UNSAFE_FORK_PROHIBIT, relaxed);
-		if (value & _DISPATCH_UNSAFE_FORK_MULTITHREADED) {
-			DISPATCH_CLIENT_CRASH(0, "The executable is already multithreaded");
-		}
-	} else {
-		os_atomic_and(&_dispatch_unsafe_fork,
-				(uint8_t)~_DISPATCH_UNSAFE_FORK_PROHIBIT, relaxed);
-	}
 }
 
 const struct dispatch_queue_offsets_s dispatch_queue_offsets = {
@@ -238,10 +209,10 @@ struct dispatch_queue_s _dispatch_main_q = {
 	.do_targetq = &_dispatch_root_queues[
 			DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS_OVERCOMMIT],
 #endif
-	.dq_state = DISPATCH_QUEUE_STATE_INIT_VALUE(1),
+	.dq_state = DISPATCH_QUEUE_STATE_INIT_VALUE(1) |
+			DISPATCH_QUEUE_ROLE_BASE_ANON,
 	.dq_label = "com.apple.main-thread",
 	.dq_atomic_flags = DQF_THREAD_BOUND | DQF_CANNOT_TRYSYNC | DQF_WIDTH(1),
-	.dq_wlh = DISPATCH_WLH_GLOBAL, // TODO: main thread wlh
 	.dq_serialnum = 1,
 };
 
@@ -426,6 +397,7 @@ DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_root, queue,
 	.do_debug = dispatch_queue_debug,
 );
 
+
 DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_main, queue,
 	.do_type = DISPATCH_QUEUE_SERIAL_TYPE,
 	.do_kind = "main-queue",
@@ -449,7 +421,7 @@ DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_runloop, queue,
 DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_mgr, queue,
 	.do_type = DISPATCH_QUEUE_MGR_TYPE,
 	.do_kind = "mgr-queue",
-	.do_push = _dispatch_queue_push,
+	.do_push = _dispatch_mgr_queue_push,
 	.do_invoke = _dispatch_mgr_thread,
 	.do_wakeup = _dispatch_mgr_queue_wakeup,
 	.do_debug = dispatch_queue_debug,
@@ -514,6 +486,7 @@ DISPATCH_VTABLE_INSTANCE(data,
 	.do_kind = "data",
 	.do_dispose = _dispatch_data_dispose,
 	.do_debug = _dispatch_data_debug,
+	.do_set_targetq = (void*)_dispatch_data_set_target_queue,
 );
 #endif
 
@@ -550,6 +523,41 @@ _dispatch_vtable_init(void)
 			offsetof(struct dispatch_semaphore_vtable_s, _os_obj_vtable));
 #endif // USE_OBJC
 }
+
+#pragma mark -
+#pragma mark dispatch_data globals
+
+const dispatch_block_t _dispatch_data_destructor_free = ^{
+	DISPATCH_INTERNAL_CRASH(0, "free destructor called");
+};
+
+const dispatch_block_t _dispatch_data_destructor_none = ^{
+	DISPATCH_INTERNAL_CRASH(0, "none destructor called");
+};
+
+#if !HAVE_MACH
+const dispatch_block_t _dispatch_data_destructor_munmap = ^{
+	DISPATCH_INTERNAL_CRASH(0, "munmap destructor called");
+};
+#else
+// _dispatch_data_destructor_munmap is a linker alias to the following
+const dispatch_block_t _dispatch_data_destructor_vm_deallocate = ^{
+	DISPATCH_INTERNAL_CRASH(0, "vmdeallocate destructor called");
+};
+#endif
+
+const dispatch_block_t _dispatch_data_destructor_inline = ^{
+	DISPATCH_INTERNAL_CRASH(0, "inline destructor called");
+};
+
+struct dispatch_data_s _dispatch_data_empty = {
+#if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
+	.do_vtable = DISPATCH_DATA_EMPTY_CLASS,
+#else
+	DISPATCH_GLOBAL_OBJECT_HEADER(data),
+	.do_next = DISPATCH_OBJECT_LISTLESS,
+#endif
+};
 
 #pragma mark -
 #pragma mark dispatch_bug
@@ -1147,16 +1155,17 @@ _dispatch_autorelease_pool_pop(void *pool)
 	}
 }
 
-void*
-_dispatch_last_resort_autorelease_pool_push(void)
+void
+_dispatch_last_resort_autorelease_pool_push(dispatch_invoke_context_t dic)
 {
-	return _dispatch_autorelease_pool_push();
+	dic->dic_autorelease_pool = _dispatch_autorelease_pool_push();
 }
 
 void
-_dispatch_last_resort_autorelease_pool_pop(void *pool)
+_dispatch_last_resort_autorelease_pool_pop(dispatch_invoke_context_t dic)
 {
-	_dispatch_autorelease_pool_pop(pool);
+	_dispatch_autorelease_pool_pop(dic->dic_autorelease_pool);
+	dic->dic_autorelease_pool = NULL;
 }
 
 #endif // DISPATCH_COCOA_COMPAT
@@ -1199,22 +1208,16 @@ kern_return_t
 _dispatch_mach_notify_port_destroyed(mach_port_t notify DISPATCH_UNUSED,
 		mach_port_t name)
 {
-	kern_return_t kr;
-	// this function should never be called
-	(void)dispatch_assume_zero(name);
-	kr = mach_port_mod_refs(mach_task_self(), name, MACH_PORT_RIGHT_RECEIVE,-1);
-	DISPATCH_VERIFY_MIG(kr);
-	(void)dispatch_assume_zero(kr);
-	return KERN_SUCCESS;
+	DISPATCH_INTERNAL_CRASH(name, "unexpected receipt of port-destroyed");
+	return KERN_FAILURE;
 }
 
 kern_return_t
-_dispatch_mach_notify_no_senders(mach_port_t notify,
-		mach_port_mscount_t mscnt DISPATCH_UNUSED)
+_dispatch_mach_notify_no_senders(mach_port_t notify DISPATCH_UNUSED,
+		mach_port_mscount_t mscnt)
 {
-	// this function should never be called
-	(void)dispatch_assume_zero(notify);
-	return KERN_SUCCESS;
+	DISPATCH_INTERNAL_CRASH(mscnt, "unexpected receipt of no-more-senders");
+	return KERN_FAILURE;
 }
 
 kern_return_t
