@@ -69,7 +69,7 @@ typedef struct dispatch_workq_monitor_s {
 	int num_registered_tids;
 } dispatch_workq_monitor_s, *dispatch_workq_monitor_t;
 
-static dispatch_workq_monitor_s _dispatch_workq_monitors[WORKQ_NUM_PRIORITIES];
+static dispatch_workq_monitor_s _dispatch_workq_monitors[DISPATCH_QOS_MAX];
 
 #pragma mark Implementation of the monitoring subsystem.
 
@@ -80,12 +80,13 @@ static void _dispatch_workq_init_once(void *context DISPATCH_UNUSED);
 static dispatch_once_t _dispatch_workq_init_once_pred;
 
 void
-_dispatch_workq_worker_register(dispatch_queue_t root_q, int priority)
+_dispatch_workq_worker_register(dispatch_queue_t root_q, qos_class_t cls)
 {
 	dispatch_once_f(&_dispatch_workq_init_once_pred, NULL, &_dispatch_workq_init_once);
 
 #if HAVE_DISPATCH_WORKQ_MONITORING
-	dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[priority];
+	dispatch_qos_t qos = _dispatch_qos_from_qos_class(cls);
+	dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[qos-1];
 	dispatch_assert(mon->dq == root_q);
 	dispatch_tid tid = _dispatch_thread_getspecific(tid);
 	_dispatch_unfair_lock_lock(&mon->registered_tid_lock);
@@ -97,10 +98,11 @@ _dispatch_workq_worker_register(dispatch_queue_t root_q, int priority)
 }
 
 void
-_dispatch_workq_worker_unregister(dispatch_queue_t root_q, int priority)
+_dispatch_workq_worker_unregister(dispatch_queue_t root_q, qos_class_t cls)
 {
 #if HAVE_DISPATCH_WORKQ_MONITORING
-	dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[priority];
+	dispatch_qos_t qos = _dispatch_qos_from_qos_class(cls);
+	dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[qos-1];
 	dispatch_tid tid = _dispatch_thread_getspecific(tid);
 	_dispatch_unfair_lock_lock(&mon->registered_tid_lock);
 	for (int i = 0; i < mon->num_registered_tids; i++) {
@@ -177,16 +179,10 @@ _dispatch_workq_count_runnable_workers(dispatch_workq_monitor_t mon)
 static void
 _dispatch_workq_monitor_pools(void *context DISPATCH_UNUSED)
 {
-	// TODO: Once we switch away from the legacy priorities to
-	//       newer QoS, we can loop in order of decreasing QoS
-	//       and track the total number of runnable threads seen
-	//       across pools.  We can then use that number to
-	//       implement a global policy where low QoS queues
-	//       are not eligible for over-subscription if the higher
-	//       QoS queues have already consumed the target
-	//       number of threads.
-	for (int i = 0; i < WORKQ_NUM_PRIORITIES; i++) {
-		dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[i];
+	int global_soft_max = WORKQ_OVERSUBSCRIBE_FACTOR * dispatch_hw_config(active_cpus);
+	int global_runnable = 0;
+	for (dispatch_qos_t i = DISPATCH_QOS_MAX; i > DISPATCH_QOS_UNSPECIFIED; i--) {
+		dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[i-1];
 		dispatch_queue_t dq = mon->dq;
 
 		if (!_dispatch_queue_class_probe(dq)) {
@@ -198,8 +194,10 @@ _dispatch_workq_monitor_pools(void *context DISPATCH_UNUSED)
 		_dispatch_debug("workq: %s has %d runnable wokers (target is %d)",
 				dq->dq_label, mon->num_runnable, mon->target_runnable);
 
+		global_runnable += mon->num_runnable;
+
 		if (mon->num_runnable == 0) {
-			// We are below target, and no worker is runnable.
+			// We have work, but no worker is runnable.
 			// It is likely the program is stalled. Therefore treat
 			// this as if dq were an overcommit queue and call poke
 			// with the limit being the maximum number of workers for dq.
@@ -207,7 +205,9 @@ _dispatch_workq_monitor_pools(void *context DISPATCH_UNUSED)
 			_dispatch_debug("workq: %s has no runnable workers; poking with floor %d",
 					dq->dq_label, floor);
 			_dispatch_global_queue_poke(dq, 1, floor);
-		} else if (mon->num_runnable < mon->target_runnable) {
+			global_runnable += 1; // account for poke in global estimate
+		} else if (mon->num_runnable < mon->target_runnable &&
+				   global_runnable < global_soft_max) {
 			// We are below target, but some workers are still runnable.
 			// We want to oversubscribe to hit the desired load target.
 			// However, this under-utilization may be transitory so set the
@@ -218,42 +218,20 @@ _dispatch_workq_monitor_pools(void *context DISPATCH_UNUSED)
 			_dispatch_debug("workq: %s under utilization target; poking with floor %d",
 					dq->dq_label, floor);
 			_dispatch_global_queue_poke(dq, 1, floor);
+			global_runnable += 1; // account for poke in global estimate
 		}
 	}
 }
 #endif // HAVE_DISPATCH_WORKQ_MONITORING
-
-
-// temporary until we switch over to QoS based interface.
-static dispatch_queue_t
-get_root_queue_from_legacy_priority(int priority)
-{
-	switch (priority) {
-	case WORKQ_HIGH_PRIOQUEUE:
-		return &_dispatch_root_queues[DISPATCH_ROOT_QUEUE_IDX_USER_INITIATED_QOS];
-	case WORKQ_DEFAULT_PRIOQUEUE:
-		return &_dispatch_root_queues[DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS];
-	case WORKQ_LOW_PRIOQUEUE:
-		return &_dispatch_root_queues[DISPATCH_ROOT_QUEUE_IDX_UTILITY_QOS];
-	case WORKQ_BG_PRIOQUEUE:
-		return &_dispatch_root_queues[DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS];
-	case WORKQ_BG_PRIOQUEUE_CONDITIONAL:
-		return &_dispatch_root_queues[DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS];
-	case WORKQ_HIGH_PRIOQUEUE_CONDITIONAL:
-		return &_dispatch_root_queues[DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS];
-	default:
-		return NULL;
-	}
-}
 
 static void
 _dispatch_workq_init_once(void *context DISPATCH_UNUSED)
 {
 #if HAVE_DISPATCH_WORKQ_MONITORING
 	int target_runnable = dispatch_hw_config(active_cpus);
-	for (int i = 0; i < WORKQ_NUM_PRIORITIES; i++) {
-		dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[i];
-		mon->dq = get_root_queue_from_legacy_priority(i);
+	for (dispatch_qos_t i = DISPATCH_QOS_MAX; i > DISPATCH_QOS_UNSPECIFIED; i--) {
+		dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[i-1];
+		mon->dq = _dispatch_get_root_queue(i, false);
 		void *buf = _dispatch_calloc(WORKQ_MAX_TRACKED_TIDS, sizeof(dispatch_tid));
 		mon->registered_tids = buf;
 		mon->target_runnable = target_runnable;
