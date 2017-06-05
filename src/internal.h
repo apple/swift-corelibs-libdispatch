@@ -629,10 +629,6 @@ _dispatch_fork_becomes_unsafe(void)
 #define DISPATCH_PERF_MON 0
 #endif
 
-/* #includes dependent on internal.h */
-#include "shims.h"
-#include "event/event_internal.h"
-
 // Older Mac OS X and iOS Simulator fallbacks
 
 #if HAVE__PTHREAD_WORKQUEUE_INIT && PTHREAD_WORKQUEUE_SPI_VERSION >= 20140213 \
@@ -902,6 +898,10 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 		_dispatch_assert_crash(_msg); \
 		free(_msg); \
 	} while (0)
+
+/* #includes dependent on internal.h */
+#include "shims.h"
+#include "event/event_internal.h"
 
 #define DISPATCH_NO_VOUCHER ((voucher_t)(void*)~0ul)
 #define DISPATCH_NO_PRIORITY ((pthread_priority_t)~0ul)
