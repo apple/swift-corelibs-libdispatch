@@ -1,0 +1,19 @@
+(package
+:name "AnarchyDispatch"
+    :overlays {
+        :compile-osx {
+            :include-with-user ["AnarchyDispatch/anarchy"]
+        }
+        :compile-linux {
+            :include-with-user ["AnarchyDispatch/anarchy" "AnarchyDispatch/"]
+            :compile-options ["-Xcc" "-fblocks"]
+            :link-options ["-LAnarchyDispatch/build/lib/"]
+        }
+    }
+    :tasks {
+        :default {
+            :tool "shell"
+            :script "anarchy/build.sh"
+        }
+    }
+)

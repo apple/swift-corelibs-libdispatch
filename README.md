@@ -1,3 +1,53 @@
+# AnarchyDispatch
+
+The AnarchyDispatch module is libdispatch, packaged portably with Anarchy Tools.
+
+## Understand
+
+libdispatch is built-in to OSX, but it isn't currently distributed for Linux.
+
+Depending on this package gives you a consistent way to use libdispatch across platforms.  On OSX we use the built-in libdispatch, and on Linux we compile it.
+
+## Use
+
+Eventually we're going to package this with [atpm](https://github.com/AnarchyTools/atpm), but until then, just check it out as a submodule of your repository
+
+```bash
+git submodule add git@github.com:AnarchyTools/AnarchyDispatch.git
+```
+
+Now, make your target depend on it:
+
+```clojure
+(package :name "Foo"
+    :import ["AnarchyDispatch/build.atpkg"]
+
+    :target {
+      :tool "atllbuild"
+      ;;sources, etc.
+      :dependencies ["AnarchyDispatch.default"]
+
+      ;;apply the overlay AnarchyDispatch defines
+      :overlay ["AnarchyDispatch.compile-osx"] ;;or compile-linux
+    }
+)
+```
+
+Now you can just
+
+```swift
+import AnarchyDispatch
+
+dispatch_async(dispatch_get_main_queue()) {
+    //background work
+}
+```
+
+BUG: Currently you have to use `LD_LIBRARY_PATH=AnarchyDispatch/build/lib` with executables.  We should fix this.
+
+Original README follows.
+
+
 # Grand Central Dispatch
 
 Grand Central Dispatch (GCD or libdispatch) provides comprehensive support for concurrent code execution on multicore hardware.
