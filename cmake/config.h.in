@@ -1,6 +1,5 @@
-
-/* Define if building pthread work queues from source */
-#cmakedefine BUILD_OWN_PTHREAD_WORKQUEUES
+/* Use libdispatch's own implementation of pthread workqueues */
+#cmakedefine01 DISPATCH_USE_INTERNAL_WORKQUEUE
 
 /* Enable usage of thread local storage via __thread */
 #cmakedefine01 DISPATCH_USE_THREAD_LOCAL_STORAGE

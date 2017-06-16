@@ -16,45 +16,32 @@ set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 
 include(GNUInstallDirs)
-include(ExternalProject)
 
 set(WITH_BLOCKS_RUNTIME "" CACHE PATH "Path to blocks runtime")
-set(WITH_PTHREAD_WORKQUEUES "" CACHE PATH "Path to pthread-workqueues")
 
 include(DispatchAppleOptions)
 
 option(ENABLE_DISPATCH_INIT_CONSTRUCTOR "enable libdispatch_init as a constructor" ON)
 set(USE_LIBDISPATCH_INIT_CONSTRUCTOR ${ENABLE_DISPATCH_INIT_CONSTRUCTOR})
 
-# TODO(compnerd) swift options
+option(BUILD_SHARED_LIBS "build shared libraries" ON)
 
-# TODO(compnerd) consider adding a flag for USE_GOLD_LINKER.  Currently, we
-# expect the user to specify `-fuse-ld=gold`
+option(USE_GOLD_LINKER "use the gold linker" ON)
+
+# TODO(compnerd) swift options
 
 option(ENABLE_THREAD_LOCAL_STORAGE "enable usage of thread local storage via __thread" ON)
 set(DISPATCH_USE_THREAD_LOCAL_STORAGE ${ENABLE_THREAD_LOCAL_STORAGE})
 
-if(EXISTS "${CMAKE_SOURCE_DIR}/libpwq/CMakeLists.txt")
-  ExternalProject_Add(pwq
-                      SOURCE_DIR
-                        "${CMAKE_SOURCE_DIR}/libpwq"
-                      CMAKE_ARGS
-                        -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-                        -DCMAKE_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
-                        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                      BUILD_BYPRODUCTS
-                        <INSTALL_DIR>/${CMAKE_INSTALL_LIBDIR}/${CMAKE_STATIC_LIBRARY_PREFIX}pthread_workqueue${CMAKE_STATIC_LIBRARY_SUFFIX})
-  ExternalProject_Get_Property(pwq install_dir)
-  add_library(PTHREAD::workqueue UNKNOWN IMPORTED)
-  set_target_properties(PTHREAD::workqueue
-                        PROPERTIES
-                          IMPORTED_LOCATION ${install_dir}/${CMAKE_INSTALL_LIBDIR}/${CMAKE_STATIC_LIBRARY_PREFIX}pthread_workqueue${CMAKE_STATIC_LIBRARY_SUFFIX})
-  set(WITH_PTHREAD_WORKQUEUES "${install_dir}" CACHE PATH "Path to pthread-workqueues" FORCE)
-  set(HAVE_PTHREAD_WORKQUEUES 1)
+# TODO: Real CMake logic for internal workqueues
+if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
+   CMAKE_SYSTEM_NAME STREQUAL Android OR
+   CMAKE_SYSTEM_NAME STREQUAL Windows)
+ set(DISPATCH_USE_INTERNAL_WORKQUEUE 1)
+ set(HAVE_PTHREAD_WORKQUEUES 0)
 else()
-  # TODO(compnerd) support system installed pthread-workqueues
-  # find_package(pthread_workqueues REQUIRED)
-  # set(HAVE_PTHREAD_WORKQUEUES 1)
+ set(DISPATCH_USE_INTERNAL_WORKQUEUE 0)
+ set(HAVE_PTHREAD_WORKQUEUES 1)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
@@ -179,12 +166,13 @@ check_symbol_exists(VQ_VERYLOWDISK "sys/mount.h" HAVE_DECL_VQ_VERYLOWDISK)
 
 check_symbol_exists(program_invocation_name "errno.h" HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME)
 
-find_program(dtrace_EXECUTABLE dtrace)
-if(dtrace_EXECUTABLE)
+find_program(DTRACE dtrace)
+if(DTRACE)
   add_definitions(-DDISPATCH_USE_DTRACE=1)
 else()
   add_definitions(-DDISPATCH_USE_DTRACE=0)
 endif()
+include(DTrace)
 
 find_program(leaks_EXECUTABLE leaks)
 if(leaks_EXECUTABLE)
