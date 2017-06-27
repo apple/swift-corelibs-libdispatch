@@ -38,6 +38,9 @@ if(BSD_OVERLAY_FOUND)
                         PRIVATE
                           ${BSD_OVERLAY_LDFLAGS})
 endif()
+if(CMAKE_SWIFT_RUNTIME_LIBDIR)
+  target_link_libraries(bsdtestharness PRIVATE -L${CMAKE_SWIFT_RUNTIME_LIBDIR} -lswiftCore -lswiftSwiftOnoneSupport -Wl,-rpath -Wl,${CMAKE_SWIFT_RUNTIME_LIBDIR})
+endif()
 
 function(add_unit_test name)
   set(options DISABLED_TEST)
@@ -86,11 +89,14 @@ function(add_unit_test name)
                             ${BSD_OVERLAY_LDFLAGS})
   endif()
   target_link_libraries(${name} PRIVATE bsdtests)
+  if(CMAKE_SWIFT_RUNTIME_LIBDIR)
+	target_link_libraries(${name} PRIVATE -L${CMAKE_SWIFT_RUNTIME_LIBDIR} -lswiftCore -lswiftSwiftOnoneSupport -Wl,-rpath -Wl,${CMAKE_SWIFT_RUNTIME_LIBDIR})
+  endif()
   add_test(NAME ${name}
            COMMAND bsdtestharness $<TARGET_FILE:${name}>)
   set_tests_properties(${name}
                        PROPERTIES
-                         TIMEOUT 30
+                         TIMEOUT 600
                          DEPENDS bsdtestharness
                          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
   if(NOT leaks_EXECUTABLE)

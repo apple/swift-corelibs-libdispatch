@@ -1,10 +1,17 @@
 
 include(SwiftSupport)
 
+set(dispatch_DTRACE_HEADERS)
+if(DTRACE)
+  list(APPEND dispatch_DTRACE_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/provider.h)
+endif()
+DTRACE_HEADER(${CMAKE_CURRENT_SOURCE_DIR}/provider.d ${CMAKE_CURRENT_BINARY_DIR}/provider.h)
+
 set(dispatch_BLOCK_SOURCES block.cpp)
 if(HAVE_OBJC)
   list(APPEND dispatch_BLOCK_SOURCES data.m object.m)
 endif()
+
 set(dispatch_SWIFT_SOURCES)
 if(CMAKE_SWIFT_COMPILER)
   set(swift_optimization_flags)
@@ -39,7 +46,9 @@ if(CMAKE_SWIFT_COMPILER)
   list(APPEND dispatch_SWIFT_SOURCES
        swift/DispatchStubs.cc;${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o)
 endif()
+
 add_library(dispatch
+              ${dispatch_DTRACE_HEADERS}
               allocator.c
               apply.c
               benchmark.c
@@ -77,6 +86,8 @@ add_library(dispatch
               event/event_epoll.c
               event/event_internal.h
               event/event_kevent.c
+              event/workqueue_internal.h
+              event/workqueue.c
               firehose/firehose_internal.h
               shims/android_stubs.h
               shims/atomic.h
@@ -93,12 +104,24 @@ add_library(dispatch
               shims/yield.h
               ${dispatch_BLOCK_SOURCES}
               ${dispatch_SWIFT_SOURCES})
+# Temporary staging; the various swift projects that depend on libdispatch
+# all expect libdispatch.so to be in src/.libs/libdispatch.so
+# So make a symlink so we don't have to do a coordinated commit across all the
+# swift projects to change this assumption.
+add_custom_target(.libs ALL
+                  COMMAND cmake -E create_symlink . .libs)
 target_include_directories(dispatch
                            PRIVATE
                              ${CMAKE_BINARY_DIR}
+                             ${CMAKE_CURRENT_BINARY_DIR}
                              ${CMAKE_SOURCE_DIR}
                              ${CMAKE_CURRENT_SOURCE_DIR}
                              ${CMAKE_SOURCE_DIR}/private)
+if (USE_GOLD_LINKER)
+  target_link_libraries(dispatch
+	                    PRIVATE
+	                    -fuse-ld=gold)
+endif()
 if(WITH_PTHREAD_WORKQUEUES)
   target_include_directories(dispatch
                              SYSTEM BEFORE PRIVATE
