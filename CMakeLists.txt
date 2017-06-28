@@ -188,6 +188,23 @@ if(leaks_EXECUTABLE)
   set(HAVE_LEAKS TRUE)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
+  add_custom_command(OUTPUT
+                       "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                       "${CMAKE_SOURCE_DIR}/private/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
+else()
+  add_custom_command(OUTPUT
+                       "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                       "${CMAKE_SOURCE_DIR}/private/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
+endif()
 configure_file("${CMAKE_SOURCE_DIR}/cmake/config.h.in"
                "${CMAKE_BINARY_DIR}/config/config_ac.h")
 add_definitions(-DHAVE_CONFIG_H)
