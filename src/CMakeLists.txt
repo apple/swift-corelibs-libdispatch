@@ -1,5 +1,6 @@
 
 include(SwiftSupport)
+include(DTrace)
 
 add_library(dispatch
               allocator.c
@@ -103,11 +104,20 @@ if(CMAKE_SWIFT_COMPILER)
                    swift/DispatchStubs.cc
                    ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o)
 endif()
+if(dtrace_EXECUTABLE)
+  dtrace_usdt_probe(${CMAKE_CURRENT_SOURCE_DIR}/provider.d
+                    OUTPUT_SOURCES
+                      dispatch_dtrace_provider_headers)
+  target_sources(dispatch
+                 PRIVATE
+                   ${dispatch_dtrace_provider_headers})
+endif()
 target_include_directories(dispatch
                            PRIVATE
                              ${CMAKE_BINARY_DIR}
                              ${CMAKE_SOURCE_DIR}
                              ${CMAKE_CURRENT_SOURCE_DIR}
+                             ${CMAKE_CURRENT_BINARY_DIR}
                              ${CMAKE_SOURCE_DIR}/private)
 if(WITH_PTHREAD_WORKQUEUES)
   target_include_directories(dispatch
