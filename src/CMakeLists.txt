@@ -1,44 +1,6 @@
 
 include(SwiftSupport)
 
-set(dispatch_BLOCK_SOURCES block.cpp)
-if(HAVE_OBJC)
-  list(APPEND dispatch_BLOCK_SOURCES data.m object.m)
-endif()
-set(dispatch_SWIFT_SOURCES)
-if(CMAKE_SWIFT_COMPILER)
-  set(swift_optimization_flags)
-  if(CMAKE_BUILD_TYPE MATCHES Release)
-    set(swift_optimization_flags -O)
-  endif()
-  add_swift_library(swiftDispatch
-                    MODULE_NAME
-                      Dispatch
-                    MODULE_LINK_NAME
-                      dispatch
-                    MODULE_PATH
-                      ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
-                    OUTPUT
-                      ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o
-                    SOURCES
-                      swift/Block.swift
-                      swift/Data.swift
-                      swift/Dispatch.swift
-                      swift/IO.swift
-                      swift/Private.swift
-                      swift/Queue.swift
-                      swift/Source.swift
-                      swift/Time.swift
-                      swift/Wrapper.swift
-                    CFLAGS
-                      -fblocks
-                      -fmodule-map-file=${CMAKE_SOURCE_DIR}/dispatch/module.modulemap
-                    SWIFT_FLAGS
-                      -I ${CMAKE_SOURCE_DIR}
-                      ${swift_optimization_flags})
-  list(APPEND dispatch_SWIFT_SOURCES
-       swift/DispatchStubs.cc;${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o)
-endif()
 add_library(dispatch
               allocator.c
               apply.c
@@ -90,9 +52,51 @@ add_library(dispatch
               shims/perfmon.h
               shims/time.h
               shims/tsd.h
-              shims/yield.h
-              ${dispatch_BLOCK_SOURCES}
-              ${dispatch_SWIFT_SOURCES})
+              shims/yield.h)
+target_sources(dispatch
+               PRIVATE
+                 block.cpp)
+if(HAVE_OBJC)
+  target_sources(dispatch
+                 PRIVATE
+                   data.m
+                   object.m)
+endif()
+if(CMAKE_SWIFT_COMPILER)
+  set(swift_optimization_flags)
+  if(CMAKE_BUILD_TYPE MATCHES Release)
+    set(swift_optimization_flags -O)
+  endif()
+  add_swift_library(swiftDispatch
+                    MODULE_NAME
+                      Dispatch
+                    MODULE_LINK_NAME
+                      dispatch
+                    MODULE_PATH
+                      ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
+                    OUTPUT
+                      ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o
+                    SOURCES
+                      swift/Block.swift
+                      swift/Data.swift
+                      swift/Dispatch.swift
+                      swift/IO.swift
+                      swift/Private.swift
+                      swift/Queue.swift
+                      swift/Source.swift
+                      swift/Time.swift
+                      swift/Wrapper.swift
+                    CFLAGS
+                      -fblocks
+                      -fmodule-map-file=${CMAKE_SOURCE_DIR}/dispatch/module.modulemap
+                    SWIFT_FLAGS
+                      -I ${CMAKE_SOURCE_DIR}
+                      ${swift_optimization_flags})
+  target_sources(dispatch
+                 PRIVATE
+                   swift/DispatchStubs.cc
+                   ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o)
+endif()
 target_include_directories(dispatch
                            PRIVATE
                              ${CMAKE_BINARY_DIR}
