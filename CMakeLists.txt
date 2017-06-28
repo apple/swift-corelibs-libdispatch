@@ -29,6 +29,8 @@ include(DispatchAppleOptions)
 option(ENABLE_DISPATCH_INIT_CONSTRUCTOR "enable libdispatch_init as a constructor" ON)
 set(USE_LIBDISPATCH_INIT_CONSTRUCTOR ${ENABLE_DISPATCH_INIT_CONSTRUCTOR})
 
+option(BUILD_SHARED_LIBS "build shared libraries" ON)
+
 # TODO(compnerd) swift options
 
 if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
