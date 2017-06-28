@@ -90,7 +90,7 @@ function(add_unit_test name)
            COMMAND bsdtestharness $<TARGET_FILE:${name}>)
   set_tests_properties(${name}
                        PROPERTIES
-                         TIMEOUT 30
+                         TIMEOUT 600
                          DEPENDS bsdtestharness
                          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
   if(NOT leaks_EXECUTABLE)

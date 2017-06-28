@@ -1,7 +1,18 @@
 
 include(SwiftSupport)
 
+set(dispatch_DTRACE_HEADERS)
+if(dtrace_EXECUTABLE)
+  list(APPEND dispatch_DTRACE_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/provider.h)
+  add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/provider.h
+    COMMAND ${dtrace_EXECUTABLE} -h -s ${CMAKE_CURRENT_SOURCE_DIR}/provider.d -o ${header} ${CMAKE_CURRENT_BINARY_DIR}/provider.h
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/provider.d
+  )
+endif()
+
 add_library(dispatch
+              ${dispatch_DTRACE_HEADERS}
               allocator.c
               apply.c
               benchmark.c
@@ -106,6 +117,7 @@ endif()
 target_include_directories(dispatch
                            PRIVATE
                              ${CMAKE_BINARY_DIR}
+                             ${CMAKE_CURRENT_BINARY_DIR}
                              ${CMAKE_SOURCE_DIR}
                              ${CMAKE_CURRENT_SOURCE_DIR}
                              ${CMAKE_SOURCE_DIR}/private)
