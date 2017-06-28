@@ -15,11 +15,14 @@ set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 
+include(CheckCSourceCompiles)
+include(CheckFunctionExists)
+include(CheckIncludeFiles)
+include(CheckLibraryExists)
+include(CheckSymbolExists)
 include(GNUInstallDirs)
-include(ExternalProject)
 
 set(WITH_BLOCKS_RUNTIME "" CACHE PATH "Path to blocks runtime")
-set(WITH_PTHREAD_WORKQUEUES "" CACHE PATH "Path to pthread-workqueues")
 
 include(DispatchAppleOptions)
 
@@ -34,27 +37,27 @@ set(USE_LIBDISPATCH_INIT_CONSTRUCTOR ${ENABLE_DISPATCH_INIT_CONSTRUCTOR})
 option(ENABLE_THREAD_LOCAL_STORAGE "enable usage of thread local storage via __thread" ON)
 set(DISPATCH_USE_THREAD_LOCAL_STORAGE ${ENABLE_THREAD_LOCAL_STORAGE})
 
-if(EXISTS "${CMAKE_SOURCE_DIR}/libpwq/CMakeLists.txt")
-  ExternalProject_Add(pwq
-                      SOURCE_DIR
-                        "${CMAKE_SOURCE_DIR}/libpwq"
-                      CMAKE_ARGS
-                        -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-                        -DCMAKE_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
-                        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                      BUILD_BYPRODUCTS
-                        <INSTALL_DIR>/${CMAKE_INSTALL_LIBDIR}/${CMAKE_STATIC_LIBRARY_PREFIX}pthread_workqueue${CMAKE_STATIC_LIBRARY_SUFFIX})
-  ExternalProject_Get_Property(pwq install_dir)
-  add_library(PTHREAD::workqueue UNKNOWN IMPORTED)
-  set_target_properties(PTHREAD::workqueue
-                        PROPERTIES
-                          IMPORTED_LOCATION ${install_dir}/${CMAKE_INSTALL_LIBDIR}/${CMAKE_STATIC_LIBRARY_PREFIX}pthread_workqueue${CMAKE_STATIC_LIBRARY_SUFFIX})
-  set(WITH_PTHREAD_WORKQUEUES "${install_dir}" CACHE PATH "Path to pthread-workqueues" FORCE)
-  set(HAVE_PTHREAD_WORKQUEUES 1)
+if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
+   CMAKE_SYSTEM_NAME STREQUAL Android OR
+   CMAKE_SYSTEM_NAME STREQUAL Windows)
+  set(ENABLE_INTERNAL_PTHREAD_WORKQUEUES_DEFAULT ON)
 else()
-  # TODO(compnerd) support system installed pthread-workqueues
-  # find_package(pthread_workqueues REQUIRED)
-  # set(HAVE_PTHREAD_WORKQUEUES 1)
+  set(ENABLE_INTERNAL_PTHREAD_WORKQUEUES_DEFAULT OFF)
+endif()
+option(ENABLE_INTERNAL_PTHREAD_WORKQUEUES "use libdispatch's own implementation of pthread workqueues" ${ENABLE_INTERNAL_PTHREAD_WORKQUEUES_DEFAULT})
+if(ENABLE_INTERNAL_PTHREAD_WORKQUEUES)
+  set(DISPATCH_USE_INTERNAL_WORKQUEUE 1)
+  set(HAVE_PTHREAD_WORKQUEUES 0)
+else()
+  check_include_files(pthread/workqueue_private.h HAVE_PTHREAD_WORKQUEUE_PRIVATE_H)
+  check_include_files(pthread_workqueue.h HAVE_PTHREAD_WORKQUEUE_H)
+  if(HAVE_PTHREAD_WORKQUEUE_PRIVATE_H AND HAVE_PTHREAD_WORKQUEUE_H)
+    set(HAVE_PTHREAD_WORKQUEUES 1)
+    set(DISPATCH_USE_INTERNAL_WORKQUEUE 0)
+  else()
+    set(HAVE_PTHREAD_WORKQUEUES 0)
+    set(DISPATCH_USE_INTERNAL_WORKQUEUE 1)
+  endif()
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
@@ -77,12 +80,6 @@ else()
   # TODO(compnerd) support system installed BlocksRuntime
   # find_package(BlocksRuntime REQUIRED)
 endif()
-
-include(CheckCSourceCompiles)
-include(CheckFunctionExists)
-include(CheckIncludeFiles)
-include(CheckLibraryExists)
-include(CheckSymbolExists)
 
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)
 if(_GNU_SOURCE)
