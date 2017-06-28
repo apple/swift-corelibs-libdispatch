@@ -179,6 +179,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
                  "-Xlinker -dead_strip"
                  "-Xlinker -alias_list -Xlinker ${CMAKE_SOURCE_DIR}/xcodeconfig/libdispatch.aliases")
 endif()
+if(USE_GOLD_LINKER)
+  set_property(TARGET dispatch
+               APPEND_STRING
+               PROPERTY LINK_FLAGS
+                 -fuse-ld=gold)
+endif()
 
 install(TARGETS
           dispatch
