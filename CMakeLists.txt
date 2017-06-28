@@ -31,8 +31,13 @@ set(USE_LIBDISPATCH_INIT_CONSTRUCTOR ${ENABLE_DISPATCH_INIT_CONSTRUCTOR})
 
 # TODO(compnerd) swift options
 
-# TODO(compnerd) consider adding a flag for USE_GOLD_LINKER.  Currently, we
-# expect the user to specify `-fuse-ld=gold`
+if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
+   CMAKE_SYSTEM_NAME STREQUAL Android)
+  set(USE_GOLD_LINKER_DEFAULT ON)
+else()
+  set(USE_GOLD_LINKER_DEFAULT OFF)
+endif()
+option(USE_GOLD_LINKER "use the gold linker" ${USE_GOLD_LINKER_DEFAULT})
 
 option(ENABLE_THREAD_LOCAL_STORAGE "enable usage of thread local storage via __thread" ON)
 set(DISPATCH_USE_THREAD_LOCAL_STORAGE ${ENABLE_THREAD_LOCAL_STORAGE})
