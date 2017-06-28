@@ -53,6 +53,12 @@ add_library(dispatch
               shims/time.h
               shims/tsd.h
               shims/yield.h)
+if(DISPATCH_USE_INTERNAL_WORKQUEUE)
+  target_sources(dispatch
+                 PRIVATE
+                   event/workqueue.c
+                   event/workqueue_internal.h)
+endif()
 target_sources(dispatch
                PRIVATE
                  block.cpp)
