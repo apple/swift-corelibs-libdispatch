@@ -60,11 +60,6 @@ function(add_unit_test name)
                                SYSTEM BEFORE PRIVATE
                                  "${WITH_BLOCKS_RUNTIME}")
   endif()
-  if(WITH_PTHREAD_WORKQUEUES)
-    target_include_directories(${name}
-                               SYSTEM BEFORE PRIVATE
-                                 "${WITH_PTHREAD_WORKQUEUES}/include")
-  endif()
   if(BSD_OVERLAY_FOUND)
     target_compile_options(${name}
                            PRIVATE
@@ -74,9 +69,6 @@ function(add_unit_test name)
   # TODO(compnerd) make this portable
   target_compile_options(${name} PRIVATE -Wall -Wno-deprecated-declarations)
   target_link_libraries(${name} PRIVATE dispatch Threads::Threads)
-  if(WITH_PTHREAD_WORKQUEUES)
-    target_link_libraries(${name} PRIVATE PTHREAD::workqueue)
-  endif()
   if(WITH_BLOCKS_RUNTIME)
     target_link_libraries(${name} PRIVATE BlocksRuntime)
   endif()

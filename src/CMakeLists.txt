@@ -119,11 +119,6 @@ target_include_directories(dispatch
                              ${CMAKE_CURRENT_SOURCE_DIR}
                              ${CMAKE_CURRENT_BINARY_DIR}
                              ${CMAKE_SOURCE_DIR}/private)
-if(WITH_PTHREAD_WORKQUEUES)
-  target_include_directories(dispatch
-                             SYSTEM BEFORE PRIVATE
-                               "${WITH_PTHREAD_WORKQUEUES}/include")
-endif()
 if(WITH_BLOCKS_RUNTIME)
   target_include_directories(dispatch
                              SYSTEM BEFORE PRIVATE
@@ -174,9 +169,6 @@ if(BSD_OVERLAY_FOUND)
   target_link_libraries(dispatch PRIVATE ${BSD_OVERLAY_LDFLAGS})
 endif()
 target_link_libraries(dispatch PRIVATE Threads::Threads)
-if(WITH_PTHREAD_WORKQUEUES)
-  target_link_libraries(dispatch PRIVATE PTHREAD::workqueue)
-endif()
 if(WITH_BLOCKS_RUNTIME)
   target_link_libraries(dispatch PRIVATE BlocksRuntime)
 endif()
