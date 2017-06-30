@@ -199,8 +199,19 @@ SOURCE(VNODE)
 #endif
 SOURCE(WRITE)
 
-// See comment in CFFuntime.c explaining why objc_retainAutoreleasedReturnValue is needed.
+#if !USE_OBJC
+
+// For CF functions with 'Get' semantics, the compiler currently assumes that
+// the result is autoreleased and must be retained. It does so on all platforms
+// by emitting a call to objc_retainAutoreleasedReturnValue. On Darwin, this is
+// implemented by the ObjC runtime. On non-ObjC platforms, there is no runtime,
+// and therefore we have to stub it out here ourselves. The compiler will
+// eventually call swift_release to balance the retain below. This is a
+// workaround until the compiler no longer emits this callout on non-ObjC
+// platforms.
 extern "C" void swift_retain(void *);
+
+SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
 extern "C" void * objc_retainAutoreleasedReturnValue(void *obj) {
     if (obj) {
         swift_retain(obj);
@@ -208,3 +219,5 @@ extern "C" void * objc_retainAutoreleasedReturnValue(void *obj) {
     }
     else return NULL;
 }
+
+#endif // !USE_OBJC
