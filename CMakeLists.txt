@@ -31,6 +31,10 @@ set(USE_LIBDISPATCH_INIT_CONSTRUCTOR ${ENABLE_DISPATCH_INIT_CONSTRUCTOR})
 
 # TODO(compnerd) swift options
 
+option(BUILD_SHARED_LIBS "build shared libraries" ON)
+
+option(ENABLE_TESTING "build libdispatch tests" ON)
+
 if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
    CMAKE_SYSTEM_NAME STREQUAL Android)
   set(USE_GOLD_LINKER_DEFAULT ON)
