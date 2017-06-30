@@ -39,6 +39,13 @@ if(BSD_OVERLAY_FOUND)
                           ${BSD_OVERLAY_LDFLAGS})
 endif()
 
+if(CMAKE_SWIFT_RUNTIME_LIBDIR)
+  target_link_libraries(bsdtestharness
+                        PRIVATE
+                        -L${CMAKE_SWIFT_RUNTIME_LIBDIR} -lswiftCore -lswiftSwiftOnoneSupport
+                        -Wl,-rpath -Wl,${CMAKE_SWIFT_RUNTIME_LIBDIR})
+endif()
+
 function(add_unit_test name)
   set(options DISABLED_TEST)
   set(single_value_args)
@@ -76,6 +83,12 @@ function(add_unit_test name)
     target_link_libraries(${name}
                           PRIVATE
                             ${BSD_OVERLAY_LDFLAGS})
+  endif()
+  if(CMAKE_SWIFT_RUNTIME_LIBDIR)
+    target_link_libraries(${name}
+                          PRIVATE
+                          -L${CMAKE_SWIFT_RUNTIME_LIBDIR} -lswiftCore -lswiftSwiftOnoneSupport
+                          -Wl,-rpath -Wl,${CMAKE_SWIFT_RUNTIME_LIBDIR})
   endif()
   target_link_libraries(${name} PRIVATE bsdtests)
   add_test(NAME ${name}
