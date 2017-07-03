@@ -2,6 +2,19 @@
 execute_process(COMMAND "${CMAKE_COMMAND}" -E create_symlink "${CMAKE_SOURCE_DIR}/private" "${CMAKE_CURRENT_BINARY_DIR}/dispatch")
 execute_process(COMMAND "${CMAKE_COMMAND}" -E create_symlink "${CMAKE_CURRENT_SOURCE_DIR}/leaks-wrapper.sh" "${CMAKE_CURRENT_BINARY_DIR}/leaks-wrapper")
 
+# TODO(compnerd) hoist this out of the test directory
+if(SWIFT_RUNTIME_LIBDIR)
+  add_library(swiftCore SHARED IMPORTED)
+  set_target_properties(swiftCore
+                        PROPERTIES
+                          IMPORTED_LOCATION ${SWIFT_RUNTIME_LIBDIR}/${CMAKE_SHARED_LIBRARY_PREFIX}swiftCore${CMAKE_SHARED_LIBRARY_SUFFIX})
+
+  add_library(swiftSwiftOnoneSupport SHARED IMPORTED)
+  set_target_properties(swiftSwiftOnoneSupport
+                        PROPERTIES
+                          IMPORTED_LOCATION ${SWIFT_RUNTIME_LIBDIR}/${CMAKE_SHARED_LIBRARY_PREFIX}swiftSwiftOnoneSupport${CMAKE_SHARED_LIBRARY_SUFFIX})
+endif()
+
 add_library(bsdtests
             STATIC
               bsdtests.c
@@ -38,12 +51,11 @@ if(BSD_OVERLAY_FOUND)
                         PRIVATE
                           ${BSD_OVERLAY_LDFLAGS})
 endif()
-
-if(CMAKE_SWIFT_RUNTIME_LIBDIR)
+if(ENABLE_SWIFT)
   target_link_libraries(bsdtestharness
                         PRIVATE
-                        -L${CMAKE_SWIFT_RUNTIME_LIBDIR} -lswiftCore -lswiftSwiftOnoneSupport
-                        -Wl,-rpath -Wl,${CMAKE_SWIFT_RUNTIME_LIBDIR})
+                          swiftCore
+                          swiftSwiftOnoneSupport)
 endif()
 
 function(add_unit_test name)
@@ -84,11 +96,11 @@ function(add_unit_test name)
                           PRIVATE
                             ${BSD_OVERLAY_LDFLAGS})
   endif()
-  if(CMAKE_SWIFT_RUNTIME_LIBDIR)
+  if(ENABLE_SWIFT)
     target_link_libraries(${name}
                           PRIVATE
-                          -L${CMAKE_SWIFT_RUNTIME_LIBDIR} -lswiftCore -lswiftSwiftOnoneSupport
-                          -Wl,-rpath -Wl,${CMAKE_SWIFT_RUNTIME_LIBDIR})
+                            swiftCore
+                            swiftSwiftOnoneSupport)
   endif()
   target_link_libraries(${name} PRIVATE bsdtests)
   add_test(NAME ${name}
