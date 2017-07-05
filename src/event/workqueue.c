@@ -22,9 +22,6 @@
 
 #if DISPATCH_USE_INTERNAL_WORKQUEUE
 
-// forward looking typedef; not yet defined in dispatch
-typedef pid_t dispatch_tid;
-
 /*
  * dispatch_workq monitors the thread pool that is
  * executing the work enqueued on libdispatch's pthread
@@ -88,7 +85,7 @@ _dispatch_workq_worker_register(dispatch_queue_t root_q, qos_class_t cls)
 	dispatch_qos_t qos = _dispatch_qos_from_qos_class(cls);
 	dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[qos-1];
 	dispatch_assert(mon->dq == root_q);
-	dispatch_tid tid = _dispatch_thread_getspecific(tid);
+	dispatch_tid tid = _dispatch_tid_self();
 	_dispatch_unfair_lock_lock(&mon->registered_tid_lock);
 	dispatch_assert(mon->num_registered_tids < WORKQ_MAX_TRACKED_TIDS-1);
 	int worker_id = mon->num_registered_tids++;
@@ -103,7 +100,8 @@ _dispatch_workq_worker_unregister(dispatch_queue_t root_q, qos_class_t cls)
 #if HAVE_DISPATCH_WORKQ_MONITORING
 	dispatch_qos_t qos = _dispatch_qos_from_qos_class(cls);
 	dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[qos-1];
-	dispatch_tid tid = _dispatch_thread_getspecific(tid);
+	dispatch_assert(mon->dq == root_q);
+	dispatch_tid tid = _dispatch_tid_self();
 	_dispatch_unfair_lock_lock(&mon->registered_tid_lock);
 	for (int i = 0; i < mon->num_registered_tids; i++) {
 		if (mon->registered_tids[i] == tid) {
@@ -138,10 +136,10 @@ _dispatch_workq_count_runnable_workers(dispatch_workq_monitor_t mon)
 	for (int i = 0; i < mon->num_registered_tids; i++) {
 		dispatch_tid tid = mon->registered_tids[i];
 		int fd;
-		size_t bytes_read = -1;
+		ssize_t bytes_read = -1;
 
 		int r = snprintf(path, sizeof(path), "/proc/%d/stat", tid);
-		dispatch_assert(r > 0 && r < sizeof(path));
+		dispatch_assert(r > 0 && r < (int)sizeof(path));
 
 		fd = open(path, O_RDONLY | O_NONBLOCK);
 		if (unlikely(fd == -1)) {
@@ -179,7 +177,7 @@ _dispatch_workq_count_runnable_workers(dispatch_workq_monitor_t mon)
 static void
 _dispatch_workq_monitor_pools(void *context DISPATCH_UNUSED)
 {
-	int global_soft_max = WORKQ_OVERSUBSCRIBE_FACTOR * dispatch_hw_config(active_cpus);
+	int global_soft_max = WORKQ_OVERSUBSCRIBE_FACTOR * (int)dispatch_hw_config(active_cpus);
 	int global_runnable = 0;
 	for (dispatch_qos_t i = DISPATCH_QOS_MAX; i > DISPATCH_QOS_UNSPECIFIED; i--) {
 		dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[i-1];
@@ -228,7 +226,7 @@ static void
 _dispatch_workq_init_once(void *context DISPATCH_UNUSED)
 {
 #if HAVE_DISPATCH_WORKQ_MONITORING
-	int target_runnable = dispatch_hw_config(active_cpus);
+	int target_runnable = (int)dispatch_hw_config(active_cpus);
 	for (dispatch_qos_t i = DISPATCH_QOS_MAX; i > DISPATCH_QOS_UNSPECIFIED; i--) {
 		dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[i-1];
 		mon->dq = _dispatch_get_root_queue(i, false);

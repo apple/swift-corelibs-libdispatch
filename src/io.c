@@ -25,7 +25,7 @@
 #endif
 
 #ifndef PAGE_SIZE
-#define PAGE_SIZE getpagesize()
+#define PAGE_SIZE ((size_t)getpagesize())
 #endif
 
 #if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
@@ -1372,7 +1372,7 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 						break;
 				);
 			}
-			int32_t dev = major(st.st_dev);
+			dev_t dev = major(st.st_dev);
 			// We have to get the disk on the global dev queue. The
 			// barrier queue cannot continue until that is complete
 			dispatch_suspend(fd_entry->barrier_queue);
@@ -2167,7 +2167,7 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 	op->advise_offset += advise.ra_count;
 #ifdef __linux__
 	_dispatch_io_syscall_switch(err,
-		readahead(op->fd_entry->fd, advise.ra_offset, advise.ra_count),
+			readahead(op->fd_entry->fd, advise.ra_offset, (size_t)advise.ra_count),
 		case EINVAL: break; // fd does refer to a non-supported filetype
 		default: (void)dispatch_assume_zero(err); break;
 	);

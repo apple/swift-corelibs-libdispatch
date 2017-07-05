@@ -65,6 +65,29 @@ static void _dispatch_overlay_constructor() {
 #define SWIFT_CC_swift
 #endif
 
+extern "C" dispatch_queue_attr_t _swift_dispatch_queue_concurrent(void);
+extern "C" void _swift_dispatch_apply_current(size_t iterations, __attribute__((__noescape__)) void (^block)(size_t));
+extern "C" dispatch_queue_t _swift_dispatch_get_main_queue(void);
+extern "C" dispatch_data_t _swift_dispatch_data_empty(void);
+extern "C" dispatch_block_t _swift_dispatch_data_destructor_default(void);
+extern "C" dispatch_block_t _swift_dispatch_data_destructor_free(void);
+extern "C" dispatch_block_t _swift_dispatch_data_destructor_munmap(void);
+extern "C" dispatch_block_t _swift_dispatch_block_create_with_qos_class(dispatch_block_flags_t flags, dispatch_qos_class_t qos, int relative_priority, dispatch_block_t block);
+extern "C" dispatch_block_t _swift_dispatch_block_create_noescape(dispatch_block_flags_t flags, dispatch_block_t block);
+extern "C" void _swift_dispatch_block_cancel(dispatch_block_t block);
+extern "C" long _swift_dispatch_block_wait(dispatch_block_t block, dispatch_time_t timeout);
+extern "C" void _swift_dispatch_block_notify(dispatch_block_t block, dispatch_queue_t queue, dispatch_block_t notification_block);
+extern "C" long _swift_dispatch_block_testcancel(dispatch_block_t block);
+extern "C" void _swift_dispatch_async(dispatch_queue_t queue, dispatch_block_t block);
+extern "C" void _swift_dispatch_group_async(dispatch_group_t group, dispatch_queue_t queue, dispatch_block_t block);
+extern "C" void _swift_dispatch_sync(dispatch_queue_t queue, dispatch_block_t block);
+extern "C" void _swift_dispatch_release(dispatch_object_t obj);
+extern "C" void _swift_dispatch_retain(dispatch_object_t obj);
+#if !USE_OBJC
+extern "C" void * objc_retainAutoreleasedReturnValue(void *obj);
+#endif
+
+
 SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
 extern "C" dispatch_queue_attr_t
 _swift_dispatch_queue_concurrent(void) {
@@ -174,6 +197,7 @@ _swift_dispatch_retain(dispatch_object_t obj) {
 }
 
 #define SOURCE(t)                                                              \
+  extern "C" dispatch_source_type_t _swift_dispatch_source_type_##t(void);     \
   SWIFT_CC(swift)                                                              \
   DISPATCH_RUNTIME_STDLIB_INTERFACE extern "C" dispatch_source_type_t  \
   _swift_dispatch_source_type_##t(void) {                                      \

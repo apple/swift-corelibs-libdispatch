@@ -1550,12 +1550,14 @@ _voucher_create_accounting_voucher(voucher_t voucher)
 	return NULL;
 }
 
+#if HAVE_MACH
 voucher_t
 voucher_create_with_mach_msg(mach_msg_header_t *msg)
 {
 	(void)msg;
 	return NULL;
 }
+#endif
 
 #if VOUCHER_ENABLE_GET_MACH_VOUCHER
 mach_voucher_t

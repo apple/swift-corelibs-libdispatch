@@ -62,7 +62,7 @@ _dispatch_lock_owner(dispatch_lock lock_value)
 #include <unistd.h>
 #include <sys/syscall.h>   /* For SYS_xxx definitions */
 
-typedef pid_t dispatch_tid;
+typedef uint32_t dispatch_tid;
 typedef uint32_t dispatch_lock;
 
 #define DLOCK_OWNER_MASK			((dispatch_lock)FUTEX_TID_MASK)
@@ -174,8 +174,8 @@ typedef sem_t _dispatch_sema4_t;
 #define _DSEMA4_TIMEOUT() ((errno) = ETIMEDOUT, -1)
 
 void _dispatch_sema4_init(_dispatch_sema4_t *sema, int policy);
-#define _dispatch_sema4_is_created(sema) 1
-#define _dispatch_sema4_create_slow(sema, policy) ((void)0)
+#define _dispatch_sema4_is_created(sema) ((void)sema, 1)
+#define _dispatch_sema4_create_slow(sema, policy) ((void)sema, (void)policy)
 
 #elif USE_WIN32_SEM
 

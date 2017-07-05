@@ -101,7 +101,7 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 	switch (c) {
 	case _dispatch_hw_config_logical_cpus:
 	case _dispatch_hw_config_physical_cpus:
-		return sysconf(_SC_NPROCESSORS_CONF);
+		return (uint32_t)sysconf(_SC_NPROCESSORS_CONF);
 	case _dispatch_hw_config_active_cpus:
 		{
 #ifdef __USE_GNU
@@ -110,9 +110,9 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 			// is restricted to a subset of the online cpus (eg via numactl).
 			cpu_set_t cpuset;
 			if (pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) == 0)
-				return CPU_COUNT(&cpuset);
+				return (uint32_t)CPU_COUNT(&cpuset);
 #endif
-			return sysconf(_SC_NPROCESSORS_ONLN);
+			return (uint32_t)sysconf(_SC_NPROCESSORS_ONLN);
 		}
 	}
 #else
