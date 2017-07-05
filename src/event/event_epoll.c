@@ -48,7 +48,7 @@ typedef struct dispatch_muxnote_s {
 	TAILQ_HEAD(, dispatch_unote_linkage_s) dmn_readers_head;
 	TAILQ_HEAD(, dispatch_unote_linkage_s) dmn_writers_head;
 	int     dmn_fd;
-	int     dmn_ident;
+	uint32_t dmn_ident;
 	uint32_t dmn_events;
 	int16_t dmn_filter;
 	bool    dmn_skip_outq_ioctl;
@@ -85,9 +85,9 @@ static struct dispatch_epoll_timeout_s _dispatch_epoll_timeout[] = {
 
 DISPATCH_ALWAYS_INLINE
 static inline struct dispatch_muxnote_bucket_s *
-_dispatch_muxnote_bucket(int ident)
+_dispatch_muxnote_bucket(uint32_t ident)
 {
-	return &_dispatch_sources[DSL_HASH((uint32_t)ident)];
+	return &_dispatch_sources[DSL_HASH(ident)];
 }
 #define _dispatch_unote_muxnote_bucket(du) \
 	_dispatch_muxnote_bucket(du._du->du_ident)
@@ -95,7 +95,7 @@ _dispatch_muxnote_bucket(int ident)
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_muxnote_t
 _dispatch_muxnote_find(struct dispatch_muxnote_bucket_s *dmb,
-		uint64_t ident, int16_t filter)
+		uint32_t ident, int16_t filter)
 {
 	dispatch_muxnote_t dmn;
 	if (filter == EVFILT_WRITE) filter = EVFILT_READ;
@@ -112,7 +112,7 @@ _dispatch_muxnote_find(struct dispatch_muxnote_bucket_s *dmb,
 static void
 _dispatch_muxnote_dispose(dispatch_muxnote_t dmn)
 {
-	if (dmn->dmn_filter != EVFILT_READ || dmn->dmn_fd != dmn->dmn_ident) {
+	if (dmn->dmn_filter != EVFILT_READ || (uint32_t)dmn->dmn_fd != dmn->dmn_ident) {
 		close(dmn->dmn_fd);
 	}
 	free(dmn);
@@ -142,26 +142,27 @@ _dispatch_muxnote_create(dispatch_unote_t du, uint32_t events)
 
 	dispatch_muxnote_t dmn;
 	struct stat sb;
-	int fd = du._du->du_ident;
+	int fd = (int)du._du->du_ident;
 	int16_t filter = du._du->du_filter;
 	bool skip_outq_ioctl = false, skip_inq_ioctl = false;
 	sigset_t sigmask;
 
 	switch (filter) {
-	case EVFILT_SIGNAL:
-		if (!sigismember(&signals_with_unotes, du._du->du_ident)) {
+	case EVFILT_SIGNAL: {
+		int signo = (int)du._du->du_ident;
+		if (!sigismember(&signals_with_unotes, signo)) {
 			manager_thread = pthread_self();
-			sigaddset(&signals_with_unotes, du._du->du_ident);
-			sigaction(du._du->du_ident, &sa, NULL);
+			sigaddset(&signals_with_unotes, signo);
+			sigaction(signo, &sa, NULL);
 		}
 		sigemptyset(&sigmask);
-		sigaddset(&sigmask, du._du->du_ident);
+		sigaddset(&sigmask, signo);
 		fd = signalfd(-1, &sigmask, SFD_NONBLOCK | SFD_CLOEXEC);
 		if (fd < 0) {
 			return NULL;
 		}
 		break;
-
+	}
 	case EVFILT_WRITE:
 		filter = EVFILT_READ;
 	case EVFILT_READ:
@@ -290,7 +291,7 @@ _dispatch_unote_resume(dispatch_unote_t du)
 }
 
 bool
-_dispatch_unote_unregister(dispatch_unote_t du, uint32_t flags)
+_dispatch_unote_unregister(dispatch_unote_t du, DISPATCH_UNUSED uint32_t flags)
 {
 	switch (du._du->du_filter) {
 	case DISPATCH_EVFILT_CUSTOM_ADD:
@@ -313,10 +314,10 @@ _dispatch_unote_unregister(dispatch_unote_t du, uint32_t flags)
 		dul->du_muxnote = NULL;
 
 		if (TAILQ_EMPTY(&dmn->dmn_readers_head)) {
-			events &= ~EPOLLIN;
+			events &= (uint32_t)(~EPOLLIN);
 		}
 		if (TAILQ_EMPTY(&dmn->dmn_writers_head)) {
-			events &= ~EPOLLOUT;
+			events &= (uint32_t)(~EPOLLOUT);
 		}
 
 		if (events == dmn->dmn_events) {
@@ -350,7 +351,8 @@ _dispatch_event_merge_timer(dispatch_clock_t clock)
 }
 
 static void
-_dispatch_timeout_program(uint32_t tidx, uint64_t target, uint64_t leeway)
+_dispatch_timeout_program(uint32_t tidx, uint64_t target,
+		DISPATCH_UNUSED uint64_t leeway)
 {
 	dispatch_clock_t clock = DISPATCH_TIMER_CLOCK(tidx);
 	dispatch_epoll_timeout_t timer = &_dispatch_epoll_timeout[clock];
@@ -358,24 +360,24 @@ _dispatch_timeout_program(uint32_t tidx, uint64_t target, uint64_t leeway)
 		.events = EPOLLONESHOT | EPOLLIN,
 		.data = { .u32 = timer->det_ident },
 	};
-	unsigned long op;
+	int op;
 
 	if (target >= INT64_MAX && !timer->det_registered) {
 		return;
 	}
 
 	if (unlikely(timer->det_fd < 0)) {
-		clockid_t clock;
+		clockid_t clockid;
 		int fd;
 		switch (DISPATCH_TIMER_CLOCK(tidx)) {
 		case DISPATCH_CLOCK_MACH:
-			clock = CLOCK_MONOTONIC;
+			clockid = CLOCK_MONOTONIC;
 			break;
 		case DISPATCH_CLOCK_WALL:
-			clock = CLOCK_REALTIME;
+			clockid = CLOCK_REALTIME;
 			break;
 		}
-		fd = timerfd_create(clock, TFD_NONBLOCK | TFD_CLOEXEC);
+		fd = timerfd_create(clockid, TFD_NONBLOCK | TFD_CLOEXEC);
 		if (!dispatch_assume(fd >= 0)) {
 			return;
 		}
@@ -451,7 +453,7 @@ _dispatch_epoll_init(void *context DISPATCH_UNUSED)
 		.events = EPOLLIN | EPOLLFREE,
 		.data = { .u32 = DISPATCH_EPOLL_EVENTFD, },
 	};
-	unsigned long op = EPOLL_CTL_ADD;
+	int op = EPOLL_CTL_ADD;
 	if (epoll_ctl(_dispatch_epfd, op, _dispatch_eventfd, &ev) < 0) {
 		DISPATCH_INTERNAL_CRASH(errno, "epoll_ctl() failed");
 	}
@@ -504,7 +506,7 @@ _dispatch_get_buffer_size(dispatch_muxnote_t dmn, bool writer)
 		return 1;
 	}
 
-	if (ioctl(dmn->dmn_ident, writer ? SIOCOUTQ : SIOCINQ, &n) != 0) {
+	if (ioctl((int)dmn->dmn_ident, writer ? SIOCOUTQ : SIOCINQ, &n) != 0) {
 		switch (errno) {
 		case EINVAL:
 		case ENOTTY:
