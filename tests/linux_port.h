@@ -41,7 +41,7 @@ mach_absolute_time()
 {
 	struct timeval tv;
 	gettimeofday(&tv,NULL);
-	return (1000ull)*((unsigned long long)tv.tv_sec*(1000000ull)+ tv.tv_usec);
+	return (1000ull)*((unsigned long long)tv.tv_sec*(1000000ull) + (unsigned long long)tv.tv_usec);
 }
 
 static inline
