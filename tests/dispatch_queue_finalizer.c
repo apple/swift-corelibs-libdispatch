@@ -30,7 +30,7 @@
 
 void *ctxt_magic = NULL;
 
-void
+static void
 finalize(void *ctxt)
 {
 	test_ptr_null("finalizer ran", NULL);
@@ -38,7 +38,7 @@ finalize(void *ctxt)
 	test_stop();
 }
 
-void
+static void
 never_call(void *ctxt)
 {
 	test_ptr_notnull("never_call should not run", NULL);
