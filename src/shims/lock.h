@@ -59,9 +59,6 @@ _dispatch_lock_owner(dispatch_lock lock_value)
 #elif defined(__linux__)
 
 #include <linux/futex.h>
-#if !defined(__x86_64__) && !defined(__i386__) && !defined(__s390x__)
-#include <linux/membarrier.h>
-#endif
 #include <unistd.h>
 #include <sys/syscall.h>   /* For SYS_xxx definitions */
 
@@ -473,28 +470,7 @@ DISPATCH_ALWAYS_INLINE
 static inline dispatch_once_t
 _dispatch_once_xchg_done(dispatch_once_t *pred)
 {
-#if defined(__i386__) || defined(__x86_64__) || defined(__s390x__)
-	// On Intel, any load is a load-acquire, so we don't need to be fancy
-	// same for s390x
 	return os_atomic_xchg(pred, DLOCK_ONCE_DONE, release);
-#elif defined(__linux__)
-	if (unlikely(syscall(__NR_membarrier, MEMBARRIER_CMD_SHARED, 0) < 0)) {
-		/*
-		 * sys_membarrier not supported
-		 *
-		 * Ideally we would call DISPATCH_INTERNAL_CRASH() here, but
-		 * due to ordering constraints in internal.h required by Darwin
-		 * the macro is undefined when this header is included.
-		 * Instead, open-code what would be a call to
-		 * _dispatch_hardware_crash() inside DISPATCH_INTERNAL_CRASH().
-		 */
-		__asm__("");
-		__builtin_trap();
-	}
-	return os_atomic_xchg(pred, DLOCK_ONCE_DONE, relaxed);
-#else
-#  error dispatch_once algorithm not available for this port
-#endif
 }
 
 DISPATCH_ALWAYS_INLINE

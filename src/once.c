@@ -40,9 +40,16 @@ dispatch_once(dispatch_once_t *val, dispatch_block_t block)
 }
 #endif
 
-DISPATCH_NOINLINE
+#if DISPATCH_ONCE_INLINE_FASTPATH
+#define dispatch_once_f_slow dispatch_once_f
+#define DISPATCH_ONCE_F_SLOW_VISIBILITY static
+#else
+#define DISPATCH_ONCE_F_SLOW_VISIBILITY
+#endif
+
+DISPATCH_NOINLINE DISPATCH_ONCE_F_SLOW_VISIBILITY
 void
-dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
+dispatch_once_f_slow(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 {
 #if DISPATCH_GATE_USE_FOR_DISPATCH_ONCE
 	dispatch_once_gate_t l = (dispatch_once_gate_t)val;
@@ -95,3 +102,15 @@ dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 	}
 #endif
 }
+
+#if !DISPATCH_ONCE_INLINE_FASTPATH
+DISPATCH_NOINLINE
+void
+dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
+{
+	if (likely(os_atomic_load(val, acquire) == DLOCK_ONCE_DONE)) {
+		return;
+	}
+	return dispatch_once_f_slow(val, ctxt, func);
+}
+#endif // !DISPATCH_ONCE_INLINE_FASTPATH
