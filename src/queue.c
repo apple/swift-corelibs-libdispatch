@@ -900,7 +900,7 @@ _dispatch_install_thread_detach_callback(dispatch_function_t cb)
 void
 _libdispatch_tsd_cleanup(void *ctx)
 {
-	struct dispatch_tsd *tsd = (struct dispatch_tsd*) ctx;
+	struct dispatch_tsd *tsd = *(struct dispatch_tsd **)ctx;
 
 	_tsd_call_cleanup(dispatch_priority_key, NULL);
 	_tsd_call_cleanup(dispatch_r2k_key, NULL);
@@ -933,7 +933,15 @@ DISPATCH_NOINLINE
 void
 libdispatch_tsd_init(void)
 {
-	pthread_setspecific(__dispatch_tsd_key, &__dispatch_tsd);
+	// pthread_setspecific() requires the value to be heap allocated
+	// memory as it gets free()'d by the pthread destructor.
+	struct dispatch_tsd **tsd_ptr = malloc(sizeof(struct dispatch_tsd *));
+	if (tsd_ptr == NULL) {
+		perror("malloc");
+		exit(1);
+	}
+	*tsd_ptr = &__dispatch_tsd;
+	pthread_setspecific(__dispatch_tsd_key, tsd_ptr);
 	__dispatch_tsd.tid = gettid();
 }
 #endif
