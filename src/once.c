@@ -40,9 +40,15 @@ dispatch_once(dispatch_once_t *val, dispatch_block_t block)
 }
 #endif
 
-DISPATCH_NOINLINE
-void
-dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
+#if DISPATCH_ONCE_INLINE_FASTPATH
+#define DISPATCH_ONCE_SLOW_INLINE inline DISPATCH_ALWAYS_INLINE
+#else
+#define DISPATCH_ONCE_SLOW_INLINE DISPATCH_NOINLINE
+#endif // DISPATCH_ONCE_INLINE_FASTPATH
+
+DISPATCH_ONCE_SLOW_INLINE
+static void
+dispatch_once_f_slow(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 {
 #if DISPATCH_GATE_USE_FOR_DISPATCH_ONCE
 	dispatch_once_gate_t l = (dispatch_once_gate_t)val;
@@ -94,4 +100,16 @@ dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 		_dispatch_thread_event_destroy(&dow.dow_event);
 	}
 #endif
+}
+
+DISPATCH_NOINLINE
+void
+dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
+{
+#if !DISPATCH_ONCE_INLINE_FASTPATH
+	if (likely(os_atomic_load(val, acquire) == DLOCK_ONCE_DONE)) {
+		return;
+	}
+#endif // !DISPATCH_ONCE_INLINE_FASTPATH
+	return dispatch_once_f_slow(val, ctxt, func);
 }

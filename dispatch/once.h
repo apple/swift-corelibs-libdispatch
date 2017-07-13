@@ -40,6 +40,14 @@ __BEGIN_DECLS
 DISPATCH_SWIFT3_UNAVAILABLE("Use lazily initialized globals instead")
 typedef long dispatch_once_t;
 
+#if defined(__x86_64__) || defined(__i386__) || defined(__s390x__)
+#define DISPATCH_ONCE_INLINE_FASTPATH 1
+#elif defined(__APPLE__)
+#define DISPATCH_ONCE_INLINE_FASTPATH 1
+#else
+#define DISPATCH_ONCE_INLINE_FASTPATH 0
+#endif
+
 /*!
  * @function dispatch_once
  *
@@ -65,6 +73,7 @@ void
 dispatch_once(dispatch_once_t *predicate,
 		DISPATCH_NOESCAPE dispatch_block_t block);
 
+#if DISPATCH_ONCE_INLINE_FASTPATH
 DISPATCH_INLINE DISPATCH_ALWAYS_INLINE DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 DISPATCH_SWIFT3_UNAVAILABLE("Use lazily initialized globals instead")
 void
@@ -81,6 +90,7 @@ _dispatch_once(dispatch_once_t *predicate,
 #undef dispatch_once
 #define dispatch_once _dispatch_once
 #endif
+#endif // DISPATCH_ONCE_INLINE_FASTPATH
 
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
@@ -89,6 +99,7 @@ void
 dispatch_once_f(dispatch_once_t *predicate, void *_Nullable context,
 		dispatch_function_t function);
 
+#if DISPATCH_ONCE_INLINE_FASTPATH
 DISPATCH_INLINE DISPATCH_ALWAYS_INLINE DISPATCH_NONNULL1 DISPATCH_NONNULL3
 DISPATCH_NOTHROW
 DISPATCH_SWIFT3_UNAVAILABLE("Use lazily initialized globals instead")
@@ -105,6 +116,7 @@ _dispatch_once_f(dispatch_once_t *predicate, void *_Nullable context,
 }
 #undef dispatch_once_f
 #define dispatch_once_f _dispatch_once_f
+#endif // DISPATCH_ONCE_INLINE_FASTPATH
 
 __END_DECLS
 
