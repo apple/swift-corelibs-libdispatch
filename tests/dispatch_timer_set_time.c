@@ -29,7 +29,7 @@
 #include <bsdtests.h>
 #include "dispatch_test.h"
 
-static void
+void
 test_timer(void)
 {
 	dispatch_test_start("Dispatch Update Timer");

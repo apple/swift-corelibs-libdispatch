@@ -19,7 +19,6 @@
  */
 
 #include <stdio.h>
-#include <stdlib.h>
 
 #include <dispatch/dispatch.h>
 #ifdef __APPLE__
@@ -60,7 +59,7 @@ test_concat(void)
 		dispatch_release(data2);
 
 		test_long("Data size of concatenated dispatch data",
-				  (long)dispatch_data_get_size(concat), 34);
+				dispatch_data_get_size(concat), 34);
 
 		const void* contig;
 		size_t contig_size;
@@ -69,7 +68,7 @@ test_concat(void)
 
 		dispatch_release(concat);
 		dispatch_release(contig_data);
-		test_long("Contiguous memory size", (long)contig_size, 34);
+		test_long("Contiguous memory size", contig_size, 34);
 		dispatch_async(dispatch_get_main_queue(), ^{
 			test_long("buffer2 destroyed", buffer2_destroyed, true);
 			dispatch_group_leave(g);

@@ -31,7 +31,7 @@
 int
 main(void)
 {
-	static long total;
+	static size_t total;
 	dispatch_semaphore_t dsema;
 
 	dispatch_test_start("Dispatch Semaphore");

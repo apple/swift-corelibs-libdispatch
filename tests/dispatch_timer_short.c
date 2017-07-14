@@ -48,14 +48,12 @@ static uint64_t start, last;
 
 #define elapsed_ms(x) (((now-(x))*tbi.numer/tbi.denom)/(1000ull*NSEC_PER_USEC))
 
-static
 void
 test_fin(void *cxt)
 {
-	unsigned long finalCount = (unsigned long)count;
 	fprintf(stderr, "Called back every %llu us on average\n",
-			(delay/finalCount)/NSEC_PER_USEC);
-	test_long_less_than("Frequency", 1, (long)ceil((double)delay/(finalCount*interval)));
+			(delay/count)/NSEC_PER_USEC);
+	test_long_less_than("Frequency", 1, ceil((double)delay/(count*interval)));
 	int i;
 	for (i = 0; i < N; i++) {
 		dispatch_source_cancel(t[i]);
@@ -68,7 +66,6 @@ test_fin(void *cxt)
 	test_stop();
 }
 
-static
 void
 test_short_timer(void)
 {
