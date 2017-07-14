@@ -48,7 +48,7 @@ extern char **environ;
 #endif
 
 #ifdef __linux__
-#define _NSGetExecutablePath(ef,bs) (*(bs)=snprintf(ef,*(bs),"%s",argv[0]),0)
+#define _NSGetExecutablePath(ef,bs) (*(bs)=(size_t)snprintf(ef,*(bs),"%s",argv[0]),0)
 #endif
 
 #if DISPATCHTEST_IO
@@ -79,9 +79,9 @@ main(int argc, char** argv)
 			test_stop();
 		}
 
-		memcpy(&server.sin_addr, he->h_addr_list[0], he->h_length);
+		memcpy(&server.sin_addr, he->h_addr_list[0], (size_t)he->h_length);
 		server.sin_family = AF_INET;
-		server.sin_port = atoi(argv[1]);
+		server.sin_port = (in_port_t)atoi(argv[1]);
 
 		fprintf(stderr, "Client-connecting on port ... %d\n", server.sin_port);
 
@@ -111,7 +111,7 @@ main(int argc, char** argv)
 			test_errno("client-fstat", errno, 0);
 			test_stop();
 		}
-		size_t size = sb.st_size;
+		size_t size = (size_t)sb.st_size;
 
 		__block dispatch_data_t g_d1 = dispatch_data_empty;
 		__block dispatch_data_t g_d2 = dispatch_data_empty;
@@ -123,7 +123,7 @@ main(int argc, char** argv)
 				^(dispatch_data_t d1, int error) {
 			test_errno("Client-dict-read error", error, 0);
 			test_long("Client-dict-dispatch data size",
-					dispatch_data_get_size(d1), size);
+					  (long)dispatch_data_get_size(d1), (long)size);
 			dispatch_retain(d1);
 			g_d1 = d1;
 			dispatch_group_leave(g);
@@ -146,8 +146,8 @@ main(int argc, char** argv)
 		dispatch_read(sockfd, SIZE_MAX, dispatch_get_global_queue(0, 0), b);
 		test_group_wait(g);
 		test_errno("Client-read error", g_error, 0);
-		test_long("Client-dispatch data size", dispatch_data_get_size(g_d2),
-				size);
+		test_long("Client-dispatch data size", (long)dispatch_data_get_size(g_d2),
+				  (long)size);
 
 		size_t dict_contig_size, socket_contig_size;
 		const void *dict_contig_buf, *socket_contig_buf;
@@ -201,7 +201,7 @@ main(int argc, char** argv)
 				addr1.sin_port);
 
 		char exec_filename [256] = {};
-		uint32_t bufsize = 256;
+		size_t bufsize = 256;
 
 		if (_NSGetExecutablePath(exec_filename, &bufsize) == -1) {
 			fprintf(stderr, "Failed to get path name for running executable\n");
@@ -250,7 +250,7 @@ main(int argc, char** argv)
 			test_errno("fstat", errno, 0);
 			goto stop_test;
 		}
-		size_t size = sb.st_size;
+		size_t size = (size_t)sb.st_size;
 
 		dispatch_group_t g = dispatch_group_create();
 		dispatch_group_enter(g);
@@ -258,8 +258,8 @@ main(int argc, char** argv)
 				^(dispatch_data_t d, int r_err){
 			fprintf(stderr, "Server-dispatch_read()\n");
 			test_errno("Server-read error", r_err, 0);
-			test_long("Server-dispatch data size", dispatch_data_get_size(d),
-					size);
+			test_long("Server-dispatch data size", (long)dispatch_data_get_size(d),
+					  (long)size);
 
 			// convenience method handlers should only be called once
 			if (dispatch_data_get_size(d)!= size) {
