@@ -316,6 +316,7 @@ _dispatch_unote_unregister(dispatch_unote_t du, uint32_t flags)
 		if (events == dmn->dmn_events) {
 			// nothing to do
 		} else if (events & (EPOLLIN | EPOLLOUT)) {
+			dmn->dmn_events = events;
 			_dispatch_epoll_update(dmn, EPOLL_CTL_MOD);
 		} else {
 			epoll_ctl(_dispatch_epfd, EPOLL_CTL_DEL, dmn->dmn_fd, NULL);
