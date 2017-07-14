@@ -47,7 +47,7 @@ static volatile int all_done = 0;
  * the optimizer from cutting the whole thing out as dead code.
  */
 static volatile unsigned int busythread_useless;
-static void busythread(void *ignored)
+void busythread(void *ignored)
 {
 	(void)ignored;
 	/* prevent i and j been optimized out */
@@ -73,16 +73,16 @@ static void busythread(void *ignored)
  * <rdar://problem/10718199> dispatch_apply should not block waiting on other
  * threads while calling thread is available
  */
-static void test_apply_contended(dispatch_queue_t dq)
+void test_apply_contended(dispatch_queue_t dq)
 {
 	uint32_t activecpu;
 #ifdef __linux__
-	activecpu = (uint32_t)sysconf(_SC_NPROCESSORS_ONLN);
+	activecpu = sysconf(_SC_NPROCESSORS_ONLN);
 #else
 	size_t s = sizeof(activecpu);
 	sysctlbyname("hw.activecpu", &activecpu, &s, NULL, 0);
 #endif
-	int tIndex, n_threads = (int)activecpu;
+	int tIndex, n_threads = activecpu;
 	dispatch_group_t grp = dispatch_group_create();
 
 	for(tIndex = 0; tIndex < n_threads; tIndex++) {
@@ -97,11 +97,11 @@ static void test_apply_contended(dispatch_queue_t dq)
 	volatile __block int32_t count = 0;
 	const int32_t final = 32;
 
-	int32_t before = busy_threads_started;
+	unsigned int before = busy_threads_started;
 	dispatch_apply(final, dq, ^(size_t i __attribute__((unused))) {
 		OSAtomicIncrement32(&count);
 	});
-	int32_t after = busy_threads_finished;
+	unsigned int after = busy_threads_finished;
 
 	test_long("contended: threads started before apply", before, n_threads);
 	test_long("contended: count", count, final);

@@ -81,11 +81,11 @@ void test_ptr_format(const void* actual, const void* expected, const char *forma
 
 void _test_uint32(const char* file, long line, const char* desc, uint32_t actual, uint32_t expected);
 #define test_uint32(a,b,c) _test_uint32(__SOURCE_FILE__, __LINE__, a, b, c)
-void test_uint32_format(uint32_t actual, uint32_t expected, const char *format, ...) __printflike(3,4);
+void test_uint32_format(long actual, long expected, const char *format, ...) __printflike(3,4);
 
 void _test_int32(const char* file, long line, const char* desc, int32_t actual, int32_t expected);
 #define test_int32(a,b,c) _test_int32(__SOURCE_FILE__, __LINE__, a, b, c)
-void test_int32_format(int32_t actual, int32_t expected, const char* format, ...) __printflike(3,4);
+void test_sint32_format(int32_t actual, int32_t expected, const char* format, ...) __printflike(3,4);
 
 void _test_long(const char* file, long line, const char* desc, long actual, long expected);
 #define test_long(a,b,c) _test_long(__SOURCE_FILE__, __LINE__, a, b, c)
@@ -123,9 +123,9 @@ void _test_double_equal(const char* file, long line, const char* desc, double va
 #define test_double_equal(d, v, m) _test_double_equal(__SOURCE_FILE__, __LINE__, d, v, m)
 void test_double_equal_format(double val, double expected, const char *format, ...) __printflike(3,4);
 
-void _test_errno(const char* file, long line, const char* desc, int actual, int expected);
+void _test_errno(const char* file, long line, const char* desc, long actual, long expected);
 #define test_errno(a,b,c) _test_errno(__SOURCE_FILE__, __LINE__, a, b, c)
-void test_errno_format(int actual, int expected, const char *format, ...) __printflike(3,4);
+void test_errno_format(long actual, long expected, const char *format, ...) __printflike(3,4);
 
 #ifndef __linux__
 void _test_mach_error(const char* file, long line, const char* desc, mach_error_t actual, mach_error_t expected);

@@ -154,7 +154,7 @@ _test_uint32(const char* file, long line, const char* desc, uint32_t actual, uin
 }
 
 void
-test_uint32_format(uint32_t actual, uint32_t expected, const char *format, ...)
+test_uint32_format(long actual, long expected, const char *format, ...)
 {
 	GENERATE_DESC
 	_test_uint32(NULL, 0, desc, actual, expected);
@@ -284,10 +284,7 @@ test_double_less_than_or_equal_format(double val, double max_expected, const cha
 void
 _test_double_equal(const char* file, long line, const char* desc, double val, double expected)
 {
-	#pragma clang diagnostic push
-	#pragma clang diagnostic ignored "-Wfloat-equal"
 	_test_print(file, line, desc, (val == expected), "%f", val, "%f", expected);
-	#pragma clang diagnostic pop
 }
 
 
@@ -299,12 +296,12 @@ test_double_equal_format(double val, double expected, const char *format, ...)
 }
 
 void
-_test_errno(const char* file, long line, const char* desc, int actual, int expected)
+_test_errno(const char* file, long line, const char* desc, long actual, long expected)
 {
 	char* actual_str;
 	char* expected_str;
-	asprintf(&actual_str, "%d\t%s", actual, actual ? strerror(actual) : "");
-	asprintf(&expected_str, "%d\t%s", expected, expected ? strerror(expected) : "");
+	asprintf(&actual_str, "%ld\t%s", actual, actual ? strerror(actual) : "");
+	asprintf(&expected_str, "%ld\t%s", expected, expected ? strerror(expected) : "");
 	_test_print(file, line, desc,
 		(actual == expected), "%s", actual_str, "%s", expected_str);
 	free(actual_str);
@@ -312,7 +309,7 @@ _test_errno(const char* file, long line, const char* desc, int actual, int expec
 }
 
 void
-test_errno_format(int actual, int expected, const char *format, ...)
+test_errno_format(long actual, long expected, const char *format, ...)
 {
 	GENERATE_DESC
 	_test_errno(NULL, 0, desc, actual, expected);
@@ -480,7 +477,7 @@ void
 test_stop_after_delay(void *delay)
 {
 	if (delay != NULL) {
-		sleep((uint)(intptr_t)delay);
+		sleep((int)(intptr_t)delay);
 	}
 
 	test_leaks(NULL);

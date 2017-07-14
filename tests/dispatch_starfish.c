@@ -81,7 +81,7 @@ collect(void *context __attribute__((unused)))
 
 	// our malloc could be a lot better,
 	// this result is really a malloc torture test
-	test_long_less_than("Latency" , (long)math, ACCEPTABLE_LATENCY);
+	test_long_less_than("Latency" , (unsigned long)math, ACCEPTABLE_LATENCY);
 
 	if (--lap_count_down) {
 		return do_test();

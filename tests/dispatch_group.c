@@ -43,8 +43,8 @@
 
 static void test_group_notify(void*);
 
-static dispatch_group_t
-create_group(size_t count, unsigned int delay)
+dispatch_group_t
+create_group(size_t count, int delay)
 {
 	size_t i;
 
@@ -143,7 +143,7 @@ test_group_notify2(long cycle, dispatch_group_t tested)
 		dispatch_group_async(group, q, ^{
 			// Seems to trigger a little more reliably with some work being
 			// done in this block
-			eh = (float)sin(M_1_PI / cycle);
+			eh = sin(M_1_PI / cycle);
 		});
 	}
 	dispatch_group_leave(group);
