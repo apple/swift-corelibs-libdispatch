@@ -51,7 +51,8 @@ typedef struct dispatch_muxnote_s {
 	int     dmn_ident;
 	uint32_t dmn_events;
 	int16_t dmn_filter;
-	bool    dmn_socket_listener;
+	bool    dmn_skip_outq_ioctl;
+	bool    dmn_skip_inq_ioctl;
 } *dispatch_muxnote_t;
 
 typedef struct dispatch_epoll_timeout_s {
@@ -143,7 +144,7 @@ _dispatch_muxnote_create(dispatch_unote_t du, uint32_t events)
 	struct stat sb;
 	int fd = du._du->du_ident;
 	int16_t filter = du._du->du_filter;
-	bool socket_listener = false;
+	bool skip_outq_ioctl = false, skip_inq_ioctl = false;
 	sigset_t sigmask;
 
 	switch (filter) {
@@ -173,11 +174,15 @@ _dispatch_muxnote_create(dispatch_unote_t du, uint32_t events)
 			if (fd < 0) {
 				return NULL;
 			}
+			// Linux doesn't support output queue size ioctls for regular files
+			skip_outq_ioctl = true;
 		} else if (S_ISSOCK(sb.st_mode)) {
 			socklen_t vlen = sizeof(int);
 			int v;
+			// Linux doesn't support saying how many clients are ready to be
+			// accept()ed for sockets
 			if (getsockopt(fd, SOL_SOCKET, SO_ACCEPTCONN, &v, &vlen) == 0) {
-				socket_listener = (bool)v;
+				skip_inq_ioctl = (bool)v;
 			}
 		}
 		break;
@@ -193,7 +198,8 @@ _dispatch_muxnote_create(dispatch_unote_t du, uint32_t events)
 	dmn->dmn_ident = du._du->du_ident;
 	dmn->dmn_filter = filter;
 	dmn->dmn_events = events;
-	dmn->dmn_socket_listener = socket_listener;
+	dmn->dmn_skip_outq_ioctl = skip_outq_ioctl;
+	dmn->dmn_skip_inq_ioctl = skip_inq_ioctl;
 	return dmn;
 }
 
@@ -480,16 +486,28 @@ _dispatch_event_merge_signal(dispatch_muxnote_t dmn)
 static uintptr_t
 _dispatch_get_buffer_size(dispatch_muxnote_t dmn, bool writer)
 {
-	unsigned long op = writer ? SIOCOUTQ : SIOCINQ;
 	int n;
 
-	if (!writer && dmn->dmn_socket_listener) {
-		// Linux doesn't support saying how many clients are ready to be
-		// accept()ed
+	if (writer ? dmn->dmn_skip_outq_ioctl : dmn->dmn_skip_inq_ioctl) {
 		return 1;
 	}
 
-	if (dispatch_assume_zero(ioctl(dmn->dmn_ident, op, &n))) {
+	if (ioctl(dmn->dmn_ident, writer ? SIOCOUTQ : SIOCINQ, &n) != 0) {
+		switch (errno) {
+		case EINVAL:
+		case ENOTTY:
+			// this file descriptor actually doesn't support the buffer
+			// size ioctl, remember that for next time to avoid the syscall.
+			break;
+		default:
+			dispatch_assume_zero(errno);
+			break;
+		}
+		if (writer) {
+			dmn->dmn_skip_outq_ioctl = true;
+		} else {
+			dmn->dmn_skip_inq_ioctl = true;
+		}
 		return 1;
 	}
 	return (uintptr_t)n;
