@@ -467,12 +467,24 @@ _dispatch_event_merge_signal(dispatch_muxnote_t dmn)
 {
 	dispatch_unote_linkage_t dul, dul_next;
 	struct signalfd_siginfo si;
+	ssize_t rc;
 
-	dispatch_assume(read(dmn->dmn_fd, &si, sizeof(si)) == sizeof(si));
-
-	TAILQ_FOREACH_SAFE(dul, &dmn->dmn_readers_head, du_link, dul_next) {
-		dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
-		dux_merge_evt(du._du, EV_ADD|EV_ENABLE|EV_CLEAR, 1, 0, 0);
+	// Linux has the weirdest semantics around signals: if it finds a thread
+	// that has not masked a process wide-signal, it may deliver it to this
+	// thread, meaning that the signalfd may have been made readable, but the
+	// signal consumed through the legacy delivery mechanism.
+	//
+	// Because of this we can get a misfire of the signalfd yielding EAGAIN the
+	// first time around. The _dispatch_muxnote_signal_block_and_raise() hack
+	// will kick in, the thread with the wrong mask will be fixed up, and the
+	// signal delivered to us again properly.
+	if ((rc = read(dmn->dmn_fd, &si, sizeof(si))) == sizeof(si)) {
+		TAILQ_FOREACH_SAFE(dul, &dmn->dmn_readers_head, du_link, dul_next) {
+			dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
+			dux_merge_evt(du._du, EV_ADD|EV_ENABLE|EV_CLEAR, 1, 0, 0);
+		}
+	} else {
+		dispatch_assume(rc == -1 && errno == EAGAIN);
 	}
 }
 
