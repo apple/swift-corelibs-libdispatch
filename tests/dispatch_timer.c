@@ -86,7 +86,8 @@ test_timer(void)
 		fprintf(stderr, "%d\n", ++i);
 		if (i >= stop_at) {
 			test_long("i", i, stop_at);
-			dispatch_source_set_timer(s, dispatch_time(DISPATCH_TIME_NOW, 0), 0, 0);
+			dispatch_source_set_timer(s, dispatch_time(DISPATCH_TIME_NOW, 0),
+					DISPATCH_TIME_FOREVER, 0);
 			dispatch_source_cancel(s);
 		}
 	});
