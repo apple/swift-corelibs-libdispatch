@@ -394,9 +394,9 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 DISPATCH_EXPORT DISPATCH_NOINLINE
 void _dispatch_bug(size_t line, long val);
 
-#if HAVE_MACH
 DISPATCH_NOINLINE
 void _dispatch_bug_client(const char* msg);
+#if HAVE_MACH
 DISPATCH_NOINLINE
 void _dispatch_bug_mach_client(const char *msg, mach_msg_return_t kr);
 #endif // HAVE_MACH
@@ -466,7 +466,9 @@ void _dispatch_log(const char *msg, ...);
 		} \
 	} while (0)
 #else
-static inline void _dispatch_assert(long e, long line) {
+static inline void
+_dispatch_assert(long e, size_t line)
+{
 	if (DISPATCH_DEBUG && !e) _dispatch_abort(line, e);
 }
 #define dispatch_assert(e) _dispatch_assert((long)(e), __LINE__)
@@ -488,7 +490,9 @@ static inline void _dispatch_assert(long e, long line) {
 		} \
 	} while (0)
 #else
-static inline void _dispatch_assert_zero(long e, long line) {
+static inline void
+_dispatch_assert_zero(long e, size_t line)
+{
 	if (DISPATCH_DEBUG && e) _dispatch_abort(line, e);
 }
 #define dispatch_assert_zero(e) _dispatch_assert_zero((long)(e), __LINE__)
@@ -512,7 +516,9 @@ static inline void _dispatch_assert_zero(long e, long line) {
 		_e; \
 	})
 #else
-static inline long _dispatch_assume(long e, long line) {
+static inline long
+_dispatch_assume(long e, long line)
+{
 	if (!e) _dispatch_bug(line, e);
 	return e;
 }
@@ -535,7 +541,9 @@ static inline long _dispatch_assume(long e, long line) {
 		_e; \
 	})
 #else
-static inline long _dispatch_assume_zero(long e, long line) {
+static inline long
+_dispatch_assume_zero(long e, long line)
+{
 	if (e) _dispatch_bug(line, e);
 	return e;
 }
@@ -850,7 +858,7 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 #define _dispatch_hardware_crash() \
 		__asm__(""); __builtin_trap() // <rdar://problem/17464981>
 
-#define _dispatch_set_crash_log_cause_and_message(ac, msg)
+#define _dispatch_set_crash_log_cause_and_message(ac, msg) ((void)(ac))
 #define _dispatch_set_crash_log_message(msg)
 #define _dispatch_set_crash_log_message_dynamic(msg)
 

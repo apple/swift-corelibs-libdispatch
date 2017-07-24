@@ -5329,6 +5329,8 @@ _dispatch_root_queue_push(dispatch_queue_t rq, dispatch_object_t dou,
 	if (_dispatch_root_queue_push_needs_override(rq, qos)) {
 		return _dispatch_root_queue_push_override(rq, dou, qos);
 	}
+#else
+	(void)qos;
 #endif
 	_dispatch_root_queue_push_inline(rq, dou, dou, 1);
 }
@@ -5870,7 +5872,7 @@ _dispatch_worker_thread(void *context)
 
 #if DISPATCH_USE_INTERNAL_WORKQUEUE
 	if (monitored) {
-		_dispatch_workq_worker_unregister(dq,  qc->dgq_qos);
+		_dispatch_workq_worker_unregister(dq, qc->dgq_qos);
 	}
 #endif
 	(void)os_atomic_inc2o(qc, dgq_thread_pool_size, release);
@@ -5962,6 +5964,7 @@ _dispatch_runloop_root_queue_wakeup_4CF(dispatch_queue_t dq)
 	_dispatch_runloop_queue_wakeup(dq, 0, false);
 }
 
+#if TARGET_OS_MAC
 dispatch_runloop_handle_t
 _dispatch_runloop_root_queue_get_port_4CF(dispatch_queue_t dq)
 {
@@ -5970,6 +5973,7 @@ _dispatch_runloop_root_queue_get_port_4CF(dispatch_queue_t dq)
 	}
 	return _dispatch_runloop_queue_get_handle(dq);
 }
+#endif
 
 static void
 _dispatch_runloop_queue_handle_init(void *ctxt)

@@ -382,7 +382,7 @@ _dispatch_futex(uint32_t *uaddr, int op, uint32_t val,
 		const struct timespec *timeout, uint32_t *uaddr2, uint32_t val3,
 		int opflags)
 {
-	return syscall(SYS_futex, uaddr, op | opflags, val, timeout, uaddr2, val3);
+	return (int)syscall(SYS_futex, uaddr, op | opflags, val, timeout, uaddr2, val3);
 }
 
 static int
@@ -401,7 +401,7 @@ _dispatch_futex_wake(uint32_t *uaddr, int wake, int opflags)
 {
 	int rc;
 	_dlock_syscall_switch(err,
-		rc = _dispatch_futex(uaddr, FUTEX_WAKE, wake, NULL, NULL, 0, opflags),
+		rc = _dispatch_futex(uaddr, FUTEX_WAKE, (uint32_t)wake, NULL, NULL, 0, opflags),
 		case 0: return;
 		default: DISPATCH_CLIENT_CRASH(err, "futex_wake() failed");
 	);
@@ -412,7 +412,7 @@ _dispatch_futex_lock_pi(uint32_t *uaddr, struct timespec *timeout, int detect,
 	      int opflags)
 {
 	_dlock_syscall_switch(err,
-		_dispatch_futex(uaddr, FUTEX_LOCK_PI, detect, timeout,
+		_dispatch_futex(uaddr, FUTEX_LOCK_PI, (uint32_t)detect, timeout,
 				NULL, 0, opflags),
 		case 0: return;
 		default: DISPATCH_CLIENT_CRASH(errno, "futex_lock_pi() failed");
@@ -606,6 +606,7 @@ _dispatch_gate_wait_slow(dispatch_gate_t dgl, dispatch_lock value,
 		_dispatch_thread_switch(new_value, flags, timeout++);
 #endif
 		(void)timeout;
+		(void)flags;
 	}
 }
 

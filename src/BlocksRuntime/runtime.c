@@ -148,6 +148,8 @@ GC support stub routines
 
 
 static void *_Block_alloc_default(const unsigned long size, const bool initialCountIsOne, const bool isObject) {
+	(void)initialCountIsOne;
+	(void)isObject;
     return malloc(size);
 }
 
@@ -156,6 +158,8 @@ static void _Block_assign_default(void *value, void **destptr) {
 }
 
 static void _Block_setHasRefcount_default(const void *ptr, const bool hasRefcount) {
+	(void)ptr;
+	(void)hasRefcount;
 }
 
 #if HAVE_OBJC
@@ -163,9 +167,11 @@ static void _Block_do_nothing(const void *aBlock) { }
 #endif
 
 static void _Block_retain_object_default(const void *ptr) {
+	(void)ptr;
 }
 
 static void _Block_release_object_default(const void *ptr) {
+	(void)ptr;
 }
 
 static void _Block_assign_weak_default(const void *ptr, void *dest) {
@@ -193,7 +199,9 @@ static void _Block_memmove_gc_broken(void *dest, void *src, unsigned long size) 
 }
 #endif
 
-static void _Block_destructInstance_default(const void *aBlock) {}
+static void _Block_destructInstance_default(const void *aBlock) {
+	(void)aBlock;
+}
 
 /**************************************************************************
 GC support callout functions - initially set to stub routines

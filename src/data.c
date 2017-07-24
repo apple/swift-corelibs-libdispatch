@@ -138,6 +138,8 @@ _dispatch_data_destroy_buffer(const void* buffer, size_t size,
 		mach_vm_size_t vm_size = size;
 		mach_vm_address_t vm_addr = (uintptr_t)buffer;
 		mach_vm_deallocate(mach_task_self(), vm_addr, vm_size);
+#else
+		(void)size;
 #endif
 	} else {
 		if (!queue) {
