@@ -93,7 +93,7 @@ main(int argc, char *argv[])
 
 #endif
 	int i;
-	char** newargv = calloc(argc, sizeof(void*));
+	char** newargv = calloc((size_t)argc, sizeof(void*));
 	for (i = 1; i < argc; ++i) {
 		newargv[i-1] = argv[i];
 	}

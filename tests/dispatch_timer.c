@@ -30,7 +30,7 @@
 
 static bool finalized = false;
 
-void
+static void
 test_fin(void *cxt)
 {
 	test_ptr("finalizer ran", cxt, cxt);
@@ -38,7 +38,7 @@ test_fin(void *cxt)
 	test_stop();
 }
 
-void
+static void
 test_timer(void)
 {
 	dispatch_test_start("Dispatch Source Timer");
@@ -48,7 +48,7 @@ test_timer(void)
 	dispatch_queue_t main_q = dispatch_get_main_queue();
 	//test_ptr("dispatch_get_main_queue", main_q, dispatch_get_current_queue());
 
-	uint64_t j;
+	int64_t j;
 
 	// create timers in two classes:
 	//  * ones that should trigger before the test ends
@@ -58,7 +58,8 @@ test_timer(void)
 		dispatch_source_t s = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_global_queue(0, 0));
 		test_ptr_notnull("dispatch_source_create", s);
 
-		dispatch_source_set_timer(s, dispatch_time(DISPATCH_TIME_NOW, j * NSEC_PER_SEC + NSEC_PER_SEC / 10), DISPATCH_TIME_FOREVER, 0);
+		int64_t delta = (int64_t)((uint64_t)j * NSEC_PER_SEC + NSEC_PER_SEC / 10);
+		dispatch_source_set_timer(s, dispatch_time(DISPATCH_TIME_NOW, delta), DISPATCH_TIME_FOREVER, 0);
 
 		dispatch_source_set_event_handler(s, ^{
 			if (!finalized) {

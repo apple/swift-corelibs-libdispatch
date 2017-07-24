@@ -32,7 +32,7 @@
 #include <bsdtests.h>
 #include "dispatch_test.h"
 
-void
+static void
 work(void *context __attribute__((unused)))
 {
 	test_stop();
