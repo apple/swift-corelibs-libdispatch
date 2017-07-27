@@ -223,7 +223,7 @@ dispatch_sync_f(dispatch_queue_t queue,
  * @abstract
  * Constant to pass to dispatch_apply() or dispatch_apply_f() to request that
  * the system automatically use worker threads that match the configuration of
- * the current thread most closely.
+ * the current thread as closely as possible.
  *
  * @discussion
  * When submitting a block for parallel invocation, passing this constant as the

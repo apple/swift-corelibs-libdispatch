@@ -1740,7 +1740,7 @@ static inline dispatch_priority_t
 _dispatch_root_queue_identity_assume(dispatch_queue_t assumed_rq)
 {
 	dispatch_priority_t old_dbp = _dispatch_get_basepri();
-	dispatch_assert(dx_type(assumed_rq) == DISPATCH_QUEUE_GLOBAL_ROOT_TYPE);
+	dispatch_assert(dx_hastypeflag(assumed_rq, QUEUE_ROOT));
 	_dispatch_reset_basepri(assumed_rq->dq_priority);
 	_dispatch_queue_set_current(assumed_rq);
 	return old_dbp;
@@ -2108,11 +2108,25 @@ _dispatch_queue_priority_inherit_from_target(dispatch_queue_t dq,
 
 	if ((!_dispatch_priority_qos(pri) || (pri & inherited_flag)) &&
 			(tpri & rootqueue_flag)) {
-		if (tpri & defaultqueue_flag) {
-			dq->dq_priority = 0;
+		if (_dispatch_priority_override_qos(pri) == DISPATCH_QOS_SATURATED) {
+			pri &= DISPATCH_PRIORITY_OVERRIDE_MASK;
 		} else {
-			dq->dq_priority = (tpri & ~rootqueue_flag) | inherited_flag;
+			pri = 0;
 		}
+		if (tpri & defaultqueue_flag) {
+			// <rdar://problem/32921639> base queues need to know they target
+			// the default root queue so that _dispatch_queue_override_qos()
+			// in _dispatch_queue_class_wakeup() can fallback to QOS_DEFAULT
+			// if no other priority was provided.
+			pri |= defaultqueue_flag;
+		} else {
+			pri |= (tpri & ~rootqueue_flag) | inherited_flag;
+		}
+		dq->dq_priority = pri;
+	} else if (pri & defaultqueue_flag) {
+		// the DEFAULTQUEUE flag is only set on queues due to the code above,
+		// and must never be kept if we don't target a global root queue.
+		dq->dq_priority = (pri & ~defaultqueue_flag);
 	}
 #else
 	(void)dq; (void)tq;
@@ -2272,7 +2286,9 @@ static inline dispatch_qos_t
 _dispatch_queue_override_qos(dispatch_queue_class_t dqu, dispatch_qos_t qos)
 {
 	if (dqu._oq->oq_priority & DISPATCH_PRIORITY_FLAG_DEFAULTQUEUE) {
-		return qos;
+		// queues targeting the default root queue use any asynchronous
+		// workitem priority available and fallback to QOS_DEFAULT otherwise.
+		return qos ? qos : DISPATCH_QOS_DEFAULT;
 	}
 	// for asynchronous workitems, queue priority is the floor for overrides
 	return MAX(qos, _dispatch_priority_qos(dqu._oq->oq_priority));
@@ -2338,14 +2354,20 @@ _dispatch_block_has_private_data(const dispatch_block_t block)
 }
 
 DISPATCH_ALWAYS_INLINE DISPATCH_WARN_RESULT
-static inline bool
-_dispatch_block_invoke_should_set_priority(dispatch_block_flags_t flags)
+static inline pthread_priority_t
+_dispatch_block_invoke_should_set_priority(dispatch_block_flags_t flags,
+        pthread_priority_t new_pri)
 {
-	if (flags & DISPATCH_BLOCK_HAS_PRIORITY) {
-		return (flags & DISPATCH_BLOCK_ENFORCE_QOS_CLASS) ||
-				!(flags & DISPATCH_BLOCK_INHERIT_QOS_CLASS);
+	pthread_priority_t old_pri, p = 0;  // 0 means do not change priority.
+	if ((flags & DISPATCH_BLOCK_HAS_PRIORITY)
+			&& ((flags & DISPATCH_BLOCK_ENFORCE_QOS_CLASS) ||
+			!(flags & DISPATCH_BLOCK_INHERIT_QOS_CLASS))) {
+		old_pri = _dispatch_get_priority();
+		new_pri &= ~_PTHREAD_PRIORITY_FLAGS_MASK;
+		p = old_pri & ~_PTHREAD_PRIORITY_FLAGS_MASK;
+		if (!p || p >= new_pri) p = 0;
 	}
-	return false;
+	return p;
 }
 
 DISPATCH_ALWAYS_INLINE

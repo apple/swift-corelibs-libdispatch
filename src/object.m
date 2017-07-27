@@ -387,6 +387,14 @@ DISPATCH_CLASS_IMPL(disk)
 DISPATCH_UNAVAILABLE_INIT()
 DISPATCH_OBJC_LOAD()
 
+-(id)retain {
+	return (id)_voucher_retain_inline((struct voucher_s *)self);
+}
+
+-(oneway void)release {
+	return _voucher_release_inline((struct voucher_s *)self);
+}
+
 - (void)_xref_dispose {
 	return _voucher_xref_dispose(self); // calls _os_object_release_internal()
 }

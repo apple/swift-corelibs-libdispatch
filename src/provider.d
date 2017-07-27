@@ -101,3 +101,41 @@ provider dispatch {
 #pragma D attributes Private/Private/Common provider dispatch function
 #pragma D attributes Evolving/Evolving/Common provider dispatch name
 #pragma D attributes Evolving/Evolving/Common provider dispatch args
+
+typedef struct voucher_s *voucher_t;
+
+/*
+ * Probes for vouchers
+ */
+provider voucher {
+
+    /*
+     * Voucher lifetime:
+     *
+     * voucher$target:::create     A new voucher is being created
+     * voucher$target:::dispose    A voucher is being freed
+     * voucher$target:::retain     A voucher is being retained
+     * voucher$target:::release    A voucher is being released
+     */
+    probe create(voucher_t voucher, mach_port_t kv, uint64_t activity_id);
+    probe dispose(voucher_t voucher);
+    probe retain(voucher_t voucher, int resulting_refcnt);
+    probe release(voucher_t voucher, int resulting_refcnt);
+
+    /*
+     * Thread adoption
+     *
+     * voucher$target:::adopt      A voucher is being adopted by the current thread
+     * voucher$target:::orphan     A voucher is being orphanned by the current thread
+     */
+    probe adopt(voucher_t voucher);
+    probe orphan(voucher_t voucher);
+
+};
+
+#pragma D attributes Evolving/Evolving/Common provider voucher provider
+#pragma D attributes Private/Private/Common provider voucher module
+#pragma D attributes Private/Private/Common provider voucher function
+#pragma D attributes Evolving/Evolving/Common provider voucher name
+#pragma D attributes Evolving/Evolving/Common provider voucher args
+

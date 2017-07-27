@@ -521,6 +521,22 @@ _dispatch_source_latch_and_call(dispatch_source_t ds, dispatch_queue_t cq,
 	}
 }
 
+DISPATCH_NOINLINE
+static void
+_dispatch_source_refs_finalize_unregistration(dispatch_source_t ds)
+{
+	dispatch_queue_flags_t dqf;
+	dispatch_source_refs_t dr = ds->ds_refs;
+
+	dqf = _dispatch_queue_atomic_flags_set_and_clear_orig(ds->_as_dq,
+			DSF_DELETED, DSF_ARMED | DSF_DEFERRED_DELETE | DSF_CANCEL_WAITER);
+	if (dqf & DSF_CANCEL_WAITER) {
+		_dispatch_wake_by_address(&ds->dq_atomic_flags);
+	}
+	_dispatch_debug("kevent-source[%p]: disarmed kevent[%p]", ds, dr);
+	_dispatch_release_tailcall(ds); // the retain is done at creation time
+}
+
 void
 _dispatch_source_refs_unregister(dispatch_source_t ds, uint32_t options)
 {
@@ -549,14 +565,8 @@ _dispatch_source_refs_unregister(dispatch_source_t ds, uint32_t options)
 		}
 	}
 
-	dqf = _dispatch_queue_atomic_flags_set_and_clear_orig(ds->_as_dq,
-			DSF_DELETED, DSF_ARMED | DSF_DEFERRED_DELETE | DSF_CANCEL_WAITER);
-	if (dqf & DSF_CANCEL_WAITER) {
-		_dispatch_wake_by_address(&ds->dq_atomic_flags);
-	}
 	ds->ds_is_installed = true;
-	_dispatch_debug("kevent-source[%p]: disarmed kevent[%p]", ds, dr);
-	_dispatch_release_tailcall(ds); // the retain is done at creation time
+	_dispatch_source_refs_finalize_unregistration(ds);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -619,8 +629,9 @@ _dispatch_source_refs_register(dispatch_source_t ds, dispatch_wlh_t wlh,
 
 	if (unlikely(!_dispatch_source_tryarm(ds) ||
 			!_dispatch_unote_register(dr, wlh, pri))) {
-		_dispatch_queue_atomic_flags_set_and_clear(ds->_as_dq, DSF_DELETED,
-				DSF_ARMED | DSF_DEFERRED_DELETE);
+		// Do the parts of dispatch_source_refs_unregister() that
+		// are required after this partial initialization.
+		_dispatch_source_refs_finalize_unregistration(ds);
 	} else {
 		_dispatch_debug("kevent-source[%p]: armed kevent[%p]", ds, dr);
 	}
@@ -1761,8 +1772,10 @@ _dispatch_timer_heap_insert(dispatch_timer_heap_t dth,
 {
 	uint32_t idx = (dth->dth_count += DTH_ID_COUNT) - DTH_ID_COUNT;
 
-	dispatch_assert(dt->dt_heap_entry[DTH_TARGET_ID] == DTH_INVALID_ID);
-	dispatch_assert(dt->dt_heap_entry[DTH_DEADLINE_ID] == DTH_INVALID_ID);
+	DISPATCH_TIMER_ASSERT(dt->dt_heap_entry[DTH_TARGET_ID], ==,
+			DTH_INVALID_ID, "target idx");
+	DISPATCH_TIMER_ASSERT(dt->dt_heap_entry[DTH_DEADLINE_ID], ==,
+			DTH_INVALID_ID, "deadline idx");
 
 	if (idx == 0) {
 		dt->dt_heap_entry[DTH_TARGET_ID] = DTH_TARGET_ID;
@@ -1786,12 +1799,16 @@ _dispatch_timer_heap_remove(dispatch_timer_heap_t dth,
 {
 	uint32_t idx = (dth->dth_count -= DTH_ID_COUNT);
 
-	dispatch_assert(dt->dt_heap_entry[DTH_TARGET_ID] != DTH_INVALID_ID);
-	dispatch_assert(dt->dt_heap_entry[DTH_DEADLINE_ID] != DTH_INVALID_ID);
+	DISPATCH_TIMER_ASSERT(dt->dt_heap_entry[DTH_TARGET_ID], !=,
+			DTH_INVALID_ID, "target idx");
+	DISPATCH_TIMER_ASSERT(dt->dt_heap_entry[DTH_DEADLINE_ID], !=,
+			DTH_INVALID_ID, "deadline idx");
 
 	if (idx == 0) {
-		dispatch_assert(dth->dth_min[DTH_TARGET_ID] == dt);
-		dispatch_assert(dth->dth_min[DTH_DEADLINE_ID] == dt);
+		DISPATCH_TIMER_ASSERT(dth->dth_min[DTH_TARGET_ID], ==, dt,
+				"target slot");
+		DISPATCH_TIMER_ASSERT(dth->dth_min[DTH_DEADLINE_ID], ==, dt,
+				"deadline slot");
 		dth->dth_min[DTH_TARGET_ID] = dth->dth_min[DTH_DEADLINE_ID] = NULL;
 		goto clear_heap_entry;
 	}
@@ -1819,8 +1836,11 @@ static inline void
 _dispatch_timer_heap_update(dispatch_timer_heap_t dth,
 		dispatch_timer_source_refs_t dt)
 {
-	dispatch_assert(dt->dt_heap_entry[DTH_TARGET_ID] != DTH_INVALID_ID);
-	dispatch_assert(dt->dt_heap_entry[DTH_DEADLINE_ID] != DTH_INVALID_ID);
+	DISPATCH_TIMER_ASSERT(dt->dt_heap_entry[DTH_TARGET_ID], !=,
+			DTH_INVALID_ID, "target idx");
+	DISPATCH_TIMER_ASSERT(dt->dt_heap_entry[DTH_DEADLINE_ID], !=,
+			DTH_INVALID_ID, "deadline idx");
+
 
 	_dispatch_timer_heap_resift(dth, dt, dt->dt_heap_entry[DTH_TARGET_ID]);
 	_dispatch_timer_heap_resift(dth, dt, dt->dt_heap_entry[DTH_DEADLINE_ID]);
@@ -1875,7 +1895,7 @@ _dispatch_timers_register(dispatch_timer_source_refs_t dt, uint32_t tidx)
 {
 	dispatch_timer_heap_t heap = &_dispatch_timers_heap[tidx];
 	if (_dispatch_unote_registered(dt)) {
-		dispatch_assert(dt->du_ident == tidx);
+		DISPATCH_TIMER_ASSERT(dt->du_ident, ==, tidx, "tidx");
 		_dispatch_timer_heap_update(heap, dt);
 	} else {
 		dt->du_ident = tidx;
@@ -2051,7 +2071,10 @@ _dispatch_timers_run2(dispatch_clock_now_cache_t nows, uint32_t tidx)
 	uint64_t now = _dispatch_time_now_cached(DISPATCH_TIMER_CLOCK(tidx), nows);
 
 	while ((dr = _dispatch_timers_heap[tidx].dth_min[DTH_TARGET_ID])) {
-		dispatch_assert(tidx == dr->du_ident && dr->dt_timer.target);
+		DISPATCH_TIMER_ASSERT(dr->du_filter, ==, DISPATCH_EVFILT_TIMER,
+				"invalid filter");
+		DISPATCH_TIMER_ASSERT(dr->du_ident, ==, tidx, "tidx");
+		DISPATCH_TIMER_ASSERT(dr->dt_timer.target, !=, 0, "missing target");
 		ds = _dispatch_source_from_refs(dr);
 		if (dr->dt_timer.target > now) {
 			// Done running timers for now.
