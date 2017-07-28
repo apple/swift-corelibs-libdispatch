@@ -143,6 +143,7 @@ test_group_notify2(long cycle, dispatch_group_t tested)
 		dispatch_group_async(group, q, ^{
 			// Seems to trigger a little more reliably with some work being
 			// done in this block
+			assert(cycle && "cycle must be non-zero");
 			eh = (float)sin(M_1_PI / cycle);
 		});
 	}
@@ -171,9 +172,9 @@ test_group_notify(void *ctxt __attribute__((unused)))
 	dispatch_group_t tested = dispatch_group_create();
 	test_ptr_notnull("dispatch_group_create", tested);
 	long i;
-	for (i = 0; i < LOOP_COUNT; i++) {
-		if (!((i+1) % (LOOP_COUNT/10))) {
-			fprintf(stderr, "#%ld\n", i+1);
+	for (i = 1; i <= LOOP_COUNT; i++) {
+		if (!(i % (LOOP_COUNT/10))) {
+			fprintf(stderr, "#%ld\n", i);
 		}
 		dispatch_group_enter(tested);
 		test_group_notify2(i, tested);
@@ -182,7 +183,7 @@ test_group_notify(void *ctxt __attribute__((unused)))
 			break;
 		}
 	}
-	test_long("dispatch_group_notify", i, LOOP_COUNT);
+	test_long("dispatch_group_notify", i - 1, LOOP_COUNT);
 	test_stop();
 }
 
