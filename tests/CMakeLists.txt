@@ -74,6 +74,11 @@ function(add_unit_test name)
                                ${CMAKE_CURRENT_BINARY_DIR}
                                ${CMAKE_CURRENT_SOURCE_DIR}
                                ${CMAKE_SOURCE_DIR})
+  if(CMAKE_SWIFT_COMPILER)
+	# For testing in swift.org CI system; make deadlines lenient by default
+	# to reduce probability of test failures due to machine load.
+	target_compile_options(${name} PRIVATE -DLENIENT_DEADLINES=1)
+  endif()
   if(WITH_BLOCKS_RUNTIME)
     target_include_directories(${name}
                                SYSTEM BEFORE PRIVATE
@@ -141,6 +146,34 @@ set(DISPATCH_C_TESTS
 set(DISPATCH_CPP_TESTS
     plusplus)
 
+# Tests that usually pass, but occasionally fail
+# and are therefore not suitable for general CI usage.
+if(EXTENDED_TEST_SUITE)
+  list(APPEND DISPATCH_C_TESTS
+	priority
+	concur
+	read
+	read2
+	suspend_timer
+	pingpong
+	drift
+	readsync
+	cascade
+	io)
+  # an oddball; dispatch_priority.c compiled with -DUSE_SET_TARGET_QUEUE=1
+  add_unit_test(dispatch_priority2 SOURCES dispatch_priority.c)
+  target_compile_options(dispatch_priority2 PRIVATE -DUSE_SET_TARGET_QUEUE=1)
+endif()
+
+# Tests for platform-specific functionality
+if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
+  list(APPEND DISPATCH_C_TESTS
+	deadname
+	proc
+	vm
+	vnode)
+endif()
+
 foreach(test ${DISPATCH_C_TESTS})
   add_unit_test(dispatch_${test}
                 SOURCES
@@ -151,6 +184,10 @@ foreach(test ${DISPATCH_CPP_TESTS})
                 SOURCES
                   dispatch_${test}.cpp)
 endforeach()
+
+# test-specific link options
 target_link_libraries(dispatch_group PRIVATE m)
 target_link_libraries(dispatch_timer_short PRIVATE m)
 
+# test-specific compile options
+target_compile_options(dispatch_c99 PRIVATE -std=c99)
