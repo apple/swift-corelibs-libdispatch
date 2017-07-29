@@ -13,6 +13,11 @@
 #ifndef __OS_LINUX_BASE__
 #define __OS_LINUX_BASE__
 
+#include <config/config_ac.h>
+
+#if HAVE_SYS_SYSMACROS_H
+#include <sys/sysmacros.h>
+#endif
 #include <sys/param.h>
 
 #if HAVE_SYS_CDEFS_H
