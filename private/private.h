@@ -43,6 +43,9 @@
 #include <sys/cdefs.h>
 #endif
 #include <pthread.h>
+#if TARGET_OS_MAC
+#include <pthread/qos.h>
+#endif
 
 #ifndef __DISPATCH_BUILDING_DISPATCH__
 #include <dispatch/dispatch.h>

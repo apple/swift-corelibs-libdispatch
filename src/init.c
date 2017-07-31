@@ -897,6 +897,7 @@ void
 _dispatch_temporary_resource_shortage(void)
 {
 	sleep(1);
+	asm("");  // prevent tailcall
 }
 
 void *

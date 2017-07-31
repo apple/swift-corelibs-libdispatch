@@ -459,9 +459,9 @@ void _dispatch_log(const char *msg, ...);
 		if (__builtin_constant_p(e)) { \
 			dispatch_static_assert(e); \
 		} else { \
-			typeof(e) _e = fastpath(e); /* always eval 'e' */ \
-			if (!_e) { \
-				__assert_rtn(__func__, __FILE__, __LINE__, #e); \
+			typeof(e) _e = (e); /* always eval 'e' */ \
+			if (unlikely(DISPATCH_DEBUG && !_e)) { \
+				_dispatch_abort(__LINE__, (long)_e); \
 			} \
 		} \
 	} while (0)
@@ -483,9 +483,9 @@ _dispatch_assert(long e, size_t line)
 		if (__builtin_constant_p(e)) { \
 			dispatch_static_assert(e); \
 		} else { \
-			typeof(e) _e = slowpath(e); /* always eval 'e' */ \
-			if (_e) { \
-				__assert_rtn(__func__, __FILE__, __LINE__, #e); \
+			typeof(e) _e = (e); /* always eval 'e' */ \
+			if (unlikely(DISPATCH_DEBUG && _e)) { \
+				_dispatch_abort(__LINE__, (long)_e); \
 			} \
 		} \
 	} while (0)
@@ -506,8 +506,8 @@ _dispatch_assert_zero(long e, size_t line)
  */
 #if __GNUC__
 #define dispatch_assume(e) ({ \
-		typeof(e) _e = fastpath(e); /* always eval 'e' */ \
-		if (!_e) { \
+		typeof(e) _e = (e); /* always eval 'e' */ \
+		if (unlikely(!_e)) { \
 			if (__builtin_constant_p(e)) { \
 				dispatch_static_assert(e); \
 			} \
@@ -531,8 +531,8 @@ _dispatch_assume(long e, long line)
  */
 #if __GNUC__
 #define dispatch_assume_zero(e) ({ \
-		typeof(e) _e = slowpath(e); /* always eval 'e' */ \
-		if (_e) { \
+		typeof(e) _e = (e); /* always eval 'e' */ \
+		if (unlikely(_e)) { \
 			if (__builtin_constant_p(e)) { \
 				dispatch_static_assert(e); \
 			} \
@@ -558,8 +558,8 @@ _dispatch_assume_zero(long e, long line)
 		if (__builtin_constant_p(e)) { \
 			dispatch_static_assert(e); \
 		} else { \
-			typeof(e) _e = fastpath(e); /* always eval 'e' */ \
-			if (DISPATCH_DEBUG && !_e) { \
+			typeof(e) _e = (e); /* always eval 'e' */ \
+			if (unlikely(DISPATCH_DEBUG && !_e)) { \
 				_dispatch_log("%s() 0x%lx: " msg, __func__, (long)_e, ##args); \
 				abort(); \
 			} \
@@ -567,8 +567,8 @@ _dispatch_assume_zero(long e, long line)
 	} while (0)
 #else
 #define dispatch_debug_assert(e, msg, args...) do { \
-	long _e = (long)fastpath(e); /* always eval 'e' */ \
-	if (DISPATCH_DEBUG && !_e) { \
+	typeof(e) _e = (e); /* always eval 'e' */ \
+	if (unlikely(DISPATCH_DEBUG && !_e)) { \
 		_dispatch_log("%s() 0x%lx: " msg, __FUNCTION__, _e, ##args); \
 		abort(); \
 	} \
@@ -626,7 +626,7 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_fork_becomes_unsafe(void)
 {
-	if (!fastpath(_dispatch_is_multithreaded_inline())) {
+	if (unlikely(!_dispatch_is_multithreaded_inline())) {
 		_dispatch_fork_becomes_unsafe_slow();
 		DISPATCH_COMPILER_CAN_ASSUME(_dispatch_is_multithreaded_inline());
 	}
@@ -732,6 +732,14 @@ extern bool _dispatch_memory_warn;
 #endif // HAVE_SYS_GUARDED_H
 
 
+#if DISPATCH_USE_DTRACE || DISPATCH_USE_DTRACE_INTROSPECTION
+typedef struct dispatch_trace_timer_params_s {
+	int64_t deadline, interval, leeway;
+} *dispatch_trace_timer_params_t;
+
+#include "provider.h"
+#endif // DISPATCH_USE_DTRACE || DISPATCH_USE_DTRACE_INTROSPECTION
+
 #if __has_include(<sys/kdebug.h>)
 #include <sys/kdebug.h>
 #ifndef DBG_DISPATCH
@@ -754,7 +762,7 @@ extern bool _dispatch_memory_warn;
 #define ARIADNE_ENTER_DISPATCH_MAIN_CODE 0
 #endif
 #if !defined(DISPATCH_USE_VOUCHER_KDEBUG_TRACE) && \
-		(DISPATCH_INTROSPECTION || DISPATCH_PROFILE)
+		(DISPATCH_INTROSPECTION || DISPATCH_PROFILE || DISPATCH_DEBUG)
 #define DISPATCH_USE_VOUCHER_KDEBUG_TRACE 1
 #endif
 

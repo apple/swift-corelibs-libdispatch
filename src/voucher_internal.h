@@ -262,6 +262,16 @@ typedef struct voucher_recipe_s {
 #define _dispatch_voucher_debug_machport(name) ((void)(name))
 #endif
 
+#if DISPATCH_USE_DTRACE
+#define _voucher_trace(how, ...)  ({ \
+		if (unlikely(VOUCHER_##how##_ENABLED())) { \
+			VOUCHER_##how(__VA_ARGS__); \
+		} \
+	})
+#else
+#define _voucher_trace(how, ...) ((void)0)
+#endif
+
 #ifndef DISPATCH_VOUCHER_OBJC_DEBUG
 #if DISPATCH_INTROSPECTION || DISPATCH_DEBUG
 #define DISPATCH_VOUCHER_OBJC_DEBUG 1
@@ -270,36 +280,29 @@ typedef struct voucher_recipe_s {
 #endif
 #endif // DISPATCH_VOUCHER_OBJC_DEBUG
 
-#if DISPATCH_PURE_C
-
 DISPATCH_ALWAYS_INLINE
-static inline voucher_t
-_voucher_retain(voucher_t voucher)
+static inline struct voucher_s *
+_voucher_retain_inline(struct voucher_s *voucher)
 {
-#if !DISPATCH_VOUCHER_OBJC_DEBUG
 	// not using _os_object_refcnt* because we don't need barriers:
 	// vouchers are immutable and are in a hash table with a lock
 	int xref_cnt = os_atomic_inc2o(voucher, os_obj_xref_cnt, relaxed);
+	_voucher_trace(RETAIN, (voucher_t)voucher, xref_cnt + 1);
 	_dispatch_voucher_debug("retain  -> %d", voucher, xref_cnt + 1);
 	if (unlikely(xref_cnt <= 0)) {
 		_OS_OBJECT_CLIENT_CRASH("Voucher resurrection");
 	}
-#else
-	os_retain(voucher);
-	_dispatch_voucher_debug("retain  -> %d", voucher,
-			voucher->os_obj_xref_cnt + 1);
-#endif // DISPATCH_DEBUG
 	return voucher;
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline void
-_voucher_release(voucher_t voucher)
+_voucher_release_inline(struct voucher_s *voucher)
 {
-#if !DISPATCH_VOUCHER_OBJC_DEBUG
 	// not using _os_object_refcnt* because we don't need barriers:
 	// vouchers are immutable and are in a hash table with a lock
 	int xref_cnt = os_atomic_dec2o(voucher, os_obj_xref_cnt, relaxed);
+	_voucher_trace(RELEASE, (voucher_t)voucher, xref_cnt + 1);
 	_dispatch_voucher_debug("release -> %d", voucher, xref_cnt + 1);
 	if (likely(xref_cnt >= 0)) {
 		return;
@@ -308,10 +311,31 @@ _voucher_release(voucher_t voucher)
 		_OS_OBJECT_CLIENT_CRASH("Voucher over-release");
 	}
 	return _os_object_xref_dispose((_os_object_t)voucher);
+}
+
+#if DISPATCH_PURE_C
+
+DISPATCH_ALWAYS_INLINE
+static inline voucher_t
+_voucher_retain(voucher_t voucher)
+{
+#if DISPATCH_VOUCHER_OBJC_DEBUG
+	os_retain(voucher);
 #else
-	_dispatch_voucher_debug("release -> %d", voucher, voucher->os_obj_xref_cnt);
-	return os_release(voucher);
-#endif // DISPATCH_DEBUG
+	_voucher_retain_inline(voucher);
+#endif // DISPATCH_VOUCHER_OBJC_DEBUG
+	return voucher;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_voucher_release(voucher_t voucher)
+{
+#if DISPATCH_VOUCHER_OBJC_DEBUG
+	os_release(voucher);
+#else
+	_voucher_release_inline(voucher);
+#endif // DISPATCH_VOUCHER_OBJC_DEBUG
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -322,13 +346,13 @@ _voucher_release_no_dispose(voucher_t voucher)
 	// not using _os_object_refcnt* because we don't need barriers:
 	// vouchers are immutable and are in a hash table with a lock
 	int xref_cnt = os_atomic_dec2o(voucher, os_obj_xref_cnt, relaxed);
+	_voucher_trace(RELEASE, voucher, xref_cnt + 1);
 	_dispatch_voucher_debug("release -> %d", voucher, xref_cnt + 1);
 	if (likely(xref_cnt >= 0)) {
 		return;
 	}
 	_OS_OBJECT_CLIENT_CRASH("Voucher over-release");
 #else
-	_dispatch_voucher_debug("release -> %d", voucher, voucher->os_obj_xref_cnt);
 	return os_release(voucher);
 #endif // DISPATCH_DEBUG
 }
@@ -371,8 +395,10 @@ static inline mach_voucher_t
 _voucher_swap_and_get_mach_voucher(voucher_t ov, voucher_t voucher)
 {
 	if (ov == voucher) return VOUCHER_NO_MACH_VOUCHER;
-	_dispatch_voucher_debug("swap from voucher[%p]", voucher, ov);
+	if (ov) _voucher_trace(ORPHAN, ov);
 	_dispatch_thread_setspecific(dispatch_voucher_key, voucher);
+	if (voucher) _voucher_trace(ADOPT, voucher);
+	_dispatch_voucher_debug("swap from voucher[%p]", voucher, ov);
 	mach_voucher_t kv = voucher ? voucher->v_kvoucher : MACH_VOUCHER_NULL;
 	mach_voucher_t okv = ov ? ov->v_kvoucher : MACH_VOUCHER_NULL;
 #if OS_VOUCHER_ACTIVITY_GENERATE_SWAPS

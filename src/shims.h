@@ -36,6 +36,7 @@
 #include "shims/android_stubs.h"
 #endif
 
+#include "shims/hw_config.h"
 #include "shims/priority.h"
 
 #if HAVE_PTHREAD_WORKQUEUES
@@ -147,6 +148,51 @@ _pthread_workqueue_should_narrow(pthread_priority_t priority)
 }
 #endif
 
+#if HAVE_PTHREAD_QOS_H && __has_include(<pthread/qos_private.h>) && \
+		defined(PTHREAD_MAX_PARALLELISM_PHYSICAL) && \
+		DISPATCH_HAVE_HW_CONFIG_COMMPAGE && \
+		DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(109900)
+#define DISPATCH_USE_PTHREAD_QOS_MAX_PARALLELISM 1
+#define DISPATCH_MAX_PARALLELISM_PHYSICAL PTHREAD_MAX_PARALLELISM_PHYSICAL
+#else
+#define DISPATCH_MAX_PARALLELISM_PHYSICAL 0x1
+#endif
+#define DISPATCH_MAX_PARALLELISM_ACTIVE 0x2
+_Static_assert(!(DISPATCH_MAX_PARALLELISM_PHYSICAL &
+		DISPATCH_MAX_PARALLELISM_ACTIVE), "Overlapping parallelism flags");
+
+DISPATCH_ALWAYS_INLINE
+static inline uint32_t
+_dispatch_qos_max_parallelism(dispatch_qos_t qos, unsigned long flags)
+{
+	uint32_t p;
+	int r = 0;
+
+	if (qos) {
+#if DISPATCH_USE_PTHREAD_QOS_MAX_PARALLELISM
+		r = pthread_qos_max_parallelism(_dispatch_qos_to_qos_class(qos),
+				flags & PTHREAD_MAX_PARALLELISM_PHYSICAL);
+#endif
+	}
+	if (likely(r > 0)) {
+		p = (uint32_t)r;
+	} else {
+		p = (flags & DISPATCH_MAX_PARALLELISM_PHYSICAL) ?
+				dispatch_hw_config(physical_cpus) :
+				dispatch_hw_config(logical_cpus);
+	}
+	if (flags & DISPATCH_MAX_PARALLELISM_ACTIVE) {
+		uint32_t active_cpus = dispatch_hw_config(active_cpus);
+		if ((flags & DISPATCH_MAX_PARALLELISM_PHYSICAL) &&
+				active_cpus < dispatch_hw_config(logical_cpus)) {
+			active_cpus /= dispatch_hw_config(logical_cpus) /
+					dispatch_hw_config(physical_cpus);
+		}
+		if (active_cpus < p) p = active_cpus;
+	}
+	return p;
+}
+
 #if !HAVE_NORETURN_BUILTIN_TRAP
 /*
  * XXXRW: Work-around for possible clang bug in which __builtin_trap() is not
@@ -174,7 +220,6 @@ void __builtin_trap(void);
 #include "shims/yield.h"
 #include "shims/lock.h"
 
-#include "shims/hw_config.h"
 #include "shims/perfmon.h"
 
 #include "shims/getprogname.h"
@@ -228,7 +273,8 @@ _dispatch_mempcpy(void *ptr, const void *data, size_t len)
 #define _dispatch_clear_stack(s) do { \
 		void *a[(s)/sizeof(void*) ? (s)/sizeof(void*) : 1]; \
 		a[0] = pthread_get_stackaddr_np(pthread_self()); \
-		bzero((void*)&a[1], (size_t)(a[0] - (void*)&a[1])); \
+		void* volatile const p = (void*)&a[1]; /* <rdar://32604885> */ \
+		bzero((void*)p, (size_t)(a[0] - (void*)&a[1])); \
 	} while (0)
 #else
 #define _dispatch_clear_stack(s)

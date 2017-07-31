@@ -102,6 +102,13 @@ DISPATCH_SOURCE_TYPE_DECL(memorystatus);
 API_AVAILABLE(macos(10.8), ios(6.0)) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(sock);
 
+/*!
+ * @const DISPATCH_SOURCE_TYPE_NW_CHANNEL
+ * @discussion A dispatch source that monitors events on a network channel.
+ */
+#define DISPATCH_SOURCE_TYPE_NW_CHANNEL (&_dispatch_source_type_nw_channel)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) DISPATCH_LINUX_UNAVAILABLE()
+DISPATCH_SOURCE_TYPE_DECL(nw_channel);
 
 __END_DECLS
 
@@ -165,6 +172,15 @@ enum {
 	DISPATCH_SOCK_NOTIFY_ACK = 0x00004000,
 };
 
+/*!
+ * @enum dispatch_source_nw_channel_flags_t
+ *
+ * @constant DISPATCH_NW_CHANNEL_FLOW_ADV_UPDATE
+ * Received network channel flow advisory.
+ */
+enum {
+	DISPATCH_NW_CHANNEL_FLOW_ADV_UPDATE = 0x00000001,
+};
 
 /*!
  * @enum dispatch_source_vfs_flags_t

@@ -832,6 +832,8 @@ dispatch_queue_attr_t _dispatch_get_default_queue_attr(void);
 #define DISPATCH_OBJ_CTXT_FETCH_BIT			0x040ul
 // use the voucher from the continuation even if the queue has voucher set
 #define DISPATCH_OBJ_ENFORCE_VOUCHER		0x080ul
+// never set on continuations, used by mach.c only
+#define DISPATCH_OBJ_MACH_BARRIER		0x1000000ul
 
 typedef struct dispatch_continuation_s {
 	struct dispatch_object_s _as_do[0];
@@ -975,7 +977,7 @@ typedef struct dispatch_apply_s *dispatch_apply_t;
 
 #ifdef __BLOCKS__
 
-#define DISPATCH_BLOCK_API_MASK (0x80u - 1)
+#define DISPATCH_BLOCK_API_MASK (0x100u - 1)
 #define DISPATCH_BLOCK_HAS_VOUCHER (1u << 31)
 #define DISPATCH_BLOCK_HAS_PRIORITY (1u << 30)
 
@@ -1022,8 +1024,6 @@ void _dispatch_block_sync_invoke(void *block);
 
 void _dispatch_continuation_init_slow(dispatch_continuation_t dc,
 		dispatch_queue_class_t dqu, dispatch_block_flags_t flags);
-void _dispatch_continuation_update_bits(dispatch_continuation_t dc,
-		uintptr_t dc_flags);
 
 long _dispatch_barrier_trysync_f(dispatch_queue_t dq, void *ctxt,
 		dispatch_function_t func);

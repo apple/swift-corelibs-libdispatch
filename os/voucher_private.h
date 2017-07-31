@@ -202,8 +202,23 @@ voucher_decrement_importance_count4CF(voucher_t _Nullable voucher);
  * This flag is ignored if a specific voucher object is assigned with the
  * dispatch_block_create_with_voucher* functions, and is equivalent to passing
  * the NULL voucher to these functions.
+ *
+ * @const DISPATCH_BLOCK_IF_LAST_RESET_QUEUE_QOS_OVERRIDE
+ * Flag indicating that this dispatch block object should try to reset the
+ * recorded maximum QoS of all currently enqueued items on a serial dispatch
+ * queue at the base of a queue hierarchy.
+ *
+ * This is only works if the queue becomes empty by dequeuing the block in
+ * question, and then allows that block to enqueue more work on this hierarchy
+ * without perpetuating QoS overrides resulting from items previously executed
+ * on the hierarchy.
+ *
+ * A dispatch block object created with this flag set cannot be used with
+ * dispatch_block_wait() or dispatch_block_cancel().
  */
-#define DISPATCH_BLOCK_NO_VOUCHER (0x40)
+#define DISPATCH_BLOCK_NO_VOUCHER (0x40ul)
+
+#define DISPATCH_BLOCK_IF_LAST_RESET_QUEUE_QOS_OVERRIDE (0x80ul)
 
 /*!
  * @function dispatch_block_create_with_voucher
