@@ -128,6 +128,7 @@ main(int argc, char *argv[])
 	tv_wall.tv_usec = labs(tv_stop.tv_usec - tv_start.tv_usec);
 
 	int res2 = wait4(pid, &status, 0, &usage);
+	(void)res2;
 	assert(res2 != -1);
 	test_long("Process exited", (WIFEXITED(status) && WEXITSTATUS(status) && WEXITSTATUS(status) != 0xff) || WIFSIGNALED(status), 0);
 	printf("[PERF]\twall time: %ld.%06ld\n", tv_wall.tv_sec, tv_wall.tv_usec);
