@@ -671,8 +671,9 @@ _dispatch_kq_drain(dispatch_wlh_t wlh, dispatch_kevent_t ke, int n,
 		r = 0;
 	} else if (flags & KEVENT_FLAG_ERROR_EVENTS) {
 		for (i = 0, r = 0; i < n; i++) {
-			if ((ke_out[i].flags & EV_ERROR) && (r = (int)ke_out[i].data)) {
+			if ((ke_out[i].flags & EV_ERROR) && ke_out[i].data) {
 				_dispatch_kevent_drain(&ke_out[i]);
+				r = (int)ke_out[i].data;
 			}
 		}
 	} else {
@@ -1407,6 +1408,17 @@ const dispatch_source_type_s _dispatch_source_type_sock = {
 };
 #endif // EVFILT_SOCK
 
+#ifdef EVFILT_NW_CHANNEL
+const dispatch_source_type_s _dispatch_source_type_nw_channel = {
+	.dst_kind       = "nw_channel",
+	.dst_filter     = EVFILT_NW_CHANNEL,
+	.dst_flags      = DISPATCH_EV_DIRECT|EV_CLEAR|EV_VANISHED,
+	.dst_mask       = NOTE_FLOW_ADV_UPDATE,
+	.dst_size       = sizeof(struct dispatch_source_refs_s),
+	.dst_create     = _dispatch_unote_create_with_fd,
+	.dst_merge_evt  = _dispatch_source_merge_evt,
+};
+#endif // EVFILT_NW_CHANNEL
 
 #if DISPATCH_USE_MEMORYSTATUS
 
@@ -1609,9 +1621,9 @@ _dispatch_mach_notify_source_invoke(mach_msg_header_t *hdr)
 	if (!tlr) {
 		DISPATCH_INTERNAL_CRASH(0, "message received without expected trailer");
 	}
-	if (tlr->msgh_audit.val[DISPATCH_MACH_AUDIT_TOKEN_PID] != 0) {
-		(void)dispatch_assume_zero(
-				tlr->msgh_audit.val[DISPATCH_MACH_AUDIT_TOKEN_PID]);
+	if (hdr->msgh_id <= MACH_NOTIFY_LAST
+			&& dispatch_assume_zero(tlr->msgh_audit.val[
+			DISPATCH_MACH_AUDIT_TOKEN_PID])) {
 		mach_msg_destroy(hdr);
 		return;
 	}

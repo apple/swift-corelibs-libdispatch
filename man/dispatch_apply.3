@@ -1,4 +1,4 @@
-.\" Copyright (c) 2008-2010 Apple Inc. All rights reserved.
+.\" Copyright (c) 2008-2017 Apple Inc. All rights reserved.
 .Dd May 1, 2009
 .Dt dispatch_apply 3
 .Os Darwin
@@ -20,21 +20,32 @@ The
 .Fn dispatch_apply
 function provides data-level concurrency through a "for (;;)" loop like primitive:
 .Bd -literal
-dispatch_queue_t the_queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
 size_t iterations = 10;
 
 // 'idx' is zero indexed, just like:
 // for (idx = 0; idx < iterations; idx++)
 
-dispatch_apply(iterations, the_queue, ^(size_t idx) {
+dispatch_apply(iterations, DISPATCH_APPLY_AUTO, ^(size_t idx) {
 	printf("%zu\\n", idx);
 });
 .Ed
 .Pp
+Although any queue can be used, it is strongly recommended to use 
+.Vt DISPATCH_APPLY_AUTO
+as the 
+.Vt queue 
+argument to both
+.Fn dispatch_apply
+and
+.Fn dispatch_apply_f , 
+as shown in the example above, since this allows the system to automatically use worker threads
+that match the configuration of the current thread as closely as possible.
+No assumptions should be made about which global concurrent queue will be used.
+.Pp
 Like a "for (;;)" loop, the
 .Fn dispatch_apply
 function is synchronous.
-If asynchronous behavior is desired, please wrap the call to
+If asynchronous behavior is desired, wrap the call to
 .Fn dispatch_apply
 with a call to
 .Fn dispatch_async
@@ -49,7 +60,7 @@ achieved (perhaps using a power of two search):
 .Bd -literal
 #define STRIDE 3
 
-dispatch_apply(count / STRIDE, queue, ^(size_t idx) {
+dispatch_apply(count / STRIDE, DISPATCH_APPLY_AUTO, ^(size_t idx) {
 	size_t j = idx * STRIDE;
 	size_t j_stop = j + STRIDE;
 	do {
@@ -74,12 +85,21 @@ This is in contrast to asynchronous functions which must retain both the block
 and target queue for the duration of the asynchronous operation (as the calling
 function may immediately release its interest in these objects).
 .Sh FUNDAMENTALS
-Conceptually,
 .Fn dispatch_apply
-is a convenient wrapper around
+and
+.Fn dispatch_apply_f
+attempt to quickly create enough worker threads to efficiently iterate work in parallel.
+By contrast, a loop that passes work items individually to
 .Fn dispatch_async
-and a semaphore to wait for completion.
-In practice, the dispatch library optimizes this function.
+or
+.Fn dispatch_async_f
+will incur more overhead and does not express the desired parallel execution semantics to
+the system, so may not create an optimal number of worker threads for a parallel workload.
+For this reason, prefer to use 
+.Fn dispatch_apply
+or
+.Fn dispatch_apply_f
+when parallel execution is important.
 .Pp
 The
 .Fn dispatch_apply
@@ -99,5 +119,4 @@ use a for-loop around invocations of
 .Sh SEE ALSO
 .Xr dispatch 3 ,
 .Xr dispatch_async 3 ,
-.Xr dispatch_queue_create 3 ,
-.Xr dispatch_semaphore_create 3
+.Xr dispatch_queue_create 3

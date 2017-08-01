@@ -50,6 +50,25 @@
 #define DISPATCH_MACHPORT_DEBUG 0
 #endif
 
+#ifndef DISPATCH_TIMER_ASSERTIONS
+#if DISPATCH_DEBUG
+#define DISPATCH_TIMER_ASSERTIONS 1
+#else
+#define DISPATCH_TIMER_ASSERTIONS 0
+#endif
+#endif
+
+#if DISPATCH_TIMER_ASSERTIONS
+#define DISPATCH_TIMER_ASSERT(a, op, b, text) ({ \
+		typeof(a) _a = (a); \
+		if (unlikely(!(_a op (b)))) { \
+			DISPATCH_CLIENT_CRASH(_a, "Timer: " text); \
+		} \
+	})
+#else
+#define DISPATCH_TIMER_ASSERT(a, op, b, text) ((void)0)
+#endif
+
 #ifndef EV_VANISHED
 #define EV_VANISHED 0x0200
 #endif
@@ -105,6 +124,11 @@
 #	ifndef VQ_DESIRED_DISK
 #	undef HAVE_DECL_VQ_DESIRED_DISK
 #	endif // VQ_DESIRED_DISK
+
+#	if !defined(EVFILT_NW_CHANNEL) && defined(__APPLE__)
+#	define EVFILT_NW_CHANNEL       (-16)
+#	define NOTE_FLOW_ADV_UPDATE    	0x1
+#	endif
 #else // DISPATCH_EVENT_BACKEND_KEVENT
 #	define EV_ADD					0x0001
 #	define EV_DELETE				0x0002

@@ -741,10 +741,12 @@
 		96DF70BD0F38FE3C0074BD99 /* once.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; lineEnding = 0; path = once.c; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.c; };
 		B63B793F1E8F004F0060C1E1 /* dispatch_no_blocks.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = dispatch_no_blocks.c; sourceTree = "<group>"; };
 		B68330BC1EBCF6080003E71C /* dispatch_wl.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = dispatch_wl.c; sourceTree = "<group>"; };
+		B69878521F06F8790088F94F /* dispatch_signals.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = dispatch_signals.c; sourceTree = "<group>"; };
 		B6AC73FD1EB10973009FB2F2 /* perf_thread_request.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = perf_thread_request.c; sourceTree = "<group>"; };
 		B6AE9A4A1D7F53B300AC007F /* dispatch_queue_create.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_queue_create.c; sourceTree = "<group>"; };
 		B6AE9A561D7F53C100AC007F /* perf_async_bench.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = perf_async_bench.m; sourceTree = "<group>"; };
 		B6AE9A581D7F53CB00AC007F /* perf_bench.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = perf_bench.m; sourceTree = "<group>"; };
+		B6FA01801F0AD522004479BF /* dispatch_pthread_root_queue.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = dispatch_pthread_root_queue.c; sourceTree = "<group>"; };
 		C00B0E0A1C5AEBBE000330B3 /* libdispatch_dyld_stub.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libdispatch_dyld_stub.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		C00B0E121C5AEBF7000330B3 /* libdispatch-dyld-stub.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = "libdispatch-dyld-stub.xcconfig"; sourceTree = "<group>"; };
 		C01866BD1C5973210040FC07 /* libdispatch.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libdispatch.a; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -1060,6 +1062,7 @@
 				6E67D9151C1768B300FC98AC /* dispatch_pingpong.c */,
 				6E326B441C239B61002A6505 /* dispatch_priority.c */,
 				6E326AB51C225477002A6505 /* dispatch_proc.c */,
+				B6FA01801F0AD522004479BF /* dispatch_pthread_root_queue.c */,
 				6E326AB31C224870002A6505 /* dispatch_qos.c */,
 				B6AE9A4A1D7F53B300AC007F /* dispatch_queue_create.c */,
 				6E67D9111C17669C00FC98AC /* dispatch_queue_finalizer.c */,
@@ -1069,6 +1072,7 @@
 				6E326ADC1C234396002A6505 /* dispatch_readsync.c */,
 				6E8E4E6D1C1A35EE0004F5CC /* dispatch_select.c */,
 				6E8E4E9B1C1A4EF10004F5CC /* dispatch_sema.c */,
+				B69878521F06F8790088F94F /* dispatch_signals.c */,
 				6EA2CB841C005DEF0076794A /* dispatch_source.c */,
 				6E326AE01C234780002A6505 /* dispatch_starfish.c */,
 				6EE89F3D1BFAF5B000EB140D /* dispatch_state_machine.c */,

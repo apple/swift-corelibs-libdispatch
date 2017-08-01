@@ -253,11 +253,22 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 	if (unlikely(iterations == 0)) {
 		return;
 	}
-	int32_t thr_cnt = (int32_t)dispatch_hw_config(active_cpus);
 	dispatch_thread_context_t dtctxt =
 			_dispatch_thread_context_find(_dispatch_apply_key);
 	size_t nested = dtctxt ? dtctxt->dtc_apply_nesting : 0;
 	dispatch_queue_t old_dq = _dispatch_queue_get_current();
+
+	if (likely(dq == DISPATCH_APPLY_AUTO)) {
+		dq = _dispatch_apply_root_queue(old_dq);
+	}
+	dispatch_qos_t qos = _dispatch_priority_qos(dq->dq_priority);
+	if (unlikely(dq->do_targetq)) {
+		// if the queue passed-in is not a root queue, use the current QoS
+		// since the caller participates in the work anyway
+		qos = _dispatch_qos_from_pp(_dispatch_get_priority());
+	}
+	int32_t thr_cnt = (int32_t)_dispatch_qos_max_parallelism(qos,
+			DISPATCH_MAX_PARALLELISM_ACTIVE);
 
 	if (likely(!nested)) {
 		nested = iterations;
@@ -268,9 +279,6 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 	}
 	if (iterations < (size_t)thr_cnt) {
 		thr_cnt = (int32_t)iterations;
-	}
-	if (likely(dq == DISPATCH_APPLY_AUTO)) {
-		dq = _dispatch_apply_root_queue(old_dq);
 	}
 	struct dispatch_continuation_s dc = {
 		.dc_func = (void*)func,

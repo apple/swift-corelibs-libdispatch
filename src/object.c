@@ -236,8 +236,9 @@ void *
 dispatch_get_context(dispatch_object_t dou)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_get_context, dou);
-	if (slowpath(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) ||
-			slowpath(dx_hastypeflag(dou._do, QUEUE_ROOT))) {
+	if (unlikely(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT ||
+			dx_hastypeflag(dou._do, QUEUE_ROOT) ||
+			dx_hastypeflag(dou._do, QUEUE_BASE))) {
 		return NULL;
 	}
 	return dou._do->do_ctxt;
@@ -247,8 +248,9 @@ void
 dispatch_set_context(dispatch_object_t dou, void *context)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_set_context, dou, context);
-	if (slowpath(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) ||
-			slowpath(dx_hastypeflag(dou._do, QUEUE_ROOT))) {
+	if (unlikely(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT ||
+			dx_hastypeflag(dou._do, QUEUE_ROOT) ||
+			dx_hastypeflag(dou._do, QUEUE_BASE))) {
 		return;
 	}
 	dou._do->do_ctxt = context;
@@ -258,8 +260,9 @@ void
 dispatch_set_finalizer_f(dispatch_object_t dou, dispatch_function_t finalizer)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_set_finalizer_f, dou, finalizer);
-	if (slowpath(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) ||
-			slowpath(dx_hastypeflag(dou._do, QUEUE_ROOT))) {
+	if (unlikely(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT ||
+			dx_hastypeflag(dou._do, QUEUE_ROOT) ||
+			dx_hastypeflag(dou._do, QUEUE_BASE))) {
 		return;
 	}
 	dou._do->do_finalizer = finalizer;
@@ -271,8 +274,9 @@ dispatch_set_target_queue(dispatch_object_t dou, dispatch_queue_t tq)
 	DISPATCH_OBJECT_TFB(_dispatch_objc_set_target_queue, dou, tq);
 	if (dx_vtable(dou._do)->do_set_targetq) {
 		dx_vtable(dou._do)->do_set_targetq(dou._do, tq);
-	} else if (dou._do->do_ref_cnt != DISPATCH_OBJECT_GLOBAL_REFCNT &&
-			!slowpath(dx_hastypeflag(dou._do, QUEUE_ROOT))) {
+	} else if (likely(dou._do->do_ref_cnt != DISPATCH_OBJECT_GLOBAL_REFCNT &&
+			!dx_hastypeflag(dou._do, QUEUE_ROOT) &&
+			!dx_hastypeflag(dou._do, QUEUE_BASE))) {
 		if (slowpath(!tq)) {
 			tq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false);
 		}

@@ -85,6 +85,7 @@ voucher_create(voucher_recipe_t recipe)
 	if (extra) {
 		memcpy(_voucher_extra_recipes(voucher), recipe->vr_data, extra);
 	}
+	_voucher_trace(CREATE, voucher, MACH_PORT_NULL, 0);
 	return voucher;
 }
 #endif
@@ -585,6 +586,7 @@ _voucher_create_with_mach_voucher(mach_voucher_t kv, mach_msg_bits_t msgh_bits)
 		}
 	}
 
+	_voucher_trace(CREATE, v, v->v_kvoucher, v->v_activity);
 	_voucher_insert(v);
 	_dispatch_voucher_debug("kvoucher[0x%08x] create", v, kv);
 	return v;
@@ -619,6 +621,7 @@ _voucher_create_with_priority_and_mach_voucher(voucher_t ov,
 				"voucher[%p]", v, kv, ov);
 		_dispatch_voucher_debug_machport(kv);
 	}
+	_voucher_trace(CREATE, v, v->v_kvoucher, v->v_activity);
 	return v;
 }
 
@@ -676,6 +679,7 @@ _voucher_create_without_importance(voucher_t ov)
 		_dispatch_voucher_debug("kvoucher[0x%08x] create without importance "
 				"from voucher[%p]", v, kv, ov);
 	}
+	_voucher_trace(CREATE, v, v->v_kvoucher, v->v_activity);
 	return v;
 }
 
@@ -711,6 +715,7 @@ _voucher_create_accounting_voucher(voucher_t ov)
 		v->v_kvbase = _voucher_retain(ov);
 		_voucher_dealloc_mach_voucher(kv); // borrow base reference
 	}
+	_voucher_trace(CREATE, v, kv, v->v_activity);
 	_voucher_insert(v);
 	_dispatch_voucher_debug("kvoucher[0x%08x] create accounting voucher "
 			"from voucher[%p]", v, kv, ov);
@@ -774,6 +779,7 @@ _voucher_xref_dispose(voucher_t voucher)
 void
 _voucher_dispose(voucher_t voucher)
 {
+	_voucher_trace(DISPOSE, voucher);
 	_dispatch_voucher_debug("dispose", voucher);
 	if (slowpath(_voucher_hash_is_enqueued(voucher))) {
 		_dispatch_voucher_debug("corruption", voucher);
@@ -1237,6 +1243,7 @@ voucher_activity_create_with_data(firehose_tracepoint_id_t *trace_id,
 	}
 done:
 	*trace_id = ftid.ftid_value;
+	_voucher_trace(CREATE, v, v->v_kvoucher, va_id);
 	return v;
 }
 

@@ -59,7 +59,7 @@ static inline mach_msg_header_t* _dispatch_mach_msg_get_msg(
 static void _dispatch_mach_send_push(dispatch_mach_t dm, dispatch_object_t dou,
 		dispatch_qos_t qos);
 static void _dispatch_mach_cancel(dispatch_mach_t dm);
-static void _dispatch_mach_send_barrier_drain_push(dispatch_mach_t dm,
+static void _dispatch_mach_push_send_barrier_drain(dispatch_mach_t dm,
 		dispatch_qos_t qos);
 static void _dispatch_mach_handle_or_push_received_msg(dispatch_mach_t dm,
 		dispatch_mach_msg_t dmsg);
@@ -72,6 +72,9 @@ static dispatch_continuation_t _dispatch_mach_msg_async_reply_wrap(
 static void _dispatch_mach_notification_kevent_unregister(dispatch_mach_t dm);
 static void _dispatch_mach_notification_kevent_register(dispatch_mach_t dm,
 		mach_port_t send);
+
+// For tests only.
+DISPATCH_EXPORT void _dispatch_mach_hooks_install_default(void);
 
 dispatch_source_t
 _dispatch_source_create_mach_msg_direct_recv(mach_port_t recvp,
@@ -151,6 +154,13 @@ dispatch_mach_hooks_install_4libxpc(dispatch_mach_xpc_hooks_t hooks)
 		DISPATCH_CLIENT_CRASH(_dispatch_mach_xpc_hooks,
 				"dispatch_mach_hooks_install_4libxpc called twice");
 	}
+}
+
+void
+_dispatch_mach_hooks_install_default(void)
+{
+	os_atomic_store(&_dispatch_mach_xpc_hooks,
+			&_dispatch_mach_xpc_hooks_default, relaxed);
 }
 
 #pragma mark -
@@ -431,6 +441,9 @@ _dispatch_mach_reply_kevent_register(dispatch_mach_t dm, mach_port_t reply_port,
 	if (!drq) {
 		pri = dm->dq_priority;
 		wlh = dm->dm_recv_refs->du_wlh;
+	} else if (dx_type(drq) == DISPATCH_QUEUE_NETWORK_EVENT_TYPE) {
+		pri = DISPATCH_PRIORITY_FLAG_MANAGER;
+		wlh = (dispatch_wlh_t)drq;
 	} else if (dx_hastypeflag(drq, QUEUE_ROOT)) {
 		pri = drq->dq_priority;
 		wlh = DISPATCH_WLH_ANON;
@@ -1386,7 +1399,7 @@ out:
 
 	if (new_state & DISPATCH_MACH_STATE_PENDING_BARRIER) {
 		qos = _dmsr_state_max_qos(new_state);
-		_dispatch_mach_send_barrier_drain_push(dm, qos);
+		_dispatch_mach_push_send_barrier_drain(dm, qos);
 	} else {
 		if (needs_mgr || dm->dm_needs_mgr) {
 			qos = _dmsr_state_max_qos(new_state);
@@ -1472,7 +1485,7 @@ _dispatch_mach_send_barrier_drain_invoke(dispatch_continuation_t dc,
 
 DISPATCH_NOINLINE
 static void
-_dispatch_mach_send_barrier_drain_push(dispatch_mach_t dm, dispatch_qos_t qos)
+_dispatch_mach_push_send_barrier_drain(dispatch_mach_t dm, dispatch_qos_t qos)
 {
 	dispatch_continuation_t dc = _dispatch_continuation_alloc();
 
@@ -1534,7 +1547,7 @@ _dispatch_mach_send_push(dispatch_mach_t dm, dispatch_continuation_t dc,
 
 	dispatch_wakeup_flags_t wflags = 0;
 	if (state_flags & DISPATCH_MACH_STATE_PENDING_BARRIER) {
-		_dispatch_mach_send_barrier_drain_push(dm, qos);
+		_dispatch_mach_push_send_barrier_drain(dm, qos);
 	} else if (wakeup || dmsr->dmsr_disconnect_cnt ||
 			(dm->dq_atomic_flags & DSF_CANCELED)) {
 		wflags = DISPATCH_WAKEUP_MAKE_DIRTY | DISPATCH_WAKEUP_CONSUME_2;
@@ -1739,6 +1752,7 @@ _dispatch_mach_priority_propagate(mach_msg_option_t options,
 	}
 	*msg_pp = _dispatch_priority_compute_propagated(0, flags);
 	// TODO: remove QoS contribution of sync IPC messages to send queue
+	// rdar://31848737
 	return _dispatch_qos_from_pp(*msg_pp);
 }
 
@@ -2216,7 +2230,7 @@ dispatch_mach_send_barrier_f(dispatch_mach_t dm, void *context,
 		dispatch_function_t func)
 {
 	dispatch_continuation_t dc = _dispatch_continuation_alloc();
-	uintptr_t dc_flags = DISPATCH_OBJ_CONSUME_BIT;
+	uintptr_t dc_flags = DISPATCH_OBJ_CONSUME_BIT | DISPATCH_OBJ_MACH_BARRIER;
 	dispatch_qos_t qos;
 
 	_dispatch_continuation_init_f(dc, dm, context, func, 0, 0, dc_flags);
@@ -2231,7 +2245,7 @@ void
 dispatch_mach_send_barrier(dispatch_mach_t dm, dispatch_block_t barrier)
 {
 	dispatch_continuation_t dc = _dispatch_continuation_alloc();
-	uintptr_t dc_flags = DISPATCH_OBJ_CONSUME_BIT;
+	uintptr_t dc_flags = DISPATCH_OBJ_CONSUME_BIT | DISPATCH_OBJ_MACH_BARRIER;
 	dispatch_qos_t qos;
 
 	_dispatch_continuation_init(dc, dm, barrier, 0, 0, dc_flags);
@@ -2247,7 +2261,7 @@ dispatch_mach_receive_barrier_f(dispatch_mach_t dm, void *context,
 		dispatch_function_t func)
 {
 	dispatch_continuation_t dc = _dispatch_continuation_alloc();
-	uintptr_t dc_flags = DISPATCH_OBJ_CONSUME_BIT;
+	uintptr_t dc_flags = DISPATCH_OBJ_CONSUME_BIT | DISPATCH_OBJ_MACH_BARRIER;
 
 	_dispatch_continuation_init_f(dc, dm, context, func, 0, 0, dc_flags);
 	_dispatch_mach_barrier_set_vtable(dc, dm, DC_VTABLE(MACH_RECV_BARRIER));
@@ -2259,7 +2273,7 @@ void
 dispatch_mach_receive_barrier(dispatch_mach_t dm, dispatch_block_t barrier)
 {
 	dispatch_continuation_t dc = _dispatch_continuation_alloc();
-	uintptr_t dc_flags = DISPATCH_OBJ_CONSUME_BIT;
+	uintptr_t dc_flags = DISPATCH_OBJ_CONSUME_BIT | DISPATCH_OBJ_MACH_BARRIER;
 
 	_dispatch_continuation_init(dc, dm, barrier, 0, 0, dc_flags);
 	_dispatch_mach_barrier_set_vtable(dc, dm, DC_VTABLE(MACH_RECV_BARRIER));
