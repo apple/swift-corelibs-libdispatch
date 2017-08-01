@@ -732,6 +732,8 @@ extern bool _dispatch_memory_warn;
 #endif // HAVE_SYS_GUARDED_H
 
 
+#if DISPATCH_PURE_C
+
 #if DISPATCH_USE_DTRACE || DISPATCH_USE_DTRACE_INTROSPECTION
 typedef struct dispatch_trace_timer_params_s {
 	int64_t deadline, interval, leeway;
@@ -739,6 +741,8 @@ typedef struct dispatch_trace_timer_params_s {
 
 #include "provider.h"
 #endif // DISPATCH_USE_DTRACE || DISPATCH_USE_DTRACE_INTROSPECTION
+
+#endif // DISPATCH_PURE_C
 
 #if __has_include(<sys/kdebug.h>)
 #include <sys/kdebug.h>

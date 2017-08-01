@@ -3013,6 +3013,7 @@ out:
 	}
 }
 
+#if DISPATCH_USE_KEVENT_WORKQUEUE
 static void
 _dispatch_block_async_invoke_reset_max_qos(dispatch_queue_t dq,
 		dispatch_qos_t qos)
@@ -3053,6 +3054,7 @@ again:
 	_dispatch_deferred_items_get()->ddi_wlh_needs_update = true;
 	_dispatch_event_loop_drain(KEVENT_FLAG_IMMEDIATE);
 }
+#endif // DISPATCH_USE_KEVENT_WORKQUEUE
 
 #define DISPATCH_BLOCK_ASYNC_INVOKE_RELEASE           0x1
 #define DISPATCH_BLOCK_ASYNC_INVOKE_NO_OVERRIDE_RESET 0x2
@@ -3068,6 +3070,7 @@ _dispatch_block_async_invoke2(dispatch_block_t b, unsigned long invoke_flags)
 				"run more than once and waited for");
 	}
 
+#if DISPATCH_USE_KEVENT_WORKQUEUE
 	if (unlikely((dbpd->dbpd_flags &
 			DISPATCH_BLOCK_IF_LAST_RESET_QUEUE_QOS_OVERRIDE) &&
 			!(invoke_flags & DISPATCH_BLOCK_ASYNC_INVOKE_NO_OVERRIDE_RESET))) {
@@ -3077,6 +3080,7 @@ _dispatch_block_async_invoke2(dispatch_block_t b, unsigned long invoke_flags)
 			_dispatch_block_async_invoke_reset_max_qos(dq, qos);
 		}
 	}
+#endif // DISPATCH_USE_KEVENT_WORKQUEUE
 
 	if (!slowpath(atomic_flags & DBF_CANCELED)) {
 		dbpd->dbpd_block();
