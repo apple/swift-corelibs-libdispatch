@@ -30,7 +30,7 @@
 dispatch_source_t tweedledee;
 dispatch_source_t tweedledum;
 
-void
+static void
 fini(void *cxt)
 {
 	test_ptr_notnull("finalizer ran", cxt);
@@ -39,7 +39,7 @@ fini(void *cxt)
 	}
 }
 
-void
+static void
 test_timer(void)
 {
 	dispatch_test_start("Dispatch Suspend Timer");

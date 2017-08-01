@@ -101,12 +101,12 @@ test_concur_async(size_t n, size_t qw)
 	if (qw > 1) {
 		size_t concurrency = MIN(n * workers, qw);
 		if (done > min_acceptable_concurrency) {
-			test_long_less_than_or_equal("concurrently completed workers", done, concurrency);
+			test_sizet_less_than_or_equal("concurrently completed workers", done, concurrency);
 		} else {
-			test_long("concurrently completed workers", done, concurrency);
+			test_sizet("concurrently completed workers", done, concurrency);
 		}
 	} else {
-		test_long_less_than_or_equal("concurrently completed workers", done, 1);
+		test_sizet_less_than_or_equal("concurrently completed workers", done, 1);
 	}
 
 	for (i = 0, mc = mcs; i < n; i++, mc++) {
@@ -116,9 +116,9 @@ test_concur_async(size_t n, size_t qw)
 
 	size_t expect = MIN(n, qw);
 	if (max_concur > min_acceptable_concurrency) {
-		test_long_less_than_or_equal("max submission concurrency", max_concur, expect);
+		test_sizet_less_than_or_equal("max submission concurrency", max_concur, expect);
 	} else {
-		test_long("max submission concurrency", max_concur, expect);
+		test_sizet("max submission concurrency", max_concur, expect);
 	}
 
 	dispatch_group_wait(gw, DISPATCH_TIME_FOREVER);
@@ -159,9 +159,9 @@ test_concur_sync(size_t n, size_t qw)
 
 	size_t expect = qw == 1 ? 1 : n;
 	if (max_concur > min_acceptable_concurrency) {
-		test_long_less_than_or_equal("max sync concurrency", max_concur, expect);
+		test_sizet_less_than_or_equal("max sync concurrency", max_concur, expect);
 	} else {
-		test_long("max sync concurrency", max_concur, expect);
+		test_sizet("max sync concurrency", max_concur, expect);
 	}
 }
 
@@ -190,9 +190,9 @@ test_concur_apply(size_t n, size_t qw)
 
 	size_t expect = MIN(n, qw);
 	if (max_concur > min_acceptable_concurrency) {
-		test_long_less_than_or_equal("max apply concurrency", max_concur, expect);
+		test_sizet_less_than_or_equal("max apply concurrency", max_concur, expect);
 	} else {
-		test_long("max apply concurrency", max_concur, expect);
+		test_sizet("max apply concurrency", max_concur, expect);
 	}
 }
 
@@ -231,19 +231,19 @@ main(int argc __attribute__((unused)), char* argv[] __attribute__((unused)))
 	dispatch_test_start("Dispatch Private Concurrent/Wide Queue"); // <rdar://problem/8049506&8169448&8186485>
 
 #ifdef __linux__
-	activecpu = sysconf(_SC_NPROCESSORS_ONLN);
+	activecpu = (uint32_t)sysconf(_SC_NPROCESSORS_ONLN);
 #else
 	size_t s = sizeof(activecpu);
 	sysctlbyname("hw.activecpu", &activecpu, &s, NULL, 0);
 #endif
 	size_t n = activecpu / 2 > 1 ? activecpu / 2 : 1, w = activecpu * 2;
-	min_acceptable_concurrency = n;
+	min_acceptable_concurrency = (uint32_t)n;
 	dispatch_queue_t tq, ttq;
 	long qw, tqw, ttqw;
 	const char *ql, *tql, *ttql;
 	size_t qi, tqi, ttqi;
 	long qws[] = {
-		0, LONG_MAX, w, 1, // 0 <=> global queue
+		0, LONG_MAX, (long)w, 1, // 0 <=> global queue
 	};
 
 	g = dispatch_group_create();
@@ -262,16 +262,16 @@ main(int argc __attribute__((unused)), char* argv[] __attribute__((unused)))
 							"queue hierarchy: %s -> %s -> %s\n",
 							use_group_async ? "_group" : "", ql, tql, ttql);
 					fflush(stdout);
-					test_concur_async(n, MIN(qw, MIN(tqw, ttqw)));
+					test_concur_async(n, (size_t)MIN(qw, MIN(tqw, ttqw)));
 				}
 				fprintf(stdout, "Testing dispatch_sync on "
 						"queue hierarchy: %s -> %s -> %s\n", ql, tql, ttql);
 				fflush(stdout);
-				test_concur_sync(w, MIN(qw, MIN(tqw, ttqw)));
+				test_concur_sync(w, (size_t)MIN(qw, MIN(tqw, ttqw)));
 				fprintf(stdout, "Testing dispatch_apply on "
 						"queue hierarchy: %s -> %s -> %s\n", ql, tql, ttql);
 				fflush(stdout);
-				test_concur_apply(activecpu, MIN(qw, MIN(tqw, ttqw)));
+				test_concur_apply(activecpu, (size_t)MIN(qw, MIN(tqw, ttqw)));
 				dispatch_release(q);
 			}
 			dispatch_release(tq);

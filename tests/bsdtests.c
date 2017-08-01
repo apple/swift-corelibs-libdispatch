@@ -189,6 +189,20 @@ test_long_format(long actual, long expected, const char* format, ...)
 }
 
 void
+_test_sizet(const char* file, long line, const char* desc, size_t actual, size_t expected)
+{
+	_test_print(file, line, desc,
+		(actual == expected), "%zd", actual, "%zd", expected);
+}
+
+void
+test_sizet_format(size_t actual, size_t expected, const char* format, ...)
+{
+	GENERATE_DESC
+	_test_sizet(NULL, 0, desc, actual, expected);
+}
+
+void
 _test_uint64(const char* file, long line, const char* desc, uint64_t actual, uint64_t expected)
 {
 	_test_print(file, line, desc,
@@ -253,6 +267,32 @@ test_long_greater_than_or_equal_format(long actual, long expected_max, const cha
 {
 	GENERATE_DESC
 	_test_long_greater_than_or_equal(NULL, 0, desc, actual, expected_max);
+}
+
+void
+_test_sizet_less_than(const char* file, long line, const char* desc, size_t actual, size_t expected_max)
+{
+	_test_print(file, line, desc, (actual < expected_max), "%zd", actual, "<%zd", expected_max);
+}
+
+void
+test_sizet_less_than_format(size_t actual, size_t expected_max, const char* format, ...)
+{
+	GENERATE_DESC
+	_test_sizet_less_than(NULL, 0, desc, actual, expected_max);
+}
+
+void
+_test_sizet_less_than_or_equal(const char* file, long line, const char* desc, size_t actual, size_t expected_max)
+{
+	_test_print(file, line, desc, (actual <= expected_max), "%zd", actual, "<=%zd", expected_max);
+}
+
+void
+test_sizet_less_than_or_equal_format(size_t actual, size_t expected_max, const char* format, ...)
+{
+	GENERATE_DESC
+	_test_sizet_less_than_or_equal(NULL, 0, desc, actual, expected_max);
 }
 
 void
