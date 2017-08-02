@@ -47,7 +47,7 @@
 #endif
 #endif
 
-void
+static void
 test_fin(void *cxt)
 {
 	test_ptr("test_fin run", cxt, cxt);
@@ -71,7 +71,7 @@ dispatch_read2(dispatch_fd_t fd,
 		test_stop();
 	}
 	dispatch_source_t reader = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ,
-			fd, 0, queue);
+			(uintptr_t)fd, 0, queue);
 	test_ptr_notnull("reader", reader);
 
 	__block size_t bytes_read = 0;
@@ -85,8 +85,8 @@ dispatch_read2(dispatch_fd_t fd,
 			err = errno;
 		}
 		if (actual > 0) {
-			bytes_read += actual;
-			dispatch_data_t tmp_data = dispatch_data_create(buffer, actual,
+			bytes_read += (size_t)actual;
+			dispatch_data_t tmp_data = dispatch_data_create(buffer, (size_t)actual,
 					NULL, DISPATCH_DATA_DESTRUCTOR_FREE);
 			dispatch_data_t concat = dispatch_data_create_concat(data,tmp_data);
 			dispatch_release(tmp_data);
@@ -97,7 +97,7 @@ dispatch_read2(dispatch_fd_t fd,
 		if (actual < bufsiz || bytes_read >= length) {
 			char foo[2];
 			actual = read(fd, foo, 2);
-			bytes_read += actual;
+			bytes_read += (size_t)actual;
 			// confirm EOF condition
 			test_long("EOF", actual, 0);
 			dispatch_source_cancel(reader);
@@ -138,17 +138,17 @@ test_read(void)
 		test_errno("fstat", errno, 0);
 		test_stop();
 	}
-	size_t size = sb.st_size;
+	size_t size = (size_t)sb.st_size;
 	dispatch_group_t g = dispatch_group_create();
 	void (^b)(dispatch_data_t, int) = ^(dispatch_data_t d, int error) {
 		test_errno("read error", error, 0);
-		test_long("dispatch data size", d ? dispatch_data_get_size(d) : 0, size);
+		test_sizet("dispatch data size", d ? dispatch_data_get_size(d) : 0, size);
 		if (d) {
 			const void *contig_buf;
 			size_t contig_size;
 			dispatch_data_t tmp = dispatch_data_create_map(d, &contig_buf,
 					&contig_size);
-			test_long("dispatch data contig size", contig_size, size);
+			test_sizet("dispatch data contig size", contig_size, size);
 			if (contig_size) {
 				// Validate the copied buffer is similar to what we expect
 				char *buf = (char*)malloc(size);
@@ -208,7 +208,7 @@ test_read_write(void)
 		}
 		close(in);
 		size_t siz_out = dispatch_data_get_size(data_in);
-		test_long("read size", siz_out, siz_in);
+		test_sizet("read size", siz_out, siz_in);
 		dispatch_retain(data_in);
 		data = data_in;
 		dispatch_write(out, data, q, ^(dispatch_data_t data_out, int err_out) {
@@ -225,7 +225,7 @@ test_read_write(void)
 				}
 				close(out);
 				size_t siz_cmp = dispatch_data_get_size(cmp);
-				test_long("readback size", siz_cmp, siz_out);
+				test_sizet("readback size", siz_cmp, siz_out);
 				const void *data_buf, *cmp_buf;
 				dispatch_data_t data_map, cmp_map;
 				data_map = dispatch_data_create_map(data, &data_buf, NULL);
@@ -277,7 +277,7 @@ test_read_writes(void) // <rdar://problem/7785143>
 		}
 		close(in);
 		siz_out = dispatch_data_get_size(data_in);
-		test_long("read size", siz_out, siz_in);
+		test_sizet("read size", siz_out, siz_in);
 		dispatch_retain(data_in);
 		data = data_in;
 		dispatch_data_t data_chunks[chunks_out];
@@ -314,7 +314,7 @@ test_read_writes(void) // <rdar://problem/7785143>
 		}
 		close(out);
 		size_t siz_cmp = dispatch_data_get_size(cmp);
-		test_long("readback size", siz_cmp, siz_out);
+		test_sizet("readback size", siz_cmp, siz_out);
 		const void *data_buf, *cmp_buf;
 		dispatch_data_t data_map, cmp_map;
 		data_map = dispatch_data_create_map(data, &data_buf, NULL);
@@ -383,8 +383,8 @@ test_writes_reads_eagain(void) // rdar://problem/8333366
 	close(in);
 	close(*(fd+1));
 	test_group_wait(g);
-	test_long("dispatch_read deliveries", deliveries, chunks);
-	test_long("dispatch_read data size", siz_acc, siz);
+	test_sizet("dispatch_read deliveries", deliveries, chunks);
+	test_sizet("dispatch_read data size", siz_acc, siz);
 	close(*fd);
 	Block_release(b);
 	dispatch_release(g);

@@ -27,14 +27,14 @@
 uint32_t count = 0;
 const uint32_t final = 1000000; // 10M
 
-void
+static void
 pingpongloop(dispatch_group_t group, dispatch_queue_t ping, dispatch_queue_t pong, size_t counter)
 {
 	//printf("[%p] %s: %lu\n", (void*)(uintptr_t)pthread_self(), dispatch_queue_get_label(dispatch_get_current_queue()), counter);
 	if (counter < final) {
 		dispatch_group_async(group, pong, ^{ pingpongloop(group, pong, ping, counter+1); });
 	} else {
-		count = counter;
+		count = (uint32_t)counter;
 	}
 }
 

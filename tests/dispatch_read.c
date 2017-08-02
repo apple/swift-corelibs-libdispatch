@@ -35,7 +35,7 @@
 static size_t bytes_total;
 static size_t bytes_read;
 
-void
+static void
 test_fin(void *cxt)
 {
 	test_ptr("test_fin run", cxt, cxt);
@@ -59,7 +59,7 @@ main(void)
 		perror(path);
 		exit(EXIT_FAILURE);
 	}
-	bytes_total = sb.st_size;
+	bytes_total = (size_t)sb.st_size;
 
 	if (fcntl(infd, F_SETFL, O_NONBLOCK) != 0) {
 		perror(path);
@@ -74,7 +74,7 @@ main(void)
 	dispatch_queue_t main_q = dispatch_get_main_queue();
 	test_ptr_notnull("dispatch_get_main_queue", main_q);
 
-	dispatch_source_t reader = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, infd, 0, main_q);
+	dispatch_source_t reader = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, (uintptr_t)infd, 0, main_q);
 	test_ptr_notnull("dispatch_source_create", reader);
 	assert(reader);
 
@@ -85,11 +85,11 @@ main(void)
 		const ssize_t bufsiz = 1024*500; // 500 KB buffer
 		static char buffer[1024*500];	// 500 KB buffer
 		ssize_t actual = read(infd, buffer, sizeof(buffer));
-		bytes_read += actual;
+		bytes_read += (size_t)actual;
 		printf("bytes read: %zd\n", actual);
 		if (actual < bufsiz) {
 			actual = read(infd, buffer, sizeof(buffer));
-			bytes_read += actual;
+			bytes_read += (size_t)actual;
 			// confirm EOF condition
 			test_long("EOF", actual, 0);
 			dispatch_source_cancel(reader);
@@ -97,7 +97,7 @@ main(void)
 	});
 
 	dispatch_source_set_cancel_handler(reader, ^{
-		test_long("Bytes read", bytes_read, bytes_total);
+		test_sizet("Bytes read", bytes_read, bytes_total);
 		int res = close(infd);
 		test_errno("close", res == -1 ? errno : 0, 0);
 		dispatch_release(reader);
