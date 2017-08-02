@@ -126,9 +126,9 @@ test_readsync(dispatch_queue_t rq, dispatch_queue_t wq, size_t n)
 	}
 	free(mrs);
 
-	test_sizet("max readers", max_readers, n);
-	test_sizet("max writers", max_writers, 1);
-	test_sizet("concurrent readers & writers", crw, 0);
+	test_long("max readers", max_readers, n);
+	test_long("max writers", max_writers, 1);
+	test_long("concurrent readers & writers", crw, 0);
 }
 
 int
@@ -138,7 +138,7 @@ main(void)
 
 	uint32_t activecpu, wq_max_threads;
 #ifdef __linux__
-	activecpu = (uint32_t)sysconf(_SC_NPROCESSORS_ONLN);
+	activecpu = sysconf(_SC_NPROCESSORS_ONLN);
 	// don't want to parse /proc/sys/kernel/threads-max
 	wq_max_threads = activecpu * NTHREADS + 2;
 #else

@@ -91,10 +91,6 @@ void _test_long(const char* file, long line, const char* desc, long actual, long
 #define test_long(a,b,c) _test_long(__SOURCE_FILE__, __LINE__, a, b, c)
 void test_long_format(long actual, long expected, const char *format, ...) __printflike(3,4);
 
-void _test_sizet(const char* file, long line, const char* desc, size_t actual, size_t expected);
-#define test_sizet(a,b,c) _test_sizet(__SOURCE_FILE__, __LINE__, a, b, c)
-void test_sizet_format(size_t actual, size_t expected, const char *format, ...) __printflike(3,4);
-
 void _test_uint64(const char* file, long line, const char* desc, uint64_t actual, uint64_t expected);
 #define test_uint64(a,b,c) _test_uint64(__SOURCE_FILE__, __LINE__, a, b, c)
 void test_uint64_format(uint64_t actual, uint64_t expected, const char* desc, ...);
@@ -114,14 +110,6 @@ void test_long_less_than_or_equal_format(long actual, long max_expected, const c
 void _test_long_greater_than_or_equal(const char* file, long line, const char* desc, long actual, long expected_min);
 #define test_long_greater_than_or_equal(a,b,c) _test_long_greater_than_or_equal(__SOURCE_FILE__, __LINE__, a, b, c)
 void test_long_greater_than_or_equal_format(long actual, long expected_min, const char *format, ...) __printflike(3,4);
-
-void _test_sizet_less_than(const char* file, long line, const char* desc, size_t actual, size_t max_expected);
-#define test_sizet_less_than(a,b,c) _test_sizet_less_than(__SOURCE_FILE__, __LINE__, a, b, c)
-void test_sizet_less_than_format(size_t actual, size_t max_expected, const char *format, ...) __printflike(3,4);
-
-void _test_sizet_less_than_or_equal(const char* file, long line, const char* desc, size_t actual, size_t max_expected);
-#define test_sizet_less_than_or_equal(a,b,c) _test_sizet_less_than_or_equal(__SOURCE_FILE__, __LINE__, a, b, c)
-void test_sizet_less_than_or_equal_format(size_t actual, size_t max_expected, const char *format, ...) __printflike(3,4);
 
 void _test_double_less_than_or_equal(const char* file, long line, const char* desc, double val, double max_expected);
 #define test_double_less_than_or_equal(d, v, m) _test_double_less_than_or_equal(__SOURCE_FILE__, __LINE__, d, v, m)
