@@ -75,14 +75,14 @@ static volatile long iterations;
 static long total;
 static size_t prio0, priorities = PRIORITIES;
 
-static int
+int
 n_blocks(void)
 {
 	static dispatch_once_t pred;
 	static int n;
 	dispatch_once(&pred, ^{
 #ifdef __linux__
-		n = (int)sysconf(_SC_NPROCESSORS_CONF);
+		n = sysconf(_SC_NPROCESSORS_CONF);
 #else
 		size_t l = sizeof(n);
 		int rc = sysctlbyname("hw.ncpu", &n, &l, NULL, 0);
@@ -93,7 +93,7 @@ n_blocks(void)
 	return n;
 }
 
-static void
+void
 histogram(void)
 {
 	long completed = 0;
@@ -126,7 +126,7 @@ histogram(void)
 	}
 }
 
-static void
+void
 cpubusy(void* context)
 {
 	if (done) return;
@@ -152,7 +152,7 @@ cpubusy(void* context)
 	}
 }
 
-static void
+void
 submit_work(dispatch_queue_t queue, void* context)
 {
 	int i;
@@ -174,7 +174,7 @@ main(int argc __attribute__((unused)), char* argv[] __attribute__((unused)))
 	priorities--;
 #endif
 
-	iterations = total = ((int)priorities * n_blocks()) / 2;
+	iterations = total = (priorities * n_blocks()) * 0.50;
 
 #if USE_SET_TARGET_QUEUE
 	dispatch_test_start("Dispatch Priority (Set Target Queue)");

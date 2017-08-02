@@ -52,7 +52,7 @@
 #endif
 #endif
 
-static void
+void
 test_fin(void *cxt)
 {
 	test_ptr("test_fin run", cxt, cxt);
@@ -96,7 +96,7 @@ test_io_close(int with_timer, bool from_path)
 		test_errno("fstat", errno, 0);
 		test_stop();
 	}
-	const size_t size = (size_t)sb.st_size / chunks;
+	const size_t size = sb.st_size / chunks;
 	const int expected_error = with_timer? ECANCELED : 0;
 	dispatch_source_t t = NULL;
 	dispatch_group_t g = dispatch_group_create();
@@ -142,7 +142,7 @@ test_io_close(int with_timer, bool from_path)
 	for (i = 0; i < chunks; i++) {
 		data[i] = dispatch_data_empty;
 		dispatch_group_enter(g);
-		dispatch_io_read(io, (off_t)(i * size), size, dispatch_get_global_queue(0,0),
+		dispatch_io_read(io, i * size, size, dispatch_get_global_queue(0,0),
 				^(bool done, dispatch_data_t d, int error) {
 			if (d) {
 				chunk_size[i] += dispatch_data_get_size(d);
@@ -180,16 +180,16 @@ test_io_close(int with_timer, bool from_path)
 	}
 	for (i = 0; i < chunks; i++) {
 		if (with_timer) {
-			test_sizet_less_than("chunk size", chunk_size[i], size + 1);
+			test_long_less_than("chunk size", chunk_size[i], size + 1);
 		} else {
-			test_sizet("chunk size", chunk_size[i], size);
+			test_long("chunk size", chunk_size[i], size);
 		}
 		total += chunk_size[i];
 	}
 	if (with_timer) {
-		test_sizet_less_than("total size", total, chunks * size + 1);
+		test_long_less_than("total size", total, chunks * size + 1);
 	} else {
-		test_sizet("total size", total, chunks * size);
+		test_long("total size", total, chunks * size);
 	}
 }
 
@@ -251,7 +251,7 @@ test_io_read_write(void)
 		test_errno("fstat", errno, 0);
 		test_stop();
 	}
-	const size_t siz_in = MIN(1024 * 1024, (size_t)sb.st_size);
+	const size_t siz_in = MIN(1024 * 1024, sb.st_size);
 
 	int out = mkstemp(path_out);
 	if (out == -1) {
@@ -283,7 +283,7 @@ test_io_read_write(void)
 	dispatch_group_enter(g);
 	dispatch_io_read(io_in, 0, siz_in, q,
 			^(bool done_in, dispatch_data_t data_in, int err_in) {
-		test_sizet_less_than("read size", dispatch_data_get_size(data_in),
+		test_long_less_than("read size", dispatch_data_get_size(data_in),
 				siz_in);
 		if (data_in) {
 			dispatch_group_enter(g);
@@ -291,11 +291,11 @@ test_io_read_write(void)
 					^(bool done_out, dispatch_data_t data_out, int err_out) {
 				if (done_out) {
 					test_errno("dispatch_io_write", err_out, 0);
-					test_sizet("remaining write size",
+					test_long("remaining write size",
 							data_out ? dispatch_data_get_size(data_out) : 0, 0);
 					dispatch_group_leave(g);
 				} else {
-					test_sizet_less_than("remaining write size",
+					test_long_less_than("remaining write size",
 							dispatch_data_get_size(data_out), siz_in);
 				}
 			});
@@ -321,7 +321,7 @@ test_io_read_write(void)
 		}
 		close(out);
 		size_t siz_cmp = dispatch_data_get_size(cmp);
-		test_sizet("readback size", siz_cmp, siz_in);
+		test_long("readback size", siz_cmp, siz_in);
 		const void *data_buf, *cmp_buf;
 		dispatch_data_t data_map, cmp_map;
 		data_map = dispatch_data_create_map(data, &data_buf, NULL);
@@ -378,7 +378,7 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 				}
 				free(buffer);
 				close(fd);
-				process_data((size_t)r);
+				process_data(r);
 			});
 			break;
 		case DISPATCH_READ_ON_CONCURRENT_QUEUE:
@@ -455,7 +455,7 @@ test_read_dirs(char **paths, dispatch_queue_t queue, dispatch_group_t g,
 		test_ptr_notnull("fts_open failed", tree);
 		test_stop();
 	}
-	int files_opened = 0;
+	unsigned int files_opened = 0;
 	size_t size, total_size = 0;
 	FTSENT *node;
 	while ((node = fts_read(tree)) &&
@@ -465,11 +465,11 @@ test_read_dirs(char **paths, dispatch_queue_t queue, dispatch_group_t g,
 		} else if (node->fts_info == FTS_F) {
 			dispatch_group_enter(g);
 			dispatch_semaphore_wait(s, DISPATCH_TIME_FOREVER);
-			size = (size_t)node->fts_statp->st_size;
+			size = node->fts_statp->st_size;
 			total_size += size;
 			files_opened++;
 			test_async_read(node->fts_path, size, option, queue, ^(size_t len){
-				OSAtomicAdd32((int32_t)len, (volatile int32_t *)bytes);
+				OSAtomicAdd32(len, bytes);
 				dispatch_semaphore_signal(s);
 				dispatch_group_leave(g);
 			});
@@ -485,7 +485,7 @@ test_read_dirs(char **paths, dispatch_queue_t queue, dispatch_group_t g,
 		test_stop();
 	}
 	test_group_wait(g);
-	test_sizet("total size", *bytes, total_size);
+	test_long("total size", *bytes, total_size);
 	return files_opened;
 }
 
@@ -506,7 +506,7 @@ test_read_many_files(void)
 	dispatch_semaphore_t s = dispatch_semaphore_create(maxopenfiles);
 	uint64_t start;
 	volatile uint32_t bytes;
-	int files_read, i;
+	unsigned int files_read, i;
 
 	const dispatch_queue_t queues[] = {
 		[DISPATCH_ASYNC_READ_ON_CONCURRENT_QUEUE] =
@@ -546,7 +546,7 @@ test_read_many_files(void)
 		l.rlim_cur = 2 * maxopenfiles + 256;
 		setrlimit(RLIMIT_NOFILE, &l);
 	}
-	for (i = 0; i < (int)(sizeof(queues)/sizeof(dispatch_queue_t)); ++i) {
+	for (i = 0; i < sizeof(queues)/sizeof(dispatch_queue_t); ++i) {
 		fprintf(stdout, "%s:\n", names[i]);
 		bytes = 0;
 		start = mach_absolute_time();
@@ -610,7 +610,7 @@ test_io_from_io(void) // rdar://problem/8388909
 #else
 		test_errno("error from write to write protected directory", err_out, EACCES);
 #endif
-		test_sizet("unwritten data", dispatch_data_get_size(data_out), 256);
+		test_long("unwritten data", dispatch_data_get_size(data_out), 256);
 		if (!err_out && done) {
 			test_stop();
 		}
@@ -661,11 +661,11 @@ test_io_from_io(void) // rdar://problem/8388909
 				^(bool done, dispatch_data_t data_out, int err_out) {
 			if (done) {
 				test_errno("dispatch_io_write", err_out, 0);
-				test_sizet("remaining write size",
+				test_long("remaining write size",
 						data_out ? dispatch_data_get_size(data_out) : 0, 0);
 				dispatch_group_leave(g);
 			} else {
-				test_sizet_less_than("remaining write size",
+				test_long_less_than("remaining write size",
 						dispatch_data_get_size(data_out), siz_in);
 			}
 		});
@@ -696,7 +696,7 @@ test_io_from_io(void) // rdar://problem/8388909
 	dispatch_release(io2);
 	test_group_wait(g);
 	dispatch_release(g);
-	test_sizet("readback size", dispatch_data_get_size(data_out), siz_in);
+	test_long("readback size", dispatch_data_get_size(data_out), siz_in);
 	dispatch_release(data_out);
 #endif
 }

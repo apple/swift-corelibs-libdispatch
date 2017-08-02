@@ -48,14 +48,14 @@ main(int argc __attribute__((unused)), char* argv[] __attribute__((unused)))
 	uint64_t interval = 1000000000 / 100;
 	double interval_d = interval / 1000000000.0;
 	// for 25 seconds
-	unsigned int target = (unsigned int)(25.0 / interval_d);
+	unsigned int target = 25 / interval_d;
 
 	dispatch_test_start("Dispatch Timer Drift");
 
 	dispatch_source_t t = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
 	test_ptr_notnull("dispatch_source_create", t);
 
-	dispatch_source_set_timer(t, dispatch_time(DISPATCH_TIME_NOW, (int64_t)interval), interval, 0);
+	dispatch_source_set_timer(t, dispatch_time(DISPATCH_TIME_NOW, interval), interval, 0);
 
 	dispatch_source_set_event_handler(t, ^{
 		struct timeval now_tv;
