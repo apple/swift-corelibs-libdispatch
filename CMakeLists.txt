@@ -25,6 +25,7 @@ include(GNUInstallDirs)
 set(WITH_BLOCKS_RUNTIME "" CACHE PATH "Path to blocks runtime")
 
 include(DispatchAppleOptions)
+include(DispatchSanitization)
 
 include(DispatchCompilerWarnings)
 dispatch_common_warnings()
