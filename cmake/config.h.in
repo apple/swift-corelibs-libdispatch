@@ -188,9 +188,6 @@
 /* Define to 1 if you have the <sys/types.h> header file. */
 #cmakedefine01 HAVE_SYS_TYPES_H
 
-/* Define to 1 if you have the <sys/sysmacros.h> header file.  */
-#cmakedefine01 HAVE_SYS_SYSMACROS_H
-
 /* Define to 1 if you have the <TargetConditionals.h> header file. */
 #cmakedefine HAVE_TARGETCONDITIONALS_H
 
