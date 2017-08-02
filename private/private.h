@@ -28,7 +28,12 @@
 #define __DISPATCH_PRIVATE__
 
 #ifdef __APPLE__
+#include <Availability.h>
+#include <os/availability.h>
 #include <TargetConditionals.h>
+#include <os/base.h>
+#elif defined(__linux__)
+#include <os/linux_base.h>
 #endif
 
 #if TARGET_OS_MAC
@@ -38,9 +43,6 @@
 #endif
 #if HAVE_UNISTD_H
 #include <unistd.h>
-#endif
-#if HAVE_SYS_CDEFS_H
-#include <sys/cdefs.h>
 #endif
 #include <pthread.h>
 #if TARGET_OS_MAC

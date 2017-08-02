@@ -13,9 +13,12 @@
 #ifndef __OS_LINUX_BASE__
 #define __OS_LINUX_BASE__
 
+#if __has_include(<sys/sysmacros.h>)
+#include <sys/sysmacros.h>
+#endif
 #include <sys/param.h>
 
-#if HAVE_SYS_CDEFS_H
+#if __has_include(<sys/cdefs.h>)
 #include <sys/cdefs.h>
 #endif
 
