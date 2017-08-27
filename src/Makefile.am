@@ -188,7 +188,7 @@ SWIFT_GEN_FILES=	\
 	$(abs_builddir)/swift/Dispatch.swiftdoc \
 	$(SWIFT_OBJ_FILES)
 
-swiftmoddir=${prefix}/lib/swift/${OS_STRING}/${host_cpu}
+swiftmoddir=${prefix}/lib/swift/${OS_STRING}/${target_cpu}
 swiftmod_HEADERS=\
 	$(abs_builddir)/swift/Dispatch.swiftmodule \
 	$(abs_builddir)/swift/Dispatch.swiftdoc
