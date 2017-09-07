@@ -107,9 +107,17 @@ public extension DispatchQueue {
 		_swift_dispatch_apply_current(iterations, work)
 	}
 
+	#if os(Android)
+	static var androidSwiftMain = DispatchQueue(label: "AndroidSwiftMain")
+
+	public class var main: DispatchQueue {
+        return DispatchQueue.androidSwiftMain
+	}
+	#else
 	public class var main: DispatchQueue {
 		return DispatchQueue(queue: _swift_dispatch_get_main_queue())
 	}
+	#endif
 
 	@available(OSX, deprecated: 10.10, message: "")
 	@available(*, deprecated: 8.0, message: "")
