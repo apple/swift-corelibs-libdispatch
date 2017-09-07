@@ -276,11 +276,13 @@ _dispatch_unote_register(dispatch_unote_t du,
 		}
 	} else {
 		dmn = _dispatch_muxnote_create(du, events);
-		if (_dispatch_epoll_update(dmn, events, EPOLL_CTL_ADD) < 0) {
-			_dispatch_muxnote_dispose(dmn);
-			dmn = NULL;
-		} else {
-			TAILQ_INSERT_TAIL(dmb, dmn, dmn_list);
+		if (dmn) {
+			if (_dispatch_epoll_update(dmn, events, EPOLL_CTL_ADD) < 0) {
+				_dispatch_muxnote_dispose(dmn);
+				dmn = NULL;
+			} else {
+				TAILQ_INSERT_TAIL(dmb, dmn, dmn_list);
+			}
 		}
 	}
 
