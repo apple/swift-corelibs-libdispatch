@@ -156,3 +156,18 @@ to get the gold linker.
     make
     make install
     ```
+
+### Building for Android
+
+To build the Swift Android toolchain including libdispatch, run:
+
+```
+swift/utils/android$ ./build-toolchain
+```
+
+Then run:
+
+```
+swift-corelibs-libdispatch$ ./build-android
+```
+
