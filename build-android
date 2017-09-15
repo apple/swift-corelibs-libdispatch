@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+#
+# build-android
+#
+# This source file is part of the Swift.org open source project
+#
+# Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
+# Licensed under Apache License v2.0 with Runtime Library Exception
+#
+# See https://swift.org/LICENSE.txt for license information
+# See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+
+set -e
+
+cd "$(dirname $0)/.." || exit 1
+SWIFT_PATH=$PWD
+
+ANDROID_NDK_PATH="${ANDROID_NDK_PATH:?Please set the Android NDK path in the ANDROID_NDK_PATH environment variable}"
+
+SWIFT_ANDROID_TOOLCHAIN_PATH="${SWIFT_PATH}/toolchains/swift-android-toolchain"
+SWIFT_ANDROID_BUILD_PATH="${SWIFT_PATH}/build/Ninja-ReleaseAssert"
+
+cd ${SWIFT_PATH}/swift-corelibs-libdispatch 
+sh autogen.sh
+env \
+    CC="$SWIFT_ANDROID_BUILD_PATH/llvm-linux-x86_64/bin/clang" \
+    CXX="$SWIFT_ANDROID_BUILD_PATH/llvm-linux-x86_64/bin/clang++" \
+    SWIFTC="$SWIFT_ANDROID_BUILD_PATH/swift-linux-x86_64/bin/swiftc" \
+    CFLAGS="" \
+    CPPFLAGS="-DTARGET_OS_EMBEDDED" \
+    ./configure \
+        --with-swift-toolchain="$SWIFT_ANDROID_TOOLCHAIN_PATH/usr" \
+        --with-build-variant=release \
+        --enable-android \
+        --host=arm-linux-androideabi \
+        --with-android-ndk=$ANDROID_NDK_PATH \
+        --with-android-api-level=21 \
+        --disable-build-tests \
+        --prefix=$SWIFT_ANDROID_TOOLCHAIN_PATH/usr
+
+    #LIBS="-L/tmp/placeholder" \
+    #CFLAGS="-DTRASHIT='' -I/usr/include" \
+
+#sed -ie "s@-L/tmp/placeholder@-L$SWIFT_ANDROID_TOOLCHAIN_PATH/usr/lib/swift/android -lswiftCore -L$ANDROID_NDK_PATH/toolchains/arm-linux-androideabi-4.9/prebuilt/linux-x86_64/arm-linux-androideabi/lib/armv7-a -latomic@" src/Makefile
+
+make clean
+make
+make install
+
+#rsync -av $SWIFT_PATH/swift-corelibs-libdispatch/src/swift/Dispatch.swift{doc,module} $SWIFT_ANDROID_TOOLCHAIN_PATH/usr/lib/swift/android/armv7/
