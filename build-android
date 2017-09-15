@@ -38,13 +38,6 @@ env \
         --disable-build-tests \
         --prefix=$SWIFT_ANDROID_TOOLCHAIN_PATH/usr
 
-    #LIBS="-L/tmp/placeholder" \
-    #CFLAGS="-DTRASHIT='' -I/usr/include" \
-
-#sed -ie "s@-L/tmp/placeholder@-L$SWIFT_ANDROID_TOOLCHAIN_PATH/usr/lib/swift/android -lswiftCore -L$ANDROID_NDK_PATH/toolchains/arm-linux-androideabi-4.9/prebuilt/linux-x86_64/arm-linux-androideabi/lib/armv7-a -latomic@" src/Makefile
-
 make clean
 make
 make install
-
-#rsync -av $SWIFT_PATH/swift-corelibs-libdispatch/src/swift/Dispatch.swift{doc,module} $SWIFT_ANDROID_TOOLCHAIN_PATH/usr/lib/swift/android/armv7/
