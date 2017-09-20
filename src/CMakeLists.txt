@@ -99,6 +99,8 @@ if(CMAKE_SWIFT_COMPILER)
                     SWIFT_FLAGS
                       -I ${CMAKE_SOURCE_DIR}
                       ${swift_optimization_flags})
+  add_dependencies(swiftDispatch
+                     module-map-symlinks)
   target_sources(dispatch
                  PRIVATE
                    swift/DispatchStubs.cc
