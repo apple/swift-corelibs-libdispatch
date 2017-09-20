@@ -36,3 +36,5 @@ libtool
 *.cmake
 CMakeCache.txt
 CMakeFiles
+*.so
+*.a
