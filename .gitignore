@@ -32,3 +32,9 @@ libtool
 .dirstamp
 /dispatch/module.modulemap
 /private/module.modulemap
+
+*.cmake
+CMakeCache.txt
+CMakeFiles
+*.so
+*.a
