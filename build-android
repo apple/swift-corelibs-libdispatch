@@ -20,14 +20,25 @@ ANDROID_NDK_PATH="${ANDROID_NDK_PATH:?Please set the Android NDK path in the AND
 SWIFT_ANDROID_TOOLCHAIN_PATH="${SWIFT_PATH}/swift-android-toolchain"
 SWIFT_ANDROID_BUILD_PATH="${SWIFT_PATH}/build/Ninja-ReleaseAssert"
 
-cd ${SWIFT_PATH}/swift-corelibs-libdispatch
+cd ${SWIFT_PATH}/swift-corelibs-libdispatch 
+sh autogen.sh
+env \
+    CC="$SWIFT_ANDROID_BUILD_PATH/llvm-linux-x86_64/bin/clang" \
+    CXX="$SWIFT_ANDROID_BUILD_PATH/llvm-linux-x86_64/bin/clang++" \
+    SWIFTC="$SWIFT_ANDROID_BUILD_PATH/swift-linux-x86_64/bin/swiftc" \
+    CFLAGS="" \
+    CPPFLAGS="-DTARGET_OS_EMBEDDED" \
+    ./configure \
+        --with-swift-toolchain="$SWIFT_ANDROID_TOOLCHAIN_PATH/usr" \
+        --with-build-variant=release \
+        --enable-android \
+        --host=arm-linux-androideabi \
+        --with-android-ndk=$ANDROID_NDK_PATH \
+        --with-android-api-level=21 \
+        --disable-build-tests \
+        --prefix=$SWIFT_ANDROID_TOOLCHAIN_PATH/usr
 
-cmake -DCMAKE_SYSTEM_NAME=Android \
-    -DCMAKE_SYSTEM_VERSION=21 \
-    -DCMAKE_ANDROID_NDK=$ANDROID_NDK_PATH \
-    -DCMAKE_C_COMPILER=$SWIFT_ANDROID_BUILD_PATH/llvm-linux-x86_64/bin/clang \
-    -DCMAKE_CXX_COMPILER=$SWIFT_ANDROID_BUILD_PATH/llvm-linux-x86_64/bin/clang++
-
+make clean
 make
 
 cp ${SWIFT_PATH}/swift-corelibs-libdispatch/src/libdispatch.so $SWIFT_ANDROID_TOOLCHAIN_PATH/usr/lib/swift/android
