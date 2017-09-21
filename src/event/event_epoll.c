@@ -270,7 +270,7 @@ _dispatch_unote_register(dispatch_unote_t du,
 			if (_dispatch_epoll_update(dmn, events, EPOLL_CTL_MOD) < 0) {
 				dmn = NULL;
 			} else {
-				dmn->dmn_events = events;
+				dmn->dmn_events |= events;
 				dmn->dmn_disarmed_events &= ~events;
 			}
 		}
