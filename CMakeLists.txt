@@ -33,7 +33,32 @@ dispatch_common_warnings()
 option(ENABLE_DISPATCH_INIT_CONSTRUCTOR "enable libdispatch_init as a constructor" ON)
 set(USE_LIBDISPATCH_INIT_CONSTRUCTOR ${ENABLE_DISPATCH_INIT_CONSTRUCTOR})
 
-# TODO(compnerd) swift options
+option(ENABLE_SWIFT "enable libdispatch swift overlay" OFF)
+if(ENABLE_SWIFT)
+  if(NOT CMAKE_SWIFT_COMPILER)
+    message(FATAL_ERROR "CMAKE_SWIFT_COMPILER must be defined to enable swift")
+  endif()
+
+  get_filename_component(SWIFT_TOOLCHAIN ${CMAKE_SWIFT_COMPILER} DIRECTORY)
+  get_filename_component(SWIFT_TOOLCHAIN ${SWIFT_TOOLCHAIN} DIRECTORY)
+
+  string(TOLOWER ${CMAKE_SYSTEM_NAME} SWIFT_OS)
+  set(SWIFT_RUNTIME_LIBDIR ${SWIFT_TOOLCHAIN}/lib/swift/${SWIFT_OS}/${CMAKE_SYSTEM_PROCESSOR})
+
+  add_library(swiftCore
+              SHARED IMPORTED GLOBAL)
+  set_target_properties(swiftCore
+                        PROPERTIES
+                          IMPORTED_LOCATION
+                            ${SWIFT_RUNTIME_LIBDIR}/${CMAKE_SHARED_LIBRARY_PREFIX}swiftCore${CMAKE_SHARED_LIBRARY_SUFFIX})
+
+  add_library(swiftSwiftOnoneSupport
+              SHARED IMPORTED GLOBAL)
+  set_target_properties(swiftSwiftOnoneSupport
+                        PROPERTIES
+                          IMPORTED_LOCATION
+                           ${SWIFT_RUNTIME_LIBDIR}/${CMAKE_SHARED_LIBRARY_PREFIX}swiftSwiftOnoneSupport${CMAKE_SHARED_LIBRARY_SUFFIX})
+endif()
 
 option(BUILD_SHARED_LIBS "build shared libraries" ON)
 
