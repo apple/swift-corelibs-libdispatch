@@ -27,26 +27,22 @@
 #ifndef __DISPATCH_SHIMS_PERFMON__
 #define __DISPATCH_SHIMS_PERFMON__
 
-#if DISPATCH_PERF_MON && !DISPATCH_INTROSPECTION
-
-#if defined (USE_APPLE_TSD_OPTIMIZATIONS) && defined(SIMULATE_5491082) && \
-		(defined(__i386__) || defined(__x86_64__))
-#ifdef __LP64__
-#define _dispatch_perfmon_workitem_inc() asm("incq %%gs:%0" : "+m" \
-		(*(void **)(dispatch_bcounter_key * sizeof(void *) + \
-		_PTHREAD_TSD_OFFSET)) :: "cc")
-#define _dispatch_perfmon_workitem_dec() asm("decq %%gs:%0" : "+m" \
-		(*(void **)(dispatch_bcounter_key * sizeof(void *) + \
-		_PTHREAD_TSD_OFFSET)) :: "cc")
-#else
-#define _dispatch_perfmon_workitem_inc() asm("incl %%gs:%0" : "+m" \
-		(*(void **)(dispatch_bcounter_key * sizeof(void *) + \
-		_PTHREAD_TSD_OFFSET)) :: "cc")
-#define _dispatch_perfmon_workitem_dec() asm("decl %%gs:%0" : "+m" \
-		(*(void **)(dispatch_bcounter_key * sizeof(void *) + \
-		_PTHREAD_TSD_OFFSET)) :: "cc")
+#if DISPATCH_PERF_MON
+#if DISPATCH_INTROSPECTION
+#error invalid configuration
 #endif
-#else /* !USE_APPLE_TSD_OPTIMIZATIONS */
+
+typedef enum {
+	perfmon_thread_no_trace = 0,
+	perfmon_thread_event_no_steal,	// 1) Event threads that couldn't steal
+	perfmon_thread_event_steal,		// 2) Event threads failing to steal very late
+	perfmon_thread_worker_non_oc,	// 3) Non overcommit threads finding
+									//		nothing on the root queues
+	perfmon_thread_worker_oc,		// 4) Overcommit thread finding nothing to do
+	perfmon_thread_manager,
+} perfmon_thread_type;
+
+DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_perfmon_workitem_inc(void)
 {
@@ -54,6 +50,8 @@ _dispatch_perfmon_workitem_inc(void)
 	cnt = (unsigned long)_dispatch_thread_getspecific(dispatch_bcounter_key);
 	_dispatch_thread_setspecific(dispatch_bcounter_key, (void *)++cnt);
 }
+
+DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_perfmon_workitem_dec(void)
 {
@@ -61,18 +59,40 @@ _dispatch_perfmon_workitem_dec(void)
 	cnt = (unsigned long)_dispatch_thread_getspecific(dispatch_bcounter_key);
 	_dispatch_thread_setspecific(dispatch_bcounter_key, (void *)--cnt);
 }
-#endif /* USE_APPLE_TSD_OPTIMIZATIONS */
 
+#define DISPATCH_PERF_MON_ARGS_PROTO  , uint64_t perfmon_start
+#define DISPATCH_PERF_MON_ARGS        , perfmon_start
+#define DISPATCH_PERF_MON_VAR         uint64_t perfmon_start;
+#define DISPATCH_PERF_MON_VAR_INIT    uint64_t perfmon_start = 0;
+
+#define _dispatch_perfmon_start_impl(trace) ({ \
+		if (trace) _dispatch_ktrace0(DISPATCH_PERF_MON_worker_thread_start); \
+		perfmon_start = _dispatch_absolute_time(); \
+	})
 #define _dispatch_perfmon_start() \
-		uint64_t start = _dispatch_absolute_time()
-#define _dispatch_perfmon_end() \
-		_dispatch_queue_merge_stats(start)
+		DISPATCH_PERF_MON_VAR _dispatch_perfmon_start_impl(true)
+#define _dispatch_perfmon_start_notrace() \
+		DISPATCH_PERF_MON_VAR _dispatch_perfmon_start_impl(false)
+#define _dispatch_perfmon_end(thread_type) \
+		_dispatch_queue_merge_stats(perfmon_start, true, thread_type)
+#define _dispatch_perfmon_end_notrace() \
+		_dispatch_queue_merge_stats(perfmon_start, false, perfmon_thread_no_trace)
+
+void _dispatch_queue_merge_stats(uint64_t start, bool trace, perfmon_thread_type type);
+
 #else
 
+#define DISPATCH_PERF_MON_ARGS_PROTO
+#define DISPATCH_PERF_MON_ARGS
+#define DISPATCH_PERF_MON_VAR
+#define DISPATCH_PERF_MON_VAR_INIT
 #define _dispatch_perfmon_workitem_inc()
 #define _dispatch_perfmon_workitem_dec()
+#define _dispatch_perfmon_start_impl(trace)
 #define _dispatch_perfmon_start()
-#define _dispatch_perfmon_end()
+#define _dispatch_perfmon_end(thread_type)
+#define _dispatch_perfmon_start_notrace()
+#define _dispatch_perfmon_end_notrace()
 
 #endif // DISPATCH_PERF_MON
 

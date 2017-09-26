@@ -26,6 +26,7 @@
 @protocol OS_dispatch_source_timer;
 @protocol OS_dispatch_source_data_add;
 @protocol OS_dispatch_source_data_or;
+@protocol OS_dispatch_source_data_replace;
 @protocol OS_dispatch_source_vnode;
 @protocol OS_dispatch_source_write;
 
@@ -44,6 +45,7 @@ static void _dispatch_overlay_constructor() {
     class_addProtocol(source, @protocol(OS_dispatch_source_timer));
     class_addProtocol(source, @protocol(OS_dispatch_source_data_add));
     class_addProtocol(source, @protocol(OS_dispatch_source_data_or));
+    class_addProtocol(source, @protocol(OS_dispatch_source_data_replace));
     class_addProtocol(source, @protocol(OS_dispatch_source_vnode));
     class_addProtocol(source, @protocol(OS_dispatch_source_write));
   }
@@ -51,11 +53,40 @@ static void _dispatch_overlay_constructor() {
 
 #endif /* USE_OBJC */
 
-#if 0 /* FIXME -- adding directory to include path may need build-script plumbing to do properly... */
-#include "swift/Runtime/Config.h"
+
+// Replicate the SWIFT_CC(swift) calling convention macro from
+// swift/include/swift/Runtime/Config.h because it is
+// quite awkward to include Config.h and its recursive includes
+// in dispatch. This define must be manually kept in synch
+#define SWIFT_CC(CC) SWIFT_CC_##CC
+#if SWIFT_USE_SWIFTCALL
+#define SWIFT_CC_swift __attribute__((swiftcall))
 #else
-#define SWIFT_CC(x) /* FIXME!! */
+#define SWIFT_CC_swift
 #endif
+
+extern "C" dispatch_queue_attr_t _swift_dispatch_queue_concurrent(void);
+extern "C" void _swift_dispatch_apply_current(size_t iterations, __attribute__((__noescape__)) void (^block)(size_t));
+extern "C" dispatch_queue_t _swift_dispatch_get_main_queue(void);
+extern "C" dispatch_data_t _swift_dispatch_data_empty(void);
+extern "C" dispatch_block_t _swift_dispatch_data_destructor_default(void);
+extern "C" dispatch_block_t _swift_dispatch_data_destructor_free(void);
+extern "C" dispatch_block_t _swift_dispatch_data_destructor_munmap(void);
+extern "C" dispatch_block_t _swift_dispatch_block_create_with_qos_class(dispatch_block_flags_t flags, dispatch_qos_class_t qos, int relative_priority, dispatch_block_t block);
+extern "C" dispatch_block_t _swift_dispatch_block_create_noescape(dispatch_block_flags_t flags, dispatch_block_t block);
+extern "C" void _swift_dispatch_block_cancel(dispatch_block_t block);
+extern "C" long _swift_dispatch_block_wait(dispatch_block_t block, dispatch_time_t timeout);
+extern "C" void _swift_dispatch_block_notify(dispatch_block_t block, dispatch_queue_t queue, dispatch_block_t notification_block);
+extern "C" long _swift_dispatch_block_testcancel(dispatch_block_t block);
+extern "C" void _swift_dispatch_async(dispatch_queue_t queue, dispatch_block_t block);
+extern "C" void _swift_dispatch_group_async(dispatch_group_t group, dispatch_queue_t queue, dispatch_block_t block);
+extern "C" void _swift_dispatch_sync(dispatch_queue_t queue, dispatch_block_t block);
+extern "C" void _swift_dispatch_release(dispatch_object_t obj);
+extern "C" void _swift_dispatch_retain(dispatch_object_t obj);
+#if !USE_OBJC
+extern "C" void * objc_retainAutoreleasedReturnValue(void *obj);
+#endif
+
 
 SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
 extern "C" dispatch_queue_attr_t
@@ -136,12 +167,6 @@ _swift_dispatch_block_testcancel(dispatch_block_t block) {
 }
 
 SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
-extern "C" bool
-_swift_dispatch_data_apply(dispatch_data_t data, bool (^applier)(dispatch_data_t, size_t, const void *, size_t)) {
-  return dispatch_data_apply(data, applier);
-}
-
-SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
 extern "C" void
 _swift_dispatch_async(dispatch_queue_t queue, dispatch_block_t block) {
   dispatch_async(queue, block);
@@ -165,13 +190,14 @@ _swift_dispatch_release(dispatch_object_t obj) {
   dispatch_release(obj);
 }
 
-// DISPATCH_RUNTIME_STDLIB_INTERFACE
-// extern "C" dispatch_queue_t
-// _swift_apply_current_root_queue() {
-// 	return DISPATCH_APPLY_CURRENT_ROOT_QUEUE;
-// }
+SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
+extern "C" void
+_swift_dispatch_retain(dispatch_object_t obj) {
+  dispatch_retain(obj);
+}
 
 #define SOURCE(t)                                                              \
+  extern "C" dispatch_source_type_t _swift_dispatch_source_type_##t(void);     \
   SWIFT_CC(swift)                                                              \
   DISPATCH_RUNTIME_STDLIB_INTERFACE extern "C" dispatch_source_type_t  \
   _swift_dispatch_source_type_##t(void) {                                      \
@@ -180,6 +206,7 @@ _swift_dispatch_release(dispatch_object_t obj) {
 
 SOURCE(DATA_ADD)
 SOURCE(DATA_OR)
+SOURCE(DATA_REPLACE)
 #if HAVE_MACH
 SOURCE(MACH_SEND)
 SOURCE(MACH_RECV)
@@ -196,12 +223,25 @@ SOURCE(VNODE)
 #endif
 SOURCE(WRITE)
 
-// See comment in CFFuntime.c explaining why objc_retainAutoreleasedReturnValue is needed.
-extern "C" void swift_release(void *);
+#if !USE_OBJC
+
+// For CF functions with 'Get' semantics, the compiler currently assumes that
+// the result is autoreleased and must be retained. It does so on all platforms
+// by emitting a call to objc_retainAutoreleasedReturnValue. On Darwin, this is
+// implemented by the ObjC runtime. On non-ObjC platforms, there is no runtime,
+// and therefore we have to stub it out here ourselves. The compiler will
+// eventually call swift_release to balance the retain below. This is a
+// workaround until the compiler no longer emits this callout on non-ObjC
+// platforms.
+extern "C" void swift_retain(void *);
+
+SWIFT_CC(swift) DISPATCH_RUNTIME_STDLIB_INTERFACE
 extern "C" void * objc_retainAutoreleasedReturnValue(void *obj) {
     if (obj) {
-        swift_release(obj);
+        swift_retain(obj);
         return obj;
     }
     else return NULL;
 }
+
+#endif // !USE_OBJC

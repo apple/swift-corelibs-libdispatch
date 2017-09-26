@@ -13,13 +13,31 @@
 #ifndef __OS_LINUX_BASE__
 #define __OS_LINUX_BASE__
 
-#include <sys/user.h>
 #include <sys/param.h>
+
+#if HAVE_SYS_CDEFS_H
+#include <sys/cdefs.h>
+#endif
+
+#ifndef API_AVAILABLE
+#define API_AVAILABLE(...)
+#endif
+#ifndef API_DEPRECATED
+#define API_DEPRECATED(...)
+#endif
+#ifndef API_UNAVAILABLE
+#define API_UNAVAILABLE(...)
+#endif
+#ifndef API_DEPRECATED_WITH_REPLACEMENT
+#define API_DEPRECATED_WITH_REPLACEMENT(...)
+#endif
 
 #if __GNUC__
 #define OS_EXPECT(x, v) __builtin_expect((x), (v))
+#define OS_UNUSED __attribute__((__unused__))
 #else
 #define OS_EXPECT(x, v) (x)
+#define OS_UNUSED
 #endif
 
 #ifndef os_likely
@@ -67,6 +85,14 @@
 #define OS_STRINGIFY(s) __OS_STRINGIFY(s)
 #define __OS_CONCAT(x, y) x ## y
 #define OS_CONCAT(x, y) __OS_CONCAT(x, y)
+
+#if __has_feature(objc_fixed_enum) || __has_extension(cxx_strong_enums)
+#define OS_ENUM(_name, _type, ...) \
+typedef enum : _type { __VA_ARGS__ } _name##_t
+#else
+#define OS_ENUM(_name, _type, ...) \
+enum { __VA_ARGS__ }; typedef _type _name##_t
+#endif
 
 /*
  * Stub out misc linking and compilation attributes

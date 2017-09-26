@@ -14,62 +14,62 @@
 
 import CDispatch
 
-@available(*, unavailable, renamed:"DispatchQueue.init(label:attributes:target:)")
+@available(*, unavailable, renamed:"DispatchQueue.init(label:qos:attributes:autoreleaseFrequency:target:)")
 public func dispatch_queue_create(_ label: UnsafePointer<Int8>?, _ attr: dispatch_queue_attr_t?) -> DispatchQueue
 {
 	fatalError()
 }
 
-@available(*, unavailable, renamed:"DispatchQueue.init(label:attributes:target:)")
+@available(*, unavailable, renamed:"DispatchQueue.init(label:qos:attributes:autoreleaseFrequency:target:)")
 public func dispatch_queue_create_with_target(_ label: UnsafePointer<Int8>?, _ attr: dispatch_queue_attr_t?, _ queue: DispatchQueue?) -> DispatchQueue
 {
 	fatalError()
 }
 
 @available(*, unavailable, renamed:"DispatchIO.init(type:fileDescriptor:queue:cleanupHandler:)")
-public func dispatch_io_create(_ type: UInt, _ fd: Int32, _ queue: DispatchQueue, _ cleanup_handler: (Int32) -> Void) -> DispatchIO
+public func dispatch_io_create(_ type: UInt, _ fd: Int32, _ queue: DispatchQueue, _ cleanup_handler: @escaping (Int32) -> Void) -> DispatchIO
 {
 	fatalError()
 }
 
 @available(*, unavailable, renamed:"DispatchIO.init(type:path:oflag:mode:queue:cleanupHandler:)")
-public func dispatch_io_create_with_path(_ type: UInt, _ path: UnsafePointer<Int8>, _ oflag: Int32, _ mode: mode_t, _ queue: DispatchQueue, _ cleanup_handler: (Int32) -> Void) -> DispatchIO
+public func dispatch_io_create_with_path(_ type: UInt, _ path: UnsafePointer<Int8>, _ oflag: Int32, _ mode: mode_t, _ queue: DispatchQueue, _ cleanup_handler: @escaping (Int32) -> Void) -> DispatchIO
 {
 	fatalError()
 }
 
 @available(*, unavailable, renamed:"DispatchIO.init(type:io:queue:cleanupHandler:)")
-public func dispatch_io_create_with_io(_ type: UInt, _ io: DispatchIO, _ queue: DispatchQueue, _ cleanup_handler: (Int32) -> Void) -> DispatchIO
+public func dispatch_io_create_with_io(_ type: UInt, _ io: DispatchIO, _ queue: DispatchQueue, _ cleanup_handler: @escaping (Int32) -> Void) -> DispatchIO
 {
 	fatalError()
 }
 
 @available(*, unavailable, renamed:"DispatchIO.read(fileDescriptor:length:queue:handler:)")
-public func dispatch_read(_ fd: Int32, _ length: Int, _ queue: DispatchQueue, _ handler: (dispatch_data_t, Int32) -> Void)
+public func dispatch_read(_ fd: Int32, _ length: Int, _ queue: DispatchQueue, _ handler: @escaping (dispatch_data_t, Int32) -> Void)
 {
 	fatalError()
 }
 
 @available(*, unavailable, renamed:"DispatchIO.read(self:offset:length:queue:ioHandler:)")
-func dispatch_io_read(_ channel: DispatchIO, _ offset: off_t, _ length: Int, _ queue: DispatchQueue, _ io_handler: (Bool, dispatch_data_t?, Int32) -> Void)
+func dispatch_io_read(_ channel: DispatchIO, _ offset: off_t, _ length: Int, _ queue: DispatchQueue, _ io_handler: @escaping (Bool, dispatch_data_t?, Int32) -> Void)
 {
 	fatalError()
 }
 
 @available(*, unavailable, renamed:"DispatchIO.write(self:offset:data:queue:ioHandler:)")
-func dispatch_io_write(_ channel: DispatchIO, _ offset: off_t, _ data: dispatch_data_t, _ queue: DispatchQueue, _ io_handler: (Bool, dispatch_data_t?, Int32) -> Void)
+func dispatch_io_write(_ channel: DispatchIO, _ offset: off_t, _ data: dispatch_data_t, _ queue: DispatchQueue, _ io_handler: @escaping (Bool, dispatch_data_t?, Int32) -> Void)
 {
 	fatalError()
 }
 
 @available(*, unavailable, renamed:"DispatchIO.write(fileDescriptor:data:queue:handler:)")
-func dispatch_write(_ fd: Int32, _ data: dispatch_data_t, _ queue: DispatchQueue, _ handler: (dispatch_data_t?, Int32) -> Void)
+func dispatch_write(_ fd: Int32, _ data: dispatch_data_t, _ queue: DispatchQueue, _ handler: @escaping (dispatch_data_t?, Int32) -> Void)
 {
 	fatalError()
 }
 
 @available(*, unavailable, renamed:"DispatchData.init(bytes:)")
-public func dispatch_data_create(_ buffer: UnsafePointer<Void>, _ size: Int, _ queue: DispatchQueue?, _ destructor: (() -> Void)?) -> dispatch_data_t
+public func dispatch_data_create(_ buffer: UnsafeRawPointer, _ size: Int, _ queue: DispatchQueue?, _ destructor: (() -> Void)?) -> dispatch_data_t
 {
 	fatalError()
 }
@@ -81,7 +81,7 @@ public func dispatch_data_get_size(_ data: dispatch_data_t) -> Int
 }
 
 @available(*, unavailable, renamed:"DispatchData.withUnsafeBytes(self:body:)")
-public func dispatch_data_create_map(_ data: dispatch_data_t, _ buffer_ptr: UnsafeMutablePointer<UnsafePointer<Void>?>?, _ size_ptr: UnsafeMutablePointer<Int>?) -> dispatch_data_t
+public func dispatch_data_create_map(_ data: dispatch_data_t, _ buffer_ptr: UnsafeMutablePointer<UnsafeRawPointer?>?, _ size_ptr: UnsafeMutablePointer<Int>?) -> dispatch_data_t
 {
 	fatalError()
 }
@@ -99,7 +99,7 @@ public func dispatch_data_create_subrange(_ data: dispatch_data_t, _ offset: Int
 }
 
 @available(*, unavailable, renamed:"DispatchData.enumerateBytes(self:block:)")
-public func dispatch_data_apply(_ data: dispatch_data_t, _ applier: (dispatch_data_t, Int, UnsafePointer<Void>, Int) -> Bool) -> Bool
+public func dispatch_data_apply(_ data: dispatch_data_t, _ applier: @escaping (dispatch_data_t, Int, UnsafeRawPointer, Int) -> Bool) -> Bool
 {
 	fatalError()
 }
@@ -110,14 +110,14 @@ public func dispatch_data_copy_region(_ data: dispatch_data_t, _ location: Int, 
 	fatalError()
 }
 
-@available(*, unavailable, renamed:"DispatchQueue.asynchronously(self:group:qos:flags:execute:)")
-public func dispatch_group_async(_ group: DispatchGroup, _ queue: DispatchQueue, _ block: () -> Void)
+@available(*, unavailable, renamed:"DispatchQueue.async(self:group:qos:flags:execute:)")
+public func dispatch_group_async(_ group: DispatchGroup, _ queue: DispatchQueue, _ block: @escaping () -> Void)
 {
 	fatalError()
 }
 
 @available(*, unavailable, renamed: "DispatchGroup.notify(self:qos:flags:queue:execute:)")
-public func dispatch_group_notify(_ group: DispatchGroup, _ queue: DispatchQueue, _ block: () -> Void) 
+public func dispatch_group_notify(_ group: DispatchGroup, _ queue: DispatchQueue, _ block: @escaping () -> Void)
 {
 	fatalError()
 }
@@ -140,14 +140,14 @@ public func dispatch_io_set_interval(_ channel: DispatchIO, _ interval: UInt64, 
 	fatalError()
 }
 
-@available(*, unavailable, renamed:"DispatchQueue.apply(attributes:iterations:execute:)")
-public func dispatch_apply(_ iterations: Int, _ queue: DispatchQueue, _ block: @noescape (Int) -> Void) 
+@available(*, unavailable, renamed:"DispatchQueue.concurrentPerform(iterations:execute:)")
+public func dispatch_apply(_ iterations: Int, _ queue: DispatchQueue, _ block: (Int) -> Void)
 {
 	fatalError()
 }
 
-@available(*, unavailable, renamed:"DispatchQueue.asynchronously(self:execute:)")
-public func dispatch_async(_ queue: DispatchQueue, _ block: () -> Void)
+@available(*, unavailable, renamed:"DispatchQueue.async(self:execute:)")
+public func dispatch_async(_ queue: DispatchQueue, _ block: @escaping () -> Void)
 {
 	fatalError()
 }
@@ -158,25 +158,25 @@ public func dispatch_get_global_queue(_ identifier: Int, _ flags: UInt) -> Dispa
 	fatalError()
 }
 
-@available(*, unavailable, renamed: "DispatchQueue.main")
-public func dispatch_get_main_queue() -> DispatchQueue 
+@available(*, unavailable, renamed: "getter:DispatchQueue.main()")
+public func dispatch_get_main_queue() -> DispatchQueue
 {
 	fatalError()
 }
 
-@available(*, unavailable, renamed:"DispatchQueueAttributes.initiallyInactive")
+@available(*, unavailable, renamed:"DispatchQueue.Attributes.initiallyInactive")
 public func dispatch_queue_attr_make_initially_inactive(_ attr: dispatch_queue_attr_t?) -> dispatch_queue_attr_t
 {
 	fatalError()
 }
 
-@available(*, unavailable, renamed:"DispatchQueueAttributes.autoreleaseWorkItem")
+@available(*, unavailable, renamed:"DispatchQueue.AutoreleaseFrequency.workItem")
 public func dispatch_queue_attr_make_with_autorelease_frequency(_ attr: dispatch_queue_attr_t?, _ frequency: dispatch_autorelease_frequency_t) -> dispatch_queue_attr_t
 {
 	fatalError()
 }
 
-@available(*, unavailable, renamed:"DispatchQueueAttributes.qosUserInitiated")
+@available(*, unavailable, renamed:"DispatchQoS")
 public func dispatch_queue_attr_make_with_qos_class(_ attr: dispatch_queue_attr_t?, _ qos_class: dispatch_qos_class_t, _ relative_priority: Int32) -> dispatch_queue_attr_t
 {
 	fatalError()
@@ -194,38 +194,38 @@ public func dispatch_queue_get_qos_class(_ queue: DispatchQueue, _ relative_prio
 	fatalError()
 }
 
-@available(*, unavailable, renamed:"DispatchQueue.after(self:when:execute:)")
-public func dispatch_after(_ when: dispatch_time_t, _ queue: DispatchQueue, _ block: () -> Void)
+@available(*, unavailable, renamed:"DispatchQueue.asyncAfter(self:deadline:qos:flags:execute:)")
+public func dispatch_after(_ when: dispatch_time_t, _ queue: DispatchQueue, _ block: @escaping () -> Void)
 {
 	fatalError()
 }
 
-@available(*, unavailable, renamed:"DispatchQueue.asynchronously(self:group:qos:flags:execute:)")
-public func dispatch_barrier_async(_ queue: DispatchQueue, _ block: () -> Void)
+@available(*, unavailable, renamed:"DispatchQueue.async(self:group:qos:flags:execute:)")
+public func dispatch_barrier_async(_ queue: DispatchQueue, _ block: @escaping () -> Void)
 {
 	fatalError()
 }
 
-@available(*, unavailable, renamed:"DispatchQueue.synchronously(self:flags:execute:)")
-public func dispatch_barrier_sync(_ queue: DispatchQueue, _ block: @noescape () -> Void)
+@available(*, unavailable, renamed:"DispatchQueue.sync(self:flags:execute:)")
+public func dispatch_barrier_sync(_ queue: DispatchQueue, _ block: () -> Void)
 {
 	fatalError()
 }
 
 @available(*, unavailable, renamed:"DispatchQueue.setSpecific(self:key:value:)")
-public func dispatch_queue_set_specific(_ queue: DispatchQueue, _ key: UnsafePointer<Void>, _ context: UnsafeMutablePointer<Void>?, _ destructor: (@convention(c) (UnsafeMutablePointer<Void>?) -> Void)?)
+public func dispatch_queue_set_specific(_ queue: DispatchQueue, _ key: UnsafeRawPointer, _ context: UnsafeMutableRawPointer?, _ destructor: (@convention(c) (UnsafeMutableRawPointer?) -> Void)?)
 {
 	fatalError()
 }
 
 @available(*, unavailable, renamed:"DispatchQueue.getSpecific(self:key:)")
-public func dispatch_queue_get_specific(_ queue: DispatchQueue, _ key: UnsafePointer<Void>) -> UnsafeMutablePointer<Void>?
+public func dispatch_queue_get_specific(_ queue: DispatchQueue, _ key: UnsafeRawPointer) -> UnsafeMutableRawPointer?
 {
 	fatalError()
 }
 
 @available(*, unavailable, renamed:"DispatchQueue.getSpecific(key:)")
-public func dispatch_get_specific(_ key: UnsafePointer<Void>) -> UnsafeMutablePointer<Void>?
+public func dispatch_get_specific(_ key: UnsafeRawPointer) -> UnsafeMutableRawPointer?
 {
 	fatalError()
 }
@@ -338,22 +338,22 @@ public func dispatch_walltime(_ when: UnsafePointer<timespec>?, _ delta: Int64) 
 	fatalError()
 }
 
-@available(*, unavailable, renamed: "DispatchQueue.GlobalAttributes.qosUserInitiated")
+@available(*, unavailable, renamed: "DispatchQueue.GlobalQueuePriority.high")
 public var DISPATCH_QUEUE_PRIORITY_HIGH: Int {
   fatalError()
 }
 
-@available(*, unavailable, renamed: "DispatchQueue.GlobalAttributes.qosDefault")
+@available(*, unavailable, renamed: "DispatchQueue.GlobalQueuePriority.default")
 public var DISPATCH_QUEUE_PRIORITY_DEFAULT: Int {
   fatalError()
 }
 
-@available(*, unavailable, renamed: "DispatchQueue.GlobalAttributes.qosUtility")
+@available(*, unavailable, renamed: "DispatchQueue.GlobalQueuePriority.low")
 public var DISPATCH_QUEUE_PRIORITY_LOW: Int {
   fatalError()
 }
 
-@available(*, unavailable, renamed: "DispatchQueue.GlobalAttributes.qosBackground")
+@available(*, unavailable, renamed: "DispatchQueue.GlobalQueuePriority.background")
 public var DISPATCH_QUEUE_PRIORITY_BACKGROUND: Int {
   fatalError()
 }

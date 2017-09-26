@@ -50,7 +50,7 @@ DISPATCH_DATA_DECL(dispatch_data);
  */
 #define dispatch_data_empty \
 		DISPATCH_GLOBAL_OBJECT(dispatch_data_t, _dispatch_data_empty)
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT struct dispatch_data_s _dispatch_data_empty;
 
 /*!
@@ -83,7 +83,7 @@ DISPATCH_EXPORT struct dispatch_data_s _dispatch_data_empty;
  * was allocated by the malloc() family and should be destroyed with free(3).
  */
 #define DISPATCH_DATA_DESTRUCTOR_FREE (_dispatch_data_destructor_free)
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(free);
 
 /*!
@@ -92,7 +92,7 @@ DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(free);
  * from buffers that require deallocation with munmap(2).
  */
 #define DISPATCH_DATA_DESTRUCTOR_MUNMAP (_dispatch_data_destructor_munmap)
-__OSX_AVAILABLE_STARTING(__MAC_10_9, __IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(munmap);
 
 #ifdef __BLOCKS__
@@ -117,7 +117,7 @@ DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(munmap);
  *			is no longer needed.
  * @result		A newly created dispatch data object.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
 dispatch_data_create(const void *buffer,
@@ -134,7 +134,7 @@ dispatch_data_create(const void *buffer,
  * @param data	The dispatch data object to query.
  * @result	The number of bytes represented by the data object.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_PURE DISPATCH_NONNULL1 DISPATCH_NOTHROW
 size_t
 dispatch_data_get_size(dispatch_data_t data);
@@ -158,7 +158,7 @@ dispatch_data_get_size(dispatch_data_t data);
  *			size of the mapped contiguous memory region, or NULL.
  * @result		A newly created dispatch data object.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
@@ -181,7 +181,7 @@ dispatch_data_create_map(dispatch_data_t data,
  * @result	A newly created object representing the concatenation of the
  *		data1 and data2 objects.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
@@ -202,7 +202,7 @@ dispatch_data_create_concat(dispatch_data_t data1, dispatch_data_t data2);
  * @result		A newly created object representing the specified
  *			subrange of the data object.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
@@ -247,10 +247,11 @@ typedef bool (^dispatch_data_applier_t)(dispatch_data_t region,
  * @result		A Boolean indicating whether traversal completed
  *			successfully.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 bool
-dispatch_data_apply(dispatch_data_t data, dispatch_data_applier_t applier);
+dispatch_data_apply(dispatch_data_t data,
+	DISPATCH_NOESCAPE dispatch_data_applier_t applier);
 #endif /* __BLOCKS__ */
 
 /*!
@@ -267,7 +268,7 @@ dispatch_data_apply(dispatch_data_t data, dispatch_data_applier_t applier);
  *			start of the queried data object.
  * @result		A newly created dispatch data object.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t

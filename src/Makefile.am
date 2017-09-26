@@ -3,44 +3,58 @@
 #
 
 if HAVE_SWIFT
-swiftlibdir=${prefix}/lib/swift/linux
+swiftlibdir=${prefix}/lib/swift/${OS_STRING}
 swiftlib_LTLIBRARIES=libdispatch.la
 else
 lib_LTLIBRARIES=libdispatch.la
 endif
 
-libdispatch_la_SOURCES=		\
-	allocator.c				\
-	apply.c					\
-	benchmark.c				\
-	data.c					\
+if DISPATCH_USE_INTERNAL_WORKQUEUE
+INTERNAL_WORKQUEUE_SOURCES= 	\
+	event/workqueue.c		\
+	event/workqueue_internal.h
+endif
+
+libdispatch_la_SOURCES=			\
+	allocator.c			\
+	apply.c				\
+	benchmark.c			\
+	data.c				\
+	init.c				\
 	introspection.c			\
-	init.c					\
-	io.c					\
-	object.c				\
-	once.c					\
-	queue.c					\
-	semaphore.c				\
-	source.c				\
-	time.c					\
-	transform.c				\
-	voucher.c				\
+	io.c				\
+	mach.c				\
+	object.c			\
+	once.c				\
+	queue.c				\
+	semaphore.c			\
+	source.c			\
+	time.c				\
+	transform.c			\
+	voucher.c			\
 	protocol.defs			\
-	provider.d				\
-	allocator_internal.h	\
+	provider.d			\
+	allocator_internal.h		\
 	data_internal.h			\
 	inline_internal.h		\
-	internal.h				\
+	internal.h			\
 	introspection_internal.h	\
 	io_internal.h			\
+	mach_internal.h			\
 	object_internal.h		\
 	queue_internal.h		\
-	semaphore_internal.h	\
-	shims.h					\
+	semaphore_internal.h		\
+	shims.h				\
 	source_internal.h		\
-	trace.h					\
+	trace.h				\
 	voucher_internal.h		\
-	firehose/firehose_internal.h \
+	event/event.c			\
+	event/event_config.h		\
+	event/event_epoll.c		\
+	event/event_internal.h		\
+	event/event_kevent.c		\
+	firehose/firehose_internal.h	\
+	shims/android_stubs.h	\
 	shims/atomic.h			\
 	shims/atomic_sfb.h		\
 	shims/getprogname.h		\
@@ -51,8 +65,9 @@ libdispatch_la_SOURCES=		\
 	shims/lock.h			\
 	shims/perfmon.h			\
 	shims/time.h			\
-	shims/tsd.h				\
-	shims/yield.h
+	shims/tsd.h			\
+	shims/yield.h			\
+	$(INTERNAL_WORKQUEUE_SOURCES)
 
 EXTRA_libdispatch_la_SOURCES=
 EXTRA_libdispatch_la_DEPENDENCIES=
@@ -60,23 +75,31 @@ EXTRA_libdispatch_la_DEPENDENCIES=
 AM_CPPFLAGS=-I$(top_builddir) -I$(top_srcdir) -I$(top_srcdir)/private
 
 DISPATCH_CFLAGS=-Wall $(VISIBILITY_FLAGS) $(OMIT_LEAF_FP_FLAGS) \
-	$(MARCH_FLAGS) $(KQUEUE_CFLAGS) $(BSD_OVERLAY_CFLAGS)
+	$(MARCH_FLAGS) $(BSD_OVERLAY_CFLAGS)
+if DISPATCH_ENABLE_ASSERTS
+DISPATCH_CFLAGS+=-DDISPATCH_DEBUG=1
+endif
 AM_CFLAGS= $(PTHREAD_WORKQUEUE_CFLAGS) $(DISPATCH_CFLAGS) $(CBLOCKS_FLAGS)
 AM_OBJCFLAGS=$(DISPATCH_CFLAGS) $(CBLOCKS_FLAGS)
 AM_CXXFLAGS=$(PTHREAD_WORKQUEUE_CFLAGS) $(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 AM_OBJCXXFLAGS=$(DISPATCH_CFLAGS) $(CXXBLOCKS_FLAGS)
 
-if BUILD_OWN_PTHREAD_WORKQUEUES
-  PTHREAD_WORKQUEUE_LIBS=$(top_builddir)/libpwq/libpthread_workqueue.la
-  PTHREAD_WORKQUEUE_CFLAGS=-I$(top_srcdir)/libpwq/include
-else
 if HAVE_PTHREAD_WORKQUEUES
   PTHREAD_WORKQUEUE_LIBS=-lpthread_workqueue
+  PTHREAD_WORKQUEUE_CFLAGS=
+endif
+
+if BUILD_OWN_BLOCKS_RUNTIME
+libdispatch_la_SOURCES+= BlocksRuntime/data.c BlocksRuntime/runtime.c
+CBLOCKS_FLAGS+= -I$(top_srcdir)/src/BlocksRuntime
+CXXBLOCKS_FLAGS+= -I$(top_srcdir)/src/BlocksRuntime
+if USE_OBJC
+BLOCKS_RUNTIME_LIBS=-ldl
 endif
 endif
 
 libdispatch_la_LDFLAGS=-avoid-version
-libdispatch_la_LIBADD=$(KQUEUE_LIBS) $(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS)
+libdispatch_la_LIBADD=$(PTHREAD_WORKQUEUE_LIBS) $(BSD_OVERLAY_LIBS) $(BLOCKS_RUNTIME_LIBS)
 
 if HAVE_DARWIN_LD
 libdispatch_la_LDFLAGS+=-Wl,-compatibility_version,1 \
@@ -131,48 +154,47 @@ SWIFT_SRC_FILES=\
 	swift/Wrapper.swift
 
 SWIFT_ABS_SRC_FILES = $(SWIFT_SRC_FILES:%=$(abs_srcdir)/%)
-SWIFT_OBJ_FILES = $(SWIFT_SRC_FILES:%.swift=$(abs_builddir)/%.o)
+SWIFT_OBJ_FILES = $(abs_builddir)/swift/swift_overlay.o
+SWIFT_LIBTOOL_OBJ_FILES = $(abs_builddir)/swift/swift_overlay.lo
+
+SWIFTC_FLAGS+= -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.modulemap -I$(abs_top_srcdir) -Xcc -fblocks
+if DISPATCH_ENABLE_OPTIMIZATION
+SWIFTC_FLAGS+=-O
+endif
+
+# this saves the object file, then tricks libtool into generating a .lo file and
+# then moves the object file back in the places libtool expects them to be for
+# the PIC and non-PIC case.
+$(abs_builddir)/swift/swift_overlay.lo:	$(abs_builddir)/swift/swift_overlay.o
+	mv $(abs_builddir)/swift/swift_overlay.o $(abs_builddir)/swift/.libs/swift_overlay.o.save
+	$(LIBTOOL) --mode=compile --tag=CC true -o $< -c /dev/null
+	cp $(abs_builddir)/swift/.libs/swift_overlay.o.save $(abs_builddir)/swift/.libs/swift_overlay.o
+	mv $(abs_builddir)/swift/.libs/swift_overlay.o.save $(abs_builddir)/swift/swift_overlay.o
+
+$(abs_builddir)/swift/swift_overlay.o:	$(SWIFT_ABS_SRC_FILES) $(SWIFTC)
+	@rm -f $@
+	$(SWIFTC) -whole-module-optimization -emit-library -c $(SWIFT_ABS_SRC_FILES) \
+	$(SWIFTC_FLAGS) -module-name Dispatch -module-link-name dispatch \
+	-o $@ -emit-module-path $(abs_builddir)/swift/Dispatch.swiftmodule
 
 libdispatch_la_SOURCES+=swift/DispatchStubs.cc
 EXTRA_libdispatch_la_SOURCES+=$(SWIFT_SRC_FILES)
 
-EXTRA_libdispatch_la_DEPENDENCIES+=$(SWIFT_OBJ_FILES) $(abs_builddir)/swift/Dispatch.swiftmodule
-libdispatch_la_LIBADD+=$(SWIFT_OBJ_FILES)
+EXTRA_libdispatch_la_DEPENDENCIES+=$(SWIFT_OBJ_FILES) $(SWIFT_LIBTOOL_OBJ_FILES) $(abs_builddir)/swift/Dispatch.swiftmodule
+libdispatch_la_LIBADD+=$(SWIFT_LIBTOOL_OBJ_FILES)
 
 SWIFT_GEN_FILES=	\
 	$(abs_builddir)/swift/Dispatch.swiftmodule \
 	$(abs_builddir)/swift/Dispatch.swiftdoc \
-	$(SWIFT_OBJ_FILES) \
-	$(SWIFT_OBJ_FILES:%=%.d) \
-	$(SWIFT_OBJ_FILES:%=%.swiftdeps) \
-	$(SWIFT_OBJ_FILES:%=%.~partial.swiftmodule) \
-	$(SWIFT_OBJ_FILES:%=%.~partial.swiftdoc) \
-	$(SWIFT_OBJ_FILES:%=%.~partial.swiftdeps)
+	$(SWIFT_OBJ_FILES)
 
-SWIFTC_FLAGS = -Xcc -fmodule-map-file=$(abs_top_srcdir)/dispatch/module.map -I$(abs_top_srcdir) -Xcc -fblocks
-
-$(abs_builddir)/swift/%.o:	$(abs_srcdir)/swift/%.swift
-	$(SWIFTC) -frontend -c $(SWIFT_ABS_SRC_FILES) -primary-file $< \
-	$(SWIFTC_FLAGS) -module-name Dispatch -module-link-name dispatch \
-	-o $@ -emit-module-path $@.~partial.swiftmodule \
-	-emit-module-doc-path $@.~partial.swiftdoc -emit-dependencies-path $@.d \
-	-emit-reference-dependencies-path $@.swiftdeps \
-	-module-cache-path $(top_builddir)
-
-$(abs_builddir)/swift/Dispatch.swiftmodule: $(SWIFT_ABS_SRC_FILES)
-	$(SWIFTC) -frontend -emit-module $(SWIFT_OBJ_FILES:%=%.~partial.swiftmodule) \
-	$(SWIFTC_FLAGS) -module-cache-path $(top_builddir) -module-link-name dispatch \
-	-o $@ -emit-module-doc-path $(@:%.swiftmodule=%.swiftdoc)
-
-swiftmoddir=${prefix}/lib/swift/linux/${build_cpu}
+swiftmoddir=${prefix}/lib/swift/${OS_STRING}/${host_cpu}
 swiftmod_HEADERS=\
 	$(abs_builddir)/swift/Dispatch.swiftmodule \
 	$(abs_builddir)/swift/Dispatch.swiftdoc
-
 endif
 
 BUILT_SOURCES=$(MIG_SOURCES) $(DTRACE_SOURCES)
 nodist_libdispatch_la_SOURCES=$(BUILT_SOURCES)
 CLEANFILES=$(BUILT_SOURCES) $(SWIFT_GEN_FILES)
 DISTCLEANFILES=pthread_machdep.h pthread System mach objc
-

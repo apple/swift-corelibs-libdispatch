@@ -40,9 +40,15 @@ dispatch_once(dispatch_once_t *val, dispatch_block_t block)
 }
 #endif
 
-DISPATCH_NOINLINE
-void
-dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
+#if DISPATCH_ONCE_INLINE_FASTPATH
+#define DISPATCH_ONCE_SLOW_INLINE inline DISPATCH_ALWAYS_INLINE
+#else
+#define DISPATCH_ONCE_SLOW_INLINE DISPATCH_NOINLINE
+#endif // DISPATCH_ONCE_INLINE_FASTPATH
+
+DISPATCH_ONCE_SLOW_INLINE
+static void
+dispatch_once_f_slow(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 {
 #if DISPATCH_GATE_USE_FOR_DISPATCH_ONCE
 	dispatch_once_gate_t l = (dispatch_once_gate_t)val;
@@ -63,61 +69,9 @@ dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 		dow.dow_thread = _dispatch_tid_self();
 		_dispatch_client_callout(ctxt, func);
 
-		// The next barrier must be long and strong.
-		//
-		// The scenario: SMP systems with weakly ordered memory models
-		// and aggressive out-of-order instruction execution.
-		//
-		// The problem:
-		//
-		// The dispatch_once*() wrapper macro causes the callee's
-		// instruction stream to look like this (pseudo-RISC):
-		//
-		//      load r5, pred-addr
-		//      cmpi r5, -1
-		//      beq  1f
-		//      call dispatch_once*()
-		//      1f:
-		//      load r6, data-addr
-		//
-		// May be re-ordered like so:
-		//
-		//      load r6, data-addr
-		//      load r5, pred-addr
-		//      cmpi r5, -1
-		//      beq  1f
-		//      call dispatch_once*()
-		//      1f:
-		//
-		// Normally, a barrier on the read side is used to workaround
-		// the weakly ordered memory model. But barriers are expensive
-		// and we only need to synchronize once! After func(ctxt)
-		// completes, the predicate will be marked as "done" and the
-		// branch predictor will correctly skip the call to
-		// dispatch_once*().
-		//
-		// A far faster alternative solution: Defeat the speculative
-		// read-ahead of peer CPUs.
-		//
-		// Modern architectures will throw away speculative results
-		// once a branch mis-prediction occurs. Therefore, if we can
-		// ensure that the predicate is not marked as being complete
-		// until long after the last store by func(ctxt), then we have
-		// defeated the read-ahead of peer CPUs.
-		//
-		// In other words, the last "store" by func(ctxt) must complete
-		// and then N cycles must elapse before ~0l is stored to *val.
-		// The value of N is whatever is sufficient to defeat the
-		// read-ahead mechanism of peer CPUs.
-		//
-		// On some CPUs, the most fully synchronizing instruction might
-		// need to be issued.
-
-		os_atomic_maximally_synchronizing_barrier();
-		// above assumed to contain release barrier
-		next = os_atomic_xchg(vval, DISPATCH_ONCE_DONE, relaxed);
+		next = (_dispatch_once_waiter_t)_dispatch_once_xchg_done(val);
 		while (next != tail) {
-			_dispatch_wait_until(tmp = (_dispatch_once_waiter_t)next->dow_next);
+			tmp = (_dispatch_once_waiter_t)_dispatch_wait_until(next->dow_next);
 			event = &next->dow_event;
 			next = tmp;
 			_dispatch_thread_event_signal(event);
@@ -129,7 +83,7 @@ dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 			if (next == DISPATCH_ONCE_DONE) {
 				break;
 			}
-			if (os_atomic_cmpxchgvw(vval, next, tail, &next, release)) {
+			if (os_atomic_cmpxchgv(vval, next, tail, &next, release)) {
 				dow.dow_thread = next->dow_thread;
 				dow.dow_next = next;
 				if (dow.dow_thread) {
@@ -146,4 +100,16 @@ dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 		_dispatch_thread_event_destroy(&dow.dow_event);
 	}
 #endif
+}
+
+DISPATCH_NOINLINE
+void
+dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
+{
+#if !DISPATCH_ONCE_INLINE_FASTPATH
+	if (likely(os_atomic_load(val, acquire) == DLOCK_ONCE_DONE)) {
+		return;
+	}
+#endif // !DISPATCH_ONCE_INLINE_FASTPATH
+	return dispatch_once_f_slow(val, ctxt, func);
 }

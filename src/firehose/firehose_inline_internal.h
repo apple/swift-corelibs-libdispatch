@@ -55,17 +55,11 @@ firehose_mach_port_allocate(uint32_t flags, void *ctx)
 	mach_port_options_t opts = {
 		.flags = flags,
 	};
-	kern_return_t kr;
-
-	for (;;) {
-		kr = mach_port_construct(mach_task_self(), &opts,
-				(mach_port_context_t)ctx, &port);
-		if (fastpath(kr == KERN_SUCCESS)) {
-			break;
-		}
+	kern_return_t kr = mach_port_construct(mach_task_self(), &opts,
+			(mach_port_context_t)ctx, &port);
+	if (unlikely(kr)) {
 		DISPATCH_VERIFY_MIG(kr);
-		dispatch_assume_zero(kr);
-		_dispatch_temporary_resource_shortage();
+		DISPATCH_CLIENT_CRASH(kr, "Unable to allocate mach port");
 	}
 	return port;
 }
@@ -142,36 +136,28 @@ firehose_mig_server(dispatch_mig_callback_t demux, size_t maxmsgsz,
 #pragma mark firehose buffer
 
 OS_ALWAYS_INLINE
-static inline firehose_buffer_chunk_t
+static inline firehose_chunk_t
 firehose_buffer_chunk_for_address(void *addr)
 {
-	uintptr_t chunk_addr = (uintptr_t)addr & ~(FIREHOSE_BUFFER_CHUNK_SIZE - 1);
-	return (firehose_buffer_chunk_t)chunk_addr;
+	uintptr_t chunk_addr = (uintptr_t)addr & ~(FIREHOSE_CHUNK_SIZE - 1);
+	return (firehose_chunk_t)chunk_addr;
 }
 
 OS_ALWAYS_INLINE
 static inline uint16_t
-firehose_buffer_chunk_to_ref(firehose_buffer_t fb, firehose_buffer_chunk_t fbc)
+firehose_buffer_chunk_to_ref(firehose_buffer_t fb, firehose_chunk_t fbc)
 {
 	return (uint16_t)(fbc - fb->fb_chunks);
 }
 
 OS_ALWAYS_INLINE
-static inline firehose_buffer_chunk_t
+static inline firehose_chunk_t
 firehose_buffer_ref_to_chunk(firehose_buffer_t fb, uint16_t ref)
 {
 	return fb->fb_chunks + ref;
 }
 
 #ifndef FIREHOSE_SERVER
-
-OS_ALWAYS_INLINE
-static inline bool
-firehose_buffer_pos_fits(firehose_buffer_pos_u pos, uint16_t size)
-{
-	return pos.fbc_next_entry_offs + size <= pos.fbc_private_offs;
-}
-
 #if DISPATCH_PURE_C
 
 OS_ALWAYS_INLINE
@@ -189,83 +175,12 @@ firehose_buffer_qos_bits_propagate(void)
 }
 
 OS_ALWAYS_INLINE
-static inline long
-firehose_buffer_chunk_try_reserve(firehose_buffer_chunk_t fbc, uint64_t stamp,
-		firehose_stream_t stream, uint16_t pubsize,
-		uint16_t privsize, uint8_t **privptr)
-{
-	const uint16_t ft_size = offsetof(struct firehose_tracepoint_s, ft_data);
-	firehose_buffer_pos_u orig, pos;
-	uint8_t qos_bits = firehose_buffer_qos_bits_propagate();
-	bool reservation_failed, stamp_delta_fits;
-
-	stamp_delta_fits = ((stamp - fbc->fbc_timestamp) >> 48) == 0;
-
-	// no acquire barrier because the returned space is written to only
-	os_atomic_rmw_loop2o(fbc, fbc_pos.fbc_atomic_pos,
-			orig.fbc_atomic_pos, pos.fbc_atomic_pos, relaxed, {
-		if (unlikely(orig.fbc_atomic_pos == 0)) {
-			// we acquired a really really old reference, and we probably
-			// just faulted in a new page
-			// FIXME: if/when we hit this we should try to madvise it back FREE
-			os_atomic_rmw_loop_give_up(return 0);
-		}
-		if (unlikely(!FIREHOSE_BUFFER_POS_USABLE_FOR_STREAM(orig, stream))) {
-			// nothing to do if the chunk is full, or the stream doesn't match,
-			// in which case the thread probably:
-			// - loaded the chunk ref
-			// - been suspended a long while
-			// - read the chunk to find a very old thing
-			os_atomic_rmw_loop_give_up(return 0);
-		}
-		pos = orig;
-		pos.fbc_qos_bits |= qos_bits;
-		if (unlikely(!firehose_buffer_pos_fits(orig,
-				ft_size + pubsize + privsize) || !stamp_delta_fits)) {
-			pos.fbc_flag_full = true;
-			reservation_failed = true;
-		} else {
-			// using these *_INC macros is so that the compiler generates better
-			// assembly: using the struct individual fields forces the compiler
-			// to handle carry propagations, and we know it won't happen
-			pos.fbc_atomic_pos += roundup(ft_size + pubsize, 8) *
-					FIREHOSE_BUFFER_POS_ENTRY_OFFS_INC;
-			pos.fbc_atomic_pos -= privsize *
-					FIREHOSE_BUFFER_POS_PRIVATE_OFFS_INC;
-			pos.fbc_atomic_pos += FIREHOSE_BUFFER_POS_REFCNT_INC;
-			const uint16_t minimum_payload_size = 16;
-			if (!firehose_buffer_pos_fits(pos,
-					roundup(ft_size + minimum_payload_size , 8))) {
-				// if we can't even have minimum_payload_size bytes of payload
-				// for the next tracepoint, just flush right away
-				pos.fbc_flag_full = true;
-			}
-			reservation_failed = false;
-		}
-	});
-
-	if (reservation_failed) {
-		if (pos.fbc_refcnt) {
-			// nothing to do, there is a thread writing that will pick up
-			// the "FULL" flag on flush and push as a consequence
-			return 0;
-		}
-		// caller must enqueue chunk
-		return -1;
-	}
-	if (privptr) {
-		*privptr = fbc->fbc_start + pos.fbc_private_offs;
-	}
-	return orig.fbc_next_entry_offs;
-}
-
-OS_ALWAYS_INLINE
 static inline void
 firehose_buffer_stream_flush(firehose_buffer_t fb, firehose_stream_t stream)
 {
 	firehose_buffer_stream_t fbs = &fb->fb_header.fbh_stream[stream];
 	firehose_stream_state_u old_state, new_state;
-	firehose_buffer_chunk_t fbc;
+	firehose_chunk_t fc;
 	uint64_t stamp = UINT64_MAX; // will cause the reservation to fail
 	uint16_t ref;
 	long result;
@@ -275,11 +190,15 @@ firehose_buffer_stream_flush(firehose_buffer_t fb, firehose_stream_t stream)
 	ref = old_state.fss_current;
 	if (!ref || ref == FIREHOSE_STREAM_STATE_PRISTINE) {
 		// there is no installed page, nothing to flush, go away
+#ifndef KERNEL
+		firehose_buffer_force_connect(fb);
+#endif
 		return;
 	}
 
-	fbc = firehose_buffer_ref_to_chunk(fb, old_state.fss_current);
-	result = firehose_buffer_chunk_try_reserve(fbc, stamp, stream, 1, 0, NULL);
+	fc = firehose_buffer_ref_to_chunk(fb, old_state.fss_current);
+	result = firehose_chunk_tracepoint_try_reserve(fc, stamp, stream,
+			firehose_buffer_qos_bits_propagate(), 1, 0, NULL);
 	if (likely(result < 0)) {
 		firehose_buffer_ring_enqueue(fb, old_state.fss_current);
 	}
@@ -339,8 +258,7 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 {
 	firehose_buffer_stream_t fbs = &fb->fb_header.fbh_stream[stream];
 	firehose_stream_state_u old_state, new_state;
-	firehose_tracepoint_t ft;
-	firehose_buffer_chunk_t fbc;
+	firehose_chunk_t fc;
 #if KERNEL
 	bool failable = false;
 #endif
@@ -356,18 +274,19 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 
 		ref = old_state.fss_current;
 		if (likely(ref && ref != FIREHOSE_STREAM_STATE_PRISTINE)) {
-			fbc = firehose_buffer_ref_to_chunk(fb, ref);
-			result = firehose_buffer_chunk_try_reserve(fbc, stamp, stream,
+			fc = firehose_buffer_ref_to_chunk(fb, ref);
+			result = firehose_chunk_tracepoint_try_reserve(fc, stamp, stream,
+					firehose_buffer_qos_bits_propagate(),
 					pubsize, privsize, privptr);
 			if (likely(result > 0)) {
-				ft = (firehose_tracepoint_t)(fbc->fbc_start + result);
-				stamp -= fbc->fbc_timestamp;
-				stamp |= (uint64_t)pubsize << 48;
-				// Needed for process death handling (tracepoint-begin)
-				// see firehose_buffer_stream_chunk_install
-				os_atomic_store2o(ft, ft_stamp_and_length, stamp, relaxed);
-				dispatch_compiler_barrier();
-				return ft;
+				uint64_t thread;
+#ifdef KERNEL
+				thread = thread_tid(current_thread());
+#else
+				thread = _pthread_threadid_self_np_direct();
+#endif
+				return firehose_chunk_tracepoint_begin(fc,
+						stamp, pubsize, thread, result);
 			}
 			if (likely(result < 0)) {
 				firehose_buffer_ring_enqueue(fb, old_state.fss_current);
@@ -400,9 +319,9 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 #if KERNEL
 		new_state.fss_allocator = (uint32_t)cpu_number();
 #else
-		new_state.fss_allocator = _dispatch_tid_self();
+		new_state.fss_allocator = _dispatch_lock_value_for_self();
 #endif
-		success = os_atomic_cmpxchgvw2o(fbs, fbs_state.fss_atomic_state,
+		success = os_atomic_cmpxchgv2o(fbs, fbs_state.fss_atomic_state,
 				old_state.fss_atomic_state, new_state.fss_atomic_state,
 				&old_state.fss_atomic_state, relaxed);
 		if (likely(success)) {
@@ -416,6 +335,9 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 		.privsize = privsize,
 		.stream = stream,
 		.for_io = (firehose_stream_uses_io_bank & (1UL << stream)) != 0,
+#ifndef KERNEL
+		.quarantined = fb->fb_header.fbh_quarantined,
+#endif
 		.stamp = stamp,
 	};
 	return firehose_buffer_tracepoint_reserve_slow(fb, &ask, privptr);
@@ -444,8 +366,7 @@ static inline void
 firehose_buffer_tracepoint_flush(firehose_buffer_t fb,
 		firehose_tracepoint_t ft, firehose_tracepoint_id_u ftid)
 {
-	firehose_buffer_chunk_t fbc = firehose_buffer_chunk_for_address(ft);
-	firehose_buffer_pos_u pos;
+	firehose_chunk_t fc = firehose_buffer_chunk_for_address(ft);
 
 	// Needed for process death handling (tracepoint-flush):
 	// We want to make sure the observers
@@ -453,17 +374,8 @@ firehose_buffer_tracepoint_flush(firehose_buffer_t fb,
 	// 1. write all the data to the tracepoint
 	// 2. write the tracepoint ID, so that seeing it means the tracepoint
 	//    is valid
-#ifdef KERNEL
-	ft->ft_thread = thread_tid(current_thread());
-#else
-	ft->ft_thread = _pthread_threadid_self_np_direct();
-#endif
-	// release barrier makes the log writes visible
-	os_atomic_store2o(ft, ft_id.ftid_value, ftid.ftid_value, release);
-	pos.fbc_atomic_pos = os_atomic_sub2o(fbc, fbc_pos.fbc_atomic_pos,
-			FIREHOSE_BUFFER_POS_REFCNT_INC, relaxed);
-	if (pos.fbc_refcnt == 0 && pos.fbc_flag_full) {
-		firehose_buffer_ring_enqueue(fb, firehose_buffer_chunk_to_ref(fb, fbc));
+	if (firehose_chunk_tracepoint_end(fc, ft, ftid)) {
+		firehose_buffer_ring_enqueue(fb, firehose_buffer_chunk_to_ref(fb, fc));
 	}
 }
 

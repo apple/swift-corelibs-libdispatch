@@ -57,7 +57,7 @@ __BEGIN_DECLS
  * @result
  * The newly created semaphore, or NULL on failure.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_semaphore_t
@@ -83,7 +83,7 @@ dispatch_semaphore_create(long value);
  * @result
  * Returns zero on success, or non-zero if the timeout occurred.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 long
 dispatch_semaphore_wait(dispatch_semaphore_t dsema, dispatch_time_t timeout);
@@ -105,7 +105,7 @@ dispatch_semaphore_wait(dispatch_semaphore_t dsema, dispatch_time_t timeout);
  * This function returns non-zero if a thread is woken. Otherwise, zero is
  * returned.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 long
 dispatch_semaphore_signal(dispatch_semaphore_t dsema);

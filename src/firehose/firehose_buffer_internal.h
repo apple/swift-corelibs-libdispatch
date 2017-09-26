@@ -171,13 +171,18 @@ typedef struct firehose_buffer_header_s {
 	dispatch_once_t					fbh_notifs_pred OS_ALIGNED(64);
 	dispatch_source_t				fbh_notifs_source;
 	dispatch_unfair_lock_s			fbh_logd_lock;
+#define FBH_QUARANTINE_NONE		0
+#define FBH_QUARANTINE_PENDING	1
+#define FBH_QUARANTINE_STARTED	2
+	uint8_t volatile				fbh_quarantined_state;
+	bool							fbh_quarantined;
 #endif
 	uint64_t						fbh_unused[0];
-} OS_ALIGNED(FIREHOSE_BUFFER_CHUNK_SIZE) *firehose_buffer_header_t;
+} OS_ALIGNED(FIREHOSE_CHUNK_SIZE) *firehose_buffer_header_t;
 
 union firehose_buffer_u {
 	struct firehose_buffer_header_s fb_header;
-	struct firehose_buffer_chunk_s fb_chunks[FIREHOSE_BUFFER_CHUNK_COUNT];
+	struct firehose_chunk_s fb_chunks[FIREHOSE_BUFFER_CHUNK_COUNT];
 };
 
 // used to let the compiler pack these values in 1 or 2 registers
@@ -187,6 +192,7 @@ typedef struct firehose_tracepoint_query_s {
 	firehose_stream_t stream;
 	bool	 is_bank_ok;
 	bool     for_io;
+	bool     quarantined;
 	uint64_t stamp;
 } *firehose_tracepoint_query_t;
 
@@ -205,6 +211,9 @@ firehose_buffer_update_limits(firehose_buffer_t fb);
 
 void
 firehose_buffer_ring_enqueue(firehose_buffer_t fb, uint16_t ref);
+
+void
+firehose_buffer_force_connect(firehose_buffer_t fb);
 
 #endif
 

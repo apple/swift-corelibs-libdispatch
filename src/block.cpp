@@ -32,6 +32,8 @@ extern "C" {
 #include "internal.h"
 }
 
+// NOTE: this file must not contain any atomic operations
+
 #if DISPATCH_DEBUG && DISPATCH_BLOCK_PRIVATE_DATA_DEBUG
 #define _dispatch_block_private_data_debug(msg, ...) \
 		_dispatch_debug("block_private[%p]: " msg, (this), ##__VA_ARGS__)
@@ -83,7 +85,8 @@ struct dispatch_block_private_data_s {
 			((void (*)(dispatch_group_t))dispatch_release)(dbpd_group);
 		}
 		if (dbpd_queue) {
-			((void (*)(os_mpsc_queue_t))_os_object_release_internal)(dbpd_queue);
+			((void (*)(os_mpsc_queue_t, uint16_t))
+					_os_object_release_internal_n)(dbpd_queue, 2);
 		}
 		if (dbpd_block) Block_release(dbpd_block);
 		if (dbpd_voucher) voucher_release(dbpd_voucher);

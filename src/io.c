@@ -24,6 +24,10 @@
 #define DISPATCH_IO_DEBUG DISPATCH_DEBUG
 #endif
 
+#ifndef PAGE_SIZE
+#define PAGE_SIZE ((size_t)getpagesize())
+#endif
+
 #if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 #define _dispatch_io_data_retain(x) _dispatch_objc_retain(x)
 #define _dispatch_io_data_release(x) _dispatch_objc_release(x)
@@ -229,11 +233,10 @@ _dispatch_iocntl(uint32_t param, uint64_t value)
 static dispatch_io_t
 _dispatch_io_create(dispatch_io_type_t type)
 {
-	dispatch_io_t channel = _dispatch_alloc(DISPATCH_VTABLE(io),
+	dispatch_io_t channel = _dispatch_object_alloc(DISPATCH_VTABLE(io),
 			sizeof(struct dispatch_io_s));
 	channel->do_next = DISPATCH_OBJECT_LISTLESS;
-	channel->do_targetq = _dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT,
-			true);
+	channel->do_targetq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, true);
 	channel->params.type = type;
 	channel->params.high = SIZE_MAX;
 	channel->params.low = dispatch_io_defaults.low_water_chunks *
@@ -275,7 +278,7 @@ _dispatch_io_init(dispatch_io_t channel, dispatch_fd_entry_t fd_entry,
 }
 
 void
-_dispatch_io_dispose(dispatch_io_t channel)
+_dispatch_io_dispose(dispatch_io_t channel, DISPATCH_UNUSED bool *allow_free)
 {
 	_dispatch_object_debug(channel, "%s", __func__);
 	if (channel->fd_entry &&
@@ -679,6 +682,9 @@ _dispatch_io_stop(dispatch_io_t channel)
 				_dispatch_channel_debug("stop cleanup", channel);
 				_dispatch_fd_entry_cleanup_operations(fd_entry, channel);
 				if (!(channel->atomic_flags & DIO_CLOSED)) {
+					if (fd_entry->path_data) {
+						fd_entry->path_data->channel = NULL;
+					}
 					channel->fd_entry = NULL;
 					_dispatch_fd_entry_release(fd_entry);
 				}
@@ -729,9 +735,10 @@ dispatch_io_close(dispatch_io_t channel, unsigned long flags)
 						relaxed);
 				dispatch_fd_entry_t fd_entry = channel->fd_entry;
 				if (fd_entry) {
-					if (!fd_entry->path_data) {
-						channel->fd_entry = NULL;
+					if (fd_entry->path_data) {
+						fd_entry->path_data->channel = NULL;
 					}
+					channel->fd_entry = NULL;
 					_dispatch_fd_entry_release(fd_entry);
 				}
 			}
@@ -885,7 +892,7 @@ dispatch_read(dispatch_fd_t fd, size_t length, dispatch_queue_t queue,
 		dispatch_operation_t op =
 			_dispatch_operation_create(DOP_DIR_READ, channel, 0,
 					length, dispatch_data_empty,
-					_dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT,false),
+					_dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false),
 					^(bool done, dispatch_data_t data, int error) {
 				if (data) {
 					data = dispatch_data_create_concat(deliver_data, data);
@@ -956,7 +963,7 @@ dispatch_write(dispatch_fd_t fd, dispatch_data_t data, dispatch_queue_t queue,
 		dispatch_operation_t op =
 			_dispatch_operation_create(DOP_DIR_WRITE, channel, 0,
 					dispatch_data_get_size(data), data,
-					_dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT,false),
+					_dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false),
 					^(bool done, dispatch_data_t d, int error) {
 				if (done) {
 					if (d) {
@@ -1016,14 +1023,13 @@ _dispatch_operation_create(dispatch_op_direction_t direction,
 		});
 		return NULL;
 	}
-	dispatch_operation_t op = _dispatch_alloc(DISPATCH_VTABLE(operation),
+	dispatch_operation_t op = _dispatch_object_alloc(DISPATCH_VTABLE(operation),
 			sizeof(struct dispatch_operation_s));
 	_dispatch_channel_debug("operation create: %p", channel, op);
 	op->do_next = DISPATCH_OBJECT_LISTLESS;
 	op->do_xref_cnt = -1; // operation object is not exposed externally
-	op->op_q = dispatch_queue_create("com.apple.libdispatch-io.opq", NULL);
-	op->op_q->do_targetq = queue;
-	_dispatch_retain(queue);
+	op->op_q = dispatch_queue_create_with_target("com.apple.libdispatch-io.opq",
+			NULL, queue);
 	op->active = false;
 	op->direction = direction;
 	op->offset = offset + channel->f_ptr;
@@ -1044,7 +1050,8 @@ _dispatch_operation_create(dispatch_op_direction_t direction,
 }
 
 void
-_dispatch_operation_dispose(dispatch_operation_t op)
+_dispatch_operation_dispose(dispatch_operation_t op,
+		DISPATCH_UNUSED bool *allow_free)
 {
 	_dispatch_object_debug(op, "%s", __func__);
 	_dispatch_op_debug("dispose", op);
@@ -1151,8 +1158,9 @@ _dispatch_operation_timer(dispatch_queue_t tq, dispatch_operation_t op)
 	}
 	dispatch_source_t timer = dispatch_source_create(
 			DISPATCH_SOURCE_TYPE_TIMER, 0, 0, tq);
-	dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW,
-			(int64_t)op->params.interval), op->params.interval, 0);
+	dispatch_source_set_timer(timer,
+			dispatch_time(DISPATCH_TIME_NOW, (int64_t)op->params.interval),
+			op->params.interval, 0);
 	dispatch_source_set_event_handler(timer, ^{
 		// On stream queue or pick queue
 		if (dispatch_source_testcancel(timer)) {
@@ -1232,9 +1240,10 @@ _dispatch_fd_entry_guarded_open(dispatch_fd_entry_t fd_entry, const char *path,
 		return fd;
 	}
 	errno = 0;
+#else
+	(void)fd_entry;
 #endif
 	return open(path, oflag, mode);
-	(void)fd_entry;
 }
 
 static inline int
@@ -1244,11 +1253,12 @@ _dispatch_fd_entry_guarded_close(dispatch_fd_entry_t fd_entry, int fd) {
 		guardid_t guard = (uintptr_t)fd_entry;
 		return guarded_close_np(fd, &guard);
 	} else
+#else
+	(void)fd_entry;
 #endif
 	{
 		return close(fd);
 	}
-	(void)fd_entry;
 }
 
 static inline void
@@ -1299,12 +1309,10 @@ _dispatch_fd_entry_create(dispatch_queue_t q)
 {
 	dispatch_fd_entry_t fd_entry;
 	fd_entry = _dispatch_calloc(1ul, sizeof(struct dispatch_fd_entry_s));
-	fd_entry->close_queue = dispatch_queue_create(
-			"com.apple.libdispatch-io.closeq", NULL);
 	// Use target queue to ensure that no concurrent lookups are going on when
 	// the close queue is running
-	fd_entry->close_queue->do_targetq = q;
-	_dispatch_retain(q);
+	fd_entry->close_queue = dispatch_queue_create_with_target(
+			"com.apple.libdispatch-io.closeq", NULL, q);
 	// Suspend the cleanup queue until closing
 	_dispatch_fd_entry_retain(fd_entry);
 	return fd_entry;
@@ -1364,7 +1372,7 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 						break;
 				);
 			}
-			int32_t dev = major(st.st_dev);
+			dev_t dev = major(st.st_dev);
 			// We have to get the disk on the global dev queue. The
 			// barrier queue cannot continue until that is complete
 			dispatch_suspend(fd_entry->barrier_queue);
@@ -1384,8 +1392,9 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 						break;
 				);
 			}
-			_dispatch_stream_init(fd_entry, _dispatch_get_root_queue(
-					_DISPATCH_QOS_CLASS_DEFAULT, false));
+
+			_dispatch_stream_init(fd_entry,
+					_dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false));
 		}
 		fd_entry->orig_flags = orig_flags;
 		fd_entry->orig_nosigpipe = orig_nosigpipe;
@@ -1452,8 +1461,8 @@ _dispatch_fd_entry_create_with_path(dispatch_io_path_data_t path_data,
 	if (S_ISREG(mode)) {
 		_dispatch_disk_init(fd_entry, major(dev));
 	} else {
-		_dispatch_stream_init(fd_entry, _dispatch_get_root_queue(
-				_DISPATCH_QOS_CLASS_DEFAULT, false));
+			_dispatch_stream_init(fd_entry,
+					_dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false));
 	}
 	fd_entry->fd = -1;
 	fd_entry->orig_flags = -1;
@@ -1577,11 +1586,9 @@ _dispatch_stream_init(dispatch_fd_entry_t fd_entry, dispatch_queue_t tq)
 	for (direction = 0; direction < DOP_DIR_MAX; direction++) {
 		dispatch_stream_t stream;
 		stream = _dispatch_calloc(1ul, sizeof(struct dispatch_stream_s));
-		stream->dq = dispatch_queue_create("com.apple.libdispatch-io.streamq",
-				NULL);
+		stream->dq = dispatch_queue_create_with_target(
+				"com.apple.libdispatch-io.streamq", NULL, tq);
 		dispatch_set_context(stream->dq, stream);
-		_dispatch_retain(tq);
-		stream->dq->do_targetq = tq;
 		TAILQ_INIT(&stream->operations[DISPATCH_IO_RANDOM]);
 		TAILQ_INIT(&stream->operations[DISPATCH_IO_STREAM]);
 		fd_entry->streams[direction] = stream;
@@ -1626,14 +1633,13 @@ _dispatch_disk_init(dispatch_fd_entry_t fd_entry, dev_t dev)
 	}
 	// Otherwise create a new entry
 	size_t pending_reqs_depth = dispatch_io_defaults.max_pending_io_reqs;
-	disk = _dispatch_alloc(DISPATCH_VTABLE(disk),
+	disk = _dispatch_object_alloc(DISPATCH_VTABLE(disk),
 			sizeof(struct dispatch_disk_s) +
 			(pending_reqs_depth * sizeof(dispatch_operation_t)));
 	disk->do_next = DISPATCH_OBJECT_LISTLESS;
 	disk->do_xref_cnt = -1;
 	disk->advise_list_depth = pending_reqs_depth;
-	disk->do_targetq = _dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT,
-			false);
+	disk->do_targetq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false);
 	disk->dev = dev;
 	TAILQ_INIT(&disk->operations);
 	disk->cur_rq = TAILQ_FIRST(&disk->operations);
@@ -1648,7 +1654,7 @@ out:
 }
 
 void
-_dispatch_disk_dispose(dispatch_disk_t disk)
+_dispatch_disk_dispose(dispatch_disk_t disk, DISPATCH_UNUSED bool *allow_free)
 {
 	uintptr_t hash = DIO_HASH(disk->dev);
 	TAILQ_REMOVE(&_dispatch_io_devs[hash], disk, disk_list);
@@ -1893,7 +1899,7 @@ _dispatch_stream_source(dispatch_stream_t stream, dispatch_operation_t op)
 	// Close queue must not run user cleanup handlers until sources are fully
 	// unregistered
 	dispatch_queue_t close_queue = op->fd_entry->close_queue;
-	dispatch_source_set_cancel_handler(source, ^{
+	dispatch_source_set_mandatory_cancel_handler(source, ^{
 		_dispatch_op_debug("stream source cancel", op);
 		dispatch_resume(close_queue);
 	});
@@ -2161,7 +2167,7 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 	op->advise_offset += advise.ra_count;
 #ifdef __linux__
 	_dispatch_io_syscall_switch(err,
-		readahead(op->fd_entry->fd, advise.ra_offset, advise.ra_count),
+			readahead(op->fd_entry->fd, advise.ra_offset, (size_t)advise.ra_count),
 		case EINVAL: break; // fd does refer to a non-supported filetype
 		default: (void)dispatch_assume_zero(err); break;
 	);
@@ -2284,10 +2290,10 @@ syscall:
 		return DISPATCH_OP_DELIVER;
 	}
 error:
-	if (err == EAGAIN) {
+	if (err == EAGAIN || err == EWOULDBLOCK) {
 		// For disk based files with blocking I/O we should never get EAGAIN
 		dispatch_assert(!op->fd_entry->disk);
-		_dispatch_op_debug("performed: EAGAIN", op);
+		_dispatch_op_debug("performed: EAGAIN/EWOULDBLOCK", op);
 		if (op->direction == DOP_DIR_READ && op->total &&
 				op->channel == op->fd_entry->convenience_channel) {
 			// Convenience read with available data completes on EAGAIN

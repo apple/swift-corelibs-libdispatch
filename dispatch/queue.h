@@ -103,7 +103,7 @@ __BEGIN_DECLS
  * The result of passing NULL in this parameter is undefined.
  */
 #ifdef __BLOCKS__
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_async(dispatch_queue_t queue, dispatch_block_t block);
@@ -133,7 +133,7 @@ dispatch_async(dispatch_queue_t queue, dispatch_block_t block);
  * dispatch_async_f().
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_async_f(dispatch_queue_t queue,
@@ -171,7 +171,7 @@ dispatch_async_f(dispatch_queue_t queue,
  * The result of passing NULL in this parameter is undefined.
  */
 #ifdef __BLOCKS__
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_sync(dispatch_queue_t queue, DISPATCH_NOESCAPE dispatch_block_t block);
@@ -199,22 +199,56 @@ dispatch_sync(dispatch_queue_t queue, DISPATCH_NOESCAPE dispatch_block_t block);
  * dispatch_sync_f().
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_sync_f(dispatch_queue_t queue,
 	void *_Nullable context,
 	dispatch_function_t work);
 
+
+#if !defined(__APPLE__) || TARGET_OS_WATCH || TARGET_OS_TV || \
+		(defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && \
+		__IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_7_0) || \
+		(defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && \
+		__MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_9)
+#define DISPATCH_APPLY_AUTO_AVAILABLE 1
+#else
+#define DISPATCH_APPLY_AUTO_AVAILABLE 0
+#endif
+
+/*!
+ * @constant DISPATCH_APPLY_AUTO
+ *
+ * @abstract
+ * Constant to pass to dispatch_apply() or dispatch_apply_f() to request that
+ * the system automatically use worker threads that match the configuration of
+ * the current thread as closely as possible.
+ *
+ * @discussion
+ * When submitting a block for parallel invocation, passing this constant as the
+ * queue argument will automatically use the global concurrent queue that
+ * matches the Quality of Service of the caller most closely.
+ *
+ * No assumptions should be made about which global concurrent queue will
+ * actually be used.
+ *
+ * Using this constant deploys backward to macOS 10.9, iOS 7.0 and any tvOS or
+ * watchOS version.
+ */
+#if DISPATCH_APPLY_AUTO_AVAILABLE
+#define DISPATCH_APPLY_AUTO ((dispatch_queue_t _Nonnull)0)
+#endif
+
 /*!
  * @function dispatch_apply
  *
  * @abstract
- * Submits a block to a dispatch queue for multiple invocations.
+ * Submits a block to a dispatch queue for parallel invocation.
  *
  * @discussion
- * Submits a block to a dispatch queue for multiple invocations. This function
- * waits for the task block to complete before returning. If the target queue
+ * Submits a block to a dispatch queue for parallel invocation. This function
+ * waits for the task block to complete before returning. If the specified queue
  * is concurrent, the block may be invoked concurrently, and it must therefore
  * be reentrant safe.
  *
@@ -224,15 +258,16 @@ dispatch_sync_f(dispatch_queue_t queue,
  * The number of iterations to perform.
  *
  * @param queue
- * The target dispatch queue to which the block is submitted.
- * The result of passing NULL in this parameter is undefined.
+ * The dispatch queue to which the block is submitted.
+ * The preferred value to pass is DISPATCH_APPLY_AUTO to automatically use
+ * a queue appropriate for the calling thread.
  *
  * @param block
  * The block to be invoked the specified number of iterations.
  * The result of passing NULL in this parameter is undefined.
  */
 #ifdef __BLOCKS__
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_apply(size_t iterations, dispatch_queue_t queue,
@@ -243,7 +278,7 @@ dispatch_apply(size_t iterations, dispatch_queue_t queue,
  * @function dispatch_apply_f
  *
  * @abstract
- * Submits a function to a dispatch queue for multiple invocations.
+ * Submits a function to a dispatch queue for parallel invocation.
  *
  * @discussion
  * See dispatch_apply() for details.
@@ -252,20 +287,21 @@ dispatch_apply(size_t iterations, dispatch_queue_t queue,
  * The number of iterations to perform.
  *
  * @param queue
- * The target dispatch queue to which the function is submitted.
- * The result of passing NULL in this parameter is undefined.
+ * The dispatch queue to which the function is submitted.
+ * The preferred value to pass is DISPATCH_APPLY_AUTO to automatically use
+ * a queue appropriate for the calling thread.
  *
  * @param context
  * The application-defined context parameter to pass to the function.
  *
  * @param work
- * The application-defined function to invoke on the target queue. The first
+ * The application-defined function to invoke on the specified queue. The first
  * parameter passed to this function is the context provided to
  * dispatch_apply_f(). The second parameter passed to this function is the
  * current index of iteration.
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL4 DISPATCH_NOTHROW
 void
 dispatch_apply_f(size_t iterations, dispatch_queue_t queue,
@@ -301,12 +337,12 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t queue,
  * @result
  * Returns the current queue.
  */
-__OSX_AVAILABLE_BUT_DEPRECATED(__MAC_10_6,__MAC_10_9,__IPHONE_4_0,__IPHONE_6_0)
+API_DEPRECATED("unsupported interface", macos(10.6,10.9), ios(4.0,6.0))
 DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_queue_t
 dispatch_get_current_queue(void);
 
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT struct dispatch_queue_s _dispatch_main_q;
 
 /*!
@@ -415,7 +451,7 @@ typedef unsigned int dispatch_qos_class_t;
  * Returns the requested global queue or NULL if the requested global queue
  * does not exist.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_CONST DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_queue_t
 dispatch_get_global_queue(long identifier, unsigned long flags);
@@ -454,7 +490,7 @@ DISPATCH_DECL(dispatch_queue_attr);
 #define DISPATCH_QUEUE_CONCURRENT \
 		DISPATCH_GLOBAL_OBJECT(dispatch_queue_attr_t, \
 		_dispatch_queue_attr_concurrent)
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
+API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT
 struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent;
 
@@ -498,8 +534,7 @@ struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent;
  * The new value combines the attributes specified by the 'attr' parameter with
  * the initially inactive attribute.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
 dispatch_queue_attr_t
 dispatch_queue_attr_make_initially_inactive(
@@ -556,21 +591,9 @@ dispatch_queue_attr_make_initially_inactive(
  * asynchronously. This is the behavior of the global concurrent queues.
  */
 DISPATCH_ENUM(dispatch_autorelease_frequency, unsigned long,
-	DISPATCH_AUTORELEASE_FREQUENCY_INHERIT
-			DISPATCH_ENUM_AVAILABLE(OSX, 10.12)
-			DISPATCH_ENUM_AVAILABLE(IOS, 10.0)
-			DISPATCH_ENUM_AVAILABLE(TVOS, 10.0)
-			DISPATCH_ENUM_AVAILABLE(WATCHOS, 3.0) = 0,
-	DISPATCH_AUTORELEASE_FREQUENCY_WORK_ITEM
-			DISPATCH_ENUM_AVAILABLE(OSX, 10.12)
-			DISPATCH_ENUM_AVAILABLE(IOS, 10.0)
-			DISPATCH_ENUM_AVAILABLE(TVOS, 10.0)
-			DISPATCH_ENUM_AVAILABLE(WATCHOS, 3.0) = 1,
-	DISPATCH_AUTORELEASE_FREQUENCY_NEVER
-			DISPATCH_ENUM_AVAILABLE(OSX, 10.12)
-			DISPATCH_ENUM_AVAILABLE(IOS, 10.0)
-			DISPATCH_ENUM_AVAILABLE(TVOS, 10.0)
-			DISPATCH_ENUM_AVAILABLE(WATCHOS, 3.0) = 2,
+	DISPATCH_AUTORELEASE_FREQUENCY_INHERIT DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 0,
+	DISPATCH_AUTORELEASE_FREQUENCY_WORK_ITEM DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 1,
+	DISPATCH_AUTORELEASE_FREQUENCY_NEVER DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 2,
 );
 
 /*!
@@ -610,8 +633,7 @@ DISPATCH_ENUM(dispatch_autorelease_frequency, unsigned long,
  * This new value combines the attributes specified by the 'attr' parameter and
  * the chosen autorelease frequency.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
 dispatch_queue_attr_t
 dispatch_queue_attr_make_with_autorelease_frequency(
@@ -671,7 +693,7 @@ dispatch_queue_attr_make_with_autorelease_frequency(
  * The new value combines the attributes specified by the 'attr' parameter and
  * the new QOS class and relative priority.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
 dispatch_queue_attr_t
 dispatch_queue_attr_make_with_qos_class(dispatch_queue_attr_t _Nullable attr,
@@ -736,8 +758,7 @@ dispatch_queue_attr_make_with_qos_class(dispatch_queue_attr_t _Nullable attr,
  * @result
  * The newly created dispatch queue.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
@@ -788,7 +809,7 @@ dispatch_queue_create_with_target(const char *_Nullable label,
  * @result
  * The newly created dispatch queue.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
@@ -818,7 +839,7 @@ dispatch_queue_create(const char *_Nullable label,
  * @result
  * The label of the queue.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 const char *
 dispatch_queue_get_label(dispatch_queue_t _Nullable queue);
@@ -857,7 +878,7 @@ dispatch_queue_get_label(dispatch_queue_t _Nullable queue);
  *	- QOS_CLASS_BACKGROUND
  *	- QOS_CLASS_UNSPECIFIED
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 dispatch_qos_class_t
 dispatch_queue_get_qos_class(dispatch_queue_t queue,
@@ -922,7 +943,7 @@ dispatch_queue_get_qos_class(dispatch_queue_t queue,
  * If queue is DISPATCH_TARGET_QUEUE_DEFAULT, set the object's target queue
  * to the default target queue for the given object type.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 dispatch_set_target_queue(dispatch_object_t object,
@@ -941,7 +962,7 @@ dispatch_set_target_queue(dispatch_object_t object,
  * Applications that call NSApplicationMain() or CFRunLoopRun() on the
  * main thread do not need to call dispatch_main().
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW DISPATCH_NORETURN
 void
 dispatch_main(void);
@@ -969,7 +990,7 @@ dispatch_main(void);
  * The result of passing NULL in this parameter is undefined.
  */
 #ifdef __BLOCKS__
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_after(dispatch_time_t when,
@@ -1002,7 +1023,7 @@ dispatch_after(dispatch_time_t when,
  * dispatch_after_f().
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NONNULL4 DISPATCH_NOTHROW
 void
 dispatch_after_f(dispatch_time_t when,
@@ -1049,7 +1070,7 @@ dispatch_after_f(dispatch_time_t when,
  * The result of passing NULL in this parameter is undefined.
  */
 #ifdef __BLOCKS__
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
+API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_barrier_async(dispatch_queue_t queue, dispatch_block_t block);
@@ -1083,7 +1104,7 @@ dispatch_barrier_async(dispatch_queue_t queue, dispatch_block_t block);
  * dispatch_barrier_async_f().
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
+API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_barrier_async_f(dispatch_queue_t queue,
@@ -1111,7 +1132,7 @@ dispatch_barrier_async_f(dispatch_queue_t queue,
  * The result of passing NULL in this parameter is undefined.
  */
 #ifdef __BLOCKS__
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
+API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_barrier_sync(dispatch_queue_t queue,
@@ -1143,7 +1164,7 @@ dispatch_barrier_sync(dispatch_queue_t queue,
  * dispatch_barrier_sync_f().
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
+API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_barrier_sync_f(dispatch_queue_t queue,
@@ -1186,7 +1207,7 @@ dispatch_barrier_sync_f(dispatch_queue_t queue,
  * The destructor function pointer. This may be NULL and is ignored if context
  * is NULL.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_queue_set_specific(dispatch_queue_t queue, const void *key,
@@ -1215,7 +1236,7 @@ dispatch_queue_set_specific(dispatch_queue_t queue, const void *key,
  * @result
  * The context for the specified key or NULL if no context was found.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_PURE DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 void *_Nullable
@@ -1242,7 +1263,7 @@ dispatch_queue_get_specific(dispatch_queue_t queue, const void *key);
  * @result
  * The context for the specified key or NULL if no context was found.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_5_0)
+API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 void *_Nullable
 dispatch_get_specific(const void *key);
@@ -1296,8 +1317,7 @@ dispatch_get_specific(const void *key);
  * The dispatch queue that the current block is expected to run on.
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1
 void
 dispatch_assert_queue(dispatch_queue_t queue)
@@ -1323,8 +1343,7 @@ dispatch_assert_queue(dispatch_queue_t queue)
  * The dispatch queue that the current block is expected to run as a barrier on.
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1
 void
 dispatch_assert_queue_barrier(dispatch_queue_t queue);
@@ -1347,8 +1366,7 @@ dispatch_assert_queue_barrier(dispatch_queue_t queue);
  * The dispatch queue that the current block is expected not to run on.
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1
 void
 dispatch_assert_queue_not(dispatch_queue_t queue)

@@ -20,52 +20,74 @@
 
 #include "internal.h"
 
-uint64_t
-_dispatch_get_nanoseconds(void)
+#if DISPATCH_USE_HOST_TIME
+typedef struct _dispatch_host_time_data_s {
+	long double frac;
+	bool ratio_1_to_1;
+} _dispatch_host_time_data_s;
+
+DISPATCH_CACHELINE_ALIGN
+static _dispatch_host_time_data_s _dispatch_host_time_data;
+
+uint64_t (*_dispatch_host_time_mach2nano)(uint64_t machtime);
+uint64_t (*_dispatch_host_time_nano2mach)(uint64_t nsec);
+
+static uint64_t
+_dispatch_mach_host_time_mach2nano(uint64_t machtime)
 {
-#if !TARGET_OS_WIN32
-	struct timeval now;
-	int r = gettimeofday(&now, NULL);
-	dispatch_assert_zero(r);
-	dispatch_assert(sizeof(NSEC_PER_SEC) == 8);
-	dispatch_assert(sizeof(NSEC_PER_USEC) == 8);
-	return (uint64_t)now.tv_sec * NSEC_PER_SEC +
-			(uint64_t)now.tv_usec * NSEC_PER_USEC;
-#else /* TARGET_OS_WIN32 */
-	// FILETIME is 100-nanosecond intervals since January 1, 1601 (UTC).
-	FILETIME ft;
-	ULARGE_INTEGER li;
-	GetSystemTimeAsFileTime(&ft);
-	li.LowPart = ft.dwLowDateTime;
-	li.HighPart = ft.dwHighDateTime;
-	return li.QuadPart * 100ull;
-#endif /* TARGET_OS_WIN32 */
+	_dispatch_host_time_data_s *const data = &_dispatch_host_time_data;
+
+	if (unlikely(!machtime || data->ratio_1_to_1)) {
+		return machtime;
+	}
+	if (machtime >= INT64_MAX) {
+		return INT64_MAX;
+	}
+	long double big_tmp = ((long double)machtime * data->frac) + .5L;
+	if (unlikely(big_tmp >= INT64_MAX)) {
+		return INT64_MAX;
+	}
+	return (uint64_t)big_tmp;
 }
 
-#if !(defined(__i386__) || defined(__x86_64__) || !HAVE_MACH_ABSOLUTE_TIME) \
-		|| TARGET_OS_WIN32
-DISPATCH_CACHELINE_ALIGN _dispatch_host_time_data_s _dispatch_host_time_data = {
-	.ratio_1_to_1 = true,
-};
+static uint64_t
+_dispatch_mach_host_time_nano2mach(uint64_t nsec)
+{
+	_dispatch_host_time_data_s *const data = &_dispatch_host_time_data;
+
+	if (unlikely(!nsec || data->ratio_1_to_1)) {
+		return nsec;
+	}
+	if (nsec >= INT64_MAX) {
+		return INT64_MAX;
+	}
+	long double big_tmp = ((long double)nsec / data->frac) + .5L;
+	if (unlikely(big_tmp >= INT64_MAX)) {
+		return INT64_MAX;
+	}
+	return (uint64_t)big_tmp;
+}
+
+static void
+_dispatch_host_time_init(mach_timebase_info_data_t *tbi)
+{
+	_dispatch_host_time_data.frac = tbi->numer;
+	_dispatch_host_time_data.frac /= tbi->denom;
+	_dispatch_host_time_data.ratio_1_to_1 = (tbi->numer == tbi->denom);
+	_dispatch_host_time_mach2nano = _dispatch_mach_host_time_mach2nano;
+	_dispatch_host_time_nano2mach = _dispatch_mach_host_time_nano2mach;
+}
+#endif // DISPATCH_USE_HOST_TIME
 
 void
-_dispatch_get_host_time_init(void *context DISPATCH_UNUSED)
+_dispatch_time_init(void)
 {
-#if !TARGET_OS_WIN32
+#if DISPATCH_USE_HOST_TIME
 	mach_timebase_info_data_t tbi;
 	(void)dispatch_assume_zero(mach_timebase_info(&tbi));
-	_dispatch_host_time_data.frac = tbi.numer;
-	_dispatch_host_time_data.frac /= tbi.denom;
-	_dispatch_host_time_data.ratio_1_to_1 = (tbi.numer == tbi.denom);
-#else
-	LARGE_INTEGER freq;
-	dispatch_assume(QueryPerformanceFrequency(&freq));
-	_dispatch_host_time_data.frac = (long double)NSEC_PER_SEC /
-			(long double)freq.QuadPart;
-	_dispatch_host_time_data.ratio_1_to_1 = (freq.QuadPart == 1);
-#endif	/* TARGET_OS_WIN32 */
+	_dispatch_host_time_init(&tbi);
+#endif // DISPATCH_USE_HOST_TIME
 }
-#endif
 
 dispatch_time_t
 dispatch_time(dispatch_time_t inval, int64_t delta)
@@ -115,7 +137,7 @@ dispatch_walltime(const struct timespec *inval, int64_t delta)
 {
 	int64_t nsec;
 	if (inval) {
-		nsec = inval->tv_sec * 1000000000ll + inval->tv_nsec;
+		nsec = (int64_t)_dispatch_timespec_to_nano(*inval);
 	} else {
 		nsec = (int64_t)_dispatch_get_nanoseconds();
 	}

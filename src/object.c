@@ -37,14 +37,28 @@ DISPATCH_NOINLINE
 _os_object_t
 _os_object_retain_internal(_os_object_t obj)
 {
-	return _os_object_retain_internal_inline(obj);
+	return _os_object_retain_internal_n_inline(obj, 1);
+}
+
+DISPATCH_NOINLINE
+_os_object_t
+_os_object_retain_internal_n(_os_object_t obj, uint16_t n)
+{
+	return _os_object_retain_internal_n_inline(obj, n);
 }
 
 DISPATCH_NOINLINE
 void
 _os_object_release_internal(_os_object_t obj)
 {
-	return _os_object_release_internal_inline(obj);
+	return _os_object_release_internal_n_inline(obj, 1);
+}
+
+DISPATCH_NOINLINE
+void
+_os_object_release_internal_n(_os_object_t obj, uint16_t n)
+{
+	return _os_object_release_internal_n_inline(obj, n);
 }
 
 DISPATCH_NOINLINE
@@ -89,21 +103,19 @@ _os_object_release(_os_object_t obj)
 bool
 _os_object_retain_weak(_os_object_t obj)
 {
-	int xref_cnt = obj->os_obj_xref_cnt;
-	if (slowpath(xref_cnt == _OS_OBJECT_GLOBAL_REFCNT)) {
-		return true; // global object
-	}
-retry:
-	if (slowpath(xref_cnt == -1)) {
-		return false;
-	}
-	if (slowpath(xref_cnt < -1)) {
-		goto overrelease;
-	}
-	if (slowpath(!os_atomic_cmpxchgvw2o(obj, os_obj_xref_cnt, xref_cnt,
-			xref_cnt + 1, &xref_cnt, relaxed))) {
-		goto retry;
-	}
+	int xref_cnt, nxref_cnt;
+	os_atomic_rmw_loop2o(obj, os_obj_xref_cnt, xref_cnt, nxref_cnt, relaxed, {
+		if (slowpath(xref_cnt == _OS_OBJECT_GLOBAL_REFCNT)) {
+			os_atomic_rmw_loop_give_up(return true); // global object
+		}
+		if (slowpath(xref_cnt == -1)) {
+			os_atomic_rmw_loop_give_up(return false);
+		}
+		if (slowpath(xref_cnt < -1)) {
+			os_atomic_rmw_loop_give_up(goto overrelease);
+		}
+		nxref_cnt = xref_cnt + 1;
+	});
 	return true;
 overrelease:
 	_OS_OBJECT_CLIENT_CRASH("Over-release of an object");
@@ -126,7 +138,7 @@ _os_object_allows_weak_reference(_os_object_t obj)
 #pragma mark dispatch_object_t
 
 void *
-_dispatch_alloc(const void *vtable, size_t size)
+_dispatch_object_alloc(const void *vtable, size_t size)
 {
 #if OS_OBJECT_HAVE_OBJC1
 	const struct dispatch_object_vtable_s *_vtable = vtable;
@@ -137,6 +149,27 @@ _dispatch_alloc(const void *vtable, size_t size)
 #else
 	return _os_object_alloc_realized(vtable, size);
 #endif
+}
+
+void
+_dispatch_object_finalize(dispatch_object_t dou)
+{
+#if USE_OBJC
+	objc_destructInstance((id)dou._do);
+#else
+	(void)dou;
+#endif
+}
+
+void
+_dispatch_object_dealloc(dispatch_object_t dou)
+{
+	// so that ddt doesn't pick up bad objects when malloc reuses this memory
+	dou._os_obj->os_obj_isa = NULL;
+#if OS_OBJECT_HAVE_OBJC1
+	dou._do->do_vtable = NULL;
+#endif
+	free(dou._os_obj);
 }
 
 void
@@ -153,24 +186,6 @@ dispatch_release(dispatch_object_t dou)
 	_os_object_release(dou._os_obj);
 }
 
-static void
-_dispatch_dealloc(dispatch_object_t dou)
-{
-	dispatch_queue_t tq = dou._do->do_targetq;
-	dispatch_function_t func = dou._do->do_finalizer;
-	void *ctxt = dou._do->do_ctxt;
-#if OS_OBJECT_HAVE_OBJC1
-	// so that ddt doesn't pick up bad objects when malloc reuses this memory
-	dou._do->do_vtable = NULL;
-#endif
-	_os_object_dealloc(dou._os_obj);
-
-	if (func && ctxt) {
-		dispatch_async_f(tq, ctxt, func);
-	}
-	_dispatch_release_tailcall(tq);
-}
-
 #if !USE_OBJC
 void
 _dispatch_xref_dispose(dispatch_object_t dou)
@@ -181,6 +196,10 @@ _dispatch_xref_dispose(dispatch_object_t dou)
 	}
 	if (dx_type(dou._do) == DISPATCH_SOURCE_KEVENT_TYPE) {
 		_dispatch_source_xref_dispose(dou._ds);
+#if HAVE_MACH
+	} else if (dx_type(dou._do) == DISPATCH_MACH_CHANNEL_TYPE) {
+		_dispatch_mach_xref_dispose(dou._dm);
+#endif
 	} else if (dx_type(dou._do) == DISPATCH_QUEUE_RUNLOOP_TYPE) {
 		_dispatch_runloop_queue_xref_dispose(dou._dq);
 	}
@@ -191,19 +210,35 @@ _dispatch_xref_dispose(dispatch_object_t dou)
 void
 _dispatch_dispose(dispatch_object_t dou)
 {
+	dispatch_queue_t tq = dou._do->do_targetq;
+	dispatch_function_t func = dou._do->do_finalizer;
+	void *ctxt = dou._do->do_ctxt;
+	bool allow_free = true;
+
 	if (slowpath(dou._do->do_next != DISPATCH_OBJECT_LISTLESS)) {
 		DISPATCH_INTERNAL_CRASH(dou._do->do_next, "Release while enqueued");
 	}
-	dx_dispose(dou._do);
-	return _dispatch_dealloc(dou);
+
+	dx_dispose(dou._do, &allow_free);
+
+	// Past this point, the only thing left of the object is its memory
+	if (likely(allow_free)) {
+		_dispatch_object_finalize(dou);
+		_dispatch_object_dealloc(dou);
+	}
+	if (func && ctxt) {
+		dispatch_async_f(tq, ctxt, func);
+	}
+	if (tq) _dispatch_release_tailcall(tq);
 }
 
 void *
 dispatch_get_context(dispatch_object_t dou)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_get_context, dou);
-	if (slowpath(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) ||
-			slowpath(dx_hastypeflag(dou._do, QUEUE_ROOT))) {
+	if (unlikely(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT ||
+			dx_hastypeflag(dou._do, QUEUE_ROOT) ||
+			dx_hastypeflag(dou._do, QUEUE_BASE))) {
 		return NULL;
 	}
 	return dou._do->do_ctxt;
@@ -213,8 +248,9 @@ void
 dispatch_set_context(dispatch_object_t dou, void *context)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_set_context, dou, context);
-	if (slowpath(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) ||
-			slowpath(dx_hastypeflag(dou._do, QUEUE_ROOT))) {
+	if (unlikely(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT ||
+			dx_hastypeflag(dou._do, QUEUE_ROOT) ||
+			dx_hastypeflag(dou._do, QUEUE_BASE))) {
 		return;
 	}
 	dou._do->do_ctxt = context;
@@ -224,8 +260,9 @@ void
 dispatch_set_finalizer_f(dispatch_object_t dou, dispatch_function_t finalizer)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_set_finalizer_f, dou, finalizer);
-	if (slowpath(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT) ||
-			slowpath(dx_hastypeflag(dou._do, QUEUE_ROOT))) {
+	if (unlikely(dou._do->do_ref_cnt == DISPATCH_OBJECT_GLOBAL_REFCNT ||
+			dx_hastypeflag(dou._do, QUEUE_ROOT) ||
+			dx_hastypeflag(dou._do, QUEUE_BASE))) {
 		return;
 	}
 	dou._do->do_finalizer = finalizer;
@@ -237,10 +274,11 @@ dispatch_set_target_queue(dispatch_object_t dou, dispatch_queue_t tq)
 	DISPATCH_OBJECT_TFB(_dispatch_objc_set_target_queue, dou, tq);
 	if (dx_vtable(dou._do)->do_set_targetq) {
 		dx_vtable(dou._do)->do_set_targetq(dou._do, tq);
-	} else if (dou._do->do_ref_cnt != DISPATCH_OBJECT_GLOBAL_REFCNT &&
-			!slowpath(dx_hastypeflag(dou._do, QUEUE_ROOT))) {
+	} else if (likely(dou._do->do_ref_cnt != DISPATCH_OBJECT_GLOBAL_REFCNT &&
+			!dx_hastypeflag(dou._do, QUEUE_ROOT) &&
+			!dx_hastypeflag(dou._do, QUEUE_BASE))) {
 		if (slowpath(!tq)) {
-			tq = _dispatch_get_root_queue(_DISPATCH_QOS_CLASS_DEFAULT, false);
+			tq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false);
 		}
 		_dispatch_object_set_target_queue_inline(dou._do, tq);
 	}
@@ -268,7 +306,9 @@ void
 dispatch_resume(dispatch_object_t dou)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_resume, dou);
-	if (dx_vtable(dou._do)->do_resume) {
+	// the do_suspend below is not a typo. Having a do_resume but no do_suspend
+	// allows for objects to support activate, but have no-ops suspend/resume
+	if (dx_vtable(dou._do)->do_suspend) {
 		dx_vtable(dou._do)->do_resume(dou._do, false);
 	}
 }
@@ -276,6 +316,6 @@ dispatch_resume(dispatch_object_t dou)
 size_t
 _dispatch_object_debug_attr(dispatch_object_t dou, char* buf, size_t bufsiz)
 {
-	return dsnprintf(buf, bufsiz, "xrefcnt = 0x%x, refcnt = 0x%x, ",
+	return dsnprintf(buf, bufsiz, "xref = %d, ref = %d, ",
 			dou._do->do_xref_cnt + 1, dou._do->do_ref_cnt + 1);
 }

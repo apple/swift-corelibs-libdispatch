@@ -37,24 +37,19 @@ public struct DispatchWorkItemFlags : OptionSet, RawRepresentable {
 @available(OSX 10.10, iOS 8.0, *)
 public class DispatchWorkItem {
 	internal var _block: _DispatchBlock
-	internal var _group: DispatchGroup?
 
-	public init(group: DispatchGroup? = nil, qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], block: @convention(block) () -> ()) {
+	public init(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], block: @escaping @convention(block) () -> ()) {
 		_block =  dispatch_block_create_with_qos_class(dispatch_block_flags_t(flags.rawValue),
 			qos.qosClass.rawValue.rawValue, Int32(qos.relativePriority), block)
 	}
 
-	// Used by DispatchQueue.synchronously<T> to provide a @noescape path through
+	// Used by DispatchQueue.synchronously<T> to provide a path through
 	// dispatch_block_t, as we know the lifetime of the block in question.
-	internal init(flags: DispatchWorkItemFlags = [], noescapeBlock: @noescape () -> ()) {
+	internal init(flags: DispatchWorkItemFlags = [], noescapeBlock: () -> ()) {
 		_block = _swift_dispatch_block_create_noescape(dispatch_block_flags_t(flags.rawValue), noescapeBlock)
 	}
 
 	public func perform() {
-		if let g = _group { 
-			g.enter() 
-			defer { g.leave() }
-		}
 		_block()
 	}
 
@@ -63,14 +58,19 @@ public class DispatchWorkItem {
 	}
 
 	public func wait(timeout: DispatchTime) -> DispatchTimeoutResult {
-		return dispatch_block_wait(_block, timeout.rawValue) == 0 ? .Success : .TimedOut
+		return dispatch_block_wait(_block, timeout.rawValue) == 0 ? .success : .timedOut
 	}
 
 	public func wait(wallTimeout: DispatchWallTime) -> DispatchTimeoutResult {
-		return dispatch_block_wait(_block, wallTimeout.rawValue) == 0 ? .Success : .TimedOut
+		return dispatch_block_wait(_block, wallTimeout.rawValue) == 0 ? .success : .timedOut
 	}
 
-	public func notify(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], queue: DispatchQueue, execute: @convention(block) () -> Void) {
+	public func notify(
+		qos: DispatchQoS = .unspecified,
+		flags: DispatchWorkItemFlags = [],
+		queue: DispatchQueue,
+		execute: @escaping @convention(block) () -> ())
+	{
 		if qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: execute)
 			dispatch_block_notify(_block, queue.__wrapped, item._block)
@@ -92,17 +92,6 @@ public class DispatchWorkItem {
 	}
 }
 
-@available(OSX 10.10, iOS 8.0, *)
-public extension DispatchWorkItem {
-	@available(*, deprecated, renamed: "DispatchWorkItem.wait(self:wallTimeout:)")
-	public func wait(timeout: DispatchWallTime) -> Int {
-		switch wait(wallTimeout: timeout) {
-		case .Success: return 0
-		case .TimedOut: return DispatchTimeoutResult.KERN_OPERATION_TIMED_OUT
-		}
-	}
-}
-
 /// The dispatch_block_t typealias is different from usual closures in that it
 /// uses @convention(block). This is to avoid unnecessary bridging between
 /// C blocks and Swift closures, which interferes with dispatch APIs that depend
@@ -111,4 +100,4 @@ internal typealias _DispatchBlock = @convention(block) () -> Void
 internal typealias dispatch_block_t = @convention(block) () -> Void
 
 @_silgen_name("_swift_dispatch_block_create_noescape")
-internal func _swift_dispatch_block_create_noescape(_ flags: dispatch_block_flags_t, _ block: @noescape () -> ()) -> _DispatchBlock
+internal func _swift_dispatch_block_create_noescape(_ flags: dispatch_block_flags_t, _ block: () -> ()) -> _DispatchBlock

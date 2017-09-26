@@ -100,12 +100,13 @@ struct dispatch_data_format_type_s {
 	dispatch_transform_t encode;
 };
 
-void dispatch_data_init(dispatch_data_t data, const void *buffer, size_t size,
-		dispatch_block_t destructor);
-void _dispatch_data_dispose(dispatch_data_t data);
+void _dispatch_data_init_with_bytes(dispatch_data_t data, const void *buffer,
+		size_t size, dispatch_block_t destructor);
+void _dispatch_data_dispose(dispatch_data_t data, bool *allow_free);
+void _dispatch_data_set_target_queue(struct dispatch_data_s *dd,
+		dispatch_queue_t tq);
 size_t _dispatch_data_debug(dispatch_data_t data, char* buf, size_t bufsiz);
-const void*
-_dispatch_data_get_flattened_bytes(struct dispatch_data_s *dd);
+const void* _dispatch_data_get_flattened_bytes(struct dispatch_data_s *dd);
 
 #if !defined(__cplusplus)
 extern const dispatch_block_t _dispatch_data_destructor_inline;

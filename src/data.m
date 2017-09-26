@@ -28,9 +28,11 @@
 
 #include <Foundation/NSString.h>
 
+// NOTE: this file must not contain any atomic operations
+
 @interface DISPATCH_CLASS(data) () <DISPATCH_CLASS(data)>
-@property (readonly) NSUInteger length;
-@property (readonly) const void *bytes NS_RETURNS_INNER_POINTER;
+@property (readonly,nonatomic) NSUInteger length;
+@property (readonly,nonatomic) const void *bytes NS_RETURNS_INNER_POINTER;
 
 - (id)initWithBytes:(void *)bytes length:(NSUInteger)length copy:(BOOL)copy
 		freeWhenDone:(BOOL)freeBytes bytesAreVM:(BOOL)vm;
@@ -66,29 +68,26 @@
 	} else {
 		destructor = DISPATCH_DATA_DESTRUCTOR_NONE;
 	}
-	dispatch_data_init(self, bytes, length, destructor);
+	_dispatch_data_init_with_bytes(self, bytes, length, destructor);
 	return self;
 }
 
-#define _dispatch_data_objc_dispose(selector) \
-	struct dispatch_data_s *dd = (void*)self; \
-	_dispatch_data_dispose(self); \
-	dispatch_queue_t tq = dd->do_targetq; \
-	dispatch_function_t func = dd->finalizer; \
-	void *ctxt = dd->ctxt; \
-	[super selector]; \
-	if (func && ctxt) { \
-		if (!tq) { \
-			 tq = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0);\
-		} \
-		dispatch_async_f(tq, ctxt, func); \
-	} \
-	if (tq) { \
-		_os_object_release_internal((_os_object_t)tq); \
-	}
-
 - (void)dealloc {
-	_dispatch_data_objc_dispose(dealloc);
+	struct dispatch_data_s *dd = (void*)self;
+	_dispatch_data_dispose(self, NULL);
+	dispatch_queue_t tq = dd->do_targetq;
+	dispatch_function_t func = dd->finalizer;
+	void *ctxt = dd->ctxt;
+	[super dealloc];
+	if (func && ctxt) {
+		if (!tq) {
+			 tq = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0);
+		}
+		dispatch_async_f(tq, ctxt, func);
+	}
+	if (tq) {
+		_os_object_release_internal((_os_object_t)tq);
+	}
 }
 
 - (BOOL)_bytesAreVM {
@@ -113,10 +112,7 @@
 
 - (void)_setTargetQueue:(dispatch_queue_t)queue {
 	struct dispatch_data_s *dd = (void*)self;
-	_os_object_retain_internal((_os_object_t)queue);
-	dispatch_queue_t prev;
-	prev = os_atomic_xchg2o(dd, do_targetq, queue, release);
-	if (prev) _os_object_release_internal((_os_object_t)prev);
+	return _dispatch_data_set_target_queue(dd, queue);
 }
 
 - (NSString *)debugDescription {
@@ -124,9 +120,9 @@
 	if (!nsstring) return nil;
 	char buf[2048];
 	_dispatch_data_debug(self, buf, sizeof(buf));
-	return [nsstring stringWithFormat:
-			[nsstring stringWithUTF8String:"<%s: %s>"],
-			class_getName([self class]), buf];
+	NSString *format = [nsstring stringWithUTF8String:"<%s: %s>"];
+	if (!format) return nil;
+	return [nsstring stringWithFormat:format, class_getName([self class]), buf];
 }
 
 - (NSUInteger)length {

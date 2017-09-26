@@ -23,11 +23,10 @@
 
 #ifdef __APPLE__
 #include <Availability.h>
+#include <os/availability.h>
 #include <TargetConditionals.h>
-#endif
-#ifndef __linux__
 #include <os/base.h>
-#else
+#elif defined(__linux__)
 #include <os/linux_base.h>
 #endif
 
@@ -75,6 +74,9 @@
 #endif // OS_OBJECT_HAVE_OBJC_SUPPORT
 
 #if OS_OBJECT_HAVE_OBJC_SUPPORT
+#if defined(__swift__) && __swift__ && !OS_OBJECT_USE_OBJC
+#define OS_OBJECT_USE_OBJC 1
+#endif
 #ifndef OS_OBJECT_USE_OBJC
 #define OS_OBJECT_USE_OBJC 1
 #endif
@@ -232,7 +234,7 @@ __BEGIN_DECLS
  * @result
  * The retained object.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_EXPORT OS_SWIFT_UNAVAILABLE("Can't be used with ARC")
 void*
 os_retain(void *object);
@@ -254,7 +256,7 @@ os_retain(void *object);
  * @param object
  * The object to release.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_EXPORT
 void OS_SWIFT_UNAVAILABLE("Can't be used with ARC")
 os_release(void *object);

@@ -179,20 +179,23 @@
 #define DISPATCH_INVOKABLE_VTABLE_HEADER(x) \
 	unsigned long const do_type; \
 	const char *const do_kind; \
-	void (*const do_invoke)(struct x##_s *, dispatch_invoke_flags_t)
+	void (*const do_invoke)(struct x##_s *, dispatch_invoke_context_t, \
+			dispatch_invoke_flags_t); \
+	void (*const do_push)(struct x##_s *, dispatch_object_t, \
+			dispatch_qos_t)
 
 #define DISPATCH_QUEUEABLE_VTABLE_HEADER(x) \
 	DISPATCH_INVOKABLE_VTABLE_HEADER(x); \
 	void (*const do_wakeup)(struct x##_s *, \
-			pthread_priority_t, dispatch_wakeup_flags_t); \
-	void (*const do_dispose)(struct x##_s *)
+			dispatch_qos_t, dispatch_wakeup_flags_t); \
+	void (*const do_dispose)(struct x##_s *, bool *allow_free)
 
 #define DISPATCH_OBJECT_VTABLE_HEADER(x) \
 	DISPATCH_QUEUEABLE_VTABLE_HEADER(x); \
 	void (*const do_set_targetq)(struct x##_s *, dispatch_queue_t); \
 	void (*const do_suspend)(struct x##_s *); \
 	void (*const do_resume)(struct x##_s *, bool activate); \
-	void (*const do_finalize_activation)(struct x##_s *); \
+	void (*const do_finalize_activation)(struct x##_s *, bool *allow_resume); \
 	size_t (*const do_debug)(struct x##_s *, char *, size_t)
 
 #define dx_vtable(x) (&(x)->do_vtable->_os_obj_vtable)
@@ -202,8 +205,9 @@
 #define dx_hastypeflag(x, f) (dx_vtable(x)->do_type & _DISPATCH_##f##_TYPEFLAG)
 #define dx_kind(x) dx_vtable(x)->do_kind
 #define dx_debug(x, y, z) dx_vtable(x)->do_debug((x), (y), (z))
-#define dx_dispose(x) dx_vtable(x)->do_dispose(x)
-#define dx_invoke(x, z) dx_vtable(x)->do_invoke(x, z)
+#define dx_dispose(x, y) dx_vtable(x)->do_dispose(x, y)
+#define dx_invoke(x, y, z) dx_vtable(x)->do_invoke(x, y, z)
+#define dx_push(x, y, z) dx_vtable(x)->do_push(x, y, z)
 #define dx_wakeup(x, y, z) dx_vtable(x)->do_wakeup(x, y, z)
 
 #define DISPATCH_OBJECT_GLOBAL_REFCNT		_OS_OBJECT_GLOBAL_REFCNT
@@ -221,7 +225,7 @@
 	.do_xref_cnt = DISPATCH_OBJECT_GLOBAL_REFCNT
 #endif
 
-#ifdef __LP64__
+#if DISPATCH_SIZEOF_PTR == 8
 // the bottom nibble must not be zero, the rest of the bits should be random
 // we sign extend the 64-bit version so that a better instruction encoding is
 // generated on Intel
@@ -231,32 +235,48 @@
 #endif
 
 DISPATCH_ENUM(dispatch_wakeup_flags, uint32_t,
-	// The caller of dx_wakeup owns an internal refcount on the object being
-	// woken up
-	DISPATCH_WAKEUP_CONSUME                 = 0x00000001,
+	// The caller of dx_wakeup owns two internal refcounts on the object being
+	// woken up. Two are needed for WLH wakeups where two threads need
+	// the object to remain valid in a non-coordinated way
+	// - the thread doing the poke for the duration of the poke
+	// - drainers for the duration of their drain
+	DISPATCH_WAKEUP_CONSUME_2               = 0x00000001,
 
 	// Some change to the object needs to be published to drainers.
 	// If the drainer isn't the same thread, some scheme such as the dispatch
 	// queue DIRTY bit must be used and a release barrier likely has to be
 	// involved before dx_wakeup returns
-	DISPATCH_WAKEUP_FLUSH					= 0x00000002,
+	DISPATCH_WAKEUP_MAKE_DIRTY              = 0x00000002,
 
-	// A slow waiter was just enqueued
-	DISPATCH_WAKEUP_SLOW_WAITER				= 0x00000004,
+	// This wakeup is made by a sync owner that still holds the drain lock
+	DISPATCH_WAKEUP_BARRIER_COMPLETE        = 0x00000004,
 
-	// The caller desires to apply an override on the object being woken up
-	// and has already adjusted the `oq_override` field. When this flag is
-	// passed, the priority passed to dx_wakeup() should not be 0
-	DISPATCH_WAKEUP_OVERRIDING              = 0x00000008,
-
-	// At the time this queue was woken up it had an override that must be
-	// preserved (used to solve a race with _dispatch_queue_drain_try_unlock())
-	DISPATCH_WAKEUP_WAS_OVERRIDDEN          = 0x00000010,
-
-#define _DISPATCH_WAKEUP_OVERRIDE_BITS \
-		((dispatch_wakeup_flags_t)(DISPATCH_WAKEUP_OVERRIDING | \
-		DISPATCH_WAKEUP_WAS_OVERRIDDEN))
+	// This wakeup is caused by a dispatch_block_wait()
+	DISPATCH_WAKEUP_BLOCK_WAIT              = 0x00000008,
 );
+
+typedef struct dispatch_invoke_context_s {
+	struct dispatch_object_s *dic_deferred;
+#if HAVE_PTHREAD_WORKQUEUE_NARROWING
+	uint64_t dic_next_narrow_check;
+#endif
+#if DISPATCH_COCOA_COMPAT
+	void *dic_autorelease_pool;
+#endif
+} dispatch_invoke_context_s, *dispatch_invoke_context_t;
+
+#if HAVE_PTHREAD_WORKQUEUE_NARROWING
+#define DISPATCH_THREAD_IS_NARROWING 1
+
+#define dispatch_with_disabled_narrowing(dic, ...) ({ \
+		uint64_t suspend_narrow_check = dic->dic_next_narrow_check; \
+		dic->dic_next_narrow_check = 0; \
+		__VA_ARGS__; \
+		dic->dic_next_narrow_check = suspend_narrow_check; \
+	})
+#else
+#define dispatch_with_disabled_narrowing(dic, ...) __VA_ARGS__
+#endif
 
 DISPATCH_ENUM(dispatch_invoke_flags, uint32_t,
 	DISPATCH_INVOKE_NONE					= 0x00000000,
@@ -267,12 +287,22 @@ DISPATCH_ENUM(dispatch_invoke_flags, uint32_t,
 	// This invoke is a stealer, meaning that it doesn't own the
 	// enqueue lock at drain lock time.
 	//
-	// @const DISPATCH_INVOKE_OVERRIDING
-	// This invoke is draining the hierarchy on another root queue and needs
-	// to fake the identity of the original one.
+	// @const DISPATCH_INVOKE_WLH
+	// This invoke is for a bottom WLH
 	//
 	DISPATCH_INVOKE_STEALING				= 0x00000001,
-	DISPATCH_INVOKE_OVERRIDING				= 0x00000002,
+	DISPATCH_INVOKE_WLH						= 0x00000002,
+
+	// Misc flags
+	//
+	// @const DISPATCH_INVOKE_ASYNC_REPLY
+	// An asynchronous reply to a message is being handled.
+	//
+	// @const DISPATCH_INVOKE_DISALLOW_SYNC_WAITERS
+	// The next serial drain should not allow sync waiters.
+	//
+	DISPATCH_INVOKE_ASYNC_REPLY				= 0x00000004,
+	DISPATCH_INVOKE_DISALLOW_SYNC_WAITERS	= 0x00000008,
 
 	// Below this point flags are propagated to recursive calls to drain(),
 	// continuation pop() or dx_invoke().
@@ -325,32 +355,37 @@ enum {
 	_DISPATCH_DISK_TYPE				=    0x70000, // meta-type for io disks
 
 	_DISPATCH_QUEUE_ROOT_TYPEFLAG	=     0x0100, // bit set for any root queues
+	_DISPATCH_QUEUE_BASE_TYPEFLAG	=     0x0200, // base of a hierarchy
+	                                              // targets a root queue
 
 #define DISPATCH_CONTINUATION_TYPE(name)  \
 		(_DISPATCH_CONTINUATION_TYPE | DC_##name##_TYPE)
-	DISPATCH_DATA_TYPE				= 1 | _DISPATCH_NODE_TYPE,
-	DISPATCH_MACH_MSG_TYPE			= 2 | _DISPATCH_NODE_TYPE,
-	DISPATCH_QUEUE_ATTR_TYPE		= 3 | _DISPATCH_NODE_TYPE,
+	DISPATCH_DATA_TYPE					= 1 | _DISPATCH_NODE_TYPE,
+	DISPATCH_MACH_MSG_TYPE				= 2 | _DISPATCH_NODE_TYPE,
+	DISPATCH_QUEUE_ATTR_TYPE			= 3 | _DISPATCH_NODE_TYPE,
 
-	DISPATCH_IO_TYPE				= 0 | _DISPATCH_IO_TYPE,
-	DISPATCH_OPERATION_TYPE			= 0 | _DISPATCH_OPERATION_TYPE,
-	DISPATCH_DISK_TYPE				= 0 | _DISPATCH_DISK_TYPE,
+	DISPATCH_IO_TYPE					= 0 | _DISPATCH_IO_TYPE,
+	DISPATCH_OPERATION_TYPE				= 0 | _DISPATCH_OPERATION_TYPE,
+	DISPATCH_DISK_TYPE					= 0 | _DISPATCH_DISK_TYPE,
 
-	DISPATCH_QUEUE_LEGACY_TYPE		= 1 | _DISPATCH_QUEUE_TYPE,
-	DISPATCH_QUEUE_SERIAL_TYPE		= 2 | _DISPATCH_QUEUE_TYPE,
-	DISPATCH_QUEUE_CONCURRENT_TYPE	= 3 | _DISPATCH_QUEUE_TYPE,
-	DISPATCH_QUEUE_GLOBAL_ROOT_TYPE	= 4 | _DISPATCH_QUEUE_TYPE |
+	DISPATCH_QUEUE_LEGACY_TYPE			= 1 | _DISPATCH_QUEUE_TYPE,
+	DISPATCH_QUEUE_SERIAL_TYPE			= 2 | _DISPATCH_QUEUE_TYPE,
+	DISPATCH_QUEUE_CONCURRENT_TYPE		= 3 | _DISPATCH_QUEUE_TYPE,
+	DISPATCH_QUEUE_GLOBAL_ROOT_TYPE		= 4 | _DISPATCH_QUEUE_TYPE |
 			_DISPATCH_QUEUE_ROOT_TYPEFLAG,
-	DISPATCH_QUEUE_RUNLOOP_TYPE		= 5 | _DISPATCH_QUEUE_TYPE |
-			_DISPATCH_QUEUE_ROOT_TYPEFLAG,
-	DISPATCH_QUEUE_MGR_TYPE			= 6 | _DISPATCH_QUEUE_TYPE,
-	DISPATCH_QUEUE_SPECIFIC_TYPE	= 7 | _DISPATCH_QUEUE_TYPE,
+	DISPATCH_QUEUE_NETWORK_EVENT_TYPE	= 5 | _DISPATCH_QUEUE_TYPE |
+			_DISPATCH_QUEUE_BASE_TYPEFLAG,
+	DISPATCH_QUEUE_RUNLOOP_TYPE			= 6 | _DISPATCH_QUEUE_TYPE |
+			_DISPATCH_QUEUE_BASE_TYPEFLAG,
+	DISPATCH_QUEUE_MGR_TYPE				= 7 | _DISPATCH_QUEUE_TYPE |
+			_DISPATCH_QUEUE_BASE_TYPEFLAG,
+	DISPATCH_QUEUE_SPECIFIC_TYPE		= 8 | _DISPATCH_QUEUE_TYPE,
 
-	DISPATCH_SEMAPHORE_TYPE			= 1 | _DISPATCH_SEMAPHORE_TYPE,
-	DISPATCH_GROUP_TYPE				= 2 | _DISPATCH_SEMAPHORE_TYPE,
+	DISPATCH_SEMAPHORE_TYPE				= 1 | _DISPATCH_SEMAPHORE_TYPE,
+	DISPATCH_GROUP_TYPE					= 2 | _DISPATCH_SEMAPHORE_TYPE,
 
-	DISPATCH_SOURCE_KEVENT_TYPE		= 1 | _DISPATCH_SOURCE_TYPE,
-	DISPATCH_MACH_CHANNEL_TYPE		= 2 | _DISPATCH_SOURCE_TYPE,
+	DISPATCH_SOURCE_KEVENT_TYPE			= 1 | _DISPATCH_SOURCE_TYPE,
+	DISPATCH_MACH_CHANNEL_TYPE			= 2 | _DISPATCH_SOURCE_TYPE,
 
 };
 
@@ -410,38 +445,29 @@ struct dispatch_object_s {
 
 #if OS_OBJECT_HAVE_OBJC1
 #define _OS_MPSC_QUEUE_FIELDS(ns, __state_field__) \
-	struct dispatch_object_s *volatile ns##_items_head; \
-	unsigned long ns##_serialnum; \
-	union { \
-		uint64_t volatile __state_field__; \
-		DISPATCH_STRUCT_LITTLE_ENDIAN_2( \
+	DISPATCH_UNION_LE(uint64_t volatile __state_field__, \
 			dispatch_lock __state_field__##_lock, \
 			uint32_t __state_field__##_bits \
-		); \
-	}; /* needs to be 64-bit aligned */ \
-	/* LP64 global queue cacheline boundary */ \
+	) DISPATCH_ATOMIC64_ALIGN; \
+	struct dispatch_object_s *volatile ns##_items_head; \
+	unsigned long ns##_serialnum; \
 	const char *ns##_label; \
-	voucher_t ns##_override_voucher; \
+	struct dispatch_object_s *volatile ns##_items_tail; \
 	dispatch_priority_t ns##_priority; \
-	dispatch_priority_t volatile ns##_override; \
-	struct dispatch_object_s *volatile ns##_items_tail
+	int volatile ns##_sref_cnt
 #else
 #define _OS_MPSC_QUEUE_FIELDS(ns, __state_field__) \
 	struct dispatch_object_s *volatile ns##_items_head; \
-	union { \
-		uint64_t volatile __state_field__; \
-		DISPATCH_STRUCT_LITTLE_ENDIAN_2( \
+	DISPATCH_UNION_LE(uint64_t volatile __state_field__, \
 			dispatch_lock __state_field__##_lock, \
 			uint32_t __state_field__##_bits \
-		); \
-	}; /* needs to be 64-bit aligned */ \
+	) DISPATCH_ATOMIC64_ALIGN; \
 	/* LP64 global queue cacheline boundary */ \
 	unsigned long ns##_serialnum; \
 	const char *ns##_label; \
-	voucher_t ns##_override_voucher; \
+	struct dispatch_object_s *volatile ns##_items_tail; \
 	dispatch_priority_t ns##_priority; \
-	dispatch_priority_t volatile ns##_override; \
-	struct dispatch_object_s *volatile ns##_items_tail
+	int volatile ns##_sref_cnt
 #endif
 
 OS_OBJECT_INTERNAL_CLASS_DECL(os_mpsc_queue, object,
@@ -459,7 +485,9 @@ struct os_mpsc_queue_s {
 
 size_t _dispatch_object_debug_attr(dispatch_object_t dou, char* buf,
 		size_t bufsiz);
-void *_dispatch_alloc(const void *vtable, size_t size);
+void *_dispatch_object_alloc(const void *vtable, size_t size);
+void _dispatch_object_finalize(dispatch_object_t dou);
+void _dispatch_object_dealloc(dispatch_object_t dou);
 #if !USE_OBJC
 void _dispatch_xref_dispose(dispatch_object_t dou);
 #endif
@@ -467,17 +495,22 @@ void _dispatch_dispose(dispatch_object_t dou);
 #if DISPATCH_COCOA_COMPAT
 #if USE_OBJC
 #include <objc/runtime.h>
+#if __has_include(<objc/objc-internal.h>)
 #include <objc/objc-internal.h>
+#else
+extern void *objc_autoreleasePoolPush(void);
+extern void objc_autoreleasePoolPop(void *context);
+#endif // __has_include(<objc/objc-internal.h>)
 #define _dispatch_autorelease_pool_push() \
-	objc_autoreleasePoolPush()
+		objc_autoreleasePoolPush()
 #define _dispatch_autorelease_pool_pop(context) \
-	objc_autoreleasePoolPop(context)
+		objc_autoreleasePoolPop(context)
 #else
 void *_dispatch_autorelease_pool_push(void);
 void _dispatch_autorelease_pool_pop(void *context);
 #endif
-void *_dispatch_last_resort_autorelease_pool_push(void);
-void _dispatch_last_resort_autorelease_pool_pop(void *context);
+void _dispatch_last_resort_autorelease_pool_push(dispatch_invoke_context_t dic);
+void _dispatch_last_resort_autorelease_pool_pop(dispatch_invoke_context_t dic);
 
 #define dispatch_invoke_with_autoreleasepool(flags, ...)  ({ \
 		void *pool = NULL; \
@@ -492,7 +525,6 @@ void _dispatch_last_resort_autorelease_pool_pop(void *context);
 #define dispatch_invoke_with_autoreleasepool(flags, ...) \
 	do { (void)flags; __VA_ARGS__; } while (0)
 #endif
-
 
 #if USE_OBJC
 OS_OBJECT_OBJC_CLASS_DECL(object);
@@ -557,20 +589,20 @@ size_t _dispatch_objc_debug(dispatch_object_t dou, char* buf, size_t bufsiz);
  *   a barrier to perform prior to tearing down an object when the refcount
  *   reached -1.
  */
-#define _os_atomic_refcnt_perform2o(o, f, op, m)   ({ \
+#define _os_atomic_refcnt_perform2o(o, f, op, n, m)   ({ \
 		typeof(o) _o = (o); \
 		int _ref_cnt = _o->f; \
 		if (fastpath(_ref_cnt != _OS_OBJECT_GLOBAL_REFCNT)) { \
-			_ref_cnt = os_atomic_##op##2o(_o, f, m); \
+			_ref_cnt = os_atomic_##op##2o(_o, f, n, m); \
 		} \
 		_ref_cnt; \
 	})
 
-#define _os_atomic_refcnt_inc2o(o, m) \
-		_os_atomic_refcnt_perform2o(o, m, inc, relaxed)
+#define _os_atomic_refcnt_add2o(o, m, n) \
+		_os_atomic_refcnt_perform2o(o, m, add, n, relaxed)
 
-#define _os_atomic_refcnt_dec2o(o, m) \
-		_os_atomic_refcnt_perform2o(o, m, dec, release)
+#define _os_atomic_refcnt_sub2o(o, m, n) \
+		_os_atomic_refcnt_perform2o(o, m, sub, n, release)
 
 #define _os_atomic_refcnt_dispose_barrier2o(o, m) \
 		(void)os_atomic_load2o(o, m, acquire)
@@ -593,23 +625,26 @@ size_t _dispatch_objc_debug(dispatch_object_t dou, char* buf, size_t bufsiz);
  *
  */
 #define _os_object_xrefcnt_inc(o) \
-		_os_atomic_refcnt_inc2o(o, os_obj_xref_cnt)
+		_os_atomic_refcnt_add2o(o, os_obj_xref_cnt, 1)
 
 #define _os_object_xrefcnt_dec(o) \
-		_os_atomic_refcnt_dec2o(o, os_obj_xref_cnt)
+		_os_atomic_refcnt_sub2o(o, os_obj_xref_cnt, 1)
 
 #define _os_object_xrefcnt_dispose_barrier(o) \
 		_os_atomic_refcnt_dispose_barrier2o(o, os_obj_xref_cnt)
 
-#define _os_object_refcnt_inc(o) \
-		_os_atomic_refcnt_inc2o(o, os_obj_ref_cnt)
+#define _os_object_refcnt_add(o, n) \
+		_os_atomic_refcnt_add2o(o, os_obj_ref_cnt, n)
 
-#define _os_object_refcnt_dec(o) \
-		_os_atomic_refcnt_dec2o(o, os_obj_ref_cnt)
+#define _os_object_refcnt_sub(o, n) \
+		_os_atomic_refcnt_sub2o(o, os_obj_ref_cnt, n)
 
 #define _os_object_refcnt_dispose_barrier(o) \
 		_os_atomic_refcnt_dispose_barrier2o(o, os_obj_ref_cnt)
 
+void _os_object_atfork_child(void);
+void _os_object_atfork_parent(void);
+void _os_object_atfork_prepare(void);
 void _os_object_init(void);
 unsigned long _os_object_retain_count(_os_object_t obj);
 bool _os_object_retain_weak(_os_object_t obj);

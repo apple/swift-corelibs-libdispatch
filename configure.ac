@@ -3,7 +3,7 @@
 #
 
 AC_PREREQ(2.69)
-AC_INIT([libdispatch], [1.3], [libdispatch@macosforge.org], [libdispatch], [http://libdispatch.macosforge.org])
+AC_INIT([libdispatch], [1.3], [https://bugs.swift.org], [libdispatch], [https://github.com/apple/swift-corelibs-libdispatch])
 AC_REVISION([$$])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_HEADER([config/config_ac.h])
@@ -11,10 +11,101 @@ AC_CONFIG_MACRO_DIR([m4])
 ac_clean_files=a.out.dSYM
 AM_MAINTAINER_MODE
 
+AC_CANONICAL_BUILD
+AC_CANONICAL_HOST
+AC_CANONICAL_TARGET
+
+#
+# Command line argument to specify build variant (default to release).
+# Impacts default value of CFLAGS et al. so must come before AC_PROG_CC
+#
+AC_ARG_WITH([build-variant],
+  [AS_HELP_STRING([--with-build-variant=release|debug|releaseassert|releasedebuginfo], [Specify build variant [default=release]])],
+  [dispatch_build_variant=${withval}],
+  [dispatch_build_variant=release]
+)
+AS_CASE([$dispatch_build_variant],
+  [debug], [
+    default_compiler_flags="-g -O0"
+    dispatch_enable_asserts=true
+    dispatch_enable_optimization=false
+  ],
+  [release], [
+    default_compiler_flags="-O2"
+    dispatch_enable_asserts=false
+    dispatch_enable_optimization=true
+  ],
+  [releaseassert], [
+    default_compiler_flags="-O2"
+    dispatch_enable_asserts=true
+    dispatch_enable_optimization=true
+  ],
+  [releasedebuginfo], [
+    default_compiler_flags="-g -O2"
+    dispatch_enable_asserts=false
+    dispatch_enable_optimization=true
+  ],
+  [AC_MSG_ERROR("invalid build-variant $dispatch_build_variant")]
+)
+AM_CONDITIONAL(DISPATCH_ENABLE_ASSERTS, $dispatch_enable_asserts)
+AM_CONDITIONAL(DISPATCH_ENABLE_OPTIMIZATION, $dispatch_enable_optimization)
+
+: ${CFLAGS=$default_compiler_flags}
+: ${CXXFLAGS=$default_compiler_flags}
+: ${OBJCFLAGS=$default_compiler_flags}
+: ${OBJCXXFLAGS=$default_compiler_flags}
+
 AC_PROG_CC([clang gcc cc])
 AC_PROG_CXX([clang++ g++ c++])
 AC_PROG_OBJC([clang gcc cc])
 AC_PROG_OBJCXX([clang++ g++ c++])
+
+#
+# Android cross-compilation support
+#
+AC_ARG_WITH([android-ndk],
+  [AS_HELP_STRING([--with-android-ndk],
+    [Android NDK location])], [
+  android_ndk=${withval}
+])
+AC_ARG_WITH([android-ndk-gcc-version],
+  [AS_HELP_STRING([--with-android-ndk-gcc-version],
+    [Android NDK GCC version [defaults=4.9]])],
+  [android_ndk_gcc_version=${withval}], [android_ndk_gcc_version=4.9])
+AC_ARG_WITH([android-api-level],
+  [AS_HELP_STRING([--with-android-api-level],
+    [Android API level to link with])], [
+  android_api_level=${withval}
+])
+AC_ARG_ENABLE([android],
+  [AS_HELP_STRING([--enable-android],
+    [Compile for Android])], [
+  android=true
+
+  # Override values until there's real support for multiple Android platforms
+  host=armv7-none-linux-androideabi
+  host_alias=arm-linux-androideabi
+  host_cpu=armv7
+  host_os=linux-androideabi
+  host_vendor=unknown
+  arch=arm
+
+  sysroot=${android_ndk}/platforms/android-${android_api_level}/arch-${arch}
+  toolchain=${android_ndk}/toolchains/${host_alias}-${android_ndk_gcc_version}/prebuilt/linux-${build_cpu}
+
+  CFLAGS="$CFLAGS -target ${host_alias} --sysroot=${sysroot} -B${toolchain}/${host_alias}/bin"
+  CXXFLAGS="$CXXFLAGS -target ${host_alias} --sysroot=${sysroot} -B${toolchain}/${host_alias}/bin"
+  SWIFTC_FLAGS="-target ${host} -sdk ${sysroot} -L${toolchain}/lib/gcc/${host_alias}/${android_ndk_gcc_version}.x"
+  LIBS="$LIBS -L${toolchain}/lib/gcc/${host_alias}/${android_ndk_gcc_version}.x"
+  LDFLAGS="$LDFLAGS -Wc,'-target','${host_alias}','-B${toolchain}/${host_alias}/bin'"
+
+  # FIXME: empty CFLAGS and CXXFLAGS are assumed for this to work.
+  # FIXME: there should be a more elegant way to do this
+  ac_configure_args=`echo $ac_configure_args | sed -e "s/ 'CFLAGS='//" -e "s/ 'CXXFLAGS='//"`
+  # CFLAGS, CXXFLAGS and LIBS needs to be passed to libkqueue and libpwq
+  ac_configure_args="$ac_configure_args --enable-bionic-libc 'CFLAGS=$CFLAGS' 'CXXFLAGS=$CXXFLAGS' 'LIBS=$LIBS'"
+], [android=false])
+AM_CONDITIONAL(ANDROID, $android)
 
 #
 # On Mac OS X, some required header files come from other source packages;
@@ -34,13 +125,6 @@ AC_ARG_WITH([apple-libplatform-source],
   CPPFLAGS="$CPPFLAGS -isystem $apple_libplatform_source_include_path"
 ])
 
-AC_ARG_WITH([apple-libclosure-source],
-  [AS_HELP_STRING([--with-apple-libclosure-source],
-    [Specify path to Apple libclosure source])], [
-  apple_libclosure_source_path=${withval}
-  CPPFLAGS="$CPPFLAGS -isystem $apple_libclosure_source_path"
-])
-
 AC_ARG_WITH([apple-xnu-source],
   [AS_HELP_STRING([--with-apple-xnu-source],
     [Specify path to Apple XNU source])], [
@@ -50,12 +134,6 @@ AC_ARG_WITH([apple-xnu-source],
   apple_xnu_source_bsd_path=${withval}/bsd
   apple_xnu_source_osfmk_path=${withval}/osfmk
   CPPFLAGS="$CPPFLAGS -idirafter $apple_xnu_source_libkern_path -isystem $apple_xnu_source_bsd_path -isystem $apple_xnu_source_libsyscall_path -isystem $apple_xnu_source_libproc_path "
-])
-
-AC_ARG_WITH([apple-objc4-source],
-  [AS_HELP_STRING([--with-apple-objc4-source],
-    [Specify path to Apple objc4 source])], [
-  apple_objc4_source_runtime_path=${withval}/runtime
 ])
 
 AC_CACHE_CHECK([for System.framework/PrivateHeaders], dispatch_cv_system_privateheaders,
@@ -94,8 +172,6 @@ AS_IF([test "x$enable_apple_tsd_optimizations" = "xyes"],
     [Define to use non-portable pthread TSD optimizations for Mac OS X)])]
 )
 
-AC_CANONICAL_TARGET
-
 #
 # Enable building Swift overlay support into libdispatch
 #
@@ -105,8 +181,17 @@ AC_ARG_WITH([swift-toolchain],
    AC_DEFINE(HAVE_SWIFT, 1, [Define if building for Swift])
    SWIFTC="$swift_toolchain_path/bin/swiftc"
    case $target_os in
+      *android*)
+	    os_string="android"
+	    ;;
       linux*)
 	    os_string="linux"
+	    case $target_cpu in
+		    armv7l*)
+			target_cpu="armv7"
+			;;
+			*)
+            esac
 	    ;;
 	  *)
         os_string=$target_os
@@ -118,7 +203,9 @@ AC_ARG_WITH([swift-toolchain],
 )
 AM_CONDITIONAL(HAVE_SWIFT, $have_swift)
 AC_SUBST([SWIFTC])
+AC_SUBST([SWIFTC_FLAGS])
 AC_SUBST([SWIFT_LIBDIR])
+AC_SUBST([OS_STRING], ["$os_string"])
 
 #
 # Enable use of gold linker when building the Swift overlay
@@ -127,6 +214,18 @@ AC_SUBST([SWIFT_LIBDIR])
 #
 AC_CHECK_PROG(use_gold_linker, ld.gold, true, false)
 AM_CONDITIONAL(USE_GOLD_LINKER, $use_gold_linker)
+
+#
+# Enable an extended test suite that includes
+# tests that are too unreliable to be enabled by
+# default in the Swift CI environment, but are still
+# useful for libdispatch developers to be able to run.
+#
+AC_ARG_ENABLE([extended-test-suite],
+  [AS_HELP_STRING([--enable-extended-test-suite],
+    [Include additional test cases that may fail intermittently])]
+)
+AM_CONDITIONAL(EXTENDED_TEST_SUITE, test "x$enable_extended_test_suite" = "xyes")
 
 #
 # Enable __thread based TSD on platforms where it is efficient
@@ -183,13 +282,6 @@ esac
 AC_SEARCH_LIBS(clock_gettime, rt)
 AC_SEARCH_LIBS(pthread_create, pthread)
 
-#
-# Prefer native kqueue(2); otherwise use libkqueue if present.
-#
-AC_CHECK_HEADER(sys/event.h, [],
-  [PKG_CHECK_MODULES(KQUEUE, libkqueue)]
-)
-
 AC_CHECK_FUNCS([strlcpy getprogname], [],
   [PKG_CHECK_MODULES(BSD_OVERLAY, libbsd-overlay,[
     AC_DEFINE(HAVE_STRLCPY, 1, [])
@@ -215,22 +307,35 @@ AS_IF([test -n "$apple_libpthread_source_path" -a -n "$apple_xnu_source_osfmk_pa
 AC_CHECK_HEADERS([pthread_machdep.h pthread/qos.h])
 
 # pthread_workqueues.
-# Look for own version first, then system version.
-AS_IF([test -f $srcdir/libpwq/configure.ac],
-  [AC_DEFINE(BUILD_OWN_PTHREAD_WORKQUEUES, 1, [Define if building pthread work queues from source])
-   ac_configure_args="--disable-libpwq-install $ac_configure_args"
-   AC_CONFIG_SUBDIRS([libpwq])
-   build_own_pthread_workqueues=true
-   AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])
-   have_pthread_workqueues=true],
-  [build_own_pthread_workqueues=false
-   AC_CHECK_HEADERS([pthread/workqueue_private.h pthread_workqueue.h],
-     [AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])
-      have_pthread_workqueues=true],
-     [have_pthread_workqueues=false]
-   )]
+# We can either use libdispatch's internal_workqueue or pthread_workqueue.
+# If not specifically configured, default to internal_workqueues on
+# Linux and pthread_workqueue on all other platforms.
+# On any platform, if pthread_workqueue is not available, fall back
+# to using internal_workqueue.
+AC_ARG_ENABLE([internal-libpwq],
+  [AS_HELP_STRING([--enable-internal-libpwq],
+    [Use libdispatch's own implementation of pthread workqueues.])],,
+  [case $target_os in
+      linux*)
+        enable_internal_libpwq=yes
+	    ;;
+      *)
+        enable_internal_libpwq=no
+   esac]
 )
-AM_CONDITIONAL(BUILD_OWN_PTHREAD_WORKQUEUES, $build_own_pthread_workqueues)
+AS_IF([test "x$enable_internal_libpwq" = "xyes"],
+  [AC_DEFINE(DISPATCH_USE_INTERNAL_WORKQUEUE, 1, [Use libdispatch's own implementation of pthread workqueues])
+   have_pthread_workqueues=false,
+   dispatch_use_internal_workqueue=true],
+  [AC_CHECK_HEADERS([pthread/workqueue_private.h pthread_workqueue.h],
+     [AC_DEFINE(HAVE_PTHREAD_WORKQUEUES, 1, [Define if pthread work queues are present])
+      have_pthread_workqueues=true,
+	  dispatch_use_internal_workqueue=false],
+     [have_pthread_workqueues=false,
+	  dispatch_use_internal_workqueue=true]
+  )]
+)
+AM_CONDITIONAL(DISPATCH_USE_INTERNAL_WORKQUEUE, $dispatch_use_internal_workqueue)
 AM_CONDITIONAL(HAVE_PTHREAD_WORKQUEUES, $have_pthread_workqueues)
 
 AC_CHECK_HEADERS([libproc_internal.h], [], [], [#include <mach/mach.h>])
@@ -269,24 +374,10 @@ AC_CHECK_HEADER([Foundation/Foundation.h],
   [have_foundation=true], [have_foundation=false]
 )
 AM_CONDITIONAL(HAVE_FOUNDATION, $have_foundation)
-# hack for objc4/runtime/objc-internal.h
-AS_IF([test -n "$apple_objc4_source_runtime_path"], [
-  saveCPPFLAGS="$CPPFLAGS"
-  CPPFLAGS="$CPPFLAGS -I."
-  ln -fsh "$apple_objc4_source_runtime_path" objc
-])
-AC_CHECK_HEADER([objc/objc-internal.h], [
+AC_CHECK_HEADER([objc/NSObject.h], [
   AC_DEFINE(HAVE_OBJC, 1, [Define if you have the Objective-C runtime])
-  have_objc=true], [have_objc=false],
-  [#include <objc/runtime.h>]
+  have_objc=true], [have_objc=false]
 )
-AS_IF([test -n "$apple_objc4_source_runtime_path"], [
-  rm -f objc
-  CPPFLAGS="$saveCPPFLAGS"
-  AC_CONFIG_COMMANDS([src/objc],
-    [ln -fsh "$apple_objc4_source_runtime_path" src/objc],
-    [apple_objc4_source_runtime_path="$apple_objc4_source_runtime_path"])
-])
 AM_CONDITIONAL(USE_OBJC, $have_objc)
 AC_LANG_POP([Objective C])
 
@@ -305,15 +396,15 @@ AC_CHECK_FUNCS([mach_port_construct])
 #
 # Find functions and declarations we care about.
 #
-AC_CHECK_DECLS([CLOCK_UPTIME, CLOCK_MONOTONIC], [], [],
+AC_CHECK_DECLS([CLOCK_UPTIME, CLOCK_MONOTONIC, CLOCK_REALTIME, CLOCK_UPTIME_FAST], [], [],
   [[#include <time.h>]])
 AC_CHECK_DECLS([NOTE_NONE, NOTE_REAP, NOTE_REVOKE, NOTE_SIGNAL, NOTE_LOWAT], [], [],
   [[#include <sys/event.h>]])
 AC_CHECK_DECLS([FD_COPY], [], [], [[#include <sys/select.h>]])
 AC_CHECK_DECLS([SIGEMT], [], [], [[#include <signal.h>]])
-AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK, VQ_QUOTA], [], [], [[#include <sys/mount.h>]])
+AC_CHECK_DECLS([VQ_UPDATE, VQ_VERYLOWDISK, VQ_QUOTA, VQ_NEARLOWDISK, VQ_DESIRED_DISK], [], [], [[#include <sys/mount.h>]])
 AC_CHECK_DECLS([program_invocation_short_name], [], [], [[#include <errno.h>]])
-AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time malloc_create_zone sysconf])
+AC_CHECK_FUNCS([pthread_key_init_np pthread_main_np mach_absolute_time mach_approximate_time malloc_create_zone sysconf])
 
 AC_CHECK_DECLS([POSIX_SPAWN_START_SUSPENDED],
   [have_posix_spawn_start_suspended=true], [have_posix_spawn_start_suspended=false],
@@ -323,6 +414,11 @@ AM_CONDITIONAL(HAVE_POSIX_SPAWN_START_SUSPENDED, $have_posix_spawn_start_suspend
 
 AC_CHECK_FUNC([sem_init],
   [have_sem_init=true], [have_sem_init=false]
+)
+
+AC_CHECK_HEADER([linux/futex.h], [
+  AC_DEFINE(HAVE_FUTEX, 1, [Define if linux/futex.h is present])
+  have_futex=true], [have_futex=false]
 )
 
 #
@@ -385,6 +481,20 @@ AS_IF([test "x$have_mach" = "xtrue"], [
 AM_CONDITIONAL(HAVE_DARWIN_LD, [test "x$dispatch_cv_ld_darwin" == "xyes"])
 
 #
+# symlink platform-specific module.modulemap files
+#
+AS_CASE([$target_os],
+  [darwin*], [ dispatch_module_map_os=darwin ],
+  [ dispatch_module_map_os=generic ]
+)
+AC_CONFIG_COMMANDS([modulemaps], [
+      ln -fs $dispatch_module_map_os/module.modulemap $ac_top_srcdir/dispatch/module.modulemap
+      ln -fs $dispatch_module_map_os/module.modulemap $ac_top_srcdir/private/module.modulemap
+  ],
+  [dispatch_module_map_os="$dispatch_module_map_os"]
+)
+
+#
 # Temporary: some versions of clang do not mark __builtin_trap() as
 # __attribute__((__noreturn__)).  Detect and add if required.
 #
@@ -394,6 +504,13 @@ AC_COMPILE_IFELSE(
 )
 
 #
+# Add option to avoid building tests
+#
+AC_ARG_ENABLE([build-tests],
+  [AS_HELP_STRING([--disable-build-tests], [Disable tests compilation])])
+AM_CONDITIONAL(BUILD_TESTS, [test "x$enable_build_tests" != "xno"])
+
+#
 # Generate Makefiles.
 #
 AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile os/Makefile private/Makefile src/Makefile tests/Makefile])
@@ -401,6 +518,6 @@ AC_CONFIG_FILES([Makefile dispatch/Makefile man/Makefile os/Makefile private/Mak
 #
 # Generate testsuite links
 #
-AC_CONFIG_LINKS([tests/dispatch:$top_srcdir/private tests/leaks-wrapper:tests/leaks-wrapper.sh])
+AC_CONFIG_LINKS([tests/dispatch:$ac_top_srcdir/private tests/leaks-wrapper:tests/leaks-wrapper.sh])
 
 AC_OUTPUT

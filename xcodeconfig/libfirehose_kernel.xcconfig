@@ -20,16 +20,14 @@
 
 #include "libfirehose.xcconfig"
 
-OTHER_CFLAGS = -mkernel -nostdinc -Wno-packed
-// LLVM_LTO = YES
+SUPPORTED_PLATFORMS = macosx iphoneos appletvos watchos
 PRODUCT_NAME = $(TARGET_NAME)
 INSTALL_PATH = /usr/local/lib/kernel/
-PRIVATE_HEADERS_FOLDER_PATH = /usr/local/include/kernel/os
-SUPPORTED_PLATFORMS = macosx iphoneos appletvos watchos
-
-HEADER_SEARCH_PATHS = $(PROJECT_DIR) $(SDKROOT)/System/Library/Frameworks/Kernel.framework/PrivateHeaders $(SDKROOT)/System/Library/Frameworks/Kernel.framework/Headers $(SDKROOT)/usr/local/include/os $(SDKROOT)/usr/local/include/firehose
-
 GCC_PREPROCESSOR_DEFINITIONS = $(inherited) KERNEL=1 DISPATCH_USE_DTRACE=0
+OTHER_CFLAGS = -mkernel -nostdinc -Wno-packed
+// LLVM_LTO = YES
+PRIVATE_HEADERS_FOLDER_PATH = /usr/local/include/kernel/os
+HEADER_SEARCH_PATHS = $(PROJECT_DIR) $(SDKROOT)/System/Library/Frameworks/Kernel.framework/PrivateHeaders $(SDKROOT)/System/Library/Frameworks/Kernel.framework/Headers $(SDKROOT)/usr/local/include/os $(SDKROOT)/usr/local/include/firehose
 
 COPY_HEADERS_RUN_UNIFDEF = YES
 COPY_HEADERS_UNIFDEF_FLAGS = -DKERNEL=1 -DOS_FIREHOSE_SPI=1 -DOS_VOUCHER_ACTIVITY_SPI_TYPES=1 -UOS_VOUCHER_ACTIVITY_SPI

@@ -79,7 +79,7 @@ typedef const struct dispatch_source_type_s *dispatch_source_type_t;
  * The mask is unused (pass zero for now).
  */
 #define DISPATCH_SOURCE_TYPE_DATA_ADD (&_dispatch_source_type_data_add)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_SOURCE_TYPE_DECL(data_add);
 
 /*!
@@ -90,8 +90,23 @@ DISPATCH_SOURCE_TYPE_DECL(data_add);
  * The mask is unused (pass zero for now).
  */
 #define DISPATCH_SOURCE_TYPE_DATA_OR (&_dispatch_source_type_data_or)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_SOURCE_TYPE_DECL(data_or);
+
+/*!
+ * @const DISPATCH_SOURCE_TYPE_DATA_REPLACE
+ * @discussion A dispatch source that tracks data obtained via calls to
+ * dispatch_source_merge_data(). Newly obtained data values replace existing
+ * data values not yet delivered to the source handler
+ *
+ * A data value of zero will cause the source handler to not be invoked.
+ *
+ * The handle is unused (pass zero for now).
+ * The mask is unused (pass zero for now).
+ */
+#define DISPATCH_SOURCE_TYPE_DATA_REPLACE (&_dispatch_source_type_data_replace)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+DISPATCH_SOURCE_TYPE_DECL(data_replace);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_MACH_SEND
@@ -101,7 +116,7 @@ DISPATCH_SOURCE_TYPE_DECL(data_or);
  * The mask is a mask of desired events from dispatch_source_mach_send_flags_t.
  */
 #define DISPATCH_SOURCE_TYPE_MACH_SEND (&_dispatch_source_type_mach_send)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
+API_AVAILABLE(macos(10.6), ios(4.0)) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(mach_send);
 
 /*!
@@ -111,7 +126,7 @@ DISPATCH_SOURCE_TYPE_DECL(mach_send);
  * The mask is unused (pass zero for now).
  */
 #define DISPATCH_SOURCE_TYPE_MACH_RECV (&_dispatch_source_type_mach_recv)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
+API_AVAILABLE(macos(10.6), ios(4.0)) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(mach_recv);
 
 /*!
@@ -124,7 +139,7 @@ DISPATCH_SOURCE_TYPE_DECL(mach_recv);
  */
 #define DISPATCH_SOURCE_TYPE_MEMORYPRESSURE \
 		(&_dispatch_source_type_memorypressure)
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_8_0) DISPATCH_LINUX_UNAVAILABLE()
+API_AVAILABLE(macos(10.9), ios(8.0)) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(memorypressure);
 
 /*!
@@ -135,7 +150,7 @@ DISPATCH_SOURCE_TYPE_DECL(memorypressure);
  * The mask is a mask of desired events from dispatch_source_proc_flags_t.
  */
 #define DISPATCH_SOURCE_TYPE_PROC (&_dispatch_source_type_proc)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
+API_AVAILABLE(macos(10.6), ios(4.0)) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(proc);
 
 /*!
@@ -146,7 +161,7 @@ DISPATCH_SOURCE_TYPE_DECL(proc);
  * The mask is unused (pass zero for now).
  */
 #define DISPATCH_SOURCE_TYPE_READ (&_dispatch_source_type_read)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_SOURCE_TYPE_DECL(read);
 
 /*!
@@ -156,7 +171,7 @@ DISPATCH_SOURCE_TYPE_DECL(read);
  * The mask is unused (pass zero for now).
  */
 #define DISPATCH_SOURCE_TYPE_SIGNAL (&_dispatch_source_type_signal)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_SOURCE_TYPE_DECL(signal);
 
 /*!
@@ -167,7 +182,7 @@ DISPATCH_SOURCE_TYPE_DECL(signal);
  * The mask specifies which flags from dispatch_source_timer_flags_t to apply.
  */
 #define DISPATCH_SOURCE_TYPE_TIMER (&_dispatch_source_type_timer)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_SOURCE_TYPE_DECL(timer);
 
 /*!
@@ -178,7 +193,7 @@ DISPATCH_SOURCE_TYPE_DECL(timer);
  * The mask is a mask of desired events from dispatch_source_vnode_flags_t.
  */
 #define DISPATCH_SOURCE_TYPE_VNODE (&_dispatch_source_type_vnode)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0) DISPATCH_LINUX_UNAVAILABLE()
+API_AVAILABLE(macos(10.6), ios(4.0)) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(vnode);
 
 /*!
@@ -189,7 +204,7 @@ DISPATCH_SOURCE_TYPE_DECL(vnode);
  * The mask is unused (pass zero for now).
  */
 #define DISPATCH_SOURCE_TYPE_WRITE (&_dispatch_source_type_write)
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_SOURCE_TYPE_DECL(write);
 
 /*!
@@ -361,7 +376,7 @@ typedef unsigned long dispatch_source_timer_flags_t;
  * @result
  * The newly created dispatch source. Or NULL if invalid arguments are passed.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_source_t
@@ -384,7 +399,7 @@ dispatch_source_create(dispatch_source_type_t type,
  * The event handler block to submit to the source's target queue.
  */
 #ifdef __BLOCKS__
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_event_handler(dispatch_source_t source,
@@ -406,7 +421,7 @@ dispatch_source_set_event_handler(dispatch_source_t source,
  * The context parameter passed to the event handler function is the context of
  * the dispatch source current at the time the event handler was set.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_event_handler_f(dispatch_source_t source,
@@ -425,12 +440,13 @@ dispatch_source_set_event_handler_f(dispatch_source_t source,
  * the source's event handler block has returned.
  *
  * IMPORTANT:
- * A cancellation handler is required for file descriptor and mach port based
- * sources in order to safely close the descriptor or destroy the port. Closing
- * the descriptor or port before the cancellation handler may result in a race
- * condition. If a new descriptor is allocated with the same value as the
- * recently closed descriptor while the source's event handler is still running,
- * the event handler may read/write data to the wrong descriptor.
+ * Source cancellation and a cancellation handler are required for file
+ * descriptor and mach port based sources in order to safely close the
+ * descriptor or destroy the port.
+ * Closing the descriptor or port before the cancellation handler is invoked may
+ * result in a race condition. If a new descriptor is allocated with the same
+ * value as the recently closed descriptor while the source's event handler is
+ * still running, the event handler may read/write data to the wrong descriptor.
  *
  * @param source
  * The dispatch source to modify.
@@ -440,7 +456,7 @@ dispatch_source_set_event_handler_f(dispatch_source_t source,
  * The cancellation handler block to submit to the source's target queue.
  */
 #ifdef __BLOCKS__
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_cancel_handler(dispatch_source_t source,
@@ -465,7 +481,7 @@ dispatch_source_set_cancel_handler(dispatch_source_t source,
  * The context parameter passed to the event handler function is the current
  * context of the dispatch source at the time the handler call is made.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_cancel_handler_f(dispatch_source_t source,
@@ -493,7 +509,7 @@ dispatch_source_set_cancel_handler_f(dispatch_source_t source,
  * The dispatch source to be canceled.
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_source_cancel(dispatch_source_t source);
@@ -511,7 +527,7 @@ dispatch_source_cancel(dispatch_source_t source);
  * @result
  * Non-zero if canceled and zero if not canceled.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
 DISPATCH_NOTHROW
 long
@@ -542,7 +558,7 @@ dispatch_source_testcancel(dispatch_source_t source);
  *  DISPATCH_SOURCE_TYPE_VNODE:           file descriptor (int)
  *  DISPATCH_SOURCE_TYPE_WRITE:           file descriptor (int)
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
 DISPATCH_NOTHROW
 uintptr_t
@@ -573,7 +589,7 @@ dispatch_source_get_handle(dispatch_source_t source);
  *  DISPATCH_SOURCE_TYPE_VNODE:           dispatch_source_vnode_flags_t
  *  DISPATCH_SOURCE_TYPE_WRITE:           n/a
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
 DISPATCH_NOTHROW
 unsigned long
@@ -611,7 +627,7 @@ dispatch_source_get_mask(dispatch_source_t source);
  *  DISPATCH_SOURCE_TYPE_VNODE:           dispatch_source_vnode_flags_t
  *  DISPATCH_SOURCE_TYPE_WRITE:           estimated buffer space available
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
 DISPATCH_NOTHROW
 unsigned long
@@ -633,7 +649,7 @@ dispatch_source_get_data(dispatch_source_t source);
  * as specified by the dispatch source type. A value of zero has no effect
  * and will not result in the submission of the event handler block.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_source_merge_data(dispatch_source_t source, unsigned long value);
@@ -685,7 +701,7 @@ dispatch_source_merge_data(dispatch_source_t source, unsigned long value);
  * @param leeway
  * The nanosecond leeway for the timer.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_6,__IPHONE_4_0)
+API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_source_set_timer(dispatch_source_t source,
@@ -715,7 +731,7 @@ dispatch_source_set_timer(dispatch_source_t source,
  * The registration handler block to submit to the source's target queue.
  */
 #ifdef __BLOCKS__
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
+API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_registration_handler(dispatch_source_t source,
@@ -740,7 +756,7 @@ dispatch_source_set_registration_handler(dispatch_source_t source,
  * The context parameter passed to the registration handler function is the
  * current context of the dispatch source at the time the handler call is made.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_7,__IPHONE_4_3)
+API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_source_set_registration_handler_f(dispatch_source_t source,

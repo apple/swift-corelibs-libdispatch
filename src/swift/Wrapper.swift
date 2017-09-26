@@ -15,6 +15,10 @@ import CDispatch
 // This file contains declarations that are provided by the
 // importer via Dispatch.apinote when the platform has Objective-C support
 
+public func dispatchMain() -> Never {
+	CDispatch.dispatch_main()
+}
+
 public class DispatchObject {
 
 	internal func wrapped() -> dispatch_object_t {
@@ -59,7 +63,7 @@ public class DispatchGroup : DispatchObject {
 	}
 
 	public func leave() {
-		dispatch_group_enter(__wrapped)
+		dispatch_group_leave(__wrapped)
 	}
 }
 
@@ -87,29 +91,25 @@ public class DispatchIO : DispatchObject {
 	}
 
 	internal init(__type: UInt, fd: Int32, queue: DispatchQueue,
-				  handler: (error: Int32) -> Void) {
+				  handler: @escaping (_ error: Int32) -> Void) {
 		__wrapped = dispatch_io_create(__type, fd, queue.__wrapped, handler)
 	}
 
 	internal init(__type: UInt, path: UnsafePointer<Int8>, oflag: Int32,
-				  mode: mode_t, queue: DispatchQueue, handler: (error: Int32) -> Void) {
+				  mode: mode_t, queue: DispatchQueue, handler: @escaping (_ error: Int32) -> Void) {
 		__wrapped = dispatch_io_create_with_path(__type, path, oflag, mode, queue.__wrapped, handler)
 	}
 
 	internal init(__type: UInt, io: DispatchIO,
-				  queue: DispatchQueue, handler: (error: Int32) -> Void) {
+				  queue: DispatchQueue, handler: @escaping (_ error: Int32) -> Void) {
 		__wrapped = dispatch_io_create_with_io(__type, io.__wrapped, queue.__wrapped, handler)
-	}
-
-	internal init(queue:dispatch_queue_t) {
-		__wrapped = queue
 	}
 
 	deinit {
 		_swift_dispatch_release(wrapped())
 	}
 
-	public func barrier(execute: () -> ()) {
+	public func barrier(execute: @escaping () -> ()) {
 		dispatch_io_barrier(self.__wrapped, execute)
 	}
 
@@ -149,16 +149,16 @@ public class DispatchQueue : DispatchObject {
 		_swift_dispatch_release(wrapped())
 	}
 
-	public func sync(execute workItem: @noescape ()->()) {
+	public func sync(execute workItem: ()->()) {
 		dispatch_sync(self.__wrapped, workItem)
 	}
 }
 
 public class DispatchSource : DispatchObject,
-	DispatchSourceType,	DispatchSourceRead,
+	DispatchSourceProtocol,	DispatchSourceRead,
 	DispatchSourceSignal, DispatchSourceTimer,
 	DispatchSourceUserDataAdd, DispatchSourceUserDataOr,
-	DispatchSourceWrite {
+	DispatchSourceUserDataReplace, DispatchSourceWrite {
 	internal let __wrapped:dispatch_source_t
 
 	final internal override func wrapped() -> dispatch_object_t {
@@ -180,15 +180,34 @@ extension DispatchSource : DispatchSourceMachSend,
 }
 #endif
 
-#if !os(Linux)
+#if !os(Linux) && !os(Android)
 extension DispatchSource : DispatchSourceProcess,
 	DispatchSourceFileSystemObject {
 }
 #endif
 
+internal class __DispatchData : DispatchObject {
+	internal let __wrapped:dispatch_data_t
+
+	final internal override func wrapped() -> dispatch_object_t {
+		return unsafeBitCast(__wrapped, to: dispatch_object_t.self)
+	}
+
+	internal init(data:dispatch_data_t, owned:Bool) {
+		__wrapped = data
+		if !owned {
+			_swift_dispatch_retain(unsafeBitCast(data, to: dispatch_object_t.self))
+		}
+	}
+
+	deinit {
+		_swift_dispatch_release(wrapped())
+	}
+}
+
 public typealias DispatchSourceHandler = @convention(block) () -> Void
 
-public protocol DispatchSourceType {
+public protocol DispatchSourceProtocol {
 	func setEventHandler(qos: DispatchQoS, flags: DispatchWorkItemFlags, handler: DispatchSourceHandler?)
 
 	func setEventHandler(handler: DispatchWorkItem)
@@ -216,18 +235,20 @@ public protocol DispatchSourceType {
 	var isCancelled: Bool { get }
 }
 
-public protocol DispatchSourceUserDataAdd : DispatchSourceType {
-	func mergeData(value: UInt)
+public protocol DispatchSourceUserDataAdd : DispatchSourceProtocol {
+	func add(data: UInt)
 }
 
-public protocol DispatchSourceUserDataOr {
-#if false /*FIXME: clashes with UserDataAdd?? */
-	func mergeData(value: UInt)
-#endif
+public protocol DispatchSourceUserDataOr : DispatchSourceProtocol {
+	func or(data: UInt)
+}
+
+public protocol DispatchSourceUserDataReplace : DispatchSourceProtocol {
+	func replace(data: UInt)
 }
 
 #if HAVE_MACH
-public protocol DispatchSourceMachSend : DispatchSourceType {
+public protocol DispatchSourceMachSend : DispatchSourceProtocol {
 	public var handle: mach_port_t { get }
 
 	public var data: DispatchSource.MachSendEvent { get }
@@ -237,21 +258,21 @@ public protocol DispatchSourceMachSend : DispatchSourceType {
 #endif
 
 #if HAVE_MACH
-public protocol DispatchSourceMachReceive : DispatchSourceType {
+public protocol DispatchSourceMachReceive : DispatchSourceProtocol {
 	var handle: mach_port_t { get }
 }
 #endif
 
 #if HAVE_MACH
-public protocol DispatchSourceMemoryPressure : DispatchSourceType {
+public protocol DispatchSourceMemoryPressure : DispatchSourceProtocol {
 	public var data: DispatchSource.MemoryPressureEvent { get }
 
 	public var mask: DispatchSource.MemoryPressureEvent { get }
 }
 #endif
 
-#if !os(Linux)
-public protocol DispatchSourceProcess : DispatchSourceType {
+#if !os(Linux) && !os(Android)
+public protocol DispatchSourceProcess : DispatchSourceProtocol {
 	var handle: pid_t { get }
 
 	var data: DispatchSource.ProcessEvent { get }
@@ -260,28 +281,28 @@ public protocol DispatchSourceProcess : DispatchSourceType {
 }
 #endif
 
-public protocol DispatchSourceRead : DispatchSourceType {
+public protocol DispatchSourceRead : DispatchSourceProtocol {
 }
 
-public protocol DispatchSourceSignal : DispatchSourceType {
+public protocol DispatchSourceSignal : DispatchSourceProtocol {
 }
 
-public protocol DispatchSourceTimer : DispatchSourceType {
-	func setTimer(start: DispatchTime, leeway: DispatchTimeInterval)
+public protocol DispatchSourceTimer : DispatchSourceProtocol {
+	func scheduleOneshot(deadline: DispatchTime, leeway: DispatchTimeInterval)
 
-	func setTimer(walltime start: DispatchWallTime, leeway: DispatchTimeInterval)
+	func scheduleOneshot(wallDeadline: DispatchWallTime, leeway: DispatchTimeInterval)
 
-	func setTimer(start: DispatchTime, interval: DispatchTimeInterval, leeway: DispatchTimeInterval)
+	func scheduleRepeating(deadline: DispatchTime, interval: DispatchTimeInterval, leeway: DispatchTimeInterval)
 
-	func setTimer(start: DispatchTime, interval: Double, leeway: DispatchTimeInterval)
+	func scheduleRepeating(deadline: DispatchTime, interval: Double, leeway: DispatchTimeInterval)
 
-	func setTimer(walltime start: DispatchWallTime, interval: DispatchTimeInterval, leeway: DispatchTimeInterval)
+	func scheduleRepeating(wallDeadline: DispatchWallTime, interval: DispatchTimeInterval, leeway: DispatchTimeInterval)
 
-	func setTimer(walltime start: DispatchWallTime, interval: Double, leeway: DispatchTimeInterval)
+	func scheduleRepeating(wallDeadline: DispatchWallTime, interval: Double, leeway: DispatchTimeInterval)
 }
 
-#if !os(Linux)
-public protocol DispatchSourceFileSystemObject : DispatchSourceType {
+#if !os(Linux) && !os(Android)
+public protocol DispatchSourceFileSystemObject : DispatchSourceProtocol {
 	var handle: Int32 { get }
 
 	var data: DispatchSource.FileSystemEvent { get }
@@ -290,7 +311,7 @@ public protocol DispatchSourceFileSystemObject : DispatchSourceType {
 }
 #endif
 
-public protocol DispatchSourceWrite : DispatchSourceType {
+public protocol DispatchSourceWrite : DispatchSourceProtocol {
 }
 
 
@@ -307,9 +328,9 @@ internal enum _OSQoSClass : UInt32  {
 		case 0x21: self = .QOS_CLASS_USER_INTERACTIVE
 		case 0x19: self = .QOS_CLASS_USER_INITIATED
 		case 0x15: self = .QOS_CLASS_DEFAULT
-		case 0x11: self = QOS_CLASS_UTILITY
-		case 0x09: self = QOS_CLASS_BACKGROUND
-		case 0x00: self = QOS_CLASS_UNSPECIFIED
+		case 0x11: self = .QOS_CLASS_UTILITY
+		case 0x09: self = .QOS_CLASS_BACKGROUND
+		case 0x00: self = .QOS_CLASS_UNSPECIFIED
 		default: return nil
 		}
 	}
@@ -317,3 +338,6 @@ internal enum _OSQoSClass : UInt32  {
 
 @_silgen_name("_swift_dispatch_release")
 internal func _swift_dispatch_release(_ obj: dispatch_object_t) -> Void
+
+@_silgen_name("_swift_dispatch_retain")
+internal func _swift_dispatch_retain(_ obj: dispatch_object_t) -> Void

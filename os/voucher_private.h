@@ -23,6 +23,7 @@
 
 #ifndef __linux__
 #include <os/base.h>
+#include <os/availability.h>
 #endif
 #if __has_include(<mach/mach.h>)
 #include <os/object.h>
@@ -100,7 +101,7 @@ OS_OBJECT_DECL_CLASS(voucher);
  * @result
  * The previously adopted voucher object.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT_NEEDS_RELEASE
 OS_NOTHROW
 voucher_t _Nullable
@@ -116,7 +117,7 @@ voucher_adopt(voucher_t _Nullable voucher OS_OBJECT_CONSUMED);
  * @result
  * The currently adopted voucher object.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t _Nullable
 voucher_copy(void);
@@ -135,7 +136,7 @@ voucher_copy(void);
  * @result
  * A copy of the currently adopted voucher object, with importance removed.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t _Nullable
 voucher_copy_without_importance(void);
@@ -161,7 +162,7 @@ voucher_copy_without_importance(void);
  *
  * CAUTION: Do NOT use this SPI without contacting the Darwin Runtime team.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_NOTHROW
 void
 voucher_replace_default_voucher(void);
@@ -179,7 +180,7 @@ voucher_replace_default_voucher(void);
  *
  * CAUTION: Do NOT use this SPI without contacting the Darwin Runtime team.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_NOTHROW
 void
 voucher_decrement_importance_count4CF(voucher_t _Nullable voucher);
@@ -201,8 +202,23 @@ voucher_decrement_importance_count4CF(voucher_t _Nullable voucher);
  * This flag is ignored if a specific voucher object is assigned with the
  * dispatch_block_create_with_voucher* functions, and is equivalent to passing
  * the NULL voucher to these functions.
+ *
+ * @const DISPATCH_BLOCK_IF_LAST_RESET_QUEUE_QOS_OVERRIDE
+ * Flag indicating that this dispatch block object should try to reset the
+ * recorded maximum QoS of all currently enqueued items on a serial dispatch
+ * queue at the base of a queue hierarchy.
+ *
+ * This is only works if the queue becomes empty by dequeuing the block in
+ * question, and then allows that block to enqueue more work on this hierarchy
+ * without perpetuating QoS overrides resulting from items previously executed
+ * on the hierarchy.
+ *
+ * A dispatch block object created with this flag set cannot be used with
+ * dispatch_block_wait() or dispatch_block_cancel().
  */
-#define DISPATCH_BLOCK_NO_VOUCHER (0x40)
+#define DISPATCH_BLOCK_NO_VOUCHER (0x40ul)
+
+#define DISPATCH_BLOCK_IF_LAST_RESET_QUEUE_QOS_OVERRIDE (0x80ul)
 
 /*!
  * @function dispatch_block_create_with_voucher
@@ -263,7 +279,7 @@ voucher_decrement_importance_count4CF(voucher_t _Nullable voucher);
  * When not building with Objective-C ARC, must be released with a -[release]
  * message or the Block_release() function.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_RETURNS_RETAINED_BLOCK
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_block_t
@@ -346,7 +362,7 @@ dispatch_block_create_with_voucher(dispatch_block_flags_t flags,
  * When not building with Objective-C ARC, must be released with a -[release]
  * message or the Block_release() function.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_NONNULL5 DISPATCH_RETURNS_RETAINED_BLOCK
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_block_t
@@ -362,52 +378,10 @@ dispatch_block_create_with_voucher_and_qos_class(dispatch_block_flags_t flags,
  * @function dispatch_queue_create_with_accounting_override_voucher
  *
  * @abstract
- * Creates a new dispatch queue with an accounting override voucher created
- * from the specified voucher.
- *
- * @discussion
- * See dispatch_queue_create() headerdoc for generic details on queue creation.
- *
- * The resource accounting attributes of the specified voucher are extracted
- * and used to create an accounting override voucher for the new queue.
- *
- * Every block executed on the returned queue will initially have this override
- * voucher adopted, any voucher automatically associated with or explicitly
- * assigned to the block will NOT be used and released immediately before block
- * execution starts.
- *
- * The accounting override voucher will be automatically propagated to any
- * asynchronous work generated from the queue following standard voucher
- * propagation rules.
- *
- * NOTE: this SPI should only be used in special circumstances when a subsystem
- * has complete control over all workitems submitted to a queue (e.g. no client
- * block is ever submitted to the queue) and if and only if such queues have a
- * one-to-one mapping with resource accounting identities.
- *
- * CAUTION: use of this SPI represents a potential voucher propagation hole. It
- * is the responsibility of the caller to ensure that any callbacks into client
- * code from the queue have the correct client voucher applied (rather than the
- * automatically propagated accounting override voucher), e.g. by use of the
- * dispatch_block_create() API to capture client state at the time the callback
- * is registered.
- *
- * @param label
- * A string label to attach to the queue.
- * This parameter is optional and may be NULL.
- *
- * @param attr
- * DISPATCH_QUEUE_SERIAL, DISPATCH_QUEUE_CONCURRENT, or the result of a call to
- * the function dispatch_queue_attr_make_with_qos_class().
- *
- * @param voucher
- * A voucher whose resource accounting attributes are used to create the
- * accounting override voucher attached to the queue.
- *
- * @result
- * The newly created dispatch queue.
+ * Deprecated, do not use, will abort process if called.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_11,__IPHONE_9_0)
+API_DEPRECATED("removed SPI", \
+		macos(10.11,10.12), ios(9.0,10.0), watchos(2.0,3.0), tvos(9.0,10.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
@@ -440,7 +414,7 @@ dispatch_queue_create_with_accounting_override_voucher(
  * The newly created voucher object or NULL if the message was not carrying a
  * mach voucher.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10,__IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t _Nullable
 voucher_create_with_mach_msg(mach_msg_header_t *msg);
@@ -475,7 +449,7 @@ struct proc_persona_info;
  * or the persona identifier of the current process
  * or PERSONA_ID_NONE
  */
-__OSX_AVAILABLE_STARTING(__MAC_NA,__IPHONE_9_2)
+API_AVAILABLE(ios(9.2))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW
 uid_t
 voucher_get_current_persona(void);
@@ -498,7 +472,7 @@ voucher_get_current_persona(void);
  * 0 on success: currently adopted voucher has a PERSONA_TOKEN
  * -1 on failure: persona_info is untouched/uninitialized
  */
-__OSX_AVAILABLE_STARTING(__MAC_NA,__IPHONE_9_2)
+API_AVAILABLE(ios(9.2))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL1
 int
 voucher_get_current_persona_originator_info(
@@ -522,7 +496,7 @@ voucher_get_current_persona_originator_info(
  * 0 on success: currently adopted voucher has a PERSONA_TOKEN
  * -1 on failure: persona_info is untouched/uninitialized
  */
-__OSX_AVAILABLE_STARTING(__MAC_NA,__IPHONE_9_2)
+API_AVAILABLE(ios(9.2))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL1
 int
 voucher_get_current_persona_proximate_info(

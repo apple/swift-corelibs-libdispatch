@@ -43,7 +43,7 @@ __BEGIN_DECLS
  * encapsulate buffers that should not be copied or freed by the system.
  */
 #define DISPATCH_DATA_DESTRUCTOR_NONE (_dispatch_data_destructor_none)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(none);
 
 /*!
@@ -53,7 +53,7 @@ DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(none);
  */
 #define DISPATCH_DATA_DESTRUCTOR_VM_DEALLOCATE \
 		(_dispatch_data_destructor_vm_deallocate)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0) DISPATCH_LINUX_UNAVAILABLE()
+API_AVAILABLE(macos(10.8), ios(6.0)) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(vm_deallocate);
 
 /*!
@@ -77,7 +77,7 @@ DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(vm_deallocate);
  *			data buffer when it is no longer needed.
  * @result		A newly created dispatch data object.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
 dispatch_data_create_f(const void *buffer,
@@ -100,7 +100,7 @@ dispatch_data_create_f(const void *buffer,
  *			location of the newly allocated memory region, or NULL.
  * @result		A newly created dispatch data object.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
+API_AVAILABLE(macos(10.9), ios(6.0))
 DISPATCH_EXPORT DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
@@ -142,7 +142,7 @@ typedef bool (*dispatch_data_applier_function_t)(void *_Nullable context,
  * @result		A Boolean indicating whether traversal completed
  *			successfully.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
+API_AVAILABLE(macos(10.9), ios(6.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 bool
 dispatch_data_apply_f(dispatch_data_t data, void *_Nullable context,
@@ -163,7 +163,7 @@ dispatch_data_apply_f(dispatch_data_t data, void *_Nullable context,
  * @result		A mach port for the newly made memory entry, or
  *			MACH_PORT_NULL if an error occurred.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
+API_AVAILABLE(macos(10.9), ios(6.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 mach_port_t
 dispatch_data_make_memory_entry(dispatch_data_t data);
@@ -198,7 +198,7 @@ typedef const struct dispatch_data_format_type_s *dispatch_data_format_type_t;
  * or should be, comprised of raw data bytes with no given encoding.
  */
 #define DISPATCH_DATA_FORMAT_TYPE_NONE (&_dispatch_data_format_type_none)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 DISPATCH_DATA_FORMAT_TYPE_DECL(none);
 
 /*!
@@ -209,7 +209,7 @@ DISPATCH_DATA_FORMAT_TYPE_DECL(none);
  * types.
  */
 #define DISPATCH_DATA_FORMAT_TYPE_BASE32 (&_dispatch_data_format_type_base32)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 DISPATCH_DATA_FORMAT_TYPE_DECL(base32);
 
 /*!
@@ -221,7 +221,7 @@ DISPATCH_DATA_FORMAT_TYPE_DECL(base32);
  */
 #define DISPATCH_DATA_FORMAT_TYPE_BASE32HEX \
 		(&_dispatch_data_format_type_base32hex)
-__OSX_AVAILABLE_STARTING(__MAC_10_9, __IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_DATA_FORMAT_TYPE_DECL(base32hex);
 
 /*!
@@ -232,7 +232,7 @@ DISPATCH_DATA_FORMAT_TYPE_DECL(base32hex);
  * types.
  */
 #define DISPATCH_DATA_FORMAT_TYPE_BASE64 (&_dispatch_data_format_type_base64)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 DISPATCH_DATA_FORMAT_TYPE_DECL(base64);
 
 /*!
@@ -242,7 +242,7 @@ DISPATCH_DATA_FORMAT_TYPE_DECL(base64);
  * with other UTF format types.
  */
 #define DISPATCH_DATA_FORMAT_TYPE_UTF8 (&_dispatch_data_format_type_utf8)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 DISPATCH_DATA_FORMAT_TYPE_DECL(utf8);
 
 /*!
@@ -252,7 +252,7 @@ DISPATCH_DATA_FORMAT_TYPE_DECL(utf8);
  * conjunction with other UTF format types.
  */
 #define DISPATCH_DATA_FORMAT_TYPE_UTF16LE (&_dispatch_data_format_type_utf16le)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 DISPATCH_DATA_FORMAT_TYPE_DECL(utf16le);
 
 /*!
@@ -262,7 +262,7 @@ DISPATCH_DATA_FORMAT_TYPE_DECL(utf16le);
  * conjunction with other UTF format types.
  */
 #define DISPATCH_DATA_FORMAT_TYPE_UTF16BE (&_dispatch_data_format_type_utf16be)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 DISPATCH_DATA_FORMAT_TYPE_DECL(utf16be);
 
 /*!
@@ -274,7 +274,7 @@ DISPATCH_DATA_FORMAT_TYPE_DECL(utf16be);
  * format.
  */
 #define DISPATCH_DATA_FORMAT_TYPE_UTF_ANY (&_dispatch_data_format_type_utf_any)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 DISPATCH_DATA_FORMAT_TYPE_DECL(utf_any);
 
 /*!
@@ -295,7 +295,7 @@ DISPATCH_DATA_FORMAT_TYPE_DECL(utf_any);
  * produced, or NULL if an error occurred.
  */
 
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_6_0)
+API_AVAILABLE(macos(10.8), ios(6.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t

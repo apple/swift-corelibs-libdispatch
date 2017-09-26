@@ -34,15 +34,15 @@ public extension DispatchIO {
 		public static let strictInterval = IntervalFlags(rawValue: 1)
 	}
 
-	public class func read(fromFileDescriptor: Int32, maxLength: Int, runningHandlerOn queue: DispatchQueue, handler: (data: DispatchData, error: Int32) -> Void) {
+	public class func read(fromFileDescriptor: Int32, maxLength: Int, runningHandlerOn queue: DispatchQueue, handler: @escaping (_ data: DispatchData, _ error: Int32) -> Void) {
 		dispatch_read(fromFileDescriptor, maxLength, queue.__wrapped) { (data: dispatch_data_t, error: Int32) in
-			handler(data: DispatchData(data: data), error: error)
+			handler(DispatchData(borrowedData: data), error)
 		}
 	}
 
-	public class func write(fromFileDescriptor: Int32, data: DispatchData, runningHandlerOn queue: DispatchQueue, handler: (data: DispatchData?, error: Int32) -> Void) {
-		dispatch_write(fromFileDescriptor, data.__wrapped, queue.__wrapped) { (data: dispatch_data_t?, error: Int32) in
-			handler(data: data.flatMap { DispatchData(data: $0) }, error: error)
+	public class func write(toFileDescriptor: Int32, data: DispatchData, runningHandlerOn queue: DispatchQueue, handler: @escaping (_ data: DispatchData?, _ error: Int32) -> Void) {
+		dispatch_write(toFileDescriptor, data.__wrapped.__wrapped, queue.__wrapped) { (data: dispatch_data_t?, error: Int32) in
+			handler(data.flatMap { DispatchData(borrowedData: $0) }, error)
 		}
 	}
 
@@ -50,18 +50,31 @@ public extension DispatchIO {
 		type: StreamType,
 		fileDescriptor: Int32,
 		queue: DispatchQueue,
-		cleanupHandler: (error: Int32) -> Void)
+		cleanupHandler: @escaping (_ error: Int32) -> Void)
 	{
 		self.init(__type: type.rawValue, fd: fileDescriptor, queue: queue, handler: cleanupHandler)
 	}
 
+	@available(swift, obsoleted: 4)
 	public convenience init(
 		type: StreamType,
 		path: UnsafePointer<Int8>,
 		oflag: Int32,
 		mode: mode_t,
 		queue: DispatchQueue,
-		cleanupHandler: (error: Int32) -> Void)
+		cleanupHandler: @escaping (_ error: Int32) -> Void)
+	{
+		self.init(__type: type.rawValue, path: path, oflag: oflag, mode: mode, queue: queue, handler: cleanupHandler)
+	}
+
+	@available(swift, introduced: 4)
+	public convenience init?(
+		type: StreamType,
+		path: UnsafePointer<Int8>,
+		oflag: Int32,
+		mode: mode_t,
+		queue: DispatchQueue,
+		cleanupHandler: @escaping (_ error: Int32) -> Void)
 	{
 		self.init(__type: type.rawValue, path: path, oflag: oflag, mode: mode, queue: queue, handler: cleanupHandler)
 	}
@@ -70,60 +83,28 @@ public extension DispatchIO {
 		type: StreamType,
 		io: DispatchIO,
 		queue: DispatchQueue,
-		cleanupHandler: (error: Int32) -> Void)
+		cleanupHandler: @escaping (_ error: Int32) -> Void)
 	{
 		self.init(__type: type.rawValue, io: io, queue: queue, handler: cleanupHandler)
 	}
 
-	public func read(offset: off_t, length: Int, queue: DispatchQueue, ioHandler: (done: Bool, data: DispatchData?, error: Int32) -> Void) {
+	public func read(offset: off_t, length: Int, queue: DispatchQueue, ioHandler: @escaping (_ done: Bool, _ data: DispatchData?, _ error: Int32) -> Void) {
 		dispatch_io_read(self.__wrapped, offset, length, queue.__wrapped) { (done: Bool, data: dispatch_data_t?, error: Int32) in
-			ioHandler(done: done, data: data.flatMap { DispatchData(data: $0) }, error: error)
+			ioHandler(done, data.flatMap { DispatchData(borrowedData: $0) }, error)
 		}
 	}
 
-	public func write(offset: off_t, data: DispatchData, queue: DispatchQueue, ioHandler: (done: Bool, data: DispatchData?, error: Int32) -> Void) {
-		dispatch_io_write(self.__wrapped, offset, data.__wrapped, queue.__wrapped) { (done: Bool, data: dispatch_data_t?, error: Int32) in
-			ioHandler(done: done, data: data.flatMap { DispatchData(data: $0) }, error: error)
+	public func write(offset: off_t, data: DispatchData, queue: DispatchQueue, ioHandler: @escaping (_ done: Bool, _ data: DispatchData?, _ error: Int32) -> Void) {
+		dispatch_io_write(self.__wrapped, offset, data.__wrapped.__wrapped, queue.__wrapped) { (done: Bool, data: dispatch_data_t?, error: Int32) in
+			ioHandler(done, data.flatMap { DispatchData(borrowedData: $0) }, error)
 		}
 	}
 
 	public func setInterval(interval: DispatchTimeInterval, flags: IntervalFlags = []) {
-		dispatch_io_set_interval(self.__wrapped, interval.rawValue, flags.rawValue)
+		dispatch_io_set_interval(self.__wrapped, UInt64(interval.rawValue), flags.rawValue)
 	}
 
 	public func close(flags: CloseFlags = []) {
 		dispatch_io_close(self.__wrapped, flags.rawValue)
-	}
-}
-
-extension DispatchIO {
-	@available(*, deprecated, renamed: "DispatchIO.read(fromFileDescriptor:maxLength:runningHandlerOn:handler:)")
-	public class func read(fd: Int32, length: Int, queue: DispatchQueue, handler: (DispatchData, Int32) -> Void) {
-		DispatchIO.read(fromFileDescriptor: fd, maxLength: length, runningHandlerOn: queue, handler: handler)
-	}
-
-	@available(*, deprecated, renamed: "DispatchIO.write(fromFileDescriptor:data:runningHandlerOn:handler:)")
-	public class func write(fd: Int32, data: DispatchData, queue: DispatchQueue, handler: (DispatchData?, Int32) -> Void) {
-		DispatchIO.write(fromFileDescriptor: fd, data: data, runningHandlerOn: queue, handler: handler)
-	}
-
-	@available(*, deprecated, renamed: "DispatchIO.barrier(self:execute:)")
-	public func withBarrier(barrier work: () -> ()) {
-		barrier(execute: work)
-	}
-
-	@available(*, deprecated, renamed: "DispatchIO.setLimit(self:highWater:)")
-	public func setHighWater(highWater: Int) {
-		setLimit(highWater: highWater)
-	}
-
-	@available(*, deprecated, renamed: "DispatchIO.setLimit(self:lowWater:)")
-	public func setLowWater(lowWater: Int) {
-		setLimit(lowWater: lowWater)
-	}
-
-	@available(*, deprecated, renamed: "DispatchIO.setInterval(self:interval:flags:)")
-	public func setInterval(interval: UInt64, flags: IntervalFlags) {
-		setInterval(interval: .nanoseconds(Int(interval)), flags: flags)
 	}
 }

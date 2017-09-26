@@ -68,8 +68,8 @@ typedef struct dispatch_queue_s *dispatch_queue_t;
 typedef struct dispatch_source_s *dispatch_source_t;
 typedef struct dispatch_group_s *dispatch_group_t;
 typedef struct dispatch_object_s *dispatch_object_t;
-#ifndef __OSX_AVAILABLE_STARTING
-#define __OSX_AVAILABLE_STARTING(x,y)
+#ifndef API_AVAILABLE
+#define API_AVAILABLE(...)
 #endif
 #ifndef DISPATCH_EXPORT
 #define DISPATCH_EXPORT extern
@@ -135,7 +135,7 @@ typedef struct dispatch_object_s *dispatch_object_t;
  * Size of dispatch_introspection_source_s structure.
  */
 
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT const struct dispatch_introspection_versions_s {
 	unsigned long introspection_version;
 	unsigned long hooks_version;
@@ -716,7 +716,7 @@ dispatch_introspection_queue_item_get_info(dispatch_queue_t queue,
  * hooks on output.
  */
 
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_7_0)
+API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT void
 dispatch_introspection_hooks_install(dispatch_introspection_hooks_t hooks);
 

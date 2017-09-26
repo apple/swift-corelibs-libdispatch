@@ -79,7 +79,7 @@ enum {
  * This new value combines the attributes specified by the 'attr' parameter and
  * the overcommit flag.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0)
+API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
 dispatch_queue_attr_t
 dispatch_queue_attr_make_with_overcommit(dispatch_queue_attr_t _Nullable attr,
@@ -99,6 +99,39 @@ dispatch_queue_attr_make_with_overcommit(dispatch_queue_attr_t _Nullable attr,
 #define DISPATCH_QUEUE_PRIORITY_NON_INTERACTIVE INT8_MIN
 
 /*!
+ * @function dispatch_queue_set_label_nocopy
+ *
+ * @abstract
+ * Set the label for a given queue, without copying the input string.
+ *
+ * @discussion
+ * The queue must have been initially created with a NULL label, else using
+ * this function to set the queue label is undefined.
+ *
+ * The caller of this function must make sure the label pointer remains valid
+ * while it is used as the queue label and while any callers to
+ * dispatch_queue_get_label() may have obtained it. Since the queue lifetime
+ * may extend past the last release, it is advised to call this function with
+ * a constant string or NULL before the queue is released, or to destroy the
+ * label from a finalizer for that queue.
+ *
+ * This function should be called before any work item could call
+ * dispatch_queue_get_label(DISPATCH_CURRENT_QUEUE_LABEL) or from the context of
+ * the queue itself.
+ *
+ * @param queue
+ * The queue to adjust. Attempts to set the label of the main queue or a global
+ * concurrent queue will be ignored.
+ *
+ * @param label
+ * The new label for the queue.
+ */
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+void
+dispatch_queue_set_label_nocopy(dispatch_queue_t queue, const char *label);
+
+/*!
  * @function dispatch_queue_set_width
  *
  * @abstract
@@ -115,8 +148,8 @@ dispatch_queue_attr_make_with_overcommit(dispatch_queue_attr_t _Nullable attr,
  * with the desired concurrency width.
  *
  * @param queue
- * The queue to adjust. Passing the main queue or a global concurrent queue
- * will be ignored.
+ * The queue to adjust. Attempts to set the width of the main queue or a global
+ * concurrent queue will be ignored.
  *
  * @param width
  * The new maximum width of concurrency depending on available resources.
@@ -128,8 +161,8 @@ dispatch_queue_attr_make_with_overcommit(dispatch_queue_attr_t _Nullable attr,
 #define DISPATCH_QUEUE_WIDTH_MAX_PHYSICAL_CPUS	-2
 #define DISPATCH_QUEUE_WIDTH_MAX_LOGICAL_CPUS	-3
 
-__OSX_AVAILABLE_BUT_DEPRECATED_MSG(__MAC_10_6,__MAC_10_10,__IPHONE_4_0,__IPHONE_8_0, \
-		"Use dispatch_queue_create(name, DISPATCH_QUEUE_CONCURRENT) instead")
+API_DEPRECATED("Use dispatch_queue_create(name, DISPATCH_QUEUE_CONCURRENT)",
+		macos(10.6,10.10), ios(4.0,8.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_queue_set_width(dispatch_queue_t dq, long width);
@@ -189,7 +222,7 @@ dispatch_queue_set_width(dispatch_queue_t dq, long width);
  * @result
  * The newly created dispatch pthread root queue.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_9,__IPHONE_6_0)
+API_AVAILABLE(macos(10.9), ios(6.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
@@ -238,19 +271,19 @@ dispatch_pthread_root_queue_flags_pool_size(uint8_t pool_size)
  * @result
  * A new reference to a pthread root queue object or NULL.
  */
-__OSX_AVAILABLE(10.12) __IOS_AVAILABLE(10.0)
-__TVOS_AVAILABLE(10.0) __WATCHOS_AVAILABLE(3.0)
+API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_queue_t _Nullable
 dispatch_pthread_root_queue_copy_current(void);
 
 /*!
  * @constant DISPATCH_APPLY_CURRENT_ROOT_QUEUE
- * @discussion Constant to pass to the dispatch_apply() and dispatch_apply_f()
- * functions to indicate that the root queue for the current thread should be
- * used (i.e. one of the global concurrent queues or a queue created with
- * dispatch_pthread_root_queue_create()). If there is no such queue, the
- * default priority global concurrent queue will be used.
+ *
+ * @discussion
+ * This constant is deprecated, please use DISPATCH_APPLY_AUTO.
+ *
+ * DISPATCH_APPLY_AUTO also selects the current pthread root queue if
+ * applicable.
  */
 #define DISPATCH_APPLY_CURRENT_ROOT_QUEUE ((dispatch_queue_t _Nonnull)0)
 
@@ -284,12 +317,27 @@ dispatch_pthread_root_queue_copy_current(void);
  * dispatch_async_f().
  * The result of passing NULL in this parameter is undefined.
  */
-__OSX_AVAILABLE_STARTING(__MAC_10_11,__IPHONE_9_0)
+API_AVAILABLE(macos(10.11), ios(9.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_async_enforce_qos_class_f(dispatch_queue_t queue,
 	void *_Nullable context, dispatch_function_t work);
 
+
+#ifdef __ANDROID__
+/*!
+ * @function _dispatch_install_thread_detach_callback
+ *
+ * @param callback
+ * Function to be called before each worker thread exits to detach JVM.
+ *
+ * Hook to be able to detach threads from the Java JVM before they exit.
+ * If JNI has been used on a thread on Android it needs to have been
+ * "detached" before the thread exits or the application will crash.
+ */
+DISPATCH_EXPORT
+void _dispatch_install_thread_detach_callback(dispatch_function_t cb);
+#endif
 
 __END_DECLS
 

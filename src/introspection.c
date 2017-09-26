@@ -193,7 +193,7 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 		case DC_OVERRIDE_STEALING_TYPE:
 		case DC_OVERRIDE_OWNING_TYPE:
 			dc = dc->dc_data;
-			if (_dispatch_object_has_vtable(dc)) {
+			if (!_dispatch_object_is_continuation(dc)) {
 				// these really wrap queues so we should hide the continuation type
 				dq = (dispatch_queue_t)dc;
 				diqi->type = dispatch_introspection_queue_item_type_queue;
@@ -204,6 +204,8 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 #endif
 		case DC_ASYNC_REDIRECT_TYPE:
 			DISPATCH_INTERNAL_CRASH(0, "Handled by the caller");
+		case DC_MACH_ASYNC_REPLY_TYPE:
+			break;
 		case DC_MACH_SEND_BARRRIER_DRAIN_TYPE:
 			break;
 		case DC_MACH_SEND_BARRIER_TYPE:
@@ -211,23 +213,17 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 			flags = (uintptr_t)dc->dc_data;
 			dq = dq->do_targetq;
 			break;
+		default:
+			DISPATCH_INTERNAL_CRASH(dc->do_vtable, "Unknown dc vtable type");
 		}
 	} else {
-		if (flags & DISPATCH_OBJ_SYNC_SLOW_BIT) {
-			waiter = pthread_from_mach_thread_np((mach_port_t)dc->dc_data);
-			if (flags & DISPATCH_OBJ_BARRIER_BIT) {
-				dc = dc->dc_ctxt;
-				dq = dc->dc_data;
-			}
-			ctxt = dc->dc_ctxt;
-			func = dc->dc_func;
+		if (flags & DISPATCH_OBJ_SYNC_WAITER_BIT) {
+			dispatch_sync_context_t dsc = (dispatch_sync_context_t)dc;
+			waiter = pthread_from_mach_thread_np(dsc->dsc_waiter);
+			ctxt = dsc->dsc_ctxt;
+			func = dsc->dsc_func;
 		}
-		if (func == _dispatch_sync_recurse_invoke) {
-			dc = dc->dc_ctxt;
-			dq = dc->dc_data;
-			ctxt = dc->dc_ctxt;
-			func = dc->dc_func;
-		} else if (func == _dispatch_apply_invoke ||
+		if (func == _dispatch_apply_invoke ||
 				func == _dispatch_apply_redirect_invoke) {
 			dispatch_apply_t da = ctxt;
 			if (da->da_todo) {
@@ -252,7 +248,7 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 		.function = func,
 		.waiter = waiter,
 		.barrier = (flags & DISPATCH_OBJ_BARRIER_BIT) || dq->dq_width == 1,
-		.sync = flags & DISPATCH_OBJ_SYNC_SLOW_BIT,
+		.sync = flags & DISPATCH_OBJ_SYNC_WAITER_BIT,
 		.apply = apply,
 	};
 	if (flags & DISPATCH_OBJ_GROUP_BIT) {
@@ -300,16 +296,11 @@ _dispatch_introspection_source_get_info(dispatch_source_t ds)
 		.suspend_count = _dq_state_suspend_cnt(dq_state) + ds->dq_side_suspend_cnt,
 		.enqueued = _dq_state_is_enqueued(dq_state),
 		.handler_is_block = hdlr_is_block,
-		.timer = ds->ds_is_timer,
-		.after = ds->ds_is_timer && (bool)(ds_timer(ds).flags & DISPATCH_TIMER_AFTER),
+		.timer = dr->du_is_timer,
+		.after = dr->du_is_timer && (dr->du_fflags & DISPATCH_TIMER_AFTER),
+		.type = (unsigned long)dr->du_filter,
+		.handle = (unsigned long)dr->du_ident,
 	};
-	dispatch_kevent_t dk = ds->ds_dkev;
-	if (ds->ds_is_custom_source) {
-		dis.type = (unsigned long)dk;
-	} else if (dk) {
-		dis.type = (unsigned long)dk->dk_kevent.filter;
-		dis.handle = (unsigned long)dk->dk_kevent.ident;
-	}
 	return dis;
 }
 
@@ -739,7 +730,7 @@ struct dispatch_order_frame_s {
 	dispatch_queue_order_entry_t dof_e;
 };
 
-DISPATCH_NOINLINE
+DISPATCH_NOINLINE DISPATCH_NORETURN
 static void
 _dispatch_introspection_lock_inversion_fail(dispatch_order_frame_t dof,
 		dispatch_queue_t top_q, dispatch_queue_t bottom_q)

@@ -40,6 +40,7 @@ ONLY_ACTIVE_ARCH = NO
 CLANG_LINK_OBJC_RUNTIME = NO
 GCC_C_LANGUAGE_STANDARD = gnu11
 CLANG_CXX_LANGUAGE_STANDARD = gnu++11
+ENABLE_STRICT_OBJC_MSGSEND = YES
 GCC_ENABLE_CPP_EXCEPTIONS = NO
 GCC_STRICT_ALIASING = YES
 GCC_SYMBOLS_PRIVATE_EXTERN = YES
@@ -49,24 +50,40 @@ GCC_WARN_64_TO_32_BIT_CONVERSION = YES
 GCC_WARN_ABOUT_RETURN_TYPE = YES
 GCC_WARN_ABOUT_MISSING_PROTOTYPES = YES
 GCC_WARN_ABOUT_MISSING_NEWLINE = YES
-GCC_WARN_UNUSED_VARIABLE = YES
-GCC_WARN_INITIALIZER_NOT_FULLY_BRACKETED = YES
 GCC_WARN_ABOUT_MISSING_FIELD_INITIALIZERS = YES
+GCC_WARN_INITIALIZER_NOT_FULLY_BRACKETED = YES
 GCC_WARN_SIGN_COMPARE = YES
+GCC_WARN_STRICT_SELECTOR_MATCH = YES
+GCC_WARN_UNDECLARED_SELECTOR = YES
 GCC_WARN_UNINITIALIZED_AUTOS = YES
+GCC_WARN_UNKNOWN_PRAGMAS = YES
+GCC_WARN_UNUSED_FUNCTION = YES
+GCC_WARN_UNUSED_LABEL = YES
+GCC_WARN_UNUSED_PARAMETER = YES
+GCC_WARN_UNUSED_VARIABLE = YES
+CLANG_WARN_ASSIGN_ENUM = YES
+CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES
+CLANG_WARN_DOCUMENTATION_COMMENTS = YES
+CLANG_WARN__DUPLICATE_METHOD_MATCH = YES
 CLANG_WARN_EMPTY_BODY = YES
 CLANG_WARN_IMPLICIT_SIGN_CONVERSION = YES
+CLANG_WARN_INFINITE_RECURSION = YES
+CLANG_WARN_OBJC_IMPLICIT_ATOMIC_PROPERTIES = YES
+CLANG_WARN_OBJC_MISSING_PROPERTY_SYNTHESIS = YES
 CLANG_WARN_SUSPICIOUS_IMPLICIT_CONVERSION = YES
-CLANG_WARN_DOCUMENTATION_COMMENTS = YES
+CLANG_WARN_SUSPICIOUS_MOVE = YES
+CLANG_WARN_UNREACHABLE_CODE = YES
 GCC_TREAT_WARNINGS_AS_ERRORS = YES
 GCC_OPTIMIZATION_LEVEL = s
-GCC_PREPROCESSOR_DEFINITIONS = __DARWIN_NON_CANCELABLE=1 $(DISPATCH_PREPROCESSOR_DEFINITIONS)
 GCC_NO_COMMON_BLOCKS = YES
-WARNING_CFLAGS = -Wall -Wextra -Waggregate-return -Wfloat-equal -Wpacked -Wmissing-declarations -Wstrict-overflow=4 -Wstrict-aliasing=2 -Wno-packed -Wno-unknown-warning-option
-OTHER_CFLAGS = -fverbose-asm -isystem $(SDKROOT)/System/Library/Frameworks/System.framework/PrivateHeaders
+GCC_PREPROCESSOR_DEFINITIONS = __DARWIN_NON_CANCELABLE=1 $(DISPATCH_PREPROCESSOR_DEFINITIONS)
+STATICLIB_PREPROCESSOR_DEFINITIONS = DISPATCH_VARIANT_STATIC=1 USE_OBJC=0 DISPATCH_USE_DTRACE=0
+WARNING_CFLAGS = -Wall -Wextra -Warray-bounds-pointer-arithmetic -Watomic-properties -Wcomma -Wconditional-uninitialized -Wcovered-switch-default -Wdate-time -Wdeprecated -Wdouble-promotion -Wduplicate-enum -Wexpansion-to-defined -Wfloat-equal -Widiomatic-parentheses -Wignored-qualifiers -Wimplicit-fallthrough -Wnullable-to-nonnull-conversion -Wobjc-interface-ivars -Wover-aligned -Wpacked -Wpointer-arith -Wselector -Wstatic-in-inline -Wsuper-class-method-mismatch -Wswitch-enum -Wtautological-compare -Wunguarded-availability -Wunused -Wno-unknown-warning-option $(NO_WARNING_CFLAGS)
+NO_WARNING_CFLAGS = -Wno-pedantic -Wno-bad-function-cast -Wno-c++-compat -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-cast-align -Wno-cast-qual -Wno-disabled-macro-expansion -Wno-documentation-unknown-command -Wno-format-nonliteral -Wno-missing-variable-declarations -Wno-old-style-cast -Wno-padded -Wno-reserved-id-macro -Wno-shift-sign-overflow -Wno-undef -Wno-unreachable-code-aggressive -Wno-unused-macros -Wno-used-but-marked-unused -Wno-vla
+OTHER_CFLAGS = -fverbose-asm -isystem $(SDKROOT)/System/Library/Frameworks/System.framework/PrivateHeaders $(PLATFORM_CFLAGS)
 OTHER_CFLAGS[arch=i386][sdk=macosx*] = $(OTHER_CFLAGS) -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-exceptions
 OTHER_CFLAGS_normal = -momit-leaf-frame-pointer
-OTHER_CFLAGS_profile = $(OTHER_CFLAGS_normal) -DDISPATCH_PROFILE=1
+OTHER_CFLAGS_profile = $(OTHER_CFLAGS_normal) -DDISPATCH_PROFILE=1 -DDISPATCH_PERF_MON=1
 OTHER_CFLAGS_debug = -fstack-protector -fno-inline -O0 -DDISPATCH_DEBUG=1 -DOS_DEBUG=1
 GENERATE_PROFILING_CODE = NO
 DYLIB_CURRENT_VERSION = $(CURRENT_PROJECT_VERSION)

@@ -11,3 +11,9 @@
 0x2e02000c	DISPATCH_PERF_post_activate_mutation
 0x2e020010	DISPATCH_PERF_delayed_registration
 0x2e020014	DISPATCH_PERF_mutable_target
+0x2e020018	DISPATCH_PERF_strict_bg_timer
+
+0x2e030004	DISPATCH_MACH_MSG_hdr_move
+
+0x2e040004	DISPATCH_PERF_MON_worker_thread
+0x2e040008	DISPATCH_PERF_MON_worker_useless

@@ -59,11 +59,6 @@ public struct DispatchQoS : Equatable {
 	@available(OSX 10.10, iOS 8.0, *)
 	public static let `default` = DispatchQoS(qosClass: .default, relativePriority: 0)
 
-	@available(OSX, introduced: 10.10, deprecated: 10.10, renamed: "DispatchQoS.default")
-	@available(iOS, introduced: 8.0, deprecated: 8.0, renamed: "DispatchQoS.default")
-	@available(*, deprecated, renamed: "DispatchQoS.default")
-	public static let defaultQoS = DispatchQoS.default
-
 	@available(OSX 10.10, iOS 8.0, *)
 	public static let userInitiated = DispatchQoS(qosClass: .userInitiated, relativePriority: 0)
 
@@ -82,11 +77,6 @@ public struct DispatchQoS : Equatable {
 		@available(OSX 10.10, iOS 8.0, *)
 		case `default`
 
-		@available(OSX, introduced: 10.10, deprecated: 10.10, renamed: "QoSClass.default")
-		@available(iOS, introduced: 8.0, deprecated: 8.0, renamed: "QoSClass.default")
-		@available(*, deprecated, renamed: "QoSClass.default")
-		static let defaultQoS = QoSClass.default
-
 		@available(OSX 10.10, iOS 8.0, *)
 		case userInitiated
 
@@ -95,9 +85,11 @@ public struct DispatchQoS : Equatable {
 
 		case unspecified
 
+		// _OSQoSClass is internal on Linux, so this initialiser has to 
+		// remain as an internal init.
 		@available(OSX 10.10, iOS 8.0, *)
-		internal init?(qosClass: _OSQoSClass) {
-			switch qosClass {
+		internal init?(rawValue: _OSQoSClass) {
+			switch rawValue {
 			case .QOS_CLASS_BACKGROUND: self = .background
 			case .QOS_CLASS_UTILITY: self = .utility
 			case .QOS_CLASS_DEFAULT: self = .default
@@ -135,14 +127,14 @@ public func ==(a: DispatchQoS, b: DispatchQoS) -> Bool {
 
 public enum DispatchTimeoutResult {
     static let KERN_OPERATION_TIMED_OUT:Int = 49
-	case Success
-	case TimedOut
+	case success
+	case timedOut
 }
 
 /// dispatch_group
 
 public extension DispatchGroup {
-	public func notify(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], queue: DispatchQueue, execute work: @convention(block) () -> ()) {
+	public func notify(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], queue: DispatchQueue, execute work: @escaping @convention(block) () -> ()) {
 		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: work)
 			dispatch_group_notify(self.__wrapped, queue.__wrapped, item._block)
@@ -161,21 +153,11 @@ public extension DispatchGroup {
 	}
 
 	public func wait(timeout: DispatchTime) -> DispatchTimeoutResult {
-		return dispatch_group_wait(self.__wrapped, timeout.rawValue) == 0 ? .Success : .TimedOut
+		return dispatch_group_wait(self.__wrapped, timeout.rawValue) == 0 ? .success : .timedOut
 	}
 
 	public func wait(wallTimeout timeout: DispatchWallTime) -> DispatchTimeoutResult {
-		return dispatch_group_wait(self.__wrapped, timeout.rawValue) == 0 ? .Success : .TimedOut
-	}
-}
-
-public extension DispatchGroup {
-	@available(*, deprecated, renamed: "DispatchGroup.wait(self:wallTimeout:)")
-	public func wait(walltime timeout: DispatchWallTime) -> Int {
-		switch wait(wallTimeout: timeout) {
-		case .Success: return 0
-		case .TimedOut: return DispatchTimeoutResult.KERN_OPERATION_TIMED_OUT
-		}
+		return dispatch_group_wait(self.__wrapped, timeout.rawValue) == 0 ? .success : .timedOut
 	}
 }
 
@@ -192,20 +174,10 @@ public extension DispatchSemaphore {
 	}
 
 	public func wait(timeout: DispatchTime) -> DispatchTimeoutResult {
-		return dispatch_semaphore_wait(self.__wrapped, timeout.rawValue) == 0 ? .Success : .TimedOut
+		return dispatch_semaphore_wait(self.__wrapped, timeout.rawValue) == 0 ? .success : .timedOut
 	}
 
 	public func wait(wallTimeout: DispatchWallTime) -> DispatchTimeoutResult {
-		return dispatch_semaphore_wait(self.__wrapped, wallTimeout.rawValue) == 0 ? .Success : .TimedOut
-	}
-}
-
-public extension DispatchSemaphore {
-	@available(*, deprecated, renamed: "DispatchSemaphore.wait(self:wallTimeout:)")
-	public func wait(walltime timeout: DispatchWalltime) -> Int {
-		switch wait(wallTimeout: timeout) {
-		case .Success: return 0
-		case .TimedOut: return DispatchTimeoutResult.KERN_OPERATION_TIMED_OUT
-		}
+		return dispatch_semaphore_wait(self.__wrapped, wallTimeout.rawValue) == 0 ? .success : .timedOut
 	}
 }

@@ -5,9 +5,17 @@
    you don't. */
 #define HAVE_DECL_CLOCK_MONOTONIC 0
 
+/* Define to 1 if you have the declaration of `CLOCK_REALTIME', and to 0 if
+   you don't. */
+#define CLOCK_REALTIME 0
+
 /* Define to 1 if you have the declaration of `CLOCK_UPTIME', and to 0 if you
    don't. */
 #define HAVE_DECL_CLOCK_UPTIME 0
+
+/* Define to 1 if you have the declaration of `HAVE_DECL_CLOCK_UPTIME_FAST',
+    and to 0 if you don't. */
+#define HAVE_DECL_CLOCK_UPTIME_FAST 0
 
 /* Define to 1 if you have the declaration of `FD_COPY', and to 0 if you
    don't. */
@@ -57,6 +65,14 @@
  you don't. */
 #define HAVE_DECL_VQ_QUOTA 1
 
+/* Define to 1 if you have the declaration of `VQ_NEARLOWDISK', and to 0 if
+   you don't. */
+#define HAVE_DECL_VQ_NEARLOWDISK 1
+
+/* Define to 1 if you have the declaration of `VQ_DESIRED_DISK', and to 0 if
+ you don't. */
+#define HAVE_DECL_VQ_DESIRED_DISK 1
+
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #define HAVE_DLFCN_H 1
 
@@ -86,6 +102,9 @@
 
 /* Define to 1 if you have the `mach_absolute_time' function. */
 #define HAVE_MACH_ABSOLUTE_TIME 1
+
+/* Define to 1 if you have the `mach_approximate_time' function. */
+#define HAVE_MACH_APPROXIMATE_TIME 1
 
 /* Define to 1 if you have the `mach_port_construct' function. */
 #define HAVE_MACH_PORT_CONSTRUCT 1

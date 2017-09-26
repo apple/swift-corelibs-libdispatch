@@ -29,20 +29,10 @@
 
 struct dispatch_queue_s;
 
-#if USE_MACH_SEM
-#define DISPATCH_OS_SEMA_FIELD(base)	semaphore_t base##_port
-#elif USE_POSIX_SEM
-#define DISPATCH_OS_SEMA_FIELD(base)	sem_t base##_sem
-#elif USE_WIN32_SEM
-#define DISPATCH_OS_SEMA_FIELD(base)	HANDLE base##_handle
-#else
-#error "No supported semaphore type"
-#endif
-
 #define DISPATCH_SEMAPHORE_HEADER(cls, ns) \
 	DISPATCH_OBJECT_HEADER(cls); \
 	long volatile ns##_value; \
-	DISPATCH_OS_SEMA_FIELD(ns)
+	_dispatch_sema4_t ns##_sema
 
 struct dispatch_semaphore_header_s {
 	DISPATCH_SEMAPHORE_HEADER(semaphore, dsema);
@@ -70,14 +60,14 @@ typedef union {
 	dispatch_semaphore_t _objc_dsema;
 	dispatch_group_t _objc_dg;
 #endif
-} dispatch_semaphore_class_t __attribute__((__transparent_union__));
+} dispatch_semaphore_class_t DISPATCH_TRANSPARENT_UNION;
 
 dispatch_group_t _dispatch_group_create_and_enter(void);
-void _dispatch_group_dispose(dispatch_object_t dou);
+void _dispatch_group_dispose(dispatch_object_t dou, bool *allow_free);
 size_t _dispatch_group_debug(dispatch_object_t dou, char *buf,
 		size_t bufsiz);
 
-void _dispatch_semaphore_dispose(dispatch_object_t dou);
+void _dispatch_semaphore_dispose(dispatch_object_t dou, bool *allow_free);
 size_t _dispatch_semaphore_debug(dispatch_object_t dou, char *buf,
 		size_t bufsiz);
 

@@ -35,7 +35,7 @@ _dispatch_apply_invoke2(void *ctxt, long invoke_flags)
 	size_t idx, done = 0;
 
 	idx = os_atomic_inc_orig2o(da, da_index, acquire);
-	if (!fastpath(idx < iter)) goto out;
+	if (unlikely(idx >= iter)) goto out;
 
 	// da_dc is only safe to access once the 'index lock' has been acquired
 	dispatch_apply_function_t const func = (void *)da->da_dc->dc_func;
@@ -52,10 +52,10 @@ _dispatch_apply_invoke2(void *ctxt, long invoke_flags)
 	_dispatch_thread_context_push(&apply_ctxt);
 
 	dispatch_thread_frame_s dtf;
-	pthread_priority_t old_dp;
+	dispatch_priority_t old_dbp = 0;
 	if (invoke_flags & DISPATCH_APPLY_INVOKE_REDIRECT) {
 		_dispatch_thread_frame_push(&dtf, dq);
-		old_dp = _dispatch_set_defaultpriority(dq->dq_priority, NULL);
+		old_dbp = _dispatch_set_basepri(dq->dq_priority);
 	}
 	dispatch_invoke_flags_t flags = da->da_flags;
 
@@ -67,10 +67,10 @@ _dispatch_apply_invoke2(void *ctxt, long invoke_flags)
 			done++;
 			idx = os_atomic_inc_orig2o(da, da_index, relaxed);
 		});
-	} while (fastpath(idx < iter));
+	} while (likely(idx < iter));
 
 	if (invoke_flags & DISPATCH_APPLY_INVOKE_REDIRECT) {
-		_dispatch_reset_defaultpriority(old_dp);
+		_dispatch_reset_basepri(old_dbp);
 		_dispatch_thread_frame_pop(&dtf);
 	}
 
@@ -124,7 +124,7 @@ _dispatch_apply_autorelease_frequency(dispatch_queue_t dq)
 
 	while (dq && !qaf) {
 		qaf = _dispatch_queue_autorelease_frequency(dq);
-		dq = slowpath(dq->do_targetq);
+		dq = dq->do_targetq;
 	}
 	return qaf;
 }
@@ -159,11 +159,11 @@ static inline void
 _dispatch_apply_f2(dispatch_queue_t dq, dispatch_apply_t da,
 		dispatch_function_t func)
 {
-	uint32_t i = 0;
+	int32_t i = 0;
 	dispatch_continuation_t head = NULL, tail = NULL;
 
 	// The current thread does not need a continuation
-	uint32_t continuation_cnt = da->da_thr_cnt - 1;
+	int32_t continuation_cnt = da->da_thr_cnt - 1;
 
 	dispatch_assert(continuation_cnt);
 
@@ -181,9 +181,8 @@ _dispatch_apply_f2(dispatch_queue_t dq, dispatch_apply_t da,
 	}
 
 	_dispatch_thread_event_init(&da->da_event);
-
-	_dispatch_queue_push_list(dq, head, tail, head->dc_priority,
-			continuation_cnt);
+	// FIXME: dq may not be the right queue for the priority of `head`
+	_dispatch_root_queue_push_inline(dq, head, tail, continuation_cnt);
 	// Call the first element directly
 	_dispatch_apply_invoke_and_wait(da);
 }
@@ -193,19 +192,19 @@ static void
 _dispatch_apply_redirect(void *ctxt)
 {
 	dispatch_apply_t da = (dispatch_apply_t)ctxt;
-	uint32_t da_width = da->da_thr_cnt - 1;
+	int32_t da_width = da->da_thr_cnt - 1;
 	dispatch_queue_t dq = da->da_dc->dc_data, rq = dq, tq;
 
 	do {
-		uint32_t width = _dispatch_queue_try_reserve_apply_width(rq, da_width);
+		int32_t width = _dispatch_queue_try_reserve_apply_width(rq, da_width);
 
-		if (slowpath(da_width > width)) {
-			uint32_t excess = da_width - width;
+		if (unlikely(da_width > width)) {
+			int32_t excess = da_width - width;
 			for (tq = dq; tq != rq; tq = tq->do_targetq) {
 				_dispatch_queue_relinquish_width(tq, excess);
 			}
 			da_width -= excess;
-			if (slowpath(!da_width)) {
+			if (unlikely(!da_width)) {
 				return _dispatch_apply_serial(da);
 			}
 			da->da_thr_cnt -= excess;
@@ -217,45 +216,69 @@ _dispatch_apply_redirect(void *ctxt)
 			da->da_flags = _dispatch_queue_autorelease_frequency(dq);
 		}
 		rq = rq->do_targetq;
-	} while (slowpath(rq->do_targetq));
+	} while (unlikely(rq->do_targetq));
 	_dispatch_apply_f2(rq, da, _dispatch_apply_redirect_invoke);
 	do {
 		_dispatch_queue_relinquish_width(dq, da_width);
 		dq = dq->do_targetq;
-	} while (slowpath(dq->do_targetq));
+	} while (unlikely(dq->do_targetq));
 }
 
 #define DISPATCH_APPLY_MAX UINT16_MAX // must be < sqrt(SIZE_MAX)
+
+DISPATCH_ALWAYS_INLINE
+static inline dispatch_queue_t
+_dispatch_apply_root_queue(dispatch_queue_t dq)
+{
+	if (dq) {
+		while (unlikely(dq->do_targetq)) {
+			dq = dq->do_targetq;
+		}
+		// if the current root queue is a pthread root queue, select it
+		if (!_dispatch_priority_qos(dq->dq_priority)) {
+			return dq;
+		}
+	}
+
+	pthread_priority_t pp = _dispatch_get_priority();
+	dispatch_qos_t qos = _dispatch_qos_from_pp(pp);
+	return _dispatch_get_root_queue(qos ? qos : DISPATCH_QOS_DEFAULT, false);
+}
 
 DISPATCH_NOINLINE
 void
 dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 		void (*func)(void *, size_t))
 {
-	if (slowpath(iterations == 0)) {
+	if (unlikely(iterations == 0)) {
 		return;
 	}
-	uint32_t thr_cnt = dispatch_hw_config(active_cpus);
-	dispatch_thread_context_t dtctxt = _dispatch_thread_context_find(_dispatch_apply_key);
+	dispatch_thread_context_t dtctxt =
+			_dispatch_thread_context_find(_dispatch_apply_key);
 	size_t nested = dtctxt ? dtctxt->dtc_apply_nesting : 0;
 	dispatch_queue_t old_dq = _dispatch_queue_get_current();
 
-	if (!slowpath(nested)) {
+	if (likely(dq == DISPATCH_APPLY_AUTO)) {
+		dq = _dispatch_apply_root_queue(old_dq);
+	}
+	dispatch_qos_t qos = _dispatch_priority_qos(dq->dq_priority);
+	if (unlikely(dq->do_targetq)) {
+		// if the queue passed-in is not a root queue, use the current QoS
+		// since the caller participates in the work anyway
+		qos = _dispatch_qos_from_pp(_dispatch_get_priority());
+	}
+	int32_t thr_cnt = (int32_t)_dispatch_qos_max_parallelism(qos,
+			DISPATCH_MAX_PARALLELISM_ACTIVE);
+
+	if (likely(!nested)) {
 		nested = iterations;
 	} else {
-		thr_cnt = nested < thr_cnt ? thr_cnt / nested : 1;
+		thr_cnt = nested < (size_t)thr_cnt ? thr_cnt / (int32_t)nested : 1;
 		nested = nested < DISPATCH_APPLY_MAX && iterations < DISPATCH_APPLY_MAX
 				? nested * iterations : DISPATCH_APPLY_MAX;
 	}
-	if (iterations < thr_cnt) {
-		thr_cnt = (uint32_t)iterations;
-	}
-	if (slowpath(dq == DISPATCH_APPLY_CURRENT_ROOT_QUEUE)) {
-		dq = old_dq ? old_dq : _dispatch_get_root_queue(
-				_DISPATCH_QOS_CLASS_DEFAULT, false);
-		while (slowpath(dq->do_targetq)) {
-			dq = dq->do_targetq;
-		}
+	if (iterations < (size_t)thr_cnt) {
+		thr_cnt = (int32_t)iterations;
 	}
 	struct dispatch_continuation_s dc = {
 		.dc_func = (void*)func,
@@ -276,11 +299,11 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 #endif
 	da->da_flags = 0;
 
-	if (slowpath(dq->dq_width == 1) || slowpath(thr_cnt <= 1)) {
+	if (unlikely(dq->dq_width == 1 || thr_cnt <= 1)) {
 		return dispatch_sync_f(dq, da, _dispatch_apply_serial);
 	}
-	if (slowpath(dq->do_targetq)) {
-		if (slowpath(dq == old_dq)) {
+	if (unlikely(dq->do_targetq)) {
+		if (unlikely(dq == old_dq)) {
 			return dispatch_sync_f(dq, da, _dispatch_apply_serial);
 		} else {
 			return dispatch_sync_f(dq, da, _dispatch_apply_redirect);
