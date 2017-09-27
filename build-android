@@ -42,5 +42,5 @@ make clean
 make
 
 cp ${SWIFT_PATH}/swift-corelibs-libdispatch/src/.libs/libdispatch.so $SWIFT_ANDROID_TOOLCHAIN_PATH/usr/lib/swift/android
-cp ${SWIFT_PATH}/swift-corelibs-libdispatch/src/swift/Dispatch.{swiftmodule,swiftdoc} $SWIFT_ANDROID_TOOLCHAIN_PATH/usr/lib/swift/android/arm
+cp ${SWIFT_PATH}/swift-corelibs-libdispatch/src/swift/Dispatch.{swiftmodule,swiftdoc} $SWIFT_ANDROID_TOOLCHAIN_PATH/usr/lib/swift/android/armv7
 
