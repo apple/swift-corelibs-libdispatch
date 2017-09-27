@@ -104,7 +104,7 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 		return (uint32_t)sysconf(_SC_NPROCESSORS_CONF);
 	case _dispatch_hw_config_active_cpus:
 		{
-#ifdef __USE_GNU
+#if defined(__USE_GNU) && !defined(__ANDROID__)
 			// Prefer pthread_getaffinity_np because it considers
 			// scheduler cpu affinity.  This matters if the program
 			// is restricted to a subset of the online cpus (eg via numactl).
