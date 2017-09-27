@@ -38,7 +38,6 @@ env \
         --disable-build-tests \
         --prefix=$SWIFT_ANDROID_TOOLCHAIN_PATH/usr
 
-make clean
 make
 
 cp ${SWIFT_PATH}/swift-corelibs-libdispatch/src/.libs/libdispatch.so $SWIFT_ANDROID_TOOLCHAIN_PATH/usr/lib/swift/android/armv7

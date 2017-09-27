@@ -34,24 +34,6 @@ cmake \
     -DCMAKE_CXX_COMPILER=$SWIFT_ANDROID_BUILD_PATH/llvm-linux-x86_64/bin/clang++ \
     -DCMAKE_SWIFT_COMPILER=$SWIFT_ANDROID_BUILD_PATH/swift-linux-x86_64/bin/swiftc
 
-#sh autogen.sh
-#env \
-#    CC="$SWIFT_ANDROID_BUILD_PATH/llvm-linux-x86_64/bin/clang" \
-#    CXX="$SWIFT_ANDROID_BUILD_PATH/llvm-linux-x86_64/bin/clang++" \
-#    SWIFTC="$SWIFT_ANDROID_BUILD_PATH/swift-linux-x86_64/bin/swiftc" \
-#    CFLAGS="-I$ANDROID_NDK_PATH/sysroot/usr/include" \
-#    CPPFLAGS="-I$ANDROID_NDK_PATH/sysroot/usr/include -DTARGET_OS_EMBEDDED" \
-#    ./configure \
-#        --with-swift-toolchain="$SWIFT_ANDROID_TOOLCHAIN_PATH/usr" \
-#        --with-build-variant=release \
-#        --enable-android \
-#        --host=arm-linux-androideabi \
-#        --with-android-ndk=$ANDROID_NDK_PATH \
-#        --with-android-api-level=21 \
-#        --disable-build-tests \
-#        --prefix=$SWIFT_ANDROID_TOOLCHAIN_PATH/usr
-
-#make clean
 make
 
 cp ${SWIFT_PATH}/swift-corelibs-libdispatch/src/.libs/libdispatch.so $SWIFT_ANDROID_TOOLCHAIN_PATH/usr/lib/swift/android/armv7
