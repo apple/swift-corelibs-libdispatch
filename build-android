@@ -34,7 +34,7 @@ env \
         --enable-android \
         --host=arm-linux-androideabi \
         --with-android-ndk=$ANDROID_NDK_PATH \
-        --with-android-api-level=21 \
+        --with-android-api-level=22 \
         --disable-build-tests \
         --prefix=$SWIFT_ANDROID_TOOLCHAIN_PATH/usr
 
