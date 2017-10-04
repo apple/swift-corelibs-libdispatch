@@ -2,19 +2,6 @@
 execute_process(COMMAND "${CMAKE_COMMAND}" -E create_symlink "${CMAKE_SOURCE_DIR}/private" "${CMAKE_CURRENT_BINARY_DIR}/dispatch")
 execute_process(COMMAND "${CMAKE_COMMAND}" -E create_symlink "${CMAKE_CURRENT_SOURCE_DIR}/leaks-wrapper.sh" "${CMAKE_CURRENT_BINARY_DIR}/leaks-wrapper")
 
-# TODO(compnerd) hoist this out of the test directory
-if(SWIFT_RUNTIME_LIBDIR)
-  add_library(swiftCore SHARED IMPORTED)
-  set_target_properties(swiftCore
-                        PROPERTIES
-                          IMPORTED_LOCATION ${SWIFT_RUNTIME_LIBDIR}/${CMAKE_SHARED_LIBRARY_PREFIX}swiftCore${CMAKE_SHARED_LIBRARY_SUFFIX})
-
-  add_library(swiftSwiftOnoneSupport SHARED IMPORTED)
-  set_target_properties(swiftSwiftOnoneSupport
-                        PROPERTIES
-                          IMPORTED_LOCATION ${SWIFT_RUNTIME_LIBDIR}/${CMAKE_SHARED_LIBRARY_PREFIX}swiftSwiftOnoneSupport${CMAKE_SHARED_LIBRARY_SUFFIX})
-endif()
-
 add_library(bsdtests
             STATIC
               bsdtests.c
@@ -74,10 +61,11 @@ function(add_unit_test name)
                                ${CMAKE_CURRENT_BINARY_DIR}
                                ${CMAKE_CURRENT_SOURCE_DIR}
                                ${CMAKE_SOURCE_DIR})
-  if(CMAKE_SWIFT_COMPILER)
-	# For testing in swift.org CI system; make deadlines lenient by default
-	# to reduce probability of test failures due to machine load.
-	target_compile_options(${name} PRIVATE -DLENIENT_DEADLINES=1)
+  if(ENABLE_SWIFT)
+    # For testing in swift.org CI system; make deadlines lenient by default
+    # to reduce probability of test failures due to machine load.
+    target_compile_options(${name} PRIVATE -DLENIENT_DEADLINES=1)
+    target_link_libraries(${name} PRIVATE swiftCore swiftSwiftOnoneSupport)
   endif()
   if(WITH_BLOCKS_RUNTIME)
     target_include_directories(${name}
