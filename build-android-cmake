@@ -16,9 +16,9 @@ cd "$(dirname $0)/.." || exit 1
 SWIFT_PATH=$PWD
 
 ANDROID_NDK_PATH="${ANDROID_NDK_PATH:?Please set the Android NDK path in the ANDROID_NDK_PATH environment variable}"
+SWIFT_ANDROID_BUILD_PATH="${SWIFT_ANDROID_BUILD_PATH:?Please set the Swift Android build path in the SWIFT_ANDROID_BUILD_PATH environment variable}"
 
 SWIFT_ANDROID_TOOLCHAIN_PATH="${SWIFT_PATH}/swift-android-toolchain"
-SWIFT_ANDROID_BUILD_PATH="${SWIFT_PATH}/build/Ninja-ReleaseAssert"
 
 cd ${SWIFT_PATH}/swift-corelibs-libdispatch 
 
@@ -32,7 +32,8 @@ cmake \
     -DCMAKE_ANDROID_NDK=$ANDROID_NDK_PATH \
     -DCMAKE_ANDROID_NDK_TOOLCHAIN_VERSION=$SWIFT_ANDROID_BUILD_PATH/llvm-linux-x86_64/bin/clang \
     -DCMAKE_CXX_COMPILER=$SWIFT_ANDROID_BUILD_PATH/llvm-linux-x86_64/bin/clang++ \
-    -DCMAKE_SWIFT_COMPILER=$SWIFT_ANDROID_BUILD_PATH/swift-linux-x86_64/bin/swiftc
+    -DCMAKE_SWIFT_COMPILER=$SWIFT_ANDROID_BUILD_PATH/swift-linux-x86_64/bin/swiftc \
+    -DENABLE_SWIFT=YES
 
 make
 
