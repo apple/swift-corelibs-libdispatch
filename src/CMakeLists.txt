@@ -69,7 +69,7 @@ if(HAVE_OBJC)
                    data.m
                    object.m)
 endif()
-if(CMAKE_SWIFT_COMPILER)
+if(ENABLE_SWIFT)
   set(swift_optimization_flags)
   if(CMAKE_BUILD_TYPE MATCHES Release)
     set(swift_optimization_flags -O)
@@ -203,4 +203,11 @@ install(TARGETS
           dispatch
         DESTINATION
           "${CMAKE_INSTALL_FULL_LIBDIR}")
+if(ENABLE_SWIFT)
+  install(FILES
+            ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
+            ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftdoc
+          DESTINATION
+            "${CMAKE_INSTALL_FULL_LIBDIR}/swift/${SWIFT_OS}/${CMAKE_SYSTEM_PROCESSOR}")
+endif()
 
