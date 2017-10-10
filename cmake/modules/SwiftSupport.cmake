@@ -57,6 +57,7 @@ function(add_swift_library library)
                        ${module_directory}/${ASL_MODULE_NAME}.swiftdoc
                      DEPENDS
                        ${ASL_SOURCES}
+                       ${CMAKE_SWIFT_COMPILER}
                      COMMAND
                        ${CMAKE_COMMAND} -E make_directory ${module_directory}
                      COMMAND
