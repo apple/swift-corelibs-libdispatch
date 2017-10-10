@@ -93,6 +93,8 @@ if(ENABLE_SWIFT)
                       swift/Source.swift
                       swift/Time.swift
                       swift/Wrapper.swift
+                    TARGET
+                      ${CMAKE_C_COMPILER_TARGET}
                     CFLAGS
                       -fblocks
                       -fmodule-map-file=${CMAKE_SOURCE_DIR}/dispatch/module.modulemap
@@ -106,7 +108,7 @@ if(ENABLE_SWIFT)
                    swift/DispatchStubs.cc
                    ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o)
 endif()
-if(dtrace_EXECUTABLE)
+if(ENABLE_DTRACE)
   dtrace_usdt_probe(${CMAKE_CURRENT_SOURCE_DIR}/provider.d
                     OUTPUT_SOURCES
                       dispatch_dtrace_provider_headers)
@@ -140,6 +142,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL Windows)
   target_compile_definitions(dispatch
                              PRIVATE
                                -D_CRT_SECURE_NO_WARNINGS)
+elseif(CMAKE_SYSTEM_NAME STREQUAL Android)
+  target_compile_options(dispatch
+                         PRIVATE
+                           -U_GNU_SOURCE)
 endif()
 if(BSD_OVERLAY_FOUND)
   target_compile_options(dispatch
