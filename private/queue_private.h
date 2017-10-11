@@ -327,7 +327,7 @@ dispatch_async_enforce_qos_class_f(dispatch_queue_t queue,
 /*!
  * @function _dispatch_install_thread_detach_callback
  *
- * @param callback
+ * @param cb
  * Function to be called before each worker thread exits to detach JVM.
  *
  * Hook to be able to detach threads from the Java JVM before they exit.
