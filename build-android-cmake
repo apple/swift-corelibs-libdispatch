@@ -16,8 +16,7 @@ cd "$(dirname $0)/.." || exit 1
 SWIFT_PATH=$PWD
 
 ANDROID_NDK_PATH="${ANDROID_NDK_PATH:?Please set the Android NDK path in the ANDROID_NDK_PATH environment variable}"
-SWIFT_ANDROID_BUILD_PATH="${SWIFT_ANDROID_BUILD_PATH:?Please set the Swift Android build path in the SWIFT_ANDROID_BUILD_PATH environment variable}"
-
+SWIFT_ANDROID_BUILD_PATH="${SWIFT_PATH}/build/Ninja-ReleaseAssert"
 SWIFT_ANDROID_TOOLCHAIN_PATH="${SWIFT_PATH}/swift-android-toolchain"
 
 cd ${SWIFT_PATH}/swift-corelibs-libdispatch 
