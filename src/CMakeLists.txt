@@ -202,12 +202,12 @@ add_custom_command(TARGET dispatch POST_BUILD
 install(TARGETS
           dispatch
         DESTINATION
-          "${CMAKE_INSTALL_LIBDIR}/swift/${SWIFT_OS}")
+          "${INSTALL_LIBDIR}/swift/${SWIFT_OS}")
 if(ENABLE_SWIFT)
   install(FILES
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftdoc
           DESTINATION
-            "${CMAKE_INSTALL_LIBDIR}/swift/${SWIFT_OS}/${CMAKE_SYSTEM_PROCESSOR}")
+            "${INSTALL_LIBDIR}/swift/${SWIFT_OS}/${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 
