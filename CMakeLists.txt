@@ -11,7 +11,6 @@ enable_testing()
 set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_CXX_STANDARD 11)
 
-set(CMAKE_INSTALL_LIBDIR lib CACHE PATH "Path where the libraries should be installed")
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
@@ -23,6 +22,7 @@ include(CheckLibraryExists)
 include(CheckSymbolExists)
 include(GNUInstallDirs)
 
+set(CMAKE_INSTALL_LIBDIR lib CACHE PATH "Path where the libraries should be installed")
 set(WITH_BLOCKS_RUNTIME "" CACHE PATH "Path to blocks runtime")
 
 include(DispatchAppleOptions)
