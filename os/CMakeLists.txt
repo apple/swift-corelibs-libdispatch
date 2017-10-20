@@ -6,5 +6,5 @@ install(FILES
           object.h
           linux_base.h
         DESTINATION
-          "${CMAKE_INSTALL_LIBDIR}/swift/os")
+          "${INSTALL_LIBDIR}/swift/os")
 

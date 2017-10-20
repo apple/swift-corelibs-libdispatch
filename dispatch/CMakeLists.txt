@@ -14,12 +14,12 @@ install(FILES
           source.h
           time.h
         DESTINATION
-          "${CMAKE_INSTALL_LIBDIR}/swift/dispatch")
+          "${INSTALL_LIBDIR}/swift/dispatch")
 if(ENABLE_SWIFT)
   get_filename_component(MODULE_MAP module.modulemap REALPATH)
   install(FILES
             ${MODULE_MAP}
           DESTINATION
-            "${CMAKE_INSTALL_LIBDIR}/swift/dispatch")
+            "${INSTALL_LIBDIR}/swift/dispatch")
 endif()
 
