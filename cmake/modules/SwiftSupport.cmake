@@ -3,7 +3,7 @@ include(CMakeParseArguments)
 
 function(add_swift_library library)
   set(options)
-  set(single_value_options MODULE_NAME;MODULE_LINK_NAME;MODULE_PATH;MODULE_CACHE_PATH;OUTPUT)
+  set(single_value_options MODULE_NAME;MODULE_LINK_NAME;MODULE_PATH;MODULE_CACHE_PATH;OUTPUT;TARGET)
   set(multiple_value_options SOURCES;SWIFT_FLAGS;CFLAGS)
 
   cmake_parse_arguments(ASL "${options}" "${single_value_options}" "${multiple_value_options}" ${ARGN})
@@ -12,6 +12,9 @@ function(add_swift_library library)
 
   list(APPEND flags -emit-library)
 
+  if(ASL_TARGET)
+    list(APPEND FLAGS -target;${ASL_TARGET})
+  endif()
   if(ASL_MODULE_NAME)
     list(APPEND flags -module-name;${ASL_MODULE_NAME})
   endif()
