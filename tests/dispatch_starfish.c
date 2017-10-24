@@ -72,7 +72,7 @@ collect(void *context __attribute__((unused)))
 
 	printf("lap: %zd\n", lap_count_down);
 	printf("count: %lu\n", COUNT);
-	printf("delta: %lu ns\n", delta);
+	printf("delta: %lu ns\n", (unsigned long)delta);
 	printf("math: %Lf ns / lap\n", math);
 
 	for (i = 0; i < COUNT; i++) {

@@ -2023,7 +2023,7 @@ static inline unsigned long
 _dispatch_source_timer_data(dispatch_source_t ds, dispatch_unote_t du)
 {
 	dispatch_timer_source_refs_t dr = du._dt;
-	unsigned long data, prev, clear_prev = 0;
+	uint64_t data, prev, clear_prev = 0;
 
 	os_atomic_rmw_loop2o(ds, ds_pending_data, prev, clear_prev, relaxed, {
 		data = prev >> 1;
@@ -2031,7 +2031,7 @@ _dispatch_source_timer_data(dispatch_source_t ds, dispatch_unote_t du)
 			os_atomic_rmw_loop_give_up(goto handle_missed_intervals);
 		}
 	});
-	return data;
+	return (unsigned long)data;
 
 handle_missed_intervals:
 	// The timer may be in _dispatch_source_invoke2() already for other
@@ -2046,7 +2046,7 @@ handle_missed_intervals:
 	uint64_t now = _dispatch_time_now(DISPATCH_TIMER_CLOCK(dr->du_ident));
 	if (now >= dr->dt_timer.target) {
 		OS_COMPILER_CAN_ASSUME(dr->dt_timer.interval < INT64_MAX);
-		data = _dispatch_source_timer_compute_missed(dr, now, data);
+		data = _dispatch_source_timer_compute_missed(dr, now, (unsigned long)data);
 	}
 
 	// When we see the MISSED_MARKER the manager has given up on this timer
@@ -2059,7 +2059,7 @@ handle_missed_intervals:
 	// on the manager and make the changes to `ds_timer` above visible.
 	_dispatch_queue_atomic_flags_clear(ds->_as_dq, DSF_ARMED);
 	os_atomic_store2o(ds, ds_pending_data, 0, relaxed);
-	return data;
+	return (unsigned long)data;
 }
 
 static inline void
