@@ -66,7 +66,9 @@ typedef struct dispatch_workq_monitor_s {
 	int num_registered_tids;
 } dispatch_workq_monitor_s, *dispatch_workq_monitor_t;
 
+#if HAVE_DISPATCH_WORKQ_MONITORING
 static dispatch_workq_monitor_s _dispatch_workq_monitors[DISPATCH_QOS_MAX];
+#endif
 
 #pragma mark Implementation of the monitoring subsystem.
 
@@ -91,6 +93,9 @@ _dispatch_workq_worker_register(dispatch_queue_t root_q, qos_class_t cls)
 	int worker_id = mon->num_registered_tids++;
 	mon->registered_tids[worker_id] = tid;
 	_dispatch_unfair_lock_unlock(&mon->registered_tid_lock);
+#else
+	(void)root_q;
+	(void)cls;
 #endif // HAVE_DISPATCH_WORKQ_MONITORING
 }
 
@@ -113,6 +118,9 @@ _dispatch_workq_worker_unregister(dispatch_queue_t root_q, qos_class_t cls)
 		}
 	}
 	_dispatch_unfair_lock_unlock(&mon->registered_tid_lock);
+#else
+	(void)root_q;
+	(void)cls;
 #endif // HAVE_DISPATCH_WORKQ_MONITORING
 }
 

@@ -10,7 +10,7 @@ endif
 
 os_HEADERS=	\
 	object.h \
-	linux_base.h
+	generic_unix_base.h
 
 noinst_HEADERS=	\
 	object_private.h \

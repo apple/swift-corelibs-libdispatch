@@ -112,6 +112,14 @@
 #define DISPATCH_LINUX_UNAVAILABLE()
 #endif
 
+#ifdef __FreeBSD__
+#define DISPATCH_FREEBSD_UNAVAILABLE() \
+		DISPATCH_UNAVAILABLE_MSG( \
+		"This interface is unavailable on FreeBSD systems")
+#else
+#define DISPATCH_FREEBSD_UNAVAILABLE()
+#endif
+
 #ifndef DISPATCH_ALIAS_V2
 #if TARGET_OS_MAC
 #define DISPATCH_ALIAS_V2(sym)	 __asm__("_" #sym "$V2")

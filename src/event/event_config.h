@@ -76,14 +76,12 @@
 #if DISPATCH_EVENT_BACKEND_KEVENT
 #	if defined(EV_SET_QOS)
 #		define DISPATCH_USE_KEVENT_QOS 1
-#		ifndef KEVENT_FLAG_IMMEDIATE
-#		define KEVENT_FLAG_IMMEDIATE 0x001
-#		endif
-#		ifndef KEVENT_FLAG_ERROR_EVENTS
-#		define KEVENT_FLAG_ERROR_EVENTS 0x002
-#		endif
 #	else
 #		define DISPATCH_USE_KEVENT_QOS 0
+#	endif
+
+#	ifndef KEVENT_FLAG_ERROR_EVENTS
+#		define KEVENT_FLAG_ERROR_EVENTS 0x002
 #	endif
 
 #	ifdef NOTE_LEEWAY
@@ -104,6 +102,14 @@
 
 #	ifndef NOTE_FUNLOCK
 #	define NOTE_FUNLOCK 0x00000100
+#	endif
+
+// FreeBSD's kevent does not support those
+#	ifndef NOTE_ABSOLUTE
+#	define NOTE_ABSOLUTE 0
+#	endif
+#	ifndef NOTE_EXITSTATUS
+#	define NOTE_EXITSTATUS 0
 #	endif
 
 #	if HAVE_DECL_NOTE_REAP
@@ -146,8 +152,14 @@
 
 #	define DISPATCH_HAVE_TIMER_QOS 0
 #	define DISPATCH_HAVE_TIMER_COALESCING 0
-#	define KEVENT_FLAG_IMMEDIATE 0x001
 #endif // !DISPATCH_EVENT_BACKEND_KEVENT
+
+// These flags are used by dispatch generic code and
+// translated back by the various backends to similar semantics
+// hence must be defined even on non Darwin platforms
+#ifndef KEVENT_FLAG_IMMEDIATE
+#	define KEVENT_FLAG_IMMEDIATE 0x001
+#endif
 
 #ifdef EV_UDATA_SPECIFIC
 #	define DISPATCH_EV_DIRECT		(EV_UDATA_SPECIFIC|EV_DISPATCH)

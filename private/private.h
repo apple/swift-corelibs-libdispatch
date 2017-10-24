@@ -32,8 +32,8 @@
 #include <os/availability.h>
 #include <TargetConditionals.h>
 #include <os/base.h>
-#elif defined(__linux__)
-#include <os/linux_base.h>
+#elif defined(__linux__) || defined(__FreeBSD__)
+#include <os/generic_unix_base.h>
 #endif
 
 #if TARGET_OS_MAC
@@ -172,7 +172,7 @@ void _dispatch_prohibit_transition_to_multithreaded(bool prohibit);
 
 #if TARGET_OS_MAC
 #define DISPATCH_COCOA_COMPAT 1
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__FreeBSD__)
 #define DISPATCH_COCOA_COMPAT 1
 #else
 #define DISPATCH_COCOA_COMPAT 0
@@ -184,7 +184,7 @@ void _dispatch_prohibit_transition_to_multithreaded(bool prohibit);
 
 #if TARGET_OS_MAC
 typedef mach_port_t dispatch_runloop_handle_t;
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__FreeBSD__)
 typedef int dispatch_runloop_handle_t;
 #else
 #error "runloop support not implemented on this platform"

@@ -20,6 +20,11 @@
 
 #include "internal.h"
 
+#if defined(__FreeBSD__)
+#include <fcntl.h>
+#define F_RDADVISE F_RDAHEAD
+#endif
+
 #ifndef DISPATCH_IO_DEBUG
 #define DISPATCH_IO_DEBUG DISPATCH_DEBUG
 #endif
@@ -419,7 +424,7 @@ dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 		struct stat st;
 		_dispatch_io_syscall_switch_noerr(err,
 			(path_data->oflag & O_NOFOLLOW) == O_NOFOLLOW
-#ifndef __linux__
+#if __APPLE__
 					|| (path_data->oflag & O_SYMLINK) == O_SYMLINK
 #endif
 					? lstat(path_data->path, &st) : stat(path_data->path, &st),
@@ -627,7 +632,8 @@ dispatch_io_set_interval(dispatch_io_t channel, uint64_t interval,
 {
 	_dispatch_retain(channel);
 	dispatch_async(channel->queue, ^{
-		_dispatch_channel_debug("set interval: %llu", channel, interval);
+		_dispatch_channel_debug("set interval: %llu", channel,
+		  (unsigned long long)interval);
 		channel->params.interval = interval < INT64_MAX ? interval : INT64_MAX;
 		channel->params.interval_flags = flags;
 		_dispatch_release(channel);
@@ -1372,7 +1378,7 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 						break;
 				);
 			}
-			dev_t dev = major(st.st_dev);
+			dev_t dev = (dev_t)major(st.st_dev);
 			// We have to get the disk on the global dev queue. The
 			// barrier queue cannot continue until that is complete
 			dispatch_suspend(fd_entry->barrier_queue);
@@ -1459,7 +1465,7 @@ _dispatch_fd_entry_create_with_path(dispatch_io_path_data_t path_data,
 			path_data->channel->queue);
 	_dispatch_fd_entry_debug("create: path %s", fd_entry, path_data->path);
 	if (S_ISREG(mode)) {
-		_dispatch_disk_init(fd_entry, major(dev));
+		_dispatch_disk_init(fd_entry, (dev_t)major(dev));
 	} else {
 			_dispatch_stream_init(fd_entry,
 					_dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false));
@@ -2138,7 +2144,7 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 {
 	_dispatch_op_debug("advise", op);
 	if (_dispatch_io_get_error(op, NULL, true)) return;
-#ifdef __linux__
+#if defined(__linux__) || defined(__FreeBSD__)
 	// linux does not support fcntl (F_RDAVISE)
 	// define necessary datastructure and use readahead
 	struct radvisory {
@@ -2165,7 +2171,7 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 	}
 	advise.ra_offset = op->advise_offset;
 	op->advise_offset += advise.ra_count;
-#ifdef __linux__
+#if defined(__linux__)
 	_dispatch_io_syscall_switch(err,
 			readahead(op->fd_entry->fd, advise.ra_offset, (size_t)advise.ra_count),
 		case EINVAL: break; // fd does refer to a non-supported filetype

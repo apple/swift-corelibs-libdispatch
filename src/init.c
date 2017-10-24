@@ -737,7 +737,7 @@ _dispatch_logv_file(const char *msg, va_list ap)
 
 #if DISPATCH_DEBUG
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "%llu\t",
-			_dispatch_absolute_time() - dispatch_log_basetime);
+			(unsigned long long)_dispatch_absolute_time() - dispatch_log_basetime);
 #endif
 	r = vsnprintf(&buf[offset], bufsiz - offset, msg, ap);
 	if (r < 0) return;
@@ -834,7 +834,7 @@ _dispatch_debugv(dispatch_object_t dou, const char *msg, va_list ap)
 	int r;
 #if DISPATCH_DEBUG && !DISPATCH_USE_OS_DEBUG_LOG
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "%llu\t\t%p\t",
-			_dispatch_absolute_time() - dispatch_log_basetime,
+			(unsigned long long)_dispatch_absolute_time() - dispatch_log_basetime,
 			(void *)_dispatch_thread_self());
 #endif
 	if (dou._do) {
