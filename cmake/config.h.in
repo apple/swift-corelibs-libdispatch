@@ -139,10 +139,10 @@
 #cmakedefine HAVE_PTHREAD_MACHDEP_H
 
 /* Define to 1 if you have the `pthread_main_np' function. */
-#cmakedefine HAVE_PTHREAD_MAIN_NP
+#cmakedefine01 HAVE_PTHREAD_MAIN_NP
 
 /* Define to 1 if you have the <pthread_np.h> header file. */
-#cmakedefine HAVE_PTHREAD_NP_H
+#cmakedefine01 HAVE_PTHREAD_NP_H
 
 /* Define to 1 if you have the <pthread/qos.h> header file. */
 #cmakedefine HAVE_PTHREAD_QOS_H

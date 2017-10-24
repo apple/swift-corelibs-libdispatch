@@ -32,6 +32,8 @@
 #define DISPATCH_KEVENT_MUXED_MARKER  1ul
 #define DISPATCH_MACH_AUDIT_TOKEN_PID (5)
 
+#define dispatch_kevent_udata_t  typeof(((dispatch_kevent_t)NULL)->udata)
+
 typedef struct dispatch_muxnote_s {
 	TAILQ_ENTRY(dispatch_muxnote_s) dmn_list;
 	TAILQ_HEAD(, dispatch_unote_linkage_s) dmn_unotes_head;
@@ -59,8 +61,13 @@ DISPATCH_CACHELINE_ALIGN
 static TAILQ_HEAD(dispatch_muxnote_bucket_s, dispatch_muxnote_s)
 _dispatch_sources[DSL_HASH_SIZE];
 
+#if defined(__APPLE__)
 #define DISPATCH_NOTE_CLOCK_WALL NOTE_MACH_CONTINUOUS_TIME
 #define DISPATCH_NOTE_CLOCK_MACH 0
+#else
+#define DISPATCH_NOTE_CLOCK_WALL 0
+#define DISPATCH_NOTE_CLOCK_MACH 0
+#endif
 
 static const uint32_t _dispatch_timer_index_to_fflags[] = {
 #define DISPATCH_TIMER_FFLAGS_INIT(kind, qos, note) \
@@ -191,17 +198,20 @@ dispatch_kevent_debug(const char *verb, const dispatch_kevent_s *kev,
 	_dispatch_debug("%s kevent[%p] %s= { ident = 0x%llx, filter = %s, "
 			"flags = %s (0x%x), fflags = 0x%x, data = 0x%llx, udata = 0x%llx, "
 			"qos = 0x%x, ext[0] = 0x%llx, ext[1] = 0x%llx, ext[2] = 0x%llx, "
-			"ext[3] = 0x%llx }: %s #%u", verb, kev, i_n, kev->ident,
-			_evfiltstr(kev->filter), _evflagstr(kev->flags, flagstr,
-			sizeof(flagstr)), kev->flags, kev->fflags, kev->data, kev->udata,
-			kev->qos, kev->ext[0], kev->ext[1], kev->ext[2], kev->ext[3],
+			"ext[3] = 0x%llx }: %s #%u", verb, kev, i_n,
+			(unsigned long long)kev->ident, _evfiltstr(kev->filter),
+			_evflagstr(kev->flags, flagstr, sizeof(flagstr)), kev->flags, kev->fflags,
+			(unsigned long long)kev->data, (unsigned long long)kev->udata, kev->qos,
+			kev->ext[0], kev->ext[1], kev->ext[2], kev->ext[3],
 			function, line);
 #else
 	_dispatch_debug("%s kevent[%p] %s= { ident = 0x%llx, filter = %s, "
 			"flags = %s (0x%x), fflags = 0x%x, data = 0x%llx, udata = 0x%llx}: "
 			"%s #%u", verb, kev, i_n,
-			kev->ident, _evfiltstr(kev->filter), _evflagstr(kev->flags, flagstr,
-			sizeof(flagstr)), kev->flags, kev->fflags, kev->data, kev->udata,
+			(unsigned long long)kev->ident, _evfiltstr(kev->filter),
+			_evflagstr(kev->flags, flagstr, sizeof(flagstr)), kev->flags,
+			kev->fflags, (unsigned long long)kev->data,
+			(unsigned long long)kev->udata,
 			function, line);
 #endif
 }
@@ -334,10 +344,17 @@ _dispatch_kevent_get_muxnote(dispatch_kevent_t ke)
 }
 
 DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_kevent_unote_is_muxed(dispatch_kevent_t ke)
+{
+	return ((uintptr_t)ke->udata) & DISPATCH_KEVENT_MUXED_MARKER;
+}
+
+DISPATCH_ALWAYS_INLINE
 static dispatch_unote_t
 _dispatch_kevent_get_unote(dispatch_kevent_t ke)
 {
-	dispatch_assert((ke->udata & DISPATCH_KEVENT_MUXED_MARKER) == 0);
+	dispatch_assert(_dispatch_kevent_unote_is_muxed(ke) == false);
 	return (dispatch_unote_t){ ._du = (dispatch_unote_class_t)ke->udata };
 }
 
@@ -356,7 +373,7 @@ _dispatch_kevent_print_error(dispatch_kevent_t ke)
 		}
 		// for EV_DELETE if the update was deferred we may have reclaimed
 		// the udata already, and it is unsafe to dereference it now.
-	} else if (ke->udata & DISPATCH_KEVENT_MUXED_MARKER) {
+	} else if (_dispatch_kevent_unote_is_muxed(ke)) {
 		ke->flags |= _dispatch_kevent_get_muxnote(ke)->dmn_kev.flags;
 	} else if (ke->udata) {
 		if (!_dispatch_unote_registered(_dispatch_kevent_get_unote(ke))) {
@@ -463,7 +480,7 @@ _dispatch_kevent_drain(dispatch_kevent_t ke)
 	}
 #endif
 
-	if (ke->udata & DISPATCH_KEVENT_MUXED_MARKER) {
+	if (_dispatch_kevent_unote_is_muxed(ke)) {
 		return _dispatch_kevent_merge_muxed(ke);
 	}
 	return _dispatch_kevent_merge(_dispatch_kevent_get_unote(ke), ke);
@@ -480,7 +497,7 @@ _dispatch_kq_create(const void *guard_ptr)
 		.ident = 1,
 		.filter = EVFILT_USER,
 		.flags = EV_ADD|EV_CLEAR,
-		.udata = (uintptr_t)DISPATCH_WLH_MANAGER,
+		.udata = (dispatch_kevent_udata_t)DISPATCH_WLH_MANAGER,
 	};
 	int kqfd;
 
@@ -542,7 +559,7 @@ _dispatch_kq_init(void *context)
 			.filter = EVFILT_USER,
 			.flags = EV_ADD|EV_CLEAR,
 			.qos = _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG,
-			.udata = (uintptr_t)DISPATCH_WLH_MANAGER,
+			.udata = (dispatch_kevent_udata_t)DISPATCH_WLH_MANAGER,
 		};
 retry:
 		r = kevent_qos(kqfd, &ke, 1, NULL, 0, NULL, NULL,
@@ -601,7 +618,7 @@ _dispatch_kq_poll(dispatch_wlh_t wlh, dispatch_kevent_t ke, int n,
 		for (r = 0; r < n; r++) {
 			ke[r].flags |= EV_RECEIPT;
 		}
-		out_n = n;
+		n_out = n;
 	}
 #endif
 
@@ -614,6 +631,8 @@ retry:
 		}
 		r = kevent_qos(kqfd, ke, n, ke_out, n_out, buf, avail, flags);
 #else
+		(void)buf;
+		(void)avail;
 		const struct timespec timeout_immediately = {}, *timeout = NULL;
 		if (flags & KEVENT_FLAG_IMMEDIATE) timeout = &timeout_immediately;
 		r = kevent(kqfd, ke, n, ke_out, n_out, timeout);
@@ -717,19 +736,20 @@ _dispatch_kq_unote_set_kevent(dispatch_unote_t _du, dispatch_kevent_t dk,
 		.ident  = du->du_ident,
 		.filter = dst->dst_filter,
 		.flags  = flags,
-		.udata  = (uintptr_t)du,
+		.udata  = (dispatch_kevent_udata_t)du,
 		.fflags = du->du_fflags | dst->dst_fflags,
 		.data   = (typeof(dk->data))dst->dst_data,
 #if DISPATCH_USE_KEVENT_QOS
 		.qos    = (typeof(dk->qos))pp,
 #endif
 	};
+	(void)pp; // if DISPATCH_USE_KEVENT_QOS == 0
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline int
 _dispatch_kq_deferred_find_slot(dispatch_deferred_items_t ddi,
-		int16_t filter, uint64_t ident, uint64_t udata)
+		int16_t filter, uint64_t ident, dispatch_kevent_udata_t udata)
 {
 	dispatch_kevent_t events = ddi->ddi_eventlist;
 	int i;
@@ -825,7 +845,7 @@ _dispatch_kq_unote_update(dispatch_wlh_t wlh, dispatch_unote_t _du,
 
 	if (ddi && wlh == _dispatch_get_wlh()) {
 		int slot = _dispatch_kq_deferred_find_slot(ddi,
-				du->du_filter, du->du_ident, (uintptr_t)du);
+				du->du_filter, du->du_ident, (dispatch_kevent_udata_t)du);
 		if (slot < ddi->ddi_nevents) {
 			// <rdar://problem/26202376> when deleting and an enable is pending,
 			// we must merge EV_ENABLE to do an immediate deletion
@@ -924,6 +944,7 @@ _dispatch_muxnote_find(struct dispatch_muxnote_bucket_s *dmb,
 #define _dispatch_unote_muxnote_find(dmb, du, wlh) \
 		_dispatch_muxnote_find(dmb, wlh, du._du->du_ident, du._du->du_filter)
 
+#if HAVE_MACH
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_muxnote_t
 _dispatch_mach_muxnote_find(mach_port_t name, int16_t filter)
@@ -932,6 +953,7 @@ _dispatch_mach_muxnote_find(mach_port_t name, int16_t filter)
 	dmb = _dispatch_muxnote_bucket(name, filter);
 	return _dispatch_muxnote_find(dmb, DISPATCH_WLH_ANON, name, filter);
 }
+#endif
 
 DISPATCH_NOINLINE
 static bool
@@ -961,7 +983,8 @@ _dispatch_unote_register_muxed(dispatch_unote_t du, dispatch_wlh_t wlh)
 #if DISPATCH_USE_KEVENT_QOS
 		dmn->dmn_kev.qos = _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG;
 #endif
-		dmn->dmn_kev.udata = (uintptr_t)dmn | DISPATCH_KEVENT_MUXED_MARKER;
+		dmn->dmn_kev.udata = (dispatch_kevent_udata_t)((uintptr_t)dmn |
+				DISPATCH_KEVENT_MUXED_MARKER);
 		dmn->dmn_wlh = wlh;
 		if (unlikely(du._du->du_type->dst_update_mux)) {
 			installed = du._du->du_type->dst_update_mux(dmn);
@@ -984,11 +1007,13 @@ _dispatch_unote_register_muxed(dispatch_unote_t du, dispatch_wlh_t wlh)
 		TAILQ_INSERT_TAIL(&dmn->dmn_unotes_head, dul, du_link);
 		dul->du_muxnote = dmn;
 
+#if HAVE_MACH
 		if (du._du->du_filter == DISPATCH_EVFILT_MACH_NOTIFICATION) {
 			bool armed = DISPATCH_MACH_NOTIFICATION_ARMED(&dmn->dmn_kev);
 			os_atomic_store2o(du._dmsr, dmsr_notification_armed, armed,relaxed);
 		}
 		du._du->du_wlh = DISPATCH_WLH_ANON;
+#endif
 	}
 	return installed;
 }
@@ -1038,9 +1063,12 @@ _dispatch_unote_unregister_muxed(dispatch_unote_t du, uint32_t flags)
 	dispatch_muxnote_t dmn = dul->du_muxnote;
 	bool update = false, dispose = false;
 
+#if HAVE_MACH
 	if (dmn->dmn_kev.filter == DISPATCH_EVFILT_MACH_NOTIFICATION) {
 		os_atomic_store2o(du._dmsr, dmsr_notification_armed, false, relaxed);
 	}
+#endif
+
 	dispatch_assert(du._du->du_wlh == DISPATCH_WLH_ANON);
 	du._du->du_wlh = NULL;
 	TAILQ_REMOVE(&dmn->dmn_unotes_head, dul, du_link);
@@ -1129,7 +1157,7 @@ _dispatch_event_loop_poke(dispatch_wlh_t wlh, uint64_t dq_state, uint32_t flags)
 			.ident  = 1,
 			.filter = EVFILT_USER,
 			.fflags = NOTE_TRIGGER,
-			.udata = (uintptr_t)DISPATCH_WLH_MANAGER,
+			.udata = (dispatch_kevent_udata_t)DISPATCH_WLH_MANAGER,
 		};
 		return _dispatch_kq_deferred_update(DISPATCH_WLH_ANON, &ke);
 	} else if (wlh && wlh != DISPATCH_WLH_ANON) {
@@ -1262,7 +1290,7 @@ _dispatch_event_loop_timer_program(uint32_t tidx,
 		.flags = action | EV_ONESHOT,
 		.fflags = _dispatch_timer_index_to_fflags[tidx],
 		.data = (int64_t)target,
-		.udata = (uintptr_t)&_dispatch_timers_heap[tidx],
+		.udata = (dispatch_kevent_udata_t)&_dispatch_timers_heap[tidx],
 #if DISPATCH_HAVE_TIMER_COALESCING
 		.ext[1] = leeway,
 #endif
@@ -1270,6 +1298,7 @@ _dispatch_event_loop_timer_program(uint32_t tidx,
 		.qos = _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG,
 #endif
 	};
+	(void)leeway; // if DISPATCH_HAVE_TIMER_COALESCING == 0
 
 	_dispatch_kq_deferred_update(DISPATCH_WLH_ANON, &ke);
 }
@@ -1927,11 +1956,13 @@ _dispatch_mach_notification_set_armed(dispatch_mach_send_refs_t dmsr)
 		return;
 	}
 
+#if HAVE_MACH
 	DISPATCH_MACH_NOTIFICATION_ARMED(&dmn->dmn_kev) = true;
 	TAILQ_FOREACH(dul, &dmn->dmn_unotes_head, du_link) {
 		du = _dispatch_unote_linkage_get_unote(dul);
 		os_atomic_store2o(du._dmsr, dmsr_notification_armed, true, relaxed);
 	}
+#endif
 }
 
 static dispatch_unote_t

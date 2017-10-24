@@ -4,7 +4,7 @@
 
 install(FILES
           object.h
-          linux_base.h
+          generic_unix_base.h
         DESTINATION
           "${INSTALL_OS_HEADERS_DIR}")
 
