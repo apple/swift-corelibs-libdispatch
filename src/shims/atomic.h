@@ -31,6 +31,10 @@
 #error libdispatch requires C11 with <stdatomic.h>
 #endif
 
+// FreeBSD only defines _Bool in C mode. In C++ mode _Bool is not being defined.
+#if defined(__cplusplus) && defined(__FreeBSD__)
+#define _Bool bool
+#endif
 #include <stdatomic.h>
 
 #define memory_order_ordered    memory_order_seq_cst

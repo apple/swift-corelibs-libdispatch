@@ -18,7 +18,7 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__FreeBSD__)
 // for asprintf
 #define _GNU_SOURCE 1
 #endif
@@ -452,7 +452,7 @@ test_start(const char* desc)
 	usleep(100000);	// give 'gdb --waitfor=' a chance to find this proc
 }
 
-#if __linux__
+#if defined(__linux__) || defined(__FreeBSD__)
 static char** get_environment(void)
 {
 	extern char **environ; 

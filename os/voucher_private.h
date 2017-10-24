@@ -21,7 +21,7 @@
 #ifndef __OS_VOUCHER_PRIVATE__
 #define __OS_VOUCHER_PRIVATE__
 
-#ifndef __linux__
+#if __APPLE__
 #include <os/base.h>
 #include <os/availability.h>
 #endif

@@ -47,8 +47,8 @@ add_library(dispatch
               shims/atomic_sfb.h
               shims/getprogname.h
               shims/hw_config.h
-              shims/linux_stubs.c
-              shims/linux_stubs.h
+              shims/generic_unix_stubs.c
+              shims/generic_unix_stubs.h
               shims/lock.c
               shims/lock.h
               shims/perfmon.h
@@ -101,6 +101,7 @@ if(ENABLE_SWIFT)
                       -fmodule-map-file=${CMAKE_SOURCE_DIR}/dispatch/module.modulemap
                     SWIFT_FLAGS
                       -I ${CMAKE_SOURCE_DIR}
+                      -I/usr/include
                       ${swift_optimization_flags}
                     DEPENDS
                       ${CMAKE_SOURCE_DIR}/dispatch/module.modulemap)

@@ -26,8 +26,8 @@
 #include <os/availability.h>
 #include <TargetConditionals.h>
 #include <os/base.h>
-#elif defined(__linux__)
-#include <os/linux_base.h>
+#elif defined(__linux__) || defined(__FreeBSD__)
+#include <os/generic_unix_base.h>
 #endif
 
 /*!

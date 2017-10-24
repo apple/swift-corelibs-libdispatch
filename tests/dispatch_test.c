@@ -56,7 +56,7 @@ dispatch_test_check_evfilt_read_for_fd(int fd)
 	int kq = kqueue();
 	assert(kq != -1);
 	struct kevent ke = {
-		.ident = fd,
+		.ident = (uintptr_t)fd,
 		.filter = EVFILT_READ,
 		.flags = EV_ADD|EV_ENABLE,
 	};
