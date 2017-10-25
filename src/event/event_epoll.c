@@ -419,7 +419,7 @@ _dispatch_timeout_program(uint32_t tidx, uint64_t target,
 
 	if (target < INT64_MAX) {
 		struct itimerspec its = { .it_value = {
-			.tv_sec  = target / NSEC_PER_SEC,
+			.tv_sec  = (time_t)(target / NSEC_PER_SEC),
 			.tv_nsec = target % NSEC_PER_SEC,
 		} };
 		dispatch_assume_zero(timerfd_settime(timer->det_fd, TFD_TIMER_ABSTIME,

@@ -63,8 +63,8 @@ test_timer(void)
 
 		dispatch_source_set_event_handler(s, ^{
 			if (!finalized) {
-				test_long_less_than("timer number", j, stop_at);
-				fprintf(stderr, "timer[%lu]\n", j);
+				test_long_less_than("timer number", (long)j, stop_at);
+				fprintf(stderr, "timer[%lu]\n", (unsigned long)j);
 			}
 			dispatch_release(s);
 		});
