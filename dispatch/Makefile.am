@@ -2,10 +2,14 @@
 #
 #
 
-if HAVE_SWIFT
-dispatchdir=${prefix}/lib/swift/dispatch
-else
+if !HAVE_SWIFT
 dispatchdir=$(includedir)/dispatch
+else
+if HAVE_X64
+dispatchdir=${prefix}/lib64/swift/dispatch
+else
+dispatchdir=${prefix}/lib/swift/dispatch
+endif
 endif
 
 dispatch_HEADERS=	\
