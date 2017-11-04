@@ -22,7 +22,7 @@ include(CheckLibraryExists)
 include(CheckSymbolExists)
 include(GNUInstallDirs)
 
-set(INSTALL_LIBDIR "lib" CACHE PATH "Path where the libraries should be installed")
+set(INSTALL_LIBDIR "lib${SWIFT_LIBDIR_SUFFIX}" CACHE PATH "Path where the libraries should be installed")
 set(WITH_BLOCKS_RUNTIME "" CACHE PATH "Path to blocks runtime")
 
 include(DispatchAppleOptions)
