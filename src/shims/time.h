@@ -152,9 +152,9 @@ _dispatch_approximate_time(void)
 	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_UPTIME_FAST, &ts));
 	return _dispatch_timespec_to_nano(ts);
-#elif defined(__linux__)
+#elif HAVE_DECL_CLOCK_MONOTONIC_COARSE
 	struct timespec ts;
-	dispatch_assume_zero(clock_gettime(CLOCK_REALTIME_COARSE, &ts));
+	dispatch_assume_zero(clock_gettime(CLOCK_MONOTONIC_COARSE, &ts));
 	return _dispatch_timespec_to_nano(ts);
 #else
 	return _dispatch_absolute_time();
