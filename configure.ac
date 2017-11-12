@@ -399,7 +399,7 @@ AC_CHECK_FUNCS([mach_port_construct])
 #
 # Find functions and declarations we care about.
 #
-AC_CHECK_DECLS([CLOCK_UPTIME, CLOCK_MONOTONIC, CLOCK_REALTIME, CLOCK_UPTIME_FAST], [], [],
+AC_CHECK_DECLS([CLOCK_UPTIME, CLOCK_MONOTONIC, CLOCK_REALTIME, CLOCK_UPTIME_FAST, CLOCK_MONOTONIC_COARSE], [], [],
   [[#include <time.h>]])
 AC_CHECK_DECLS([NOTE_NONE, NOTE_REAP, NOTE_REVOKE, NOTE_SIGNAL, NOTE_LOWAT], [], [],
   [[#include <sys/event.h>]])
