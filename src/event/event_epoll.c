@@ -391,7 +391,12 @@ _dispatch_timeout_program(uint32_t tidx, uint64_t target,
 	dispatch_epoll_timeout_t timer = &_dispatch_epoll_timeout[clock];
 	struct epoll_event ev = {
 		.events = EPOLLONESHOT | EPOLLIN,
-		.data = { .u32 = timer->det_ident },
+		.data = {
+			.ptr = NULL,
+			.fd = 0,
+			.u32 = timer->det_ident,
+			.u64 = 0
+		},
 	};
 	int op;
 
