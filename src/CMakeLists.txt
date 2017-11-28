@@ -100,9 +100,9 @@ if(ENABLE_SWIFT)
                       -fmodule-map-file=${CMAKE_SOURCE_DIR}/dispatch/module.modulemap
                     SWIFT_FLAGS
                       -I ${CMAKE_SOURCE_DIR}
-                      ${swift_optimization_flags})
-  add_dependencies(swiftDispatch
-                     module-map-symlinks)
+                      ${swift_optimization_flags}
+                    DEPENDS
+                      ${CMAKE_SOURCE_DIR}/dispatch/module.modulemap)
   target_sources(dispatch
                  PRIVATE
                    swift/DispatchStubs.cc
