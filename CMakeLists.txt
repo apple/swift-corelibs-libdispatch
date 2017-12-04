@@ -247,20 +247,26 @@ if(leaks_EXECUTABLE)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
-  add_custom_target(module-map-symlinks
-                    ALL
-                    COMMAND
-                      ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/dispatch/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
-                    COMMAND
-                      ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/private/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
+  add_custom_command(OUTPUT
+                       "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                       "${CMAKE_SOURCE_DIR}/private/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/dispatch/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/private/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
 else()
-  add_custom_target(module-map-symlinks
-                    ALL
-                    COMMAND
-                      ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/dispatch/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
-                    COMMAND
-                      ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/private/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
+  add_custom_command(OUTPUT
+                       "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                       "${CMAKE_SOURCE_DIR}/private/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/dispatch/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/private/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
 endif()
+add_custom_target(module-map-symlinks
+                  DEPENDS
+                     "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                     "${CMAKE_SOURCE_DIR}/private/module.modulemap")
 configure_file("${CMAKE_SOURCE_DIR}/cmake/config.h.in"
                "${CMAKE_BINARY_DIR}/config/config_ac.h")
 add_definitions(-DHAVE_CONFIG_H)
