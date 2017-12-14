@@ -21,6 +21,7 @@ include(CheckIncludeFiles)
 include(CheckLibraryExists)
 include(CheckSymbolExists)
 include(GNUInstallDirs)
+include(SwiftSupport)
 
 set(INSTALL_LIBDIR "lib" CACHE PATH "Path where the libraries should be installed")
 set(WITH_BLOCKS_RUNTIME "" CACHE PATH "Path to blocks runtime")
@@ -44,7 +45,9 @@ if(ENABLE_SWIFT)
   get_filename_component(SWIFT_TOOLCHAIN ${SWIFT_TOOLCHAIN} DIRECTORY)
 
   string(TOLOWER ${CMAKE_SYSTEM_NAME} SWIFT_OS)
-  set(SWIFT_RUNTIME_LIBDIR ${SWIFT_TOOLCHAIN}/lib/swift/${SWIFT_OS}/${CMAKE_SYSTEM_PROCESSOR})
+  get_swift_host_arch(SWIFT_HOST_ARCH)
+
+  set(SWIFT_RUNTIME_LIBDIR ${SWIFT_TOOLCHAIN}/lib/swift/${SWIFT_OS}/${SWIFT_HOST_ARCH})
 
   add_library(swiftCore
               SHARED IMPORTED GLOBAL)
