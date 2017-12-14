@@ -391,13 +391,14 @@ _dispatch_timeout_program(uint32_t tidx, uint64_t target,
 	dispatch_epoll_timeout_t timer = &_dispatch_epoll_timeout[clock];
 	struct epoll_event ev = {
 		.events = EPOLLONESHOT | EPOLLIN,
-		.data = { .u32 = timer->det_ident },
+
 	};
 	int op;
 
 	if (target >= INT64_MAX && !timer->det_registered) {
 		return;
 	}
+	ev.data.u32 = timer->det_ident;
 
 	if (unlikely(timer->det_fd < 0)) {
 		clockid_t clockid;
