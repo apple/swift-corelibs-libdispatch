@@ -66,19 +66,18 @@
 #define FD_COPY(f, t) (void)(*(t) = *(f))
 #endif
 
+#if HAVE_STRLCPY
+#include <string.h>
+#else // that is, if !HAVE_STRLCPY
+
+size_t strlcpy(char *dst, const char *src, size_t size);
+
+#endif // HAVE_STRLCPY
+
+
 #if TARGET_OS_WIN32
 #define bzero(ptr,len) memset((ptr), 0, (len))
 #define snprintf _snprintf
-
-inline size_t strlcpy(char *dst, const char *src, size_t size) {
-	int res = strlen(dst) + strlen(src) + 1;
-	if (size > 0) {
-		size_t n = size - 1;
-		strncpy(dst, src, n);
-		dst[n] = 0;
-	}
-	return res;
-}
 #endif // TARGET_OS_WIN32
 
 #if PTHREAD_WORKQUEUE_SPI_VERSION < 20140716

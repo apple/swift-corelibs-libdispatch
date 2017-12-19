@@ -22,12 +22,6 @@
 		(var) && ((temp) = TAILQ_NEXT((var), field), 1); (var) = (temp))
 #endif
 
-#if DISPATCH_DEBUG
-#ifndef TRASHIT
-#define TRASHIT(x) do { (x) = (void *)-1; } while (0)
-#endif
-#endif
-
 /*
  * Stub out defines for some mach types and related macros
  */

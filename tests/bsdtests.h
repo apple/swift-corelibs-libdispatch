@@ -21,6 +21,18 @@
 #ifndef __BSD_TEST_H__
 #define __BSD_TEST_H__
 
+
+#if !HAVE_PRINTFLIKE
+#ifndef __printflike
+#if __has_attribute(format)
+#define __printflike(a,b) __attribute__((format(printf, a, b)))
+#else
+#define __printflike(a,b)
+#endif // __has_attribute(format)
+#endif // !defined(__printflike)
+#endif // !HAVE_PRINTFLIKE
+
+
 #include <errno.h>
 #ifdef __APPLE__
 #include <mach/error.h>
@@ -30,6 +42,7 @@
 #endif
 
 #include <string.h>
+#include <stdint.h>
 
 static inline const char*
 __BASENAME__(const char *_str_)

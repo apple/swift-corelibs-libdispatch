@@ -126,7 +126,11 @@ test_group_notify2(long cycle, dispatch_group_t tested)
 
 	// n=4 works great for a 4CPU Mac Pro, this might work for a wider range of
 	// systems.
+#if HAVE_ARC4RANDOM
 	const int n = 1 + arc4random() % 8;
+#else
+    const int n = 1 + random() % 8;
+#endif
 	dispatch_group_t group = dispatch_group_create();
 	dispatch_queue_t qa[n];
 
