@@ -30,6 +30,8 @@
 #include <os/linux_base.h>
 #endif
 
+#include <string.h>
+
 #include <sys/types.h>
 #include <stddef.h>
 #include <stdint.h>

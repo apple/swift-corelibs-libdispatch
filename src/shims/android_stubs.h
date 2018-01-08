@@ -20,4 +20,8 @@
 #define _Static_assert(...)
 #endif
 
+#ifndef TRASHIT
+#define TRASHIT(x) do { (x) = (void *)-1; } while (0)
+#endif
+
 #endif /* __DISPATCH__ANDROID__STUBS__INTERNAL */
