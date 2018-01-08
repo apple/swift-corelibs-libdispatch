@@ -22,7 +22,8 @@
 #include "shims.h"
 
 #if !HAVE_STRLCPY
-size_t strlcpy(char *dst, const char *src, size_t size) {
+size_t strlcpy(char *dst, const char *src, size_t size)
+{
 	size_t res = strlen(dst) + strlen(src) + 1;
 	if (size > 0) {
 		size_t n = size - 1;
