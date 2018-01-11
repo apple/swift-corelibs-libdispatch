@@ -62,19 +62,21 @@ if(ENABLE_SWIFT)
                         PROPERTIES
                           IMPORTED_LOCATION
                            ${SWIFT_RUNTIME_LIBDIR}/${CMAKE_SHARED_LIBRARY_PREFIX}swiftSwiftOnoneSupport${CMAKE_SHARED_LIBRARY_SUFFIX})
+
+  set(INSTALL_TARGET_DIR "${INSTALL_LIBDIR}/swift/${SWIFT_OS}" CACHE PATH "Path where the libraries will be installed")
+  set(INSTALL_DISPATCH_HEADERS_DIR "${INSTALL_LIBDIR}/swift/dispatch" CACHE PATH "Path where the headers will be installed for libdispatch")
+  set(INSTALL_BLOCK_HEADERS_DIR "${INSTALL_LIBDIR}/swift/Block" CACHE PATH "Path where the headers will be installed for the blocks runtime")
+  set(INSTALL_OS_HEADERS_DIR "${INSTALL_LIBDIR}/swift/os" CACHE PATH "Path where the os/ headers will be installed")
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL Android)
-  set(ENABLE_DTRACE_DEFAULT OFF)
-else()
-  find_program(DTRACEPROG dtrace)
-  if(DTRACEPROG)
-    set(ENABLE_DTRACE_DEFAULT ON)
-  else()
-    set(ENABLE_DTRACE_DEFAULT OFF)
-  endif()
+if(NOT ENABLE_SWIFT)
+  set(INSTALL_TARGET_DIR "${INSTALL_LIBDIR}" CACHE PATH "Path where the libraries will be installed")
+  set(INSTALL_DISPATCH_HEADERS_DIR "include/dispatch" CACHE PATH "Path where the headers will be installed")
+  set(INSTALL_BLOCK_HEADERS_DIR "include" CACHE PATH "Path where the headers will be installed for the blocks runtime")
+  set(INSTALL_OS_HEADERS_DIR "include/os" CACHE PATH "Path where the headers will be installed")
 endif()
-option(ENABLE_DTRACE "enable dtrace support" ${ENABLE_DTRACE_DEFAULT})
+
+option(ENABLE_DTRACE "enable dtrace support" "")
 
 option(BUILD_SHARED_LIBS "build shared libraries" ON)
 
@@ -114,13 +116,15 @@ else()
   endif()
 endif()
 
+option(INSTALL_PRIVATE_HEADERS "installs private headers in the same location as the public ones" OFF)
+
 if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
    CMAKE_SYSTEM_NAME STREQUAL Android OR
    CMAKE_SYSTEM_NAME STREQUAL Windows)
   add_library(BlocksRuntime
               STATIC
                 ${CMAKE_SOURCE_DIR}/src/BlocksRuntime/data.c
-                ${CMAKE_SOURCE_DIR}/src/BlocksRuntime/runtime.c)
+                ${CMAKE_SOURCE_DIR}/src/BlocksRuntime/runtime.c)            
   set_target_properties(BlocksRuntime
                         PROPERTIES
                           POSITION_INDEPENDENT_CODE TRUE)
@@ -130,6 +134,17 @@ if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
                             INTERFACE_LINK_LIBRARIES ${CMAKE_DL_LIBS})
   endif()
   set(WITH_BLOCKS_RUNTIME "${CMAKE_SOURCE_DIR}/src/BlocksRuntime" CACHE PATH "Path to blocks runtime" FORCE)
+  
+  install(FILES
+            ${CMAKE_SOURCE_DIR}/src/BlocksRuntime/Block.h
+          DESTINATION
+            "${INSTALL_BLOCK_HEADERS_DIR}")
+  if(INSTALL_PRIVATE_HEADERS)
+    install(FILES
+              ${CMAKE_SOURCE_DIR}/src/BlocksRuntime/Block_private.h
+            DESTINATION
+              "${INSTALL_BLOCK_HEADERS_DIR}")
+  endif()
 else()
   # TODO(compnerd) support system installed BlocksRuntime
   # find_package(BlocksRuntime REQUIRED)
@@ -159,6 +174,7 @@ check_function_exists(pthread_main_np HAVE_PTHREAD_MAIN_NP)
 check_function_exists(pthread_workqueue_setdispatch_np HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP)
 check_function_exists(strlcpy HAVE_STRLCPY)
 check_function_exists(sysconf HAVE_SYSCONF)
+check_function_exists(arc4random HAVE_ARC4RANDOM)
 
 if(NOT HAVE_STRLCPY AND NOT HAVE_GETPROGNAME)
   include(FindPkgConfig)
@@ -233,14 +249,29 @@ check_symbol_exists(VQ_NEARLOWDISK "sys/mount.h" HAVE_DECL_VQ_NEARLOWDISK)
 check_symbol_exists(VQ_QUOTA "sys/mount.h" HAVE_DECL_VQ_QUOTA)
 check_symbol_exists(VQ_UPDATE "sys/mount.h" HAVE_DECL_VQ_UPDATE)
 check_symbol_exists(VQ_VERYLOWDISK "sys/mount.h" HAVE_DECL_VQ_VERYLOWDISK)
-
+check_symbol_exists(strlcpy "string.h" HAVE_STRLCPY)
 check_symbol_exists(program_invocation_name "errno.h" HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME)
+if (HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME)
+  add_definitions(-D_GNU_SOURCE=1)
+endif()
+check_symbol_exists(__printflike "bsd/sys/cdefs.h" HAVE_PRINTFLIKE)
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
   add_definitions(-DTARGET_OS_WIN32)
 endif()
 
-if(ENABLE_DTRACE)
+if(CMAKE_SYSTEM_NAME STREQUAL Android)
+  set(ENABLE_DTRACE_DEFAULT OFF)
+endif()
+
+if(ENABLE_DTRACE STREQUAL "")
+  find_program(dtrace_EXECUTABLE dtrace)
+  if(dtrace_EXECUTABLE)
+    add_definitions(-DDISPATCH_USE_DTRACE=1)
+  else()
+    add_definitions(-DDISPATCH_USE_DTRACE=0)
+  endif()
+elseif(ENABLE_DTRACE)
   find_program(dtrace_EXECUTABLE dtrace)
   if(NOT dtrace_EXECUTABLE)
     message(FATAL_ERROR "dtrace not found but explicitly requested")

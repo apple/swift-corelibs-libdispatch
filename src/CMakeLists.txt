@@ -19,6 +19,7 @@ add_library(dispatch
               time.c
               transform.c
               voucher.c
+              shims.c
               protocol.defs
               provider.d
               allocator_internal.h
@@ -208,12 +209,12 @@ add_custom_command(TARGET dispatch POST_BUILD
 install(TARGETS
           dispatch
         DESTINATION
-          "${INSTALL_LIBDIR}/swift/${SWIFT_OS}")
+          "${INSTALL_TARGET_DIR}")
 if(ENABLE_SWIFT)
   install(FILES
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftdoc
           DESTINATION
-            "${INSTALL_LIBDIR}/swift/${SWIFT_OS}/${CMAKE_SYSTEM_PROCESSOR}")
+            "${INSTALL_TARGET_DIR}/${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 

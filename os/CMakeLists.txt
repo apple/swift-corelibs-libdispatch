@@ -6,5 +6,5 @@ install(FILES
           object.h
           linux_base.h
         DESTINATION
-          "${INSTALL_LIBDIR}/swift/os")
+          "${INSTALL_OS_HEADERS_DIR}")
 

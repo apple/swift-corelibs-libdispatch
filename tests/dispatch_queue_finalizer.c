@@ -50,10 +50,14 @@ main(void)
 {
 	dispatch_test_start("Dispatch Queue Finalizer");
 
+#if HAS_ARC4RANDOM
 #if defined(__LP64__) || defined(_WIN64)
 	ctxt_magic = (void*)((uintptr_t)arc4random() << 32 | arc4random());
 #else
 	ctxt_magic = (void*)arc4random();
+#endif
+#else // that is, if !HAS_ARC4RANDOM
+    ctxt_magic = (void *)random();
 #endif
 
 	// we need a non-NULL value for the tests to work properly

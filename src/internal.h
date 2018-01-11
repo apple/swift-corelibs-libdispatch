@@ -373,15 +373,11 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #define _TAILQ_MARK_NOT_ENQUEUED(elm, field) \
 		do { (elm)->field.tqe_prev = NULL; } while (0)
 
-#if DISPATCH_DEBUG
 // sys/queue.h debugging
-#if defined(__linux__)
-#define QUEUE_MACRO_DEBUG 1
-#else
-#undef TRASHIT
+#ifndef TRASHIT
 #define TRASHIT(x) do {(x) = (void *)-1;} while (0)
 #endif
-#endif // DISPATCH_DEBUG
+
 #define _TAILQ_TRASH_ENTRY(elm, field) do { \
 			TRASHIT((elm)->field.tqe_next); \
 			TRASHIT((elm)->field.tqe_prev); \

@@ -1,6 +1,5 @@
 /*
- * Copyright (c) 2009-2010 Mark Heily <mark@heily.com>
- * All rights reserved.
+ * Copyright (c) 2013-2016 Apple Inc. All rights reserved.
  *
  * @APPLE_APACHE_LICENSE_HEADER_START@
  *
@@ -19,28 +18,18 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
-#include <errno.h>
+#include "internal.h"
+#include "shims.h"
 
-#ifndef __DISPATCH_SHIMS_GETPROGNAME__
-#define __DISPATCH_SHIMS_GETPROGNAME__
-
-#if !HAVE_GETPROGNAME
-
-#ifdef __ANDROID__
-extern const char *__progname;
-#endif /* __ANDROID */
-
-static inline char *
-getprogname(void)
+#if !HAVE_STRLCPY
+size_t strlcpy(char *dst, const char *src, size_t size)
 {
-# if HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME
-	return program_invocation_short_name;
-# elif defined(__ANDROID__)
-	return __progname;
-# else
-#   error getprogname(3) is not available on this platform
-# endif
+	size_t res = strlen(dst) + strlen(src) + 1;
+	if (size > 0) {
+		size_t n = size - 1;
+		strncpy(dst, src, n);
+		dst[n] = 0;
+	}
+	return res;
 }
-#endif /* HAVE_GETPROGNAME */
-
-#endif /* __DISPATCH_SHIMS_GETPROGNAME__ */
+#endif
