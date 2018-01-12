@@ -13,8 +13,10 @@
 #ifndef __OS_LINUX_BASE__
 #define __OS_LINUX_BASE__
 
+#ifndef __ANDROID__
 #if __has_include(<sys/sysmacros.h>)
 #include <sys/sysmacros.h>
+#endif
 #endif
 #include <sys/param.h>
 

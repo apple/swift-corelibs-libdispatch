@@ -168,3 +168,16 @@ to get the gold linker.
     ninja install
     ```
 
+### Building for Android
+
+To build the Swift Android toolchain including libdispatch, run:
+
+```
+swift/utils/android$ ./build-toolchain
+```
+
+Which will call at the end:
+
+```
+swift-corelibs-libdispatch$ ./build-android
+```
