@@ -35,7 +35,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
-#if !defined(HAVE_UNISTD_H) || HAVE_UNISTD_H
+#if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 #include <fcntl.h>
