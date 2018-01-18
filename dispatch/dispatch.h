@@ -30,7 +30,9 @@
 #include <os/linux_base.h>
 #endif
 
+#ifdef __ANDROID__
 #include <string.h>
+#endif
 
 #include <sys/types.h>
 #include <stddef.h>
