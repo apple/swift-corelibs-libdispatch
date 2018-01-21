@@ -59,8 +59,8 @@ libdispatch_la_SOURCES=			\
 	shims/atomic_sfb.h		\
 	shims/getprogname.h		\
 	shims/hw_config.h		\
-	shims/linux_stubs.c		\
-	shims/linux_stubs.h		\
+	shims/generic_unix_stubs.c		\
+	shims/generic_unix_stubs.h		\
 	shims/lock.c			\
 	shims/lock.h			\
 	shims/perfmon.h			\

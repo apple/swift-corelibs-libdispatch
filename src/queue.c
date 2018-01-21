@@ -912,7 +912,14 @@ DISPATCH_ALWAYS_INLINE
 static inline pid_t
 gettid(void)
 {
-	return (pid_t) syscall(SYS_gettid);
+	return (pid_t)syscall(SYS_gettid);
+}
+#elif defined(__FreeBSD__)
+DISPATCH_ALWAYS_INLINE
+static inline pid_t
+gettid(void)
+{
+	return (pid_t)pthread_getthreadid_np();
 }
 #else
 #error "SYS_gettid unavailable on this system"
@@ -4668,11 +4675,13 @@ DISPATCH_NOINLINE
 static void
 _dispatch_return_to_kernel(void)
 {
+#if DISPATCH_USE_KEVENT_WORKQUEUE
 	if (unlikely(_dispatch_get_wlh() == DISPATCH_WLH_ANON)) {
 		_dispatch_clear_return_to_kernel();
 	} else {
 		_dispatch_event_loop_drain(KEVENT_FLAG_IMMEDIATE);
 	}
+#endif
 }
 
 void

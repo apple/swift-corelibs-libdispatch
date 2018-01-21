@@ -28,8 +28,8 @@
 #define __DISPATCH_OS_SHIMS__
 
 #include <pthread.h>
-#ifdef __linux__
-#include "shims/linux_stubs.h"
+#if defined(__linux__) || defined(__FreeBSD__)
+#include "shims/generic_unix_stubs.h"
 #endif
 
 #ifdef __ANDROID__
