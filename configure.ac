@@ -200,11 +200,17 @@ AC_ARG_WITH([swift-toolchain],
         os_string=$target_os
 		;;
 	esac
-   SWIFT_LIBDIR="$swift_toolchain_path/lib/swift/$os_string/$target_cpu"
+   AS_IF([test "$os_string" = "linux"], [
+     AS_IF([test "$target_cpu" = "x86_64"],
+       [libdir_suffix="64"],[libdir_suffix=""])],
+    [AC_MSG_NOTICE([Using lib instead of lib64])])
+   SWIFT_LIBDIR="$swift_toolchain_path/lib$libdir_suffix/swift/$os_string/$target_cpu"
+   AC_MSG_NOTICE([The Swift libdir is: $SWIFT_LIBDIR])
    have_swift=true],
   [have_swift=false]
 )
 AM_CONDITIONAL(HAVE_SWIFT, $have_swift)
+AM_CONDITIONAL(HAVE_X64, [test "$libdir_suffix" = "64"])
 AC_SUBST([SWIFTC])
 AC_SUBST([SWIFTC_FLAGS])
 AC_SUBST([SWIFT_LIBDIR])
