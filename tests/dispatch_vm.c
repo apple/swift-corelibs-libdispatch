@@ -22,9 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#ifdef __APPLE__
-#include <libkern/OSAtomic.h>
-#endif
+#include <stdatomic.h>
 #include <assert.h>
 #ifdef __ANDROID__
 #include <linux/sysctl.h>
@@ -57,8 +55,8 @@
 #endif
 
 static char **pages;
-static volatile int32_t handler_call_count;
-static volatile int32_t page_count;
+static volatile _Atomic(int32_t) handler_call_count;
+static volatile _Atomic(int32_t) page_count;
 static int32_t max_page_count;
 static dispatch_source_t vm_source;
 static dispatch_queue_t vm_queue;
@@ -136,7 +134,7 @@ main(void)
 			test_skip("Memory pressure at start of test");
 			cleanup();
 		}
-		if (OSAtomicIncrement32Barrier(&handler_call_count) != NOTIFICATIONS) {
+		if (atomic_fetch_add(&handler_call_count, 1) != NOTIFICATIONS) {
 			log_msg("Ignoring vm pressure notification\n");
 			interval = 1;
 			return;
@@ -161,7 +159,7 @@ main(void)
 			}
 			bzero(p, ALLOC_SIZE);
 			pages[page_count] = p;
-			if (!(OSAtomicIncrement32Barrier(&page_count) % interval)) {
+			if (!(atomic_fetch_add(&page_count, 1) % interval)) {
 				log_msg("Allocated %ldMB\n", pg2mb(page_count));
 				usleep(200000);
 			}
