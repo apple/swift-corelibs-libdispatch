@@ -2,16 +2,11 @@
 #
 #
 
-if !HAVE_SWIFT
-lib_LTLIBRARIES=libdispatch.la
+if HAVE_SWIFT
+ swiftlibdir=${prefix}/${LIBDIR}/swift/${OS_STRING}
+ swiftlib_LTLIBRARIES=libdispatch.la
 else
-if HAVE_X64
-swiftlibdir=${prefix}/lib64/swift/${OS_STRING}
-swiftlib_LTLIBRARIES=libdispatch.la
-else
-swiftlibdir=${prefix}/lib/swift/${OS_STRING}
-swiftlib_LTLIBRARIES=libdispatch.la
-endif
+ lib_LTLIBRARIES=libdispatch.la
 endif
 
 if DISPATCH_USE_INTERNAL_WORKQUEUE
@@ -192,12 +187,8 @@ SWIFT_GEN_FILES=	\
 	$(abs_builddir)/swift/Dispatch.swiftmodule \
 	$(abs_builddir)/swift/Dispatch.swiftdoc \
 	$(SWIFT_OBJ_FILES)
-	
-if HAVE_X64
-swiftmoddir=${prefix}/lib64/swift/${OS_STRING}/${host_cpu}
-else
-swiftmoddir=${prefix}/lib/swift/${OS_STRING}/${host_cpu}
-endif
+
+swiftmoddir=${prefix}/${LIBDIR}/swift/${OS_STRING}/${target_cpu}
 
 swiftmod_HEADERS=\
 	$(abs_builddir)/swift/Dispatch.swiftmodule \

@@ -2,14 +2,10 @@
 #
 #
 
-if !HAVE_SWIFT
-osdir=$(includedir)/os
+if HAVE_SWIFT
+ osdir=${prefix}/${LIBDIR}/swift/os
 else
-if HAVE_X64
-osdir=${prefix}/lib64/swift/os
-else
-osdir=${prefix}/lib/swift/os
-endif
+ osdir=$(includedir)/os
 endif
 
 

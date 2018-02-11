@@ -23,7 +23,7 @@ include(CheckSymbolExists)
 include(GNUInstallDirs)
 include(SwiftSupport)
 
-set(INSTALL_LIBDIR "lib${SWIFT_LIBDIR_SUFFIX}" CACHE PATH "Path where the libraries should be installed")
+set(INSTALL_LIBDIR "${SWIFT_LIBDIR}" CACHE PATH "Path where the libraries should be installed")
 set(WITH_BLOCKS_RUNTIME "" CACHE PATH "Path to blocks runtime")
 
 include(DispatchAppleOptions)
@@ -47,7 +47,7 @@ if(ENABLE_SWIFT)
   string(TOLOWER ${CMAKE_SYSTEM_NAME} SWIFT_OS)
   get_swift_host_arch(SWIFT_HOST_ARCH)
 
-  set(SWIFT_RUNTIME_LIBDIR ${SWIFT_TOOLCHAIN}/lib${SWIFT_LIBDIR_SUFFIX}/swift/${SWIFT_OS}/${SWIFT_HOST_ARCH})
+  set(SWIFT_RUNTIME_LIBDIR ${SWIFT_TOOLCHAIN}/${SWIFT_LIBDIR}/swift/${SWIFT_OS}/${SWIFT_HOST_ARCH})
 
   add_library(swiftCore
               SHARED IMPORTED GLOBAL)

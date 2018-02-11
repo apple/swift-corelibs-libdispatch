@@ -173,6 +173,12 @@ AS_IF([test "x$enable_apple_tsd_optimizations" = "xyes"],
 )
 
 #
+# Check the libdir
+#
+AC_ARG_VAR([LIBDIR], [Library folder name. Default to "lib"])
+AS_IF([test "x$LIBDIR" = x], [LIBDIR="lib"])
+
+#
 # Enable building Swift overlay support into libdispatch
 #
 AC_ARG_WITH([swift-toolchain],
@@ -200,17 +206,12 @@ AC_ARG_WITH([swift-toolchain],
         os_string=$target_os
 		;;
 	esac
-   AS_IF([test "$os_string" = "linux"], [
-     AS_IF([test "$target_cpu" = "x86_64"],
-       [libdir_suffix="64"],[libdir_suffix=""])],
-    [AC_MSG_NOTICE([Using lib instead of lib64])])
-   SWIFT_LIBDIR="$swift_toolchain_path/lib$libdir_suffix/swift/$os_string/$target_cpu"
+   SWIFT_LIBDIR="$swift_toolchain_path/$LIBDIR/swift/$os_string/$target_cpu"
    AC_MSG_NOTICE([The Swift libdir is: $SWIFT_LIBDIR])
    have_swift=true],
   [have_swift=false]
 )
 AM_CONDITIONAL(HAVE_SWIFT, $have_swift)
-AM_CONDITIONAL(HAVE_X64, [test "$libdir_suffix" = "64"])
 AC_SUBST([SWIFTC])
 AC_SUBST([SWIFTC_FLAGS])
 AC_SUBST([SWIFT_LIBDIR])
