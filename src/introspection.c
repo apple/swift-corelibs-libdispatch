@@ -447,7 +447,7 @@ dispatch_introspection_hooks_s _dispatch_introspection_hook_callouts_enabled = {
 
 #define DISPATCH_INTROSPECTION_INTERPOSABLE_HOOK(h) \
 		DISPATCH_EXPORT void _dispatch_introspection_hook_##h(void) \
-		asm("_dispatch_introspection_hook_" #h); \
+		__asm__("_dispatch_introspection_hook_" #h); \
 		void _dispatch_introspection_hook_##h(void) {}
 
 #define DISPATCH_INTROSPECTION_INTERPOSABLE_HOOK_CALLOUT(h, ...)\

@@ -86,7 +86,7 @@
 #endif
 #define OS_OBJECT_OBJC_CLASS_DECL(name) \
 		extern void *OS_OBJECT_CLASS_SYMBOL(name) \
-				asm(OS_OBJC_CLASS_RAW_SYMBOL_NAME(OS_OBJECT_CLASS(name)))
+				__asm__(OS_OBJC_CLASS_RAW_SYMBOL_NAME(OS_OBJECT_CLASS(name)))
 #else
 #define OS_OBJECT_HAVE_OBJC1 0
 #define OS_OBJECT_HAVE_OBJC2 0
