@@ -221,7 +221,6 @@ check_include_files("strings.h" HAVE_STRINGS_H)
 check_include_files("sys/guarded.h" HAVE_SYS_GUARDED_H)
 check_include_files("sys/stat.h" HAVE_SYS_STAT_H)
 check_include_files("sys/types.h" HAVE_SYS_TYPES_H)
-check_include_files("unistd.h" HAVE_UNISTD_H)
 check_include_files("objc/objc-internal.h" HAVE_OBJC)
 
 if(HAVE_MACH)

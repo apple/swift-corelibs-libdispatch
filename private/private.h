@@ -41,7 +41,7 @@
 #include <mach/mach.h>
 #include <mach/message.h>
 #endif
-#if HAVE_UNISTD_H
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
 #endif
 #include <pthread.h>

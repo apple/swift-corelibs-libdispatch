@@ -903,7 +903,9 @@ libdispatch_init(void)
 }
 
 #if DISPATCH_USE_THREAD_LOCAL_STORAGE
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
+#endif
 #include <sys/syscall.h>
 
 #ifndef __ANDROID__
