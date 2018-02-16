@@ -37,7 +37,7 @@ DISPATCH_NOTHROW __attribute__((constructor))
 void
 _libdispatch_init(void);
 
-DISPATCH_EXPORT DISPATCH_NOTHROW
+DISPATCH_NOTHROW
 void
 _libdispatch_init(void)
 {
@@ -45,6 +45,7 @@ _libdispatch_init(void)
 }
 #endif
 
+#if !defined(_WIN32)
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 dispatch_atfork_prepare(void)
@@ -96,6 +97,7 @@ _dispatch_sigmask(void)
 	r |= pthread_sigmask(SIG_BLOCK, &mask, NULL);
 	return dispatch_assume_zero(r);
 }
+#endif
 
 #pragma mark -
 #pragma mark dispatch_globals
@@ -111,7 +113,11 @@ void (*_dispatch_end_NSAutoReleasePool)(void *);
 
 #if DISPATCH_USE_THREAD_LOCAL_STORAGE
 __thread struct dispatch_tsd __dispatch_tsd;
+#if defined(_WIN32)
+DWORD __dispatch_tsd_key;
+#else
 pthread_key_t __dispatch_tsd_key;
+#endif
 #elif !DISPATCH_USE_DIRECT_TSD
 pthread_key_t dispatch_queue_key;
 pthread_key_t dispatch_frame_key;
@@ -690,26 +696,57 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 			log_to_file = true;
 		} else if (strcmp(e, "stderr") == 0) {
 			log_to_file = true;
+#if defined(_WIN32)
+			dispatch_logfile = _fileno(stderr);
+#else
 			dispatch_logfile = STDERR_FILENO;
+#endif
 		}
 	}
 	if (!dispatch_log_disabled) {
 		if (log_to_file && dispatch_logfile == -1) {
+#if defined(_WIN32)
+			char path[MAX_PATH + 1] = {0};
+			DWORD dwLength = GetTempPathA(MAX_PATH, path);
+			dispatch_assert(dwLength <= MAX_PATH + 1);
+			snprintf(&path[dwLength], MAX_PATH - dwLength, "libdispatch.%d.log",
+					GetCurrentProcessId());
+			dispatch_logfile = _open(path, O_WRONLY | O_APPEND | O_CREAT, 0666);
+#else
 			char path[PATH_MAX];
 			snprintf(path, sizeof(path), "/var/tmp/libdispatch.%d.log",
 					getpid());
 			dispatch_logfile = open(path, O_WRONLY | O_APPEND | O_CREAT |
 					O_NOFOLLOW | O_CLOEXEC, 0666);
+#endif
 		}
 		if (dispatch_logfile != -1) {
 			struct timeval tv;
+#if defined(_WIN32)
+			DWORD dwTime = GetTickCount();
+			tv.tv_sec = dwTime / 1000;
+			tv.tv_usec = 1000 * (dwTime % 1000);
+#else
 			gettimeofday(&tv, NULL);
+#endif
 #if DISPATCH_DEBUG
 			dispatch_log_basetime = _dispatch_absolute_time();
 #endif
+#if defined(_WIN32)
+			FILE *pLogFile = _fdopen(dispatch_logfile, "w");
+
+			char szProgramName[MAX_PATH + 1] = {0};
+			GetModuleFileNameA(NULL, szProgramName, MAX_PATH);
+
+			fprintf(pLogFile, "=== log file opened for %s[%lu] at "
+					"%ld.%06u ===\n", szProgramName, GetCurrentProcessId(),
+					tv.tv_sec, (int)tv.tv_usec);
+			fclose(pLogFile);
+#else
 			dprintf(dispatch_logfile, "=== log file opened for %s[%u] at "
 					"%ld.%06u ===\n", getprogname() ?: "", getpid(),
 					tv.tv_sec, (int)tv.tv_usec);
+#endif
 		}
 	}
 }
@@ -721,7 +758,12 @@ _dispatch_log_file(char *buf, size_t len)
 
 	buf[len++] = '\n';
 retry:
+#if defined(_WIN32)
+	dispatch_assert(len <= UINT_MAX);
+	r = _write(dispatch_logfile, buf, (unsigned int)len);
+#else
 	r = write(dispatch_logfile, buf, len);
+#endif
 	if (slowpath(r == -1) && errno == EINTR) {
 		goto retry;
 	}
@@ -764,6 +806,36 @@ _dispatch_vsyslog(const char *msg, va_list ap)
 		_dispatch_syslog(str);
 		free(str);
 	}
+}
+#elif defined(_WIN32)
+static inline void
+_dispatch_syslog(const char *msg)
+{
+  OutputDebugStringA(msg);
+}
+
+static inline void
+_dispatch_vsyslog(const char *msg, va_list ap)
+{
+  va_list argp;
+
+  va_copy(argp, ap);
+
+  int length = _vscprintf(msg, ap);
+  if (length == -1)
+    return;
+
+  char *buffer = malloc((size_t)length + 1);
+  if (buffer == NULL)
+    return;
+
+  _vsnprintf(buffer, (size_t)length + 1, msg, argp);
+
+  va_end(argp);
+
+  _dispatch_syslog(buffer);
+
+  free(buffer);
 }
 #else // DISPATCH_USE_SIMPLE_ASL
 static inline void

@@ -50,7 +50,11 @@ __BEGIN_DECLS
  * @typedef dispatch_fd_t
  * Native file descriptor type for the platform.
  */
+#if defined(_WIN32)
+typedef intptr_t dispatch_fd_t;
+#else
 typedef int dispatch_fd_t;
+#endif
 
 /*!
  * @functiongroup Dispatch I/O Convenience API

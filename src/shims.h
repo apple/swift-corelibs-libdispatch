@@ -27,8 +27,12 @@
 #ifndef __DISPATCH_OS_SHIMS__
 #define __DISPATCH_OS_SHIMS__
 
+#if !defined(_WIN32)
 #include <pthread.h>
-#if defined(__linux__) || defined(__FreeBSD__)
+#endif
+#if defined(_WIN32)
+#include "shims/generic_win_stubs.h"
+#elif defined(__unix__)
 #include "shims/generic_unix_stubs.h"
 #endif
 
@@ -73,12 +77,6 @@
 size_t strlcpy(char *dst, const char *src, size_t size);
 
 #endif // HAVE_STRLCPY
-
-
-#if TARGET_OS_WIN32
-#define bzero(ptr,len) memset((ptr), 0, (len))
-#define snprintf _snprintf
-#endif // TARGET_OS_WIN32
 
 #if PTHREAD_WORKQUEUE_SPI_VERSION < 20140716
 static inline int

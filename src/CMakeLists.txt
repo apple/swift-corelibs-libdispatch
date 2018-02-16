@@ -47,14 +47,23 @@ add_library(dispatch
               shims/atomic_sfb.h
               shims/getprogname.h
               shims/hw_config.h
-              shims/generic_unix_stubs.c
-              shims/generic_unix_stubs.h
               shims/lock.c
               shims/lock.h
               shims/perfmon.h
               shims/time.h
               shims/tsd.h
               shims/yield.h)
+if(UNIX)
+  target_sources(dispatch
+                 PRIVATE
+                   shims/generic_unix_stubs.c
+                   shims/generic_unix_stubs.h)
+elseif(WIN32)
+  target_sources(dispatch
+                 PRIVATE
+                   shims/generic_win_stubs.c
+                   shims/generic_win_stubs.h)
+endif()
 if(DISPATCH_USE_INTERNAL_WORKQUEUE)
   target_sources(dispatch
                  PRIVATE
@@ -129,6 +138,11 @@ if(WITH_BLOCKS_RUNTIME)
   target_include_directories(dispatch
                              SYSTEM BEFORE PRIVATE
                                "${WITH_BLOCKS_RUNTIME}")
+endif()
+if(WIN32)
+  target_compile_definitions(dispatch
+                             PRIVATE
+                               _CRT_NONSTDC_NO_WARNINGS)
 endif()
 if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
   target_compile_options(dispatch PRIVATE /EHsc-)

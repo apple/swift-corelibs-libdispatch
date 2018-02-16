@@ -121,7 +121,7 @@ typedef union {
 #ifndef DISPATCH_DATA_DECL
 #define DISPATCH_DATA_DECL(name) OS_OBJECT_DECL_SWIFT(name)
 #endif // DISPATCH_DATA_DECL
-#elif !TARGET_OS_WIN32
+#else
 /*! @parseOnly */
 #define DISPATCH_SOURCE_DECL(name) \
 		DISPATCH_DECL(name);
@@ -131,12 +131,6 @@ typedef union {
 #define DISPATCH_SOURCE_TYPE_DECL(name) \
 		DISPATCH_EXPORT const struct dispatch_source_type_s \
 		_dispatch_source_type_##name
-#else
-#define DISPATCH_SOURCE_DECL(name) \
-		DISPATCH_DECL(name);
-#define DISPATCH_SOURCE_TYPE_DECL(name) \
-		DISPATCH_EXPORT struct dispatch_source_type_s _dispatch_source_type_##name
-#define DISPATCH_DATA_DECL(name) DISPATCH_DECL(name)
 #endif
 
 #ifdef __BLOCKS__

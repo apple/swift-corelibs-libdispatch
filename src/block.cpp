@@ -69,7 +69,9 @@ struct dispatch_block_private_data_s {
 	{
 		// copy constructor, create copy with retained references
 		if (dbpd_voucher) voucher_retain(dbpd_voucher);
-		if (o.dbpd_block) dbpd_block = _dispatch_Block_copy(o.dbpd_block);
+		if (o.dbpd_block) {
+			dbpd_block = reinterpret_cast<dispatch_block_t>(_dispatch_Block_copy(o.dbpd_block));
+		}
 		_dispatch_block_private_data_debug("copy from %p, block: %p from %p",
 				&o, dbpd_block, o.dbpd_block);
 		if (!o.dbpd_magic) return; // No group in initial copy of stack object
@@ -98,11 +100,11 @@ _dispatch_block_create(dispatch_block_flags_t flags, voucher_t voucher,
 		pthread_priority_t pri, dispatch_block_t block)
 {
 	struct dispatch_block_private_data_s dbpds(flags, voucher, pri, block);
-	return _dispatch_Block_copy(^{
+	return reinterpret_cast<dispatch_block_t>(_dispatch_Block_copy(^{
 		// Capture stack object: invokes copy constructor (17094902)
 		(void)dbpds;
 		_dispatch_block_invoke_direct(&dbpds);
-	});
+	}));
 }
 
 extern "C" {
