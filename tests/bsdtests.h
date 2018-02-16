@@ -41,7 +41,9 @@
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
+#endif
 #include <string.h>
 #include <stdint.h>
 

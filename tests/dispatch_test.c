@@ -27,7 +27,9 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
+#endif
 #if __has_include(<sys/event.h>)
 #define HAS_SYS_EVENT_H 1
 #include <sys/event.h>

@@ -35,7 +35,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
-#if !defined(HAVE_UNISTD_H) || HAVE_UNISTD_H
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
 #endif
 #include <fcntl.h>

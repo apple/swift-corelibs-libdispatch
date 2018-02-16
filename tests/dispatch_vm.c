@@ -21,7 +21,9 @@
 #include <sys/event.h>
 #include <stdio.h>
 #include <stdlib.h>
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
+#endif
 #ifdef __APPLE__
 #include <libkern/OSAtomic.h>
 #endif

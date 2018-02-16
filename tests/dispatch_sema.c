@@ -19,7 +19,9 @@
  */
 
 #include <dispatch/dispatch.h>
+#if !USE_WIN32_SEM
 #include <pthread.h>
+#endif
 #include <stdio.h>
 #include <assert.h>
 
