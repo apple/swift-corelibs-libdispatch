@@ -49,7 +49,7 @@ _dispatch_unote_create(dispatch_source_type_t dst,
 	du->du_can_be_wlh = dst->dst_per_trigger_qos;
 	du->du_ident = (uint32_t)handle;
 	du->du_filter = dst->dst_filter;
-	du->du_fflags = (typeof(du->du_fflags))mask;
+	du->du_fflags = (__typeof__(du->du_fflags))mask;
 	if (dst->dst_flags & EV_UDATA_SPECIFIC) {
 		du->du_is_direct = true;
 	}

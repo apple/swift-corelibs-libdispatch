@@ -439,7 +439,7 @@ dispatch_introspection_hooks_s _dispatch_introspection_hook_callouts_enabled = {
 		(slowpath(_dispatch_introspection_hooks.h))
 
 #define DISPATCH_INTROSPECTION_HOOK_CALLOUT(h, ...) ({ \
-		typeof(_dispatch_introspection_hooks.h) _h; \
+		__typeof__(_dispatch_introspection_hooks.h) _h; \
 		_h = _dispatch_introspection_hooks.h; \
 		if (slowpath((void*)(_h) != DISPATCH_INTROSPECTION_NO_HOOK)) { \
 			_h(__VA_ARGS__); \

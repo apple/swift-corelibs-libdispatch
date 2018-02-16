@@ -590,7 +590,7 @@ size_t _dispatch_objc_debug(dispatch_object_t dou, char* buf, size_t bufsiz);
  *   reached -1.
  */
 #define _os_atomic_refcnt_perform2o(o, f, op, n, m)   ({ \
-		typeof(o) _o = (o); \
+		__typeof__(o) _o = (o); \
 		int _ref_cnt = _o->f; \
 		if (fastpath(_ref_cnt != _OS_OBJECT_GLOBAL_REFCNT)) { \
 			_ref_cnt = os_atomic_##op##2o(_o, f, n, m); \

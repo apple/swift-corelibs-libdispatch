@@ -43,11 +43,11 @@
 #define os_atomic(type) type _Atomic
 
 #define _os_atomic_c11_atomic(p) \
-		((typeof(*(p)) _Atomic *)(p))
+		((__typeof__(*(p)) _Atomic *)(p))
 
 // This removes the _Atomic and volatile qualifiers on the type of *p
 #define _os_atomic_basetypeof(p) \
-		typeof(atomic_load_explicit(_os_atomic_c11_atomic(p), memory_order_relaxed))
+		__typeof__(atomic_load_explicit(_os_atomic_c11_atomic(p), memory_order_relaxed))
 
 #define os_atomic_load(p, m) \
 		atomic_load_explicit(_os_atomic_c11_atomic(p), memory_order_##m)
@@ -71,7 +71,7 @@
 #define _os_atomic_c11_op(p, v, m, o, op) \
 		({ _os_atomic_basetypeof(p) _v = (v), _r = \
 		atomic_fetch_##o##_explicit(_os_atomic_c11_atomic(p), _v, \
-		memory_order_##m); (typeof(*(p)))(_r op _v); })
+		memory_order_##m); (__typeof__(*(p)))(_r op _v); })
 #define _os_atomic_c11_op_orig(p, v, m, o, op) \
 		atomic_fetch_##o##_explicit(_os_atomic_c11_atomic(p), v, \
 		memory_order_##m)
@@ -156,7 +156,7 @@
 
 #define os_atomic_rmw_loop(p, ov, nv, m, ...)  ({ \
 		bool _result = false; \
-		typeof(p) _p = (p); \
+		__typeof__(p) _p = (p); \
 		ov = os_atomic_load(_p, relaxed); \
 		do { \
 			__VA_ARGS__; \
