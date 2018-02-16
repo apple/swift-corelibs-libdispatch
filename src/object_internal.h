@@ -50,7 +50,7 @@
 #if USE_OBJC
 #define DISPATCH_OBJC_CLASS_DECL(name) \
 		extern void *DISPATCH_CLASS_SYMBOL(name) \
-				asm(DISPATCH_CLASS_RAW_SYMBOL_NAME(name))
+				__asm__(DISPATCH_CLASS_RAW_SYMBOL_NAME(name))
 #endif
 
 // define a new proper class
@@ -65,7 +65,7 @@
 		}; \
 		OS_OBJECT_EXTRA_VTABLE_DECL(name, name) \
 		extern const struct name##_vtable_s OS_OBJECT_CLASS_SYMBOL(name) \
-				asm(OS_OBJC_CLASS_RAW_SYMBOL_NAME(OS_OBJECT_CLASS(name)))
+				__asm__(OS_OBJC_CLASS_RAW_SYMBOL_NAME(OS_OBJECT_CLASS(name)))
 
 #if OS_OBJECT_SWIFT3
 #define OS_OBJECT_INTERNAL_CLASS_DECL(name, super, ...) \
@@ -101,7 +101,7 @@
 		struct name##_s; \
 		OS_OBJECT_EXTRA_VTABLE_DECL(name, super) \
 		extern const struct super##_vtable_s OS_OBJECT_CLASS_SYMBOL(name) \
-				asm(OS_OBJC_CLASS_RAW_SYMBOL_NAME(OS_OBJECT_CLASS(name)))
+				__asm__(OS_OBJC_CLASS_RAW_SYMBOL_NAME(OS_OBJECT_CLASS(name)))
 
 #define DISPATCH_SUBCLASS_DECL(name, super) \
 		OS_OBJECT_SUBCLASS_DECL(dispatch_##name, super)
