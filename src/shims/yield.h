@@ -83,6 +83,11 @@
 #define _dispatch_contention_spins() \
 		((DISPATCH_CONTENTION_SPINS_MIN) + ((DISPATCH_CONTENTION_SPINS_MAX) - \
 		(DISPATCH_CONTENTION_SPINS_MIN)) / 2)
+#elif defined(_WIN32)
+#define _dispatch_contention_spins() ({                                        \
+		unsigned int _value;                                           \
+		rand_s(&_value);                                               \
+		(_value & DISPATCH_CONTENTION_SPINS_MAX) | DISPATCH_CONTENTION_SPINS_MIN; })
 #else
 // Use randomness to prevent threads from resonating at the same
 // frequency and permanently contending. All threads sharing the same
@@ -151,7 +156,24 @@
 		SWITCH_OPTION_WAIT, (((u)-1)/1000)+1)
 #endif
 #else
+#if defined(_WIN32)
+DISPATCH_INLINE void
+_dispatch_contention_usleep(uint64_t useconds) {
+	static BOOL bQPFExecuted = FALSE;
+	static LARGE_INTEGER liFreq;
+	LARGE_INTEGER liStart, liNow;
+
+	if (!bQPFExecuted)
+		bQPFExecuted = QueryPerformanceFrequency(&liFreq);
+
+	QueryPerformanceCounter(&liStart);
+	do {
+		QueryPerformanceCounter(&liNow);
+	} while ((liNow.QuadPart - liStart.QuadPart) / (float)liFreq.QuadPart * 1000 * 1000 < useconds);
+}
+#else
 #define _dispatch_contention_usleep(u) usleep((u))
+#endif
 #endif // HAVE_MACH
 
 #endif // __DISPATCH_SHIMS_YIELD__

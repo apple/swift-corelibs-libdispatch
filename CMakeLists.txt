@@ -8,6 +8,10 @@ project(dispatch
         LANGUAGES C CXX)
 enable_testing()
 
+if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+  include(ClangClCompileRules)
+endif()
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED YES)
 
@@ -262,10 +266,6 @@ if (HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME)
 endif()
 check_symbol_exists(__printflike "bsd/sys/cdefs.h" HAVE_PRINTFLIKE)
 
-if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-  add_definitions(-DTARGET_OS_WIN32)
-endif()
-
 if(CMAKE_SYSTEM_NAME STREQUAL Android)
   set(ENABLE_DTRACE_DEFAULT OFF)
 endif()
@@ -320,6 +320,13 @@ add_custom_target(module-map-symlinks
 configure_file("${CMAKE_SOURCE_DIR}/cmake/config.h.in"
                "${CMAKE_BINARY_DIR}/config/config_ac.h")
 add_definitions(-DHAVE_CONFIG_H)
+
+if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+  include(DispatchWindowsSupport)
+  dispatch_windows_arch_spelling(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_MSVC_ARCH)
+  dispatch_windows_include_for_arch(${DISPATCH_MSVC_ARCH} DISPATCH_INCLUDES)
+  include_directories(BEFORE SYSTEM ${DISPATCH_INCLUDES})
+endif()
 
 add_subdirectory(dispatch)
 add_subdirectory(man)

@@ -31,7 +31,7 @@
 #include <mach/message.h>
 #endif
 
-#if !TARGET_OS_WIN32
+#if !defined(_WIN32)
 #include <sys/signal.h>
 #endif
 

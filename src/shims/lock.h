@@ -79,6 +79,27 @@ _dispatch_lock_owner(dispatch_lock lock_value)
 	return lock_value & DLOCK_OWNER_MASK;
 }
 
+#elif defined(_WIN32)
+
+#include <Windows.h>
+
+typedef DWORD dispatch_tid;
+typedef uint32_t dispatch_lock;
+
+#define DLOCK_OWNER_NULL			((dispatch_tid)0)
+#define DLOCK_OWNER_MASK			((dispatch_lock)0xfffffffc)
+#define DLOCK_WAITERS_BIT			((dispatch_lock)0x00000001)
+#define DLOCK_FAILED_TRYLOCK_BIT		((dispatch_lock)0x00000002)
+
+#define _dispatch_tid_self()		((dispatch_tid)(_dispatch_get_tsd_base()->tid << 2))
+
+DISPATCH_ALWAYS_INLINE
+static inline dispatch_tid
+_dispatch_lock_owner(dispatch_lock lock_value)
+{
+	return lock_value & DLOCK_OWNER_MASK;
+}
+
 #else
 #  error define _dispatch_lock encoding scheme for your platform here
 #endif
