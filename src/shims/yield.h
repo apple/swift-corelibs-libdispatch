@@ -32,7 +32,7 @@
 
 #if DISPATCH_HW_CONFIG_UP
 #define _dispatch_wait_until(c) ({ \
-		typeof(c) _c; \
+		__typeof__(c) _c; \
 		int _spins = 0; \
 		for (;;) { \
 			if (likely(_c = (c))) break; \
@@ -46,7 +46,7 @@
 #define DISPATCH_WAIT_SPINS 1024
 #endif
 #define _dispatch_wait_until(c) ({ \
-		typeof(c) _c; \
+		__typeof__(c) _c; \
 		int _spins = -(DISPATCH_WAIT_SPINS); \
 		for (;;) { \
 			if (likely(_c = (c))) break; \
@@ -59,7 +59,7 @@
 		_c; })
 #else
 #define _dispatch_wait_until(c) ({ \
-		typeof(c) _c; \
+		__typeof__(c) _c; \
 		for (;;) { \
 			if (likely(_c = (c))) break; \
 			dispatch_hardware_pause(); \

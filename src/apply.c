@@ -285,7 +285,7 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 		.dc_ctxt = ctxt,
 		.dc_data = dq,
 	};
-	dispatch_apply_t da = (typeof(da))_dispatch_continuation_alloc();
+	dispatch_apply_t da = (__typeof__(da))_dispatch_continuation_alloc();
 	da->da_index = 0;
 	da->da_todo = iterations;
 	da->da_iterations = iterations;

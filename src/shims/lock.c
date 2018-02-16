@@ -144,8 +144,8 @@ _dispatch_sema4_timedwait(_dispatch_sema4_t *sema, dispatch_time_t timeout)
 
 	do {
 		uint64_t nsec = _dispatch_timeout(timeout);
-		_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
-		_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
+		_timeout.tv_sec = (__typeof__(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
+		_timeout.tv_nsec = (__typeof__(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
 		kr = slowpath(semaphore_timedwait(*sema, _timeout));
 	} while (kr == KERN_ABORTED);
 
@@ -200,8 +200,8 @@ _dispatch_sema4_timedwait(_dispatch_sema4_t *sema, dispatch_time_t timeout)
 
 	do {
 		uint64_t nsec = _dispatch_time_nanoseconds_since_epoch(timeout);
-		_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
-		_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
+		_timeout.tv_sec = (__typeof__(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
+		_timeout.tv_nsec = (__typeof__(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
 		ret = slowpath(sem_timedwait(sema, &_timeout));
 	} while (ret == -1 && errno == EINTR);
 

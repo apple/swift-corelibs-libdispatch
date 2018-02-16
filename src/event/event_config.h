@@ -60,7 +60,7 @@
 
 #if DISPATCH_TIMER_ASSERTIONS
 #define DISPATCH_TIMER_ASSERT(a, op, b, text) ({ \
-		typeof(a) _a = (a); \
+		__typeof__(a) _a = (a); \
 		if (unlikely(!(_a op (b)))) { \
 			DISPATCH_CLIENT_CRASH(_a, "Timer: " text); \
 		} \

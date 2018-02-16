@@ -119,7 +119,7 @@ enum {
 };
 
 #define _dispatch_io_Block_copy(x) \
-		((typeof(x))_dispatch_Block_copy((dispatch_block_t)(x)))
+		((__typeof__(x))_dispatch_Block_copy((dispatch_block_t)(x)))
 
 #pragma mark -
 #pragma mark dispatch_io_debug
@@ -211,7 +211,7 @@ static struct dispatch_io_defaults_s {
 };
 
 #define _dispatch_iocntl_set_default(p, v) do { \
-		dispatch_io_defaults.p = (typeof(dispatch_io_defaults.p))(v); \
+		dispatch_io_defaults.p = (__typeof__(dispatch_io_defaults.p))(v); \
 	} while (0)
 
 void
@@ -1829,7 +1829,7 @@ _dispatch_stream_cleanup_operations(dispatch_stream_t stream,
 {
 	// On stream queue
 	dispatch_operation_t op, tmp;
-	typeof(*stream->operations) *operations;
+	__typeof__(*stream->operations) *operations;
 	operations = &stream->operations[DISPATCH_IO_RANDOM];
 	TAILQ_FOREACH_SAFE(op, operations, operation_list, tmp) {
 		if (!channel || op->channel == channel) {

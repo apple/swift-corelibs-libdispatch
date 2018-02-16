@@ -107,7 +107,7 @@ print_result(uint64_t s, const char *str)
 		d /= tbi.denom;
 	}
 
-	dd = (typeof(dd))d / (typeof(dd))cnt;
+	dd = (__typeof__(dd))d / (__typeof__(dd))cnt;
 
 	dd -= loop_cost;
 
@@ -135,7 +135,7 @@ print_result2(uint64_t s, const char *str)
 		d /= tbi.denom;
 	}
 
-	dd = (typeof(dd))d / (typeof(dd))cnt2;
+	dd = (__typeof__(dd))d / (__typeof__(dd))cnt2;
 
 	dd -= loop_cost;
 	dd *= cycles_per_nanosecond;
