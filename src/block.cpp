@@ -109,11 +109,7 @@ extern "C" {
 // The compiler hides the name of the function it generates, and changes it if
 // we try to reference it directly, but the linker still sees it.
 extern void DISPATCH_BLOCK_SPECIAL_INVOKE(void *)
-#if defined(__linux__) || defined(__FreeBSD__)
-		asm("___dispatch_block_create_block_invoke");
-#else
-		asm("____dispatch_block_create_block_invoke");
-#endif
+		__asm__(OS_STRINGIFY(__USER_LABEL_PREFIX__) "___dispatch_block_create_block_invoke");
 void (*_dispatch_block_special_invoke)(void*) = DISPATCH_BLOCK_SPECIAL_INVOKE;
 }
 
