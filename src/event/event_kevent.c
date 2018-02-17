@@ -32,7 +32,7 @@
 #define DISPATCH_KEVENT_MUXED_MARKER  1ul
 #define DISPATCH_MACH_AUDIT_TOKEN_PID (5)
 
-#define dispatch_kevent_udata_t  typeof(((dispatch_kevent_t)NULL)->udata)
+#define dispatch_kevent_udata_t  __typeof__(((dispatch_kevent_t)NULL)->udata)
 
 typedef struct dispatch_muxnote_s {
 	TAILQ_ENTRY(dispatch_muxnote_s) dmn_list;
@@ -738,9 +738,9 @@ _dispatch_kq_unote_set_kevent(dispatch_unote_t _du, dispatch_kevent_t dk,
 		.flags  = flags,
 		.udata  = (dispatch_kevent_udata_t)du,
 		.fflags = du->du_fflags | dst->dst_fflags,
-		.data   = (typeof(dk->data))dst->dst_data,
+		.data   = (__typeof__(dk->data))dst->dst_data,
 #if DISPATCH_USE_KEVENT_QOS
-		.qos    = (typeof(dk->qos))pp,
+		.qos    = (__typeof__(dk->qos))pp,
 #endif
 	};
 	(void)pp; // if DISPATCH_USE_KEVENT_QOS == 0
@@ -1778,7 +1778,7 @@ _dispatch_mach_notify_update(dispatch_muxnote_t dmn, uint32_t new_flags,
 		mach_port_mscount_t notify_sync)
 {
 	mach_port_t previous, port = (mach_port_t)dmn->dmn_kev.ident;
-	typeof(dmn->dmn_kev.data) prev = dmn->dmn_kev.data;
+	__typeof__(dmn->dmn_kev.data) prev = dmn->dmn_kev.data;
 	kern_return_t kr, krr = 0;
 
 	// Update notification registration state.

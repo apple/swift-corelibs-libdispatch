@@ -354,11 +354,11 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 /* I wish we had __builtin_expect_range() */
 #if __GNUC__
 #define _safe_cast_to_long(x) \
-		({ _Static_assert(sizeof(typeof(x)) <= sizeof(long), \
+		({ _Static_assert(sizeof(__typeof__(x)) <= sizeof(long), \
 				"__builtin_expect doesn't support types wider than long"); \
 				(long)(x); })
-#define fastpath(x) ((typeof(x))__builtin_expect(_safe_cast_to_long(x), ~0l))
-#define slowpath(x) ((typeof(x))__builtin_expect(_safe_cast_to_long(x), 0l))
+#define fastpath(x) ((__typeof__(x))__builtin_expect(_safe_cast_to_long(x), ~0l))
+#define slowpath(x) ((__typeof__(x))__builtin_expect(_safe_cast_to_long(x), 0l))
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #else
@@ -455,7 +455,7 @@ void _dispatch_log(const char *msg, ...);
 		if (__builtin_constant_p(e)) { \
 			dispatch_static_assert(e); \
 		} else { \
-			typeof(e) _e = (e); /* always eval 'e' */ \
+			__typeof__(e) _e = (e); /* always eval 'e' */ \
 			if (unlikely(DISPATCH_DEBUG && !_e)) { \
 				_dispatch_abort(__LINE__, (long)_e); \
 			} \
@@ -479,7 +479,7 @@ _dispatch_assert(long e, size_t line)
 		if (__builtin_constant_p(e)) { \
 			dispatch_static_assert(e); \
 		} else { \
-			typeof(e) _e = (e); /* always eval 'e' */ \
+			__typeof__(e) _e = (e); /* always eval 'e' */ \
 			if (unlikely(DISPATCH_DEBUG && _e)) { \
 				_dispatch_abort(__LINE__, (long)_e); \
 			} \
@@ -502,7 +502,7 @@ _dispatch_assert_zero(long e, size_t line)
  */
 #if __GNUC__
 #define dispatch_assume(e) ({ \
-		typeof(e) _e = (e); /* always eval 'e' */ \
+		__typeof__(e) _e = (e); /* always eval 'e' */ \
 		if (unlikely(!_e)) { \
 			if (__builtin_constant_p(e)) { \
 				dispatch_static_assert(e); \
@@ -527,7 +527,7 @@ _dispatch_assume(long e, long line)
  */
 #if __GNUC__
 #define dispatch_assume_zero(e) ({ \
-		typeof(e) _e = (e); /* always eval 'e' */ \
+		__typeof__(e) _e = (e); /* always eval 'e' */ \
 		if (unlikely(_e)) { \
 			if (__builtin_constant_p(e)) { \
 				dispatch_static_assert(e); \
@@ -554,7 +554,7 @@ _dispatch_assume_zero(long e, long line)
 		if (__builtin_constant_p(e)) { \
 			dispatch_static_assert(e); \
 		} else { \
-			typeof(e) _e = (e); /* always eval 'e' */ \
+			__typeof__(e) _e = (e); /* always eval 'e' */ \
 			if (unlikely(DISPATCH_DEBUG && !_e)) { \
 				_dispatch_log("%s() 0x%lx: " msg, __func__, (long)_e, ##args); \
 				abort(); \
@@ -563,7 +563,7 @@ _dispatch_assume_zero(long e, long line)
 	} while (0)
 #else
 #define dispatch_debug_assert(e, msg, args...) do { \
-	typeof(e) _e = (e); /* always eval 'e' */ \
+	__typeof__(e) _e = (e); /* always eval 'e' */ \
 	if (unlikely(DISPATCH_DEBUG && !_e)) { \
 		_dispatch_log("%s() 0x%lx: " msg, __FUNCTION__, _e, ##args); \
 		abort(); \
@@ -594,7 +594,7 @@ _dispatch_object_debug(dispatch_object_t object, const char *message, ...);
 		((dispatch_function_t)((struct Block_layout *)bb)->invoke)
 void *_dispatch_Block_copy(void *block);
 #if __GNUC__
-#define _dispatch_Block_copy(x) ((typeof(x))_dispatch_Block_copy(x))
+#define _dispatch_Block_copy(x) ((__typeof__(x))_dispatch_Block_copy(x))
 #endif
 void _dispatch_call_block_and_release(void *block);
 #endif /* __BLOCKS__ */

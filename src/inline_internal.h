@@ -1484,7 +1484,7 @@ _dispatch_queue_drain_try_unlock(dispatch_queue_t dq, uint64_t owned, bool done)
 // type_t * {volatile,const,_Atomic,...} -> type_t *
 // type_t[] -> type_t *
 #define os_unqualified_pointer_type(expr) \
-		typeof(typeof(*(expr)) *)
+		__typeof__(__typeof__(*(expr)) *)
 
 #define os_mpsc_node_type(q, _ns)  \
 		os_unqualified_pointer_type((q)->_ns##_head)
@@ -1525,7 +1525,7 @@ _dispatch_queue_drain_try_unlock(dispatch_queue_t dq, uint64_t owned, bool done)
 		_dispatch_wait_until(os_atomic_load2o(_n, _o_next, dependency))
 
 #define os_mpsc_pop_head(q, _ns, head, _o_next)  ({ \
-		typeof(q) _q = (q); \
+		__typeof__(q) _q = (q); \
 		os_mpsc_node_type(_q, _ns) _head = (head), _n; \
 		_n = os_atomic_load2o(_head, _o_next, dependency); \
 		os_atomic_store2o(_q, _ns##_head, _n, relaxed); \
@@ -1540,7 +1540,7 @@ _dispatch_queue_drain_try_unlock(dispatch_queue_t dq, uint64_t owned, bool done)
 	})
 
 #define os_mpsc_undo_pop_head(q, _ns, head, next, _o_next)  ({ \
-		typeof(q) _q = (q); \
+		__typeof__(q) _q = (q); \
 		os_mpsc_node_type(_q, _ns) _head = (head), _n = (next); \
 		if (unlikely(!_n && \
 				!os_atomic_cmpxchg2o(_q, _ns##_tail, NULL, _head, relaxed))) { \
@@ -1551,7 +1551,7 @@ _dispatch_queue_drain_try_unlock(dispatch_queue_t dq, uint64_t owned, bool done)
 	})
 
 #define os_mpsc_capture_snapshot(q, _ns, tail)  ({ \
-		typeof(q) _q = (q); \
+		__typeof__(q) _q = (q); \
 		os_mpsc_node_type(_q, _ns) _head = os_mpsc_get_head(q, _ns); \
 		os_atomic_store2o(_q, _ns##_head, NULL, relaxed); \
 		/* 22708742: set tail to NULL with release, so that NULL write */ \
@@ -1568,7 +1568,7 @@ _dispatch_queue_drain_try_unlock(dispatch_queue_t dq, uint64_t owned, bool done)
 		_n; })
 
 #define os_mpsc_prepend(q, _ns, head, tail, _o_next)  ({ \
-		typeof(q) _q = (q); \
+		__typeof__(q) _q = (q); \
 		os_mpsc_node_type(_q, _ns) _head = (head), _tail = (tail), _n; \
 		os_atomic_store2o(_tail, _o_next, NULL, relaxed); \
 		if (unlikely(!os_atomic_cmpxchg2o(_q, _ns##_tail, NULL, _tail, release))) { \

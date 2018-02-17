@@ -1220,7 +1220,7 @@ _dispatch_source_timer_telemetry(dispatch_source_t ds, dispatch_clock_t clock,
 	if (_dispatch_trace_timer_configure_enabled() ||
 			_dispatch_source_timer_telemetry_enabled()) {
 		_dispatch_source_timer_telemetry_slow(ds, clock, values);
-		asm(""); // prevent tailcall
+		__asm__ __volatile__ (""); // prevent tailcall
 	}
 }
 

@@ -27,11 +27,11 @@
 
 #define DISPATCH_PURE_C 1
 #define _safe_cast_to_long(x) \
-		({ _Static_assert(sizeof(typeof(x)) <= sizeof(long), \
+		({ _Static_assert(sizeof(__typeof__(x)) <= sizeof(long), \
 				"__builtin_expect doesn't support types wider than long"); \
 				(long)(x); })
-#define fastpath(x) ((typeof(x))__builtin_expect(_safe_cast_to_long(x), ~0l))
-#define slowpath(x) ((typeof(x))__builtin_expect(_safe_cast_to_long(x), 0l))
+#define fastpath(x) ((__typeof__(x))__builtin_expect(_safe_cast_to_long(x), ~0l))
+#define slowpath(x) ((__typeof__(x))__builtin_expect(_safe_cast_to_long(x), 0l))
 #define os_likely(x) __builtin_expect(!!(x), 1)
 #define os_unlikely(x) __builtin_expect(!!(x), 0)
 #define likely(x)   __builtin_expect(!!(x), 1)
@@ -54,7 +54,7 @@
 #endif
 
 #define _dispatch_wait_until(c) ({ \
-		typeof(c) _c; \
+		__typeof__(c) _c; \
 		for (;;) { \
 			if (likely(_c = (c))) break; \
 			dispatch_hardware_pause(); \

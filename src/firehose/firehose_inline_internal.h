@@ -27,7 +27,7 @@
 		})
 
 #define firehose_atomic_max2o(p, f, v, m)   ({ \
-		typeof((p)->f) _old; \
+		__typeof__((p)->f) _old; \
 		firehose_atomic_maxv2o(p, f, v, &_old, m); \
 	})
 

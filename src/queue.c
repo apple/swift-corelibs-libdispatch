@@ -2248,9 +2248,9 @@ _dispatch_pthread_root_queue_create(const char *label, unsigned long flags,
 			sizeof(struct dispatch_root_queue_context_s) +
 			sizeof(struct dispatch_pthread_root_queue_context_s));
 	qc = (void*)dq + dqs;
-	dispatch_assert((uintptr_t)qc % _Alignof(typeof(*qc)) == 0);
+	dispatch_assert((uintptr_t)qc % _Alignof(__typeof__(*qc)) == 0);
 	pqc = (void*)qc + sizeof(struct dispatch_root_queue_context_s);
-	dispatch_assert((uintptr_t)pqc % _Alignof(typeof(*pqc)) == 0);
+	dispatch_assert((uintptr_t)pqc % _Alignof(__typeof__(*pqc)) == 0);
 	if (label) {
 		const char *tmp = _dispatch_strdup_if_mutable(label);
 		if (tmp != label) {

@@ -29,7 +29,7 @@
 #include <fcntl.h>
 
 #define printf_data(p, s) ({ \
-	typeof(s) _i; \
+	__typeof__(s) _i; \
 	for (_i=0; _i<s; _i++) { \
 		printf("%c", ((uint8_t *)p)[_i]); \
 	} \
