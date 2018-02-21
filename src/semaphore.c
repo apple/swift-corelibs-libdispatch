@@ -361,8 +361,11 @@ dispatch_group_notify_f(dispatch_group_t dg, dispatch_queue_t dq, void *ctxt,
 		dispatch_function_t func)
 {
 	dispatch_continuation_t dsn = _dispatch_continuation_alloc();
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wassign-enum"
 	_dispatch_continuation_init_f(dsn, dq, ctxt, func, 0, 0,
 			DISPATCH_OBJ_CONSUME_BIT);
+#pragma clang diagnostic pop
 	_dispatch_group_notify(dg, dq, dsn);
 }
 
@@ -372,7 +375,10 @@ dispatch_group_notify(dispatch_group_t dg, dispatch_queue_t dq,
 		dispatch_block_t db)
 {
 	dispatch_continuation_t dsn = _dispatch_continuation_alloc();
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wassign-enum"
 	_dispatch_continuation_init(dsn, dq, db, 0, 0, DISPATCH_OBJ_CONSUME_BIT);
+#pragma clang diagnostic pop
 	_dispatch_group_notify(dg, dq, dsn);
 }
 #endif

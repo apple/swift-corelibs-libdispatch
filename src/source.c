@@ -241,8 +241,11 @@ _dispatch_source_handler_alloc(dispatch_source_t ds, void *func, long kind,
 		bool block)
 {
 	// sources don't propagate priority by default
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wassign-enum"
 	const dispatch_block_flags_t flags =
 			DISPATCH_BLOCK_HAS_PRIORITY | DISPATCH_BLOCK_NO_VOUCHER;
+#pragma clang diagnostic pop
 	dispatch_continuation_t dc = _dispatch_continuation_alloc();
 	if (func) {
 		uintptr_t dc_flags = 0;
@@ -528,8 +531,11 @@ _dispatch_source_refs_finalize_unregistration(dispatch_source_t ds)
 	dispatch_queue_flags_t dqf;
 	dispatch_source_refs_t dr = ds->ds_refs;
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wassign-enum"
 	dqf = _dispatch_queue_atomic_flags_set_and_clear_orig(ds->_as_dq,
 			DSF_DELETED, DSF_ARMED | DSF_DEFERRED_DELETE | DSF_CANCEL_WAITER);
+#pragma clang diagnostic pop
 	if (dqf & DSF_CANCEL_WAITER) {
 		_dispatch_wake_by_address(&ds->dq_atomic_flags);
 	}
@@ -978,7 +984,10 @@ dispatch_source_cancel(dispatch_source_t ds)
 	if (_dispatch_queue_atomic_flags_set_orig(q, DSF_CANCELED) & DSF_CANCELED) {
 		_dispatch_release_2_tailcall(ds);
 	} else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wassign-enum"
 		dx_wakeup(ds, 0, DISPATCH_WAKEUP_MAKE_DIRTY | DISPATCH_WAKEUP_CONSUME_2);
+#pragma clang diagnostic pop
 	}
 }
 
@@ -1089,7 +1098,10 @@ _dispatch_source_merge_evt(dispatch_unote_t du, uint32_t flags, uintptr_t data,
 {
 	dispatch_source_refs_t dr = du._dr;
 	dispatch_source_t ds = _dispatch_source_from_refs(dr);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wassign-enum"
 	dispatch_wakeup_flags_t wflags = 0;
+#pragma clang diagnostic pop
 	dispatch_queue_flags_t dqf;
 
 	if (_dispatch_unote_needs_rearm(dr) || (flags & (EV_DELETE | EV_ONESHOT))) {
@@ -1384,11 +1396,14 @@ _dispatch_after(dispatch_time_t when, dispatch_queue_t queue,
 	dt = ds->ds_timer_refs;
 
 	dispatch_continuation_t dc = _dispatch_continuation_alloc();
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wassign-enum"
 	if (block) {
 		_dispatch_continuation_init(dc, ds, handler, 0, 0, 0);
 	} else {
 		_dispatch_continuation_init_f(dc, ds, ctxt, handler, 0, 0, 0);
 	}
+#pragma clang diagnostic pop
 	// reference `ds` so that it doesn't show up as a leak
 	dc->dc_data = ds;
 	_dispatch_trace_continuation_push(ds->_as_dq, dc);
@@ -2113,7 +2128,10 @@ _dispatch_timers_run2(dispatch_clock_now_cache_t nows, uint32_t tidx)
 		_dispatch_trace_timer_fire(dr, data, data);
 		_dispatch_debug("kevent-source[%p]: fired timer[%p]", ds, dr);
 		_dispatch_object_debug(ds, "%s", __func__);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wassign-enum"
 		dx_wakeup(ds, 0, DISPATCH_WAKEUP_MAKE_DIRTY | DISPATCH_WAKEUP_CONSUME_2);
+#pragma clang diagnostic pop
 	}
 }
 
