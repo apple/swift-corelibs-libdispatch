@@ -300,7 +300,7 @@ _dispatch_source_handler_free(dispatch_source_t ds, long kind)
 
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_source_handler_replace(dispatch_source_t ds, long kind,
+_dispatch_source_handler_replace(dispatch_source_t ds, uintptr_t kind,
 		dispatch_continuation_t dc)
 {
 	if (!dc->dc_func) {
@@ -321,14 +321,14 @@ _dispatch_source_set_handler_slow(void *context)
 	dispatch_assert(dx_type(ds) == DISPATCH_SOURCE_KEVENT_TYPE);
 
 	dispatch_continuation_t dc = context;
-	long kind = (long)dc->dc_data;
+	void *kind = dc->dc_data;
 	dc->dc_data = NULL;
-	_dispatch_source_handler_replace(ds, kind, dc);
+	_dispatch_source_handler_replace(ds, (uintptr_t)kind, dc);
 }
 
 DISPATCH_NOINLINE
 static void
-_dispatch_source_set_handler(dispatch_source_t ds, long kind,
+_dispatch_source_set_handler(dispatch_source_t ds, uintptr_t kind,
 		dispatch_continuation_t dc)
 {
 	dispatch_assert(dx_type(ds) == DISPATCH_SOURCE_KEVENT_TYPE);
