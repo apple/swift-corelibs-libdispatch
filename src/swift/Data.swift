@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 import CDispatch
+import _SwiftDispatchOverlayShims
 
 public struct DispatchData : RandomAccessCollection {
 	public typealias Iterator = DispatchDataIterator
@@ -37,8 +38,8 @@ public struct DispatchData : RandomAccessCollection {
 
 		fileprivate var _deallocator: (DispatchQueue?, @convention(block) () -> Void) {
 			switch self {
-			case .free: return (nil, _dispatch_data_destructor_free())
-			case .unmap: return (nil, _dispatch_data_destructor_munmap())
+			case .free: return (nil, _swift_dispatch_data_destructor_free())
+			case .unmap: return (nil, _swift_dispatch_data_destructor_munmap())
 			case .custom(let q, let b): return (q, b)
 			}
 		}
@@ -53,7 +54,7 @@ public struct DispatchData : RandomAccessCollection {
 	public init(bytes buffer: UnsafeBufferPointer<UInt8>) {
 		let d = buffer.baseAddress == nil ? _swift_dispatch_data_empty()
 					: dispatch_data_create(buffer.baseAddress!, buffer.count, nil,
-							_dispatch_data_destructor_default())
+							_swift_dispatch_data_destructor_default())
 		self.init(data: d)
 	}
 
@@ -64,7 +65,7 @@ public struct DispatchData : RandomAccessCollection {
 	public init(bytes buffer: UnsafeRawBufferPointer) {
 		let d = buffer.baseAddress == nil ? _swift_dispatch_data_empty()
 					: dispatch_data_create(buffer.baseAddress!, buffer.count, nil,
-							_dispatch_data_destructor_default())
+							_swift_dispatch_data_destructor_default())
 		self.init(data: d)
 	}
 
@@ -140,7 +141,7 @@ public struct DispatchData : RandomAccessCollection {
 	/// - parameter count: The number of bytes to copy.
 	@available(swift, deprecated: 4, message: "Use append(_: UnsafeRawBufferPointer) instead")
 	public mutating func append(_ bytes: UnsafePointer<UInt8>, count: Int) {
-		let data = dispatch_data_create(bytes, count, nil, _dispatch_data_destructor_default())
+		let data = dispatch_data_create(bytes, count, nil, _swift_dispatch_data_destructor_default())
 		self.append(DispatchData(data: data))
 	}
 
@@ -151,7 +152,7 @@ public struct DispatchData : RandomAccessCollection {
 	public mutating func append(_ bytes: UnsafeRawBufferPointer) {
 		// Nil base address does nothing.
 		guard bytes.baseAddress != nil else { return }
-		let data = dispatch_data_create(bytes.baseAddress!, bytes.count, nil, _dispatch_data_destructor_default())
+		let data = dispatch_data_create(bytes.baseAddress!, bytes.count, nil, _swift_dispatch_data_destructor_default())
 		self.append(DispatchData(data: data))
 	}
 
@@ -346,15 +347,3 @@ public struct DispatchDataIterator : IteratorProtocol, Sequence {
 	internal var _count: Int
 	internal var _position: DispatchData.Index
 }
-
-@_silgen_name("_swift_dispatch_data_empty")
-internal func _swift_dispatch_data_empty() -> dispatch_data_t
-
-@_silgen_name("_swift_dispatch_data_destructor_free")
-internal func _dispatch_data_destructor_free() -> _DispatchBlock
-
-@_silgen_name("_swift_dispatch_data_destructor_munmap")
-internal func _dispatch_data_destructor_munmap() -> _DispatchBlock
-
-@_silgen_name("_swift_dispatch_data_destructor_default")
-internal func _dispatch_data_destructor_default() -> _DispatchBlock
