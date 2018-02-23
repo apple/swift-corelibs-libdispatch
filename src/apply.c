@@ -171,7 +171,10 @@ _dispatch_apply_f2(dispatch_queue_t dq, dispatch_apply_t da,
 		dispatch_continuation_t next = _dispatch_continuation_alloc();
 		uintptr_t dc_flags = DISPATCH_OBJ_CONSUME_BIT;
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wassign-enum"
 		_dispatch_continuation_init_f(next, dq, da, func, 0, 0, dc_flags);
+#pragma clang diagnostic pop
 		next->do_next = head;
 		head = next;
 

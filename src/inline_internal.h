@@ -32,6 +32,9 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wassign-enum"
+
 #if DISPATCH_USE_CLIENT_CALLOUT
 
 DISPATCH_NOTHROW void
@@ -2658,5 +2661,7 @@ _dispatch_mach_reply_get_reply_port(mach_port_t reply_port)
 #endif // HAVE_MACH
 
 #endif // DISPATCH_PURE_C
+
+#pragma clang diagnostic pop
 
 #endif /* __DISPATCH_INLINE_INTERNAL__ */
