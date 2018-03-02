@@ -21,7 +21,9 @@
 #include <dispatch/dispatch.h>
 #include <stdlib.h>
 #include <stdio.h>
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
+#endif
 #include <assert.h>
 
 #include <bsdtests.h>

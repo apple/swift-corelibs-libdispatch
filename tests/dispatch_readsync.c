@@ -21,7 +21,9 @@
 #include <dispatch/dispatch.h>
 #include <dispatch/private.h>
 #include <stdlib.h>
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
+#endif
 #ifdef __ANDROID__
 #include <linux/sysctl.h>
 #else
