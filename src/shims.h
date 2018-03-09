@@ -280,3 +280,11 @@ _dispatch_mempcpy(void *ptr, const void *data, size_t len)
 #endif
 
 #endif
+
+#if __i386__ && !defined(__APPLE__)
+
+typedef int      di_int __attribute__ ((mode (DI)));
+
+di_int
+__mulodi4(di_int a, di_int b, int* overflow);
+#endif
