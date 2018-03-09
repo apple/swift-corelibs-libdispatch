@@ -26,7 +26,7 @@
 #include <mach/mach_time.h>
 #include <firehose/tracepoint_private.h>
 #endif
-#ifndef __linux__
+#if __APPLE__
 #include <os/base.h>
 #include <os/availability.h>
 #endif

@@ -8,8 +8,12 @@ project(dispatch
         LANGUAGES C CXX)
 enable_testing()
 
-set(CMAKE_C_VISIBILITY_PRESET hidden)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED YES)
+
 set(CMAKE_CXX_STANDARD 11)
+
+set(CMAKE_C_VISIBILITY_PRESET hidden)
 
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
@@ -83,6 +87,7 @@ option(BUILD_SHARED_LIBS "build shared libraries" ON)
 option(ENABLE_TESTING "build libdispatch tests" ON)
 
 if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
+   CMAKE_SYSTEM_NAME STREQUAL FreeBSD OR
    CMAKE_SYSTEM_NAME STREQUAL Android)
   set(USE_GOLD_LINKER_DEFAULT ON)
 else()
@@ -95,6 +100,7 @@ set(DISPATCH_USE_THREAD_LOCAL_STORAGE ${ENABLE_THREAD_LOCAL_STORAGE})
 
 if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
    CMAKE_SYSTEM_NAME STREQUAL Android OR
+   CMAKE_SYSTEM_NAME STREQUAL FreeBSD OR
    CMAKE_SYSTEM_NAME STREQUAL Windows)
   set(ENABLE_INTERNAL_PTHREAD_WORKQUEUES_DEFAULT ON)
 else()
@@ -120,6 +126,7 @@ option(INSTALL_PRIVATE_HEADERS "installs private headers in the same location as
 
 if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
    CMAKE_SYSTEM_NAME STREQUAL Android OR
+   CMAKE_SYSTEM_NAME STREQUAL FreeBSD OR
    CMAKE_SYSTEM_NAME STREQUAL Windows)
   add_library(BlocksRuntime
               STATIC
@@ -214,7 +221,6 @@ check_include_files("strings.h" HAVE_STRINGS_H)
 check_include_files("sys/guarded.h" HAVE_SYS_GUARDED_H)
 check_include_files("sys/stat.h" HAVE_SYS_STAT_H)
 check_include_files("sys/types.h" HAVE_SYS_TYPES_H)
-check_include_files("unistd.h" HAVE_UNISTD_H)
 check_include_files("objc/objc-internal.h" HAVE_OBJC)
 
 if(HAVE_MACH)
@@ -262,6 +268,10 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Android)
   set(ENABLE_DTRACE_DEFAULT OFF)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL FreeBSD)
+  add_definitions(-D_WITH_DPRINTF)
 endif()
 
 if(ENABLE_DTRACE STREQUAL "")

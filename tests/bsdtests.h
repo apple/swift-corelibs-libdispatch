@@ -41,6 +41,9 @@
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+#include <unistd.h>
+#endif
 #include <string.h>
 #include <stdint.h>
 
@@ -152,7 +155,7 @@ void _test_errno(const char* file, long line, const char* desc, int actual, int 
 #define test_errno(a,b,c) _test_errno(__SOURCE_FILE__, __LINE__, a, b, c)
 void test_errno_format(int actual, int expected, const char *format, ...) __printflike(3,4);
 
-#ifndef __linux__
+#if defined(__APPLE__)
 void _test_mach_error(const char* file, long line, const char* desc, mach_error_t actual, mach_error_t expected);
 #define test_mach_error(a,b,c) _test_mach_error(__SOURCE_FILE__, __LINE__, a, b, c)
 void test_mach_error_format(mach_error_t actual, mach_error_t expected, const char *format, ...) __printflike(3,4);

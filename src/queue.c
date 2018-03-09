@@ -903,7 +903,9 @@ libdispatch_init(void)
 }
 
 #if DISPATCH_USE_THREAD_LOCAL_STORAGE
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
+#endif
 #include <sys/syscall.h>
 
 #ifndef __ANDROID__
@@ -912,7 +914,14 @@ DISPATCH_ALWAYS_INLINE
 static inline pid_t
 gettid(void)
 {
-	return (pid_t) syscall(SYS_gettid);
+	return (pid_t)syscall(SYS_gettid);
+}
+#elif defined(__FreeBSD__)
+DISPATCH_ALWAYS_INLINE
+static inline pid_t
+gettid(void)
+{
+	return (pid_t)pthread_getthreadid_np();
 }
 #else
 #error "SYS_gettid unavailable on this system"
@@ -2241,9 +2250,9 @@ _dispatch_pthread_root_queue_create(const char *label, unsigned long flags,
 			sizeof(struct dispatch_root_queue_context_s) +
 			sizeof(struct dispatch_pthread_root_queue_context_s));
 	qc = (void*)dq + dqs;
-	dispatch_assert((uintptr_t)qc % _Alignof(typeof(*qc)) == 0);
+	dispatch_assert((uintptr_t)qc % _Alignof(__typeof__(*qc)) == 0);
 	pqc = (void*)qc + sizeof(struct dispatch_root_queue_context_s);
-	dispatch_assert((uintptr_t)pqc % _Alignof(typeof(*pqc)) == 0);
+	dispatch_assert((uintptr_t)pqc % _Alignof(__typeof__(*pqc)) == 0);
 	if (label) {
 		const char *tmp = _dispatch_strdup_if_mutable(label);
 		if (tmp != label) {
@@ -4668,11 +4677,13 @@ DISPATCH_NOINLINE
 static void
 _dispatch_return_to_kernel(void)
 {
+#if DISPATCH_USE_KEVENT_WORKQUEUE
 	if (unlikely(_dispatch_get_wlh() == DISPATCH_WLH_ANON)) {
 		_dispatch_clear_return_to_kernel();
 	} else {
 		_dispatch_event_loop_drain(KEVENT_FLAG_IMMEDIATE);
 	}
+#endif
 }
 
 void

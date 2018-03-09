@@ -28,8 +28,8 @@
 #define __DISPATCH_OS_SHIMS__
 
 #include <pthread.h>
-#ifdef __linux__
-#include "shims/linux_stubs.h"
+#if defined(__linux__) || defined(__FreeBSD__)
+#include "shims/generic_unix_stubs.h"
 #endif
 
 #ifdef __ANDROID__
@@ -247,7 +247,7 @@ void __builtin_trap(void);
 
 #if __has_feature(c_static_assert)
 #define __dispatch_is_array(x) \
-	_Static_assert(!__builtin_types_compatible_p(typeof((x)[0]) *, typeof(x)), \
+	_Static_assert(!__builtin_types_compatible_p(__typeof__((x)[0]) *, __typeof__(x)), \
 				#x " isn't an array")
 #define countof(x) \
 	({ __dispatch_is_array(x); sizeof(x) / sizeof((x)[0]); })

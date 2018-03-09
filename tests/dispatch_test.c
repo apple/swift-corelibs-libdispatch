@@ -27,7 +27,9 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
+#endif
 #if __has_include(<sys/event.h>)
 #define HAS_SYS_EVENT_H 1
 #include <sys/event.h>
@@ -56,7 +58,7 @@ dispatch_test_check_evfilt_read_for_fd(int fd)
 	int kq = kqueue();
 	assert(kq != -1);
 	struct kevent ke = {
-		.ident = fd,
+		.ident = (uintptr_t)fd,
 		.filter = EVFILT_READ,
 		.flags = EV_ADD|EV_ENABLE,
 	};

@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 import CDispatch
+import _SwiftDispatchOverlayShims
 
 public struct DispatchWorkItemFlags : OptionSet, RawRepresentable {
 	public let rawValue: UInt
@@ -98,6 +99,3 @@ public class DispatchWorkItem {
 /// on the referential identity of a block. Particularly, dispatch_block_create.
 internal typealias _DispatchBlock = @convention(block) () -> Void
 internal typealias dispatch_block_t = @convention(block) () -> Void
-
-@_silgen_name("_swift_dispatch_block_create_noescape")
-internal func _swift_dispatch_block_create_noescape(_ flags: dispatch_block_flags_t, _ block: () -> ()) -> _DispatchBlock

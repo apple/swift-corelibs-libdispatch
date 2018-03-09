@@ -17,11 +17,11 @@
  */
 
 #include <stdint.h>
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__FreeBSD__)
 #include <sys/syscall.h>
 #else
 #include <syscall.h>
-#endif /* __ANDROID__ */
+#endif /* __ANDROID__ || __FreeBSD__ */
 
 #if __has_include(<config/config_ac.h>)
 #include <config/config_ac.h>
@@ -30,7 +30,7 @@
 #endif
 
 #include "pthread.h"
-#include "os/linux_base.h"
+#include "os/generic_unix_base.h"
 #include "internal.h"
 
 

@@ -21,7 +21,9 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
+#endif
 #include <sys/stat.h>
 #include <dispatch/dispatch.h>
 

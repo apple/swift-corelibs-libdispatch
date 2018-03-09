@@ -31,7 +31,9 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
+#endif
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
@@ -107,7 +109,7 @@ print_result(uint64_t s, const char *str)
 		d /= tbi.denom;
 	}
 
-	dd = (typeof(dd))d / (typeof(dd))cnt;
+	dd = (__typeof__(dd))d / (__typeof__(dd))cnt;
 
 	dd -= loop_cost;
 
@@ -135,7 +137,7 @@ print_result2(uint64_t s, const char *str)
 		d /= tbi.denom;
 	}
 
-	dd = (typeof(dd))d / (typeof(dd))cnt2;
+	dd = (__typeof__(dd))d / (__typeof__(dd))cnt2;
 
 	dd -= loop_cost;
 	dd *= cycles_per_nanosecond;
@@ -150,7 +152,7 @@ rdtsc(void)
 {
 	uint32_t lo, hi;
 
-	asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
+	__asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
 
 	return (uint64_t)hi << 32 | lo;
 }
@@ -245,7 +247,7 @@ main(void)
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		asm volatile("");
+		__asm__ __volatile__ ("");
 	}
 	print_result(s, "Empty loop:");
 
@@ -374,46 +376,46 @@ main(void)
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		asm("nop");
+		__asm__ __volatile__ ("nop");
 	}
 	print_result(s, "raw 'nop':");
 
 #if defined(__i386__) || defined(__x86_64__)
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		asm("pause");
+		__asm__ __volatile__ ("pause");
 	}
 	print_result(s, "raw 'pause':");
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		asm("mfence");
+		__asm__ __volatile__ ("mfence");
 	}
 	print_result(s, "Atomic mfence:");
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		asm("lfence");
+		__asm__ __volatile__ ("lfence");
 	}
 	print_result(s, "Atomic lfence:");
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		asm("sfence");
+		__asm__ __volatile__ ("sfence");
 	}
 	print_result(s, "Atomic sfence:");
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
 		uint64_t sidt_rval;
-		asm("sidt %0" : "=m" (sidt_rval));
+		__asm__ __volatile__ ("sidt %0" : "=m" (sidt_rval));
 	}
 	print_result(s, "'sidt' instruction:");
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
 		long prev;
-		asm volatile("cmpxchg %1,%2"
+		__asm__ __volatile__ ("cmpxchg %1,%2"
 				: "=a" (prev) : "r" (0l), "m" (global), "0" (1l));
 	}
 	print_result(s, "'cmpxchg' without the 'lock' prefix:");
@@ -421,7 +423,7 @@ main(void)
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
 		global = 0;
-		asm volatile("mfence" ::: "memory");
+		__asm__ __volatile__ ("mfence" ::: "memory");
 	}
 	print_result(s, "Store + mfence:");
 
@@ -429,14 +431,14 @@ main(void)
 	for (i = cnt; i; i--) {
 		unsigned long _clbr;
 #ifdef __LP64__
-		asm volatile("cpuid" : "=a" (_clbr)
+		__asm__ __volatile__ ("cpuid" : "=a" (_clbr)
 				: "0" (0) : "rbx", "rcx", "rdx", "cc", "memory");
 #else
 #ifdef __llvm__
-		asm volatile("cpuid" : "=a" (_clbr) : "0" (0)
+		__asm__ __volatile__ ("cpuid" : "=a" (_clbr) : "0" (0)
 				: "ebx", "ecx", "edx", "cc", "memory" );
 #else // gcc does not allow inline i386 asm to clobber ebx
-		asm volatile("pushl %%ebx\n\tcpuid\n\tpopl %%ebx"
+		__asm__ __volatile__ ("pushl %%ebx\n\tcpuid\n\tpopl %%ebx"
 				: "=a" (_clbr) : "0" (0) : "ecx", "edx", "cc", "memory" );
 #endif
 #endif
@@ -454,7 +456,7 @@ main(void)
 #ifdef _ARM_ARCH_7
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		asm("yield");
+		__asm__ __volatile__ ("yield");
 	}
 	print_result(s, "raw 'yield':");
 #endif
@@ -462,9 +464,9 @@ main(void)
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
 #ifdef _ARM_ARCH_7
-		asm volatile("dmb ish" : : : "memory");
+		__asm__ __volatile__ ("dmb ish" : : : "memory");
 #else
-		asm volatile("mcr	p15, 0, %0, c7, c10, 5" : : "r" (0) : "memory");
+		__asm__ __volatile__ ("mcr	p15, 0, %0, c7, c10, 5" : : "r" (0) : "memory");
 #endif
 	}
 	print_result(s, "'dmb ish' instruction:");
@@ -472,7 +474,7 @@ main(void)
 #ifdef _ARM_ARCH_7
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		asm volatile("dmb ishst" : : : "memory");
+		__asm__ __volatile__ ("dmb ishst" : : : "memory");
 	}
 	print_result(s, "'dmb ishst' instruction:");
 #endif
@@ -480,9 +482,9 @@ main(void)
 #ifdef _ARM_ARCH_7
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		asm volatile("str	%[_r], [%[_p], %[_o]]" :
+		__asm__ __volatile__ ("str	%[_r], [%[_p], %[_o]]" :
 				: [_p] "p" (&global), [_o] "M" (0), [_r] "r" (0) : "memory");
-		asm volatile("dmb ishst" : : : "memory");
+		__asm__ __volatile__ ("dmb ishst" : : : "memory");
 	}
 	print_result(s, "'str + dmb ishst' instructions:");
 #endif
@@ -493,10 +495,10 @@ main(void)
 		uintptr_t prev;
 		uint32_t t;
 		do {
-		asm volatile("ldrex	%[_r], [%[_p], %[_o]]"
+		__asm__ __volatile__ ("ldrex	%[_r], [%[_p], %[_o]]"
 				: [_r] "=&r" (prev) \
 				: [_p] "p" (&global), [_o] "M" (0) : "memory");
-		asm volatile("strex	%[_t], %[_r], [%[_p], %[_o]]"
+		__asm__ __volatile__ ("strex	%[_t], %[_r], [%[_p], %[_o]]"
 				: [_t] "=&r" (t) \
 				: [_p] "p" (&global), [_o] "M" (0), [_r] "r" (0) : "memory");
 		} while (t);
@@ -507,9 +509,9 @@ main(void)
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
 #ifdef _ARM_ARCH_7
-		asm volatile("dsb ish" : : : "memory");
+		__asm__ __volatile__ ("dsb ish" : : : "memory");
 #else
-		asm volatile("mcr	p15, 0, %0, c7, c10, 4" : : "r" (0) : "memory");
+		__asm__ __volatile__ ("mcr	p15, 0, %0, c7, c10, 4" : : "r" (0) : "memory");
 #endif
 	}
 	print_result(s, "'dsb ish' instruction:");
@@ -517,16 +519,16 @@ main(void)
 #if BENCH_SLOW
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		register long _swtch_pri asm("ip") = -59;
-		asm volatile("svc	0x80" : : "r" (_swtch_pri) : "r0", "memory");
+		register long _swtch_pri __asm__("ip") = -59;
+		__asm__ __volatile__ ("svc	0x80" : : "r" (_swtch_pri) : "r0", "memory");
 	}
 	print_result(s, "swtch_pri syscall:");
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		register long _r0 asm("r0") = 0, _r1 asm("r1") = 1, _r2 asm("r2") = 1;
-		register long _thread_switch asm("ip") = -61;
-		asm volatile("svc	0x80" : "+r" (_r0)
+		register long _r0 __asm__("r0") = 0, _r1 __asm__("r1") = 1, _r2 __asm__("r2") = 1;
+		register long _thread_switch __asm__("ip") = -61;
+		__asm__ __volatile__ ("svc	0x80" : "+r" (_r0)
 				: "r" (_r1), "r" (_r2), "r" (_thread_switch): "memory");
 	}
 	print_result(s, "thread_switch syscall:");
@@ -636,9 +638,9 @@ main(void)
 		while (!__sync_bool_compare_and_swap(&global, 0, 1)) {
 			do {
 #if defined(__i386__) || defined(__x86_64__)
-				asm("pause");
+				__asm__ __volatile__ ("pause");
 #elif defined(__arm__) && defined _ARM_ARCH_7
-				asm("yield");
+				__asm__ __volatile__ ("yield");
 #endif
 			} while (global);
 		}

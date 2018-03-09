@@ -38,7 +38,7 @@ __BEGIN_DECLS
  * Note: static and global variables default to zero.
  */
 DISPATCH_SWIFT3_UNAVAILABLE("Use lazily initialized globals instead")
-typedef long dispatch_once_t;
+typedef intptr_t dispatch_once_t;
 
 #if defined(__x86_64__) || defined(__i386__) || defined(__s390x__)
 #define DISPATCH_ONCE_INLINE_FASTPATH 1

@@ -13,6 +13,7 @@
 // dispatch/queue.h
 
 import CDispatch
+import _SwiftDispatchOverlayShims
 
 public final class DispatchSpecificKey<T> {
 	public init() {}
@@ -334,9 +335,6 @@ public extension DispatchQueue {
 	}
 
 	#if os(Android)
-	@_silgen_name("_dispatch_install_thread_detach_callback")
-	private static func _dispatch_install_thread_detach_callback(_ cb: @escaping @convention(c) () -> Void)
-
 	public static func setThreadDetachCallback(_ cb: @escaping @convention(c) () -> Void) {
 		_dispatch_install_thread_detach_callback(cb)
 	}
@@ -348,12 +346,3 @@ private func _destructDispatchSpecificValue(ptr: UnsafeMutableRawPointer?) {
 		Unmanaged<AnyObject>.fromOpaque(p).release()
 	}
 }
-
-@_silgen_name("_swift_dispatch_queue_concurrent")
-internal func _swift_dispatch_queue_concurrent() -> dispatch_queue_attr_t
-
-@_silgen_name("_swift_dispatch_get_main_queue")
-internal func _swift_dispatch_get_main_queue() -> dispatch_queue_t
-
-@_silgen_name("_swift_dispatch_apply_current")
-internal func _swift_dispatch_apply_current(_ iterations: Int, _ block: @convention(block) (Int) -> Void)
