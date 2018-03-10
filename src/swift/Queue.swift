@@ -329,8 +329,8 @@ public extension DispatchQueue {
 
 	public func setSpecific<T>(key: DispatchSpecificKey<T>, value: T?) {
 		let k = Unmanaged.passUnretained(key).toOpaque()
-		let v = value.flatMap { _DispatchSpecificValue(value: $0) }
-		let p = v.flatMap { Unmanaged.passRetained($0).toOpaque() }
+		let v = value.map { _DispatchSpecificValue(value: $0) }
+		let p = v.map { Unmanaged.passRetained($0).toOpaque() }
 		dispatch_queue_set_specific(self.__wrapped, k, p, _destructDispatchSpecificValue)
 	}
 
