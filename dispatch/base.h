@@ -208,7 +208,7 @@
 #endif
 #endif
 
-#if __has_feature(objc_fixed_enum) || __has_extension(cxx_strong_enums)
+#if __has_feature(objc_fixed_enum) || __has_extension(cxx_strong_enums) || defined(_WIN32)
 #define DISPATCH_ENUM(name, type, ...) \
 		typedef enum : type { __VA_ARGS__ } name##_t
 #else
