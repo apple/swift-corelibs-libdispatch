@@ -135,7 +135,7 @@ public enum DispatchTimeoutResult {
 
 public extension DispatchGroup {
 	public func notify(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], queue: DispatchQueue, execute work: @escaping @convention(block) () -> ()) {
-		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
+		if #available(macOS 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: work)
 			dispatch_group_notify(self.__wrapped, queue.__wrapped, item._block)
 		} else {
