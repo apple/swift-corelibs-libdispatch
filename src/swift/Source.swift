@@ -24,7 +24,7 @@ public extension DispatchSourceProtocol {
 		}
 	}
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	public func setEventHandler(handler: DispatchWorkItem) {
 		CDispatch.dispatch_source_set_event_handler((self as! DispatchSource).__wrapped, handler._block)
 	}
@@ -38,7 +38,7 @@ public extension DispatchSourceProtocol {
 		}
 	}
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	public func setCancelHandler(handler: DispatchWorkItem) {
 		CDispatch.dispatch_source_set_cancel_handler((self as! DispatchSource).__wrapped, handler._block)
 	}
@@ -52,12 +52,12 @@ public extension DispatchSourceProtocol {
 		}
 	}
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	public func setRegistrationHandler(handler: DispatchWorkItem) {
 		CDispatch.dispatch_source_set_registration_handler((self as! DispatchSource).__wrapped, handler._block)
 	}
 
-	@available(OSX 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
+	@available(macOS 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
 	public func activate() {
 		(self as! DispatchSource).activate()
 	}
