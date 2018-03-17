@@ -31,7 +31,7 @@ public extension DispatchQueue {
 
 		public static let concurrent = Attributes(rawValue: 1<<1)
 
-		@available(OSX 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
+		@available(macOS 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
 		public static let initiallyInactive = Attributes(rawValue: 1<<2)
 
 		fileprivate func _attr() -> dispatch_queue_attr_t? {
@@ -40,7 +40,7 @@ public extension DispatchQueue {
 			if self.contains(.concurrent) {
 				attr = _swift_dispatch_queue_concurrent()
 			}
-			if #available(OSX 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *) {
+			if #available(macOS 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *) {
 				if self.contains(.initiallyInactive) {
 					attr = CDispatch.dispatch_queue_attr_make_initially_inactive(attr)
 				}
@@ -50,19 +50,19 @@ public extension DispatchQueue {
 	}
 
 	public enum GlobalQueuePriority {
-		@available(OSX, deprecated: 10.10, message: "Use qos attributes instead")
+		@available(macOS, deprecated: 10.10, message: "Use qos attributes instead")
 		@available(*, deprecated: 8.0, message: "Use qos attributes instead")
 		case high
 
-		@available(OSX, deprecated: 10.10, message: "Use qos attributes instead")
+		@available(macOS, deprecated: 10.10, message: "Use qos attributes instead")
 		@available(*, deprecated: 8.0, message: "Use qos attributes instead")
 		case `default`
 
-		@available(OSX, deprecated: 10.10, message: "Use qos attributes instead")
+		@available(macOS, deprecated: 10.10, message: "Use qos attributes instead")
 		@available(*, deprecated: 8.0, message: "Use qos attributes instead")
 		case low
 
-		@available(OSX, deprecated: 10.10, message: "Use qos attributes instead")
+		@available(macOS, deprecated: 10.10, message: "Use qos attributes instead")
 		@available(*, deprecated: 8.0, message: "Use qos attributes instead")
 		case background
 
@@ -79,14 +79,14 @@ public extension DispatchQueue {
 	public enum AutoreleaseFrequency {
 		case inherit
 
-		@available(OSX 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
+		@available(macOS 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
 		case workItem
 
-		@available(OSX 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
+		@available(macOS 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
 		case never
 
 		internal func _attr(attr: dispatch_queue_attr_t?) -> dispatch_queue_attr_t? {
-			if #available(OSX 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *) {
+			if #available(macOS 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *) {
 				switch self {
 				case .inherit:
 					// DISPATCH_AUTORELEASE_FREQUENCY_INHERIT
@@ -112,13 +112,13 @@ public extension DispatchQueue {
 		return DispatchQueue(queue: _swift_dispatch_get_main_queue())
 	}
 
-	@available(OSX, deprecated: 10.10, message: "")
+	@available(macOS, deprecated: 10.10, message: "")
 	@available(*, deprecated: 8.0, message: "")
 	public class func global(priority: GlobalQueuePriority) -> DispatchQueue {
 		return DispatchQueue(queue: CDispatch.dispatch_get_global_queue(priority._translatedValue, 0))
 	}
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	public class func global(qos: DispatchQoS.QoSClass = .default) -> DispatchQueue {
 		return DispatchQueue(queue: CDispatch.dispatch_get_global_queue(Int(qos.rawValue.rawValue), 0))
 	}
@@ -145,11 +145,11 @@ public extension DispatchQueue {
 		if autoreleaseFrequency != .inherit {
 			attr = autoreleaseFrequency._attr(attr: attr)
 		}
-		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified {
+		if #available(macOS 10.10, iOS 8.0, *), qos != .unspecified {
 			attr = CDispatch.dispatch_queue_attr_make_with_qos_class(attr, qos.qosClass.rawValue.rawValue, Int32(qos.relativePriority))
 		}
 
-		if #available(OSX 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *) {
+		if #available(macOS 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *) {
 			self.init(__label: label, attr: attr, queue: target)
 		} else {
 			self.init(__label: label, attr: attr)
@@ -161,17 +161,17 @@ public extension DispatchQueue {
 		return String(validatingUTF8: dispatch_queue_get_label(self.__wrapped))!
 	}
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	public func sync(execute workItem: DispatchWorkItem) {
 		CDispatch.dispatch_sync(self.__wrapped, workItem._block)
 	}
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	public func async(execute workItem: DispatchWorkItem) {
 		CDispatch.dispatch_async(self.__wrapped, workItem._block)
 	}
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	public func async(group: DispatchGroup, execute workItem: DispatchWorkItem) {
 		CDispatch.dispatch_group_async(group.__wrapped, self.__wrapped, workItem._block)
 	}
@@ -194,7 +194,7 @@ public extension DispatchQueue {
 		}
 
 		var block: @convention(block) () -> Void = work
-		if #available(OSX 10.10, iOS 8.0, *), (qos != .unspecified || !flags.isEmpty) {
+		if #available(macOS 10.10, iOS 8.0, *), (qos != .unspecified || !flags.isEmpty) {
 			let workItem = DispatchWorkItem(qos: qos, flags: flags, block: work)
 			block = workItem._block
 		}
@@ -233,7 +233,7 @@ public extension DispatchQueue {
 		}
 	}
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	private func _syncHelper<T>(
 		fn: (DispatchWorkItem) -> (),
 		flags: DispatchWorkItemFlags,
@@ -264,7 +264,7 @@ public extension DispatchQueue {
 	public func sync<T>(flags: DispatchWorkItemFlags, execute work: () throws -> T) rethrows -> T {
 		if flags == .barrier {
 			return try self._syncHelper(fn: _syncBarrier, execute: work, rescue: { throw $0 })
-		} else if #available(OSX 10.10, iOS 8.0, *), !flags.isEmpty {
+		} else if #available(macOS 10.10, iOS 8.0, *), !flags.isEmpty {
 			return try self._syncHelper(fn: sync, flags: flags, execute: work, rescue: { throw $0 })
 		} else {
 			return try self._syncHelper(fn: sync, execute: work, rescue: { throw $0 })
@@ -277,7 +277,7 @@ public extension DispatchQueue {
 		flags: DispatchWorkItemFlags = [],
 		execute work: @escaping @convention(block) () -> Void)
 	{
-		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
+		if #available(macOS 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: work)
 			CDispatch.dispatch_after(deadline.rawValue, self.__wrapped, item._block)
 		} else {
@@ -291,7 +291,7 @@ public extension DispatchQueue {
 		flags: DispatchWorkItemFlags = [],
 		execute work: @escaping @convention(block) () -> Void)
 	{
-		if #available(OSX 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
+		if #available(macOS 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: work)
 			CDispatch.dispatch_after(wallDeadline.rawValue, self.__wrapped, item._block)
 		} else {
@@ -299,17 +299,17 @@ public extension DispatchQueue {
 		}
 	}
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	public func asyncAfter(deadline: DispatchTime, execute: DispatchWorkItem) {
 		CDispatch.dispatch_after(deadline.rawValue, self.__wrapped, execute._block)
 	}
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	public func asyncAfter(wallDeadline: DispatchWallTime, execute: DispatchWorkItem) {
 		CDispatch.dispatch_after(wallDeadline.rawValue, self.__wrapped, execute._block)
 	}
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	public var qos: DispatchQoS {
 		var relPri: Int32 = 0
 		let cls = DispatchQoS.QoSClass(rawValue: _OSQoSClass(qosClass: dispatch_queue_get_qos_class(self.__wrapped, &relPri))!)!
