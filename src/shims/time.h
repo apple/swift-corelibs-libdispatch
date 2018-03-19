@@ -31,7 +31,7 @@
 #error "Please #include <dispatch/dispatch.h> instead of this file directly."
 #endif
 
-#if TARGET_OS_WIN32
+#if defined(_WIN32)
 static inline unsigned int
 sleep(unsigned int seconds)
 {
@@ -106,7 +106,7 @@ _dispatch_get_nanoseconds(void)
 	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_REALTIME, &ts));
 	return _dispatch_timespec_to_nano(ts);
-#elif TARGET_OS_WIN32
+#elif defined(_WIN32)
 	// FILETIME is 100-nanosecond intervals since January 1, 1601 (UTC).
 	FILETIME ft;
 	ULARGE_INTEGER li;
@@ -147,9 +147,12 @@ _dispatch_absolute_time(void)
 	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_MONOTONIC, &ts));
 	return _dispatch_timespec_to_nano(ts);
-#elif TARGET_OS_WIN32
-	LARGE_INTEGER now;
-	return QueryPerformanceCounter(&now) ? now.QuadPart : 0;
+#elif defined(_WIN32)
+	ULONGLONG ullTime;
+	if (!QueryUnbiasedInterruptTime(&ullTime))
+		return 0;
+
+	return ullTime * 100ull;
 #else
 #error platform needs to implement _dispatch_absolute_time()
 #endif

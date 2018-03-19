@@ -51,6 +51,21 @@ _dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
 #endif // HAVE_UL_UNFAIR_LOCK
 #endif
 
+#if defined(_WIN32)
+#if !HAVE_UL_UNFAIR_LOCK
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
+		uint32_t timeout)
+{
+	(void)value;
+	(void)flags;
+	(void)timeout;
+	SwitchToThread();
+}
+#endif
+#endif
+
 #pragma mark - semaphores
 
 #if USE_MACH_SEM
@@ -230,9 +245,7 @@ _push_timer_resolution(DWORD ms)
 	// aim for the best resolution we can accomplish
 	dispatch_once(&once, ^{
 		TIMECAPS tc;
-		MMRESULT res;
-		res = timeGetDevCaps(&tc, sizeof(tc));
-		if (res == MMSYSERR_NOERROR) {
+		if (timeGetDevCaps(&tc, sizeof(tc)) == MMSYSERR_NOERROR) {
 			best_resolution = min(max(tc.wPeriodMin, best_resolution),
 					tc.wPeriodMax);
 		}
@@ -302,7 +315,7 @@ _dispatch_sema4_timedwait(_dispatch_sema4_t *sema, dispatch_time_t timeout)
 	nsec = _dispatch_timeout(timeout);
 	msec = (DWORD)(nsec / (uint64_t)1000000);
 	resolution = _push_timer_resolution(msec);
-	wait_result = WaitForSingleObject(dsema->dsema_handle, msec);
+	wait_result = WaitForSingleObject(sema, msec);
 	_pop_timer_resolution(resolution);
 	return wait_result == WAIT_TIMEOUT;
 }
@@ -440,6 +453,8 @@ _dispatch_wait_on_address(uint32_t volatile *address, uint32_t value,
 	_dispatch_ulock_wait((uint32_t *)address, value, 0, flags);
 #elif HAVE_FUTEX
 	_dispatch_futex_wait((uint32_t *)address, value, NULL, FUTEX_PRIVATE_FLAG);
+#elif defined(_WIN32)
+	WaitOnAddress(address, (PVOID)(uintptr_t)value, sizeof(value), INFINITE);
 #else
 	mach_msg_timeout_t timeout = 1;
 	while (os_atomic_load(address, relaxed) == value) {
@@ -456,6 +471,8 @@ _dispatch_wake_by_address(uint32_t volatile *address)
 	_dispatch_ulock_wake((uint32_t *)address, ULF_WAKE_ALL);
 #elif HAVE_FUTEX
 	_dispatch_futex_wake((uint32_t *)address, INT_MAX, FUTEX_PRIVATE_FLAG);
+#elif defined(_WIN32)
+	WakeByAddressAll((uint32_t *)address);
 #else
 	(void)address;
 #endif
@@ -545,11 +562,11 @@ void
 _dispatch_unfair_lock_lock_slow(dispatch_unfair_lock_t dul,
 		dispatch_lock_options_t flags)
 {
-	dispatch_lock cur, value_self = _dispatch_lock_value_for_self();
+	dispatch_lock cur, self = _dispatch_lock_value_for_self();
 	uint32_t timeout = 1;
 
 	while (unlikely(!os_atomic_cmpxchgv(&dul->dul_lock,
-			DLOCK_OWNER_NULL, value_self, &cur, acquire))) {
+			DLOCK_OWNER_NULL, self, &cur, acquire))) {
 		if (unlikely(_dispatch_lock_is_locked_by(cur, self))) {
 			DISPATCH_CLIENT_CRASH(0, "trying to lock recursively");
 		}

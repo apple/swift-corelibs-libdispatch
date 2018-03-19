@@ -128,15 +128,20 @@
 #endif
 #endif
 
-#if TARGET_OS_WIN32 && defined(__DISPATCH_BUILDING_DISPATCH__) && \
-		defined(__cplusplus)
-#define DISPATCH_EXPORT extern "C" extern __declspec(dllexport)
-#elif TARGET_OS_WIN32 && defined(__DISPATCH_BUILDING_DISPATCH__)
+#if defined(_WIN32)
+#if defined(__DISPATCH_BUILDING_DISPATCH__)
+#if defined(__cplusplus)
+#define DISPATCH_EXPORT extern "C" __declspec(dllexport)
+#else
 #define DISPATCH_EXPORT extern __declspec(dllexport)
-#elif TARGET_OS_WIN32 && defined(__cplusplus)
-#define DISPATCH_EXPORT extern "C" extern __declspec(dllimport)
-#elif TARGET_OS_WIN32
+#endif
+#else
+#if defined(__cplusplus)
+#define DISPATCH_EXPORT extern "C" __declspec(dllimport)
+#else
 #define DISPATCH_EXPORT extern __declspec(dllimport)
+#endif
+#endif
 #elif __GNUC__
 #define DISPATCH_EXPORT extern __attribute__((visibility("default")))
 #else
@@ -203,7 +208,7 @@
 #endif
 #endif
 
-#if __has_feature(objc_fixed_enum) || __has_extension(cxx_strong_enums)
+#if __has_feature(objc_fixed_enum) || __has_extension(cxx_strong_enums) || defined(_WIN32)
 #define DISPATCH_ENUM(name, type, ...) \
 		typedef enum : type { __VA_ARGS__ } name##_t
 #else

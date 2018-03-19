@@ -137,7 +137,7 @@ _dispatch_introspection_thread_add(void)
 	_dispatch_unfair_lock_unlock(&_dispatch_introspection.threads_lock);
 }
 
-static void
+static DISPATCH_TSD_DTOR_CC void
 _dispatch_introspection_thread_remove(void *ctxt)
 {
 	dispatch_introspection_thread_t dit = ctxt;

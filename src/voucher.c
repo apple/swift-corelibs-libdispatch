@@ -157,7 +157,7 @@ voucher_release(voucher_t voucher)
 	return _voucher_release(voucher);
 }
 
-void
+void DISPATCH_TSD_DTOR_CC
 _voucher_thread_cleanup(void *voucher)
 {
 	// when a thread exits and has a voucher left, the kernel
@@ -1515,7 +1515,7 @@ voucher_decrement_importance_count4CF(voucher_t v)
 	(void)v;
 }
 
-void
+void DISPATCH_TSD_DTOR_CC
 _voucher_thread_cleanup(void *voucher)
 {
 	(void)voucher;

@@ -62,14 +62,9 @@ DISPATCH_EXPORT struct dispatch_data_s _dispatch_data_empty;
 #define DISPATCH_DATA_DESTRUCTOR_DEFAULT NULL
 
 #ifdef __BLOCKS__
-#if !TARGET_OS_WIN32
 /*! @parseOnly */
 #define DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(name) \
 	DISPATCH_EXPORT const dispatch_block_t _dispatch_data_destructor_##name
-#else
-#define DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(name) \
-	DISPATCH_EXPORT dispatch_block_t _dispatch_data_destructor_##name
-#endif
 #else
 #define DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(name) \
 	DISPATCH_EXPORT const dispatch_function_t \

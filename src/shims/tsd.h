@@ -69,6 +69,7 @@ typedef struct { void *a; void *b; } dispatch_tsd_pair_t;
 #define __TSD_MACH_SPECIAL_REPLY 8
 #endif
 
+
 static const unsigned long dispatch_priority_key	= __TSD_THREAD_QOS_CLASS;
 static const unsigned long dispatch_r2k_key			= __TSD_RETURN_TO_KERNEL;
 
@@ -99,15 +100,44 @@ _dispatch_thread_key_create(const unsigned long *k, void (*d)(void *))
 }
 #elif DISPATCH_USE_THREAD_LOCAL_STORAGE
 
+#if defined(_WIN32)
+#define DISPATCH_TSD_DTOR_CC __stdcall
+#else
+#define DISPATCH_TSD_DTOR_CC
+#endif
+
+#if defined(_WIN32)
+
 DISPATCH_TSD_INLINE
 static inline void
-_dispatch_thread_key_create(pthread_key_t *k, void (*d)(void *))
+_dispatch_thread_key_create(DWORD *k, void (DISPATCH_TSD_DTOR_CC *d)(void *))
+{
+	dispatch_assert_zero((*k = FlsAlloc(d)));
+}
+
+extern __declspec(thread) struct dispatch_tsd __dispatch_tsd;
+extern DWORD __dispatch_tsd_key;
+
+#else
+
+DISPATCH_TSD_INLINE
+static inline void
+_dispatch_thread_key_create(pthread_key_t *k, void (DISPATCH_TSD_DTOR_CC *d)(void *))
 {
 	dispatch_assert_zero(pthread_key_create(k, d));
 }
 
+extern __thread struct dispatch_tsd __dispatch_tsd;
+extern pthread_key_t __dispatch_tsd_key;
+
+#endif
+
 struct dispatch_tsd {
+#if defined(_WIN32)
+	DWORD tid;
+#else
 	pid_t tid;
+#endif
 	void *dispatch_queue_key;
 	void *dispatch_frame_key;
 	void *dispatch_cache_key;
@@ -126,8 +156,6 @@ struct dispatch_tsd {
 	void *dispatch_deferred_items_key;
 };
 
-extern __thread struct dispatch_tsd __dispatch_tsd;
-extern pthread_key_t __dispatch_tsd_key;
 extern void libdispatch_tsd_init(void);
 extern void _libdispatch_tsd_cleanup(void *ctx);
 
@@ -285,7 +313,7 @@ _dispatch_thread_setspecific_packed_pair(pthread_key_t k1, pthread_key_t k2,
 }
 #endif
 
-#if TARGET_OS_WIN32
+#if defined(_WIN32)
 #define _dispatch_thread_self() ((uintptr_t)GetCurrentThreadId())
 #else
 #if DISPATCH_USE_DIRECT_TSD
@@ -296,7 +324,7 @@ _dispatch_thread_setspecific_packed_pair(pthread_key_t k1, pthread_key_t k2,
 #endif
 #endif
 
-#if TARGET_OS_WIN32
+#if defined(_WIN32)
 #define _dispatch_thread_port() ((mach_port_t)0)
 #elif !DISPATCH_USE_THREAD_LOCAL_STORAGE
 #if DISPATCH_USE_DIRECT_TSD

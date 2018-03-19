@@ -340,7 +340,7 @@ DISPATCH_ENUM(dispatch_invoke_flags, uint32_t,
 #define _DISPATCH_INVOKE_AUTORELEASE_MASK	  0x00300000u
 );
 
-enum {
+DISPATCH_ENUM(dispatch_object_flags, unsigned long,
 	_DISPATCH_META_TYPE_MASK		= 0xffff0000, // mask for object meta-types
 	_DISPATCH_TYPEFLAGS_MASK		= 0x0000ff00, // mask for object typeflags
 	_DISPATCH_SUB_TYPE_MASK			= 0x000000ff, // mask for object sub-types
@@ -386,8 +386,7 @@ enum {
 
 	DISPATCH_SOURCE_KEVENT_TYPE			= 1 | _DISPATCH_SOURCE_TYPE,
 	DISPATCH_MACH_CHANNEL_TYPE			= 2 | _DISPATCH_SOURCE_TYPE,
-
-};
+);
 
 typedef struct _os_object_vtable_s {
 	_OS_OBJECT_CLASS_HEADER();

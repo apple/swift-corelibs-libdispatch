@@ -182,15 +182,9 @@ dispatch_data_make_memory_entry(dispatch_data_t data);
  */
 typedef const struct dispatch_data_format_type_s *dispatch_data_format_type_t;
 
-#if !TARGET_OS_WIN32
 #define DISPATCH_DATA_FORMAT_TYPE_DECL(name) \
 	DISPATCH_EXPORT const struct dispatch_data_format_type_s \
 	_dispatch_data_format_type_##name
-#else
-#define DISPATCH_DATA_FORMAT_TYPE_DECL(name) \
-	DISPATCH_EXPORT struct dispatch_data_format_type_s \
-	_dispatch_data_format_type_##name
-#endif
 
 /*!
  * @const DISPATCH_DATA_FORMAT_TYPE_NONE

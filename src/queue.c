@@ -58,13 +58,13 @@
 #endif
 
 static void _dispatch_sig_thread(void *ctxt);
-static void _dispatch_cache_cleanup(void *value);
+static void DISPATCH_TSD_DTOR_CC _dispatch_cache_cleanup(void *value);
 static void _dispatch_async_f2(dispatch_queue_t dq, dispatch_continuation_t dc);
-static void _dispatch_queue_cleanup(void *ctxt);
-static void _dispatch_wlh_cleanup(void *ctxt);
-static void _dispatch_deferred_items_cleanup(void *ctxt);
-static void _dispatch_frame_cleanup(void *ctxt);
-static void _dispatch_context_cleanup(void *ctxt);
+static void DISPATCH_TSD_DTOR_CC _dispatch_queue_cleanup(void *ctxt);
+static void DISPATCH_TSD_DTOR_CC _dispatch_wlh_cleanup(void *ctxt);
+static void DISPATCH_TSD_DTOR_CC _dispatch_deferred_items_cleanup(void *ctxt);
+static void DISPATCH_TSD_DTOR_CC _dispatch_frame_cleanup(void *ctxt);
+static void DISPATCH_TSD_DTOR_CC _dispatch_context_cleanup(void *ctxt);
 static void _dispatch_queue_barrier_complete(dispatch_queue_t dq,
 		dispatch_qos_t qos, dispatch_wakeup_flags_t flags);
 static void _dispatch_queue_non_barrier_complete(dispatch_queue_t dq);
@@ -87,6 +87,10 @@ static void _dispatch_worker_thread2(int priority, int options, void *context);
 #endif
 #if DISPATCH_USE_PTHREAD_POOL
 static void *_dispatch_worker_thread(void *context);
+#if defined(_WIN32)
+static unsigned WINAPI
+_dispatch_worker_thread_thunk(LPVOID lpParameter);
+#endif
 #endif
 
 #if DISPATCH_COCOA_COMPAT
@@ -101,7 +105,9 @@ static void _dispatch_runloop_queue_handle_dispose(dispatch_queue_t dq);
 #pragma mark dispatch_root_queue
 
 struct dispatch_pthread_root_queue_context_s {
+#if !defined(_WIN32)
 	pthread_attr_t dpq_thread_attr;
+#endif
 	dispatch_block_t dpq_thread_configure;
 	struct dispatch_semaphore_s dpq_thread_mediator;
 	dispatch_pthread_root_queue_observer_hooks_s dpq_observer_hooks;
@@ -763,9 +769,11 @@ _dispatch_root_queue_init_pthread_pool(dispatch_root_queue_context_t qc,
 	qc->dgq_thread_pool_size = thread_pool_size;
 #if DISPATCH_USE_WORKQUEUES
 	if (qc->dgq_qos) {
+#if !defined(_WIN32)
 		(void)dispatch_assume_zero(pthread_attr_init(&pqc->dpq_thread_attr));
 		(void)dispatch_assume_zero(pthread_attr_setdetachstate(
 				&pqc->dpq_thread_attr, PTHREAD_CREATE_DETACHED));
+#endif
 #if HAVE_PTHREAD_WORKQUEUE_QOS
 		(void)dispatch_assume_zero(pthread_attr_set_qos_class_np(
 				&pqc->dpq_thread_attr, qc->dgq_qos, 0));
@@ -906,7 +914,9 @@ libdispatch_init(void)
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
 #endif
+#if !defined(_WIN32)
 #include <sys/syscall.h>
+#endif
 
 #ifndef __ANDROID__
 #ifdef SYS_gettid
@@ -922,6 +932,13 @@ static inline pid_t
 gettid(void)
 {
 	return (pid_t)pthread_getthreadid_np();
+}
+#elif defined(_WIN32)
+DISPATCH_ALWAYS_INLINE
+static inline DWORD
+gettid(void)
+{
+	return GetCurrentThreadId();
 }
 #else
 #error "SYS_gettid unavailable on this system"
@@ -944,7 +961,7 @@ _dispatch_install_thread_detach_callback(dispatch_function_t cb)
 }
 #endif
 
-void
+void DISPATCH_TSD_DTOR_CC
 _libdispatch_tsd_cleanup(void *ctx)
 {
 	struct dispatch_tsd *tsd = (struct dispatch_tsd*) ctx;
@@ -980,7 +997,11 @@ DISPATCH_NOINLINE
 void
 libdispatch_tsd_init(void)
 {
+#if defined(_WIN32)
+	FlsSetValue(__dispatch_tsd_key, &__dispatch_tsd);
+#else
 	pthread_setspecific(__dispatch_tsd_key, &__dispatch_tsd);
+#endif /* defined(_WIN32) */
 	__dispatch_tsd.tid = gettid();
 }
 #endif
@@ -1164,8 +1185,6 @@ dispatch_queue_attr_make_with_autorelease_frequency(dispatch_queue_attr_t dqa,
 	case DISPATCH_AUTORELEASE_FREQUENCY_WORK_ITEM:
 	case DISPATCH_AUTORELEASE_FREQUENCY_NEVER:
 		break;
-	default:
-		return DISPATCH_BAD_INPUT;
 	}
 	if (!slowpath(dqa)) {
 		dqa = _dispatch_get_default_queue_attr();
@@ -2035,7 +2054,11 @@ static struct {
 	volatile qos_class_t qos;
 	int default_prio;
 	int policy;
+#if defined(_WIN32)
+	HANDLE hThread;
+#else
 	pthread_t tid;
+#endif
 } _dispatch_mgr_sched;
 
 static dispatch_once_t _dispatch_mgr_sched_pred;
@@ -2053,6 +2076,15 @@ static const int _dispatch_mgr_sched_qos2prio[] = {
 };
 #endif // HAVE_PTHREAD_WORKQUEUE_QOS
 
+#if defined(_WIN32)
+static void
+_dispatch_mgr_sched_init(void *ctx DISPATCH_UNUSED)
+{
+	_dispatch_mgr_sched.policy = 0;
+	_dispatch_mgr_sched.default_prio = THREAD_PRIORITY_NORMAL;
+	_dispatch_mgr_sched.prio = _dispatch_mgr_sched.default_prio;
+}
+#else
 static void
 _dispatch_mgr_sched_init(void *ctxt DISPATCH_UNUSED)
 {
@@ -2080,9 +2112,19 @@ _dispatch_mgr_sched_init(void *ctxt DISPATCH_UNUSED)
 	_dispatch_mgr_sched.default_prio = param.sched_priority;
 	_dispatch_mgr_sched.prio = _dispatch_mgr_sched.default_prio;
 }
+#endif /* defined(_WIN32) */
 #endif // DISPATCH_ENABLE_PTHREAD_ROOT_QUEUES || DISPATCH_USE_KEVENT_WORKQUEUE
 
 #if DISPATCH_USE_MGR_THREAD && DISPATCH_ENABLE_PTHREAD_ROOT_QUEUES
+#if defined(_WIN32)
+DISPATCH_NOINLINE
+static PHANDLE
+_dispatch_mgr_root_queue_init(void)
+{
+	dispatch_once_f(&_dispatch_mgr_sched_pred, NULL, _dispatch_mgr_sched_init);
+	return &_dispatch_mgr_sched.hThread;
+}
+#else
 DISPATCH_NOINLINE
 static pthread_t *
 _dispatch_mgr_root_queue_init(void)
@@ -2111,10 +2153,21 @@ _dispatch_mgr_root_queue_init(void)
 	}
 	return &_dispatch_mgr_sched.tid;
 }
+#endif
 
 static inline void
 _dispatch_mgr_priority_apply(void)
 {
+#if defined(_WIN32)
+	int nPriority = _dispatch_mgr_sched.prio;
+	do {
+		if (nPriority > _dispatch_mgr_sched.default_prio) {
+			// TODO(compnerd) set thread scheduling policy
+			dispatch_assume_zero(SetThreadPriority(_dispatch_mgr_sched.hThread, nPriority));
+			nPriority = GetThreadPriority(_dispatch_mgr_sched.hThread);
+		}
+	} while (_dispatch_mgr_sched.prio > nPriority);
+#else
 	struct sched_param param;
 	do {
 		param.sched_priority = _dispatch_mgr_sched.prio;
@@ -2124,12 +2177,19 @@ _dispatch_mgr_priority_apply(void)
 					&param));
 		}
 	} while (_dispatch_mgr_sched.prio > param.sched_priority);
+#endif
 }
 
 DISPATCH_NOINLINE
 void
 _dispatch_mgr_priority_init(void)
 {
+#if defined(_WIN32)
+	int nPriority = GetThreadPriority(_dispatch_mgr_sched.hThread);
+	if (slowpath(_dispatch_mgr_sched.prio > nPriority)) {
+		return _dispatch_mgr_priority_apply();
+	}
+#else
 	struct sched_param param;
 	pthread_attr_t *attr;
 	attr = &_dispatch_mgr_root_queue_pthread_context.dpq_thread_attr;
@@ -2148,9 +2208,11 @@ _dispatch_mgr_priority_init(void)
 	if (slowpath(_dispatch_mgr_sched.prio > param.sched_priority)) {
 		return _dispatch_mgr_priority_apply();
 	}
+#endif
 }
 #endif // DISPATCH_USE_MGR_THREAD && DISPATCH_ENABLE_PTHREAD_ROOT_QUEUES
 
+#if !defined(_WIN32)
 #if DISPATCH_ENABLE_PTHREAD_ROOT_QUEUES
 DISPATCH_NOINLINE
 static void
@@ -2202,6 +2264,7 @@ _dispatch_mgr_priority_raise(const pthread_attr_t *attr)
 #endif
 }
 #endif // DISPATCH_ENABLE_PTHREAD_ROOT_QUEUES
+#endif
 
 #if DISPATCH_USE_KEVENT_WORKQUEUE
 void
@@ -2274,6 +2337,9 @@ _dispatch_pthread_root_queue_create(const char *label, unsigned long flags,
 #endif
 	_dispatch_root_queue_init_pthread_pool(qc, pool_size, true);
 
+#if defined(_WIN32)
+	dispatch_assert(attr == NULL);
+#else
 	if (attr) {
 		memcpy(&pqc->dpq_thread_attr, attr, sizeof(pthread_attr_t));
 		_dispatch_mgr_priority_raise(&pqc->dpq_thread_attr);
@@ -2282,6 +2348,7 @@ _dispatch_pthread_root_queue_create(const char *label, unsigned long flags,
 	}
 	(void)dispatch_assume_zero(pthread_attr_setdetachstate(
 			&pqc->dpq_thread_attr, PTHREAD_CREATE_DETACHED));
+#endif
 	if (configure) {
 		pqc->dpq_thread_configure = _dispatch_Block_copy(configure);
 	}
@@ -2296,6 +2363,9 @@ dispatch_queue_t
 dispatch_pthread_root_queue_create(const char *label, unsigned long flags,
 		const pthread_attr_t *attr, dispatch_block_t configure)
 {
+#if defined(_WIN32)
+	dispatch_assert(attr == NULL);
+#endif
 	return _dispatch_pthread_root_queue_create(label, flags, attr, configure,
 			NULL);
 }
@@ -2345,7 +2415,9 @@ _dispatch_pthread_root_queue_dispose(dispatch_queue_t dq, bool *allow_free)
 	dispatch_root_queue_context_t qc = dq->do_ctxt;
 	dispatch_pthread_root_queue_context_t pqc = qc->dgq_ctxt;
 
+#if !defined(_WIN32)
 	pthread_attr_destroy(&pqc->dpq_thread_attr);
+#endif
 	_dispatch_semaphore_dispose(&pqc->dpq_thread_mediator, NULL);
 	if (pqc->dpq_thread_configure) {
 		Block_release(pqc->dpq_thread_configure);
@@ -2773,7 +2845,7 @@ _dispatch_force_cache_cleanup(void)
 }
 
 DISPATCH_NOINLINE
-static void
+static void DISPATCH_TSD_DTOR_CC
 _dispatch_cache_cleanup(void *value)
 {
 	dispatch_continuation_t dc, next_dc = value;
@@ -4399,7 +4471,6 @@ _dispatch_runloop_queue_set_handle(dispatch_queue_t dq, dispatch_runloop_handle_
 #error "runloop support not implemented on this platform"
 #endif
 }
-#endif // DISPATCH_COCOA_COMPAT
 
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_qos_t
@@ -4410,6 +4481,7 @@ _dispatch_runloop_queue_reset_max_qos(dispatch_queue_class_t dqu)
 	old_state = os_atomic_and_orig2o(dqu._dq, dq_state, ~clear_bits, relaxed);
 	return _dq_state_max_qos(old_state);
 }
+#endif // DISPATCH_COCOA_COMPAT
 
 void
 _dispatch_runloop_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
@@ -4615,6 +4687,32 @@ _dispatch_global_queue_poke_slow(dispatch_queue_t dq, int n, int floor)
 	} while (!os_atomic_cmpxchgvw2o(qc, dgq_thread_pool_size, t_count,
 			t_count - remaining, &t_count, acquire));
 
+#if defined(_WIN32)
+#if DISPATCH_USE_MGR_THREAD && DISPATCH_ENABLE_PTHREAD_ROOT_QUEUES
+	if (slowpath(dq == &_dispatch_mgr_root_queue)) {
+		_dispatch_mgr_root_queue_init();
+	}
+#endif
+	do {
+		_dispatch_retain(dq); // released in _dispatch_worker_thread
+#if DISPATCH_DEBUG
+		unsigned dwStackSize = 0;
+#else
+		unsigned dwStackSize = 64 * 1024;
+#endif
+		uintptr_t hThread = 0;
+		while (!(hThread = _beginthreadex(NULL, dwStackSize, _dispatch_worker_thread_thunk, dq, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL))) {
+			if (errno != EAGAIN) {
+				(void)dispatch_assume(hThread);
+			}
+			_dispatch_temporary_resource_shortage();
+		}
+		if (_dispatch_mgr_sched.prio > _dispatch_mgr_sched.default_prio) {
+			(void)dispatch_assume_zero(SetThreadPriority((HANDLE)hThread, _dispatch_mgr_sched.prio) == TRUE);
+		}
+		CloseHandle((HANDLE)hThread);
+	} while (--remaining);
+#else
 	pthread_attr_t *attr = &pqc->dpq_thread_attr;
 	pthread_t tid, *pthr = &tid;
 #if DISPATCH_USE_MGR_THREAD && DISPATCH_ENABLE_PTHREAD_ROOT_QUEUES
@@ -4631,6 +4729,7 @@ _dispatch_global_queue_poke_slow(dispatch_queue_t dq, int n, int floor)
 			_dispatch_temporary_resource_shortage();
 		}
 	} while (--remaining);
+#endif
 #endif // DISPATCH_USE_PTHREAD_POOL
 }
 
@@ -5951,6 +6050,15 @@ _dispatch_worker_thread2(int priority, int options,
 #if DISPATCH_USE_PTHREAD_POOL
 // 6618342 Contact the team that owns the Instrument DTrace probe before
 //         renaming this symbol
+#if defined(_WIN32)
+static unsigned WINAPI
+_dispatch_worker_thread_thunk(LPVOID lpParameter)
+{
+  _dispatch_worker_thread(lpParameter);
+  return 0;
+}
+#endif
+
 static void *
 _dispatch_worker_thread(void *context)
 {
@@ -5972,7 +6080,9 @@ _dispatch_worker_thread(void *context)
 	}
 
 	// workaround tweaks the kernel workqueue does for us
+#if !defined(_WIN32)
 	_dispatch_sigmask();
+#endif
 	_dispatch_introspection_thread_add();
 
 #if DISPATCH_USE_INTERNAL_WORKQUEUE
@@ -6248,7 +6358,11 @@ dispatch_main(void)
 		pthread_setspecific(dispatch_main_key, &dispatch_main_key);
 		_dispatch_sigmask();
 #endif
+#if defined(_WIN32)
+		_endthreadex(0);
+#else
 		pthread_exit(NULL);
+#endif
 		DISPATCH_INTERNAL_CRASH(errno, "pthread_exit() returned");
 #if HAVE_PTHREAD_MAIN_NP
 	}
@@ -6256,6 +6370,7 @@ dispatch_main(void)
 #endif
 }
 
+#if !defined(_WIN32)
 DISPATCH_NOINLINE DISPATCH_NORETURN
 static void
 _dispatch_sigsuspend(void)
@@ -6266,6 +6381,7 @@ _dispatch_sigsuspend(void)
 		sigsuspend(&mask);
 	}
 }
+#endif
 
 DISPATCH_NORETURN
 static void
@@ -6273,7 +6389,9 @@ _dispatch_sig_thread(void *ctxt DISPATCH_UNUSED)
 {
 	// never returns, so burn bridges behind us
 	_dispatch_clear_stack(0);
+#if !defined(_WIN32)
 	_dispatch_sigsuspend();
+#endif
 }
 
 DISPATCH_NOINLINE
@@ -6320,7 +6438,7 @@ _dispatch_queue_cleanup2(void)
 #endif
 }
 
-static void
+static void DISPATCH_TSD_DTOR_CC
 _dispatch_queue_cleanup(void *ctxt)
 {
 	if (ctxt == &_dispatch_main_q) {
@@ -6331,7 +6449,7 @@ _dispatch_queue_cleanup(void *ctxt)
 			"Premature thread exit while a dispatch queue is running");
 }
 
-static void
+static void DISPATCH_TSD_DTOR_CC
 _dispatch_wlh_cleanup(void *ctxt)
 {
 	// POSIX defines that destructors are only called if 'ctxt' is non-null
@@ -6341,7 +6459,7 @@ _dispatch_wlh_cleanup(void *ctxt)
 }
 
 DISPATCH_NORETURN
-static void
+static void DISPATCH_TSD_DTOR_CC
 _dispatch_deferred_items_cleanup(void *ctxt)
 {
 	// POSIX defines that destructors are only called if 'ctxt' is non-null
@@ -6350,7 +6468,7 @@ _dispatch_deferred_items_cleanup(void *ctxt)
 }
 
 DISPATCH_NORETURN
-static void
+static DISPATCH_TSD_DTOR_CC void
 _dispatch_frame_cleanup(void *ctxt)
 {
 	// POSIX defines that destructors are only called if 'ctxt' is non-null
@@ -6359,7 +6477,7 @@ _dispatch_frame_cleanup(void *ctxt)
 }
 
 DISPATCH_NORETURN
-static void
+static void DISPATCH_TSD_DTOR_CC
 _dispatch_context_cleanup(void *ctxt)
 {
 	// POSIX defines that destructors are only called if 'ctxt' is non-null
