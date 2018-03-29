@@ -328,6 +328,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL Windows)
   dispatch_windows_arch_spelling(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_MSVC_ARCH)
   dispatch_windows_include_for_arch(${DISPATCH_MSVC_ARCH} DISPATCH_INCLUDES)
   include_directories(BEFORE SYSTEM ${DISPATCH_INCLUDES})
+  dispatch_windows_lib_for_arch(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_LIBDIR)
+  link_directories(${DISPATCH_LIBDIR})
 endif()
 
 add_subdirectory(dispatch)
