@@ -211,6 +211,12 @@ if(USE_GOLD_LINKER)
                PROPERTY LINK_FLAGS
                  -fuse-ld=gold)
 endif()
+if(USE_LLD_LINKER)
+  set_property(TARGET dispatch
+               APPEND_STRING
+               PROPERTY LINK_FLAGS
+                 -fuse-ld=lld)
+endif()
 
 # Temporary staging; the various swift projects that depend on libdispatch
 # all expect libdispatch.so to be in src/.libs/libdispatch.so

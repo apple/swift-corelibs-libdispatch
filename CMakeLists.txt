@@ -99,6 +99,8 @@ else()
 endif()
 option(USE_GOLD_LINKER "use the gold linker" ${USE_GOLD_LINKER_DEFAULT})
 
+option(USE_LLD_LINKER "use the lld linker" OFF)
+
 option(ENABLE_THREAD_LOCAL_STORAGE "enable usage of thread local storage via __thread" ON)
 set(DISPATCH_USE_THREAD_LOCAL_STORAGE ${ENABLE_THREAD_LOCAL_STORAGE})
 
