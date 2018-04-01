@@ -196,6 +196,13 @@ target_link_libraries(dispatch PRIVATE Threads::Threads)
 if(WITH_BLOCKS_RUNTIME)
   target_link_libraries(dispatch PRIVATE BlocksRuntime)
 endif()
+if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+  target_link_libraries(dispatch
+                        PRIVATE
+                          WS2_32
+                          WinMM
+                          synchronization)
+endif()
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
   set_property(TARGET dispatch
                APPEND_STRING
