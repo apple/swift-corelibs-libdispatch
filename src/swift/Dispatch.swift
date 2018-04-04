@@ -166,7 +166,7 @@ public extension DispatchGroup {
 public extension DispatchSemaphore {
 	@discardableResult
 	public func signal() -> Int {
-		return dispatch_semaphore_signal(self.__wrapped)
+		return Int(dispatch_semaphore_signal(self.__wrapped))
 	}
 
 	public func wait() {

@@ -189,7 +189,7 @@ public extension DispatchSource {
 	}
 
 	public class func makeTimerSource(flags: TimerFlags = [], queue: DispatchQueue? = nil) -> DispatchSourceTimer {
-		let source = dispatch_source_create(_swift_dispatch_source_type_TIMER(), 0, flags.rawValue, queue?.__wrapped)
+		let source = dispatch_source_create(_swift_dispatch_source_type_TIMER(), 0, UInt(flags.rawValue), queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceTimer
 	}
 
@@ -268,13 +268,11 @@ public extension DispatchSourceProcess {
 	}
 
 	public var data: DispatchSource.ProcessEvent {
-		let data = dispatch_source_get_data(self as! DispatchSource)
-		return DispatchSource.ProcessEvent(rawValue: data)
+		return DispatchSource.ProcessEvent(rawValue: (self as! DispatchSource).data)
 	}
 
 	public var mask: DispatchSource.ProcessEvent {
-		let mask = dispatch_source_get_mask(self as! DispatchSource)
-		return DispatchSource.ProcessEvent(rawValue: mask)
+		return DispatchSource.ProcessEvent(rawValue: (self as! DispatchSource).mask)
 	}
 }
 #endif
@@ -627,12 +625,12 @@ public extension DispatchSourceFileSystemObject {
 
 	public var data: DispatchSource.FileSystemEvent {
 		let data = dispatch_source_get_data((self as! DispatchSource).__wrapped)
-		return DispatchSource.FileSystemEvent(rawValue: data)
+		return DispatchSource.FileSystemEvent(rawValue: UInt(data))
 	}
 
 	public var mask: DispatchSource.FileSystemEvent {
 		let data = dispatch_source_get_mask((self as! DispatchSource).__wrapped)
-		return DispatchSource.FileSystemEvent(rawValue: data)
+		return DispatchSource.FileSystemEvent(rawValue: UInt(data))
 	}
 }
 #endif
@@ -644,7 +642,7 @@ public extension DispatchSourceUserDataAdd {
 	/// - parameter data: the value to add to the current pending data. A value of zero
 	///		has no effect and will not result in the submission of the event handler block.
 	public func add(data: UInt) {
-		dispatch_source_merge_data((self as! DispatchSource).__wrapped, data)
+		dispatch_source_merge_data((self as! DispatchSource).__wrapped, UInt(data))
 	}
 }
 
@@ -655,7 +653,7 @@ public extension DispatchSourceUserDataOr {
 	/// - parameter data: The value to OR into the current pending data. A value of zero
 	///		has no effect and will not result in the submission of the event handler block.
 	public func or(data: UInt) {
-		dispatch_source_merge_data((self as! DispatchSource).__wrapped, data)
+		dispatch_source_merge_data((self as! DispatchSource).__wrapped, UInt(data))
 	}
 }
 
@@ -667,6 +665,6 @@ public extension DispatchSourceUserDataReplace {
 	///		A value of zero will be stored but will not result in the submission of the event
 	///		handler block.
 	public func replace(data: UInt) {
-		dispatch_source_merge_data((self as! DispatchSource).__wrapped, data)
+		dispatch_source_merge_data((self as! DispatchSource).__wrapped, UInt(data))
 	}
 }
