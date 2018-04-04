@@ -35,13 +35,13 @@ public extension DispatchIO {
 	}
 
 	public class func read(fromFileDescriptor: Int32, maxLength: Int, runningHandlerOn queue: DispatchQueue, handler: @escaping (_ data: DispatchData, _ error: Int32) -> Void) {
-		dispatch_read(fromFileDescriptor, maxLength, queue.__wrapped) { (data: dispatch_data_t, error: Int32) in
+		dispatch_read(dispatch_fd_t(fromFileDescriptor), maxLength, queue.__wrapped) { (data: dispatch_data_t, error: Int32) in
 			handler(DispatchData(borrowedData: data), error)
 		}
 	}
 
 	public class func write(toFileDescriptor: Int32, data: DispatchData, runningHandlerOn queue: DispatchQueue, handler: @escaping (_ data: DispatchData?, _ error: Int32) -> Void) {
-		dispatch_write(toFileDescriptor, data.__wrapped.__wrapped, queue.__wrapped) { (data: dispatch_data_t?, error: Int32) in
+		dispatch_write(dispatch_fd_t(toFileDescriptor), data.__wrapped.__wrapped, queue.__wrapped) { (data: dispatch_data_t?, error: Int32) in
 			handler(data.map { DispatchData(borrowedData: $0) }, error)
 		}
 	}
@@ -101,10 +101,10 @@ public extension DispatchIO {
 	}
 
 	public func setInterval(interval: DispatchTimeInterval, flags: IntervalFlags = []) {
-		dispatch_io_set_interval(self.__wrapped, UInt64(interval.rawValue), flags.rawValue)
+		dispatch_io_set_interval(self.__wrapped, UInt64(interval.rawValue), dispatch_io_interval_flags_t(flags.rawValue))
 	}
 
 	public func close(flags: CloseFlags = []) {
-		dispatch_io_close(self.__wrapped, flags.rawValue)
+		dispatch_io_close(self.__wrapped, dispatch_io_close_flags_t(flags.rawValue))
 	}
 }

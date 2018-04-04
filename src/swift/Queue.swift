@@ -115,7 +115,7 @@ public extension DispatchQueue {
 	@available(macOS, deprecated: 10.10, message: "")
 	@available(*, deprecated: 8.0, message: "")
 	public class func global(priority: GlobalQueuePriority) -> DispatchQueue {
-		return DispatchQueue(queue: CDispatch.dispatch_get_global_queue(priority._translatedValue, 0))
+		return DispatchQueue(queue: CDispatch.dispatch_get_global_queue(Int(priority._translatedValue), 0))
 	}
 
 	@available(macOS 10.10, iOS 8.0, *)
