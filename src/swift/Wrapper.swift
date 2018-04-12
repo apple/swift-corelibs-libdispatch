@@ -76,7 +76,7 @@ public class DispatchSemaphore : DispatchObject {
 	}
 
 	public init(value: Int) {
-		__wrapped = dispatch_semaphore_create(value)
+		__wrapped = dispatch_semaphore_create(Int(value))
 	}
 
 	deinit {
@@ -93,17 +93,17 @@ public class DispatchIO : DispatchObject {
 
 	internal init(__type: UInt, fd: Int32, queue: DispatchQueue,
 				  handler: @escaping (_ error: Int32) -> Void) {
-		__wrapped = dispatch_io_create(__type, fd, queue.__wrapped, handler)
+		__wrapped = dispatch_io_create(dispatch_io_type_t(__type), dispatch_fd_t(fd), queue.__wrapped, handler)
 	}
 
 	internal init(__type: UInt, path: UnsafePointer<Int8>, oflag: Int32,
 				  mode: mode_t, queue: DispatchQueue, handler: @escaping (_ error: Int32) -> Void) {
-		__wrapped = dispatch_io_create_with_path(__type, path, oflag, mode, queue.__wrapped, handler)
+		__wrapped = dispatch_io_create_with_path(dispatch_io_type_t(__type), path, oflag, mode, queue.__wrapped, handler)
 	}
 
 	internal init(__type: UInt, io: DispatchIO,
 				  queue: DispatchQueue, handler: @escaping (_ error: Int32) -> Void) {
-		__wrapped = dispatch_io_create_with_io(__type, io.__wrapped, queue.__wrapped, handler)
+		__wrapped = dispatch_io_create_with_io(dispatch_io_type_t(__type), io.__wrapped, queue.__wrapped, handler)
 	}
 
 	deinit {
@@ -115,7 +115,7 @@ public class DispatchIO : DispatchObject {
 	}
 
 	public var fileDescriptor: Int32 {
-		return dispatch_io_get_descriptor(__wrapped)
+		return Int32(dispatch_io_get_descriptor(__wrapped))
 	}
 
 	public func setLimit(highWater: Int) {
