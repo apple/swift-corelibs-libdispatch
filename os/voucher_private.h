@@ -381,7 +381,7 @@ dispatch_block_create_with_voucher_and_qos_class(dispatch_block_flags_t flags,
  * Deprecated, do not use, will abort process if called.
  */
 API_DEPRECATED("removed SPI", \
-		macos(10.11,10.12), ios(9.0,10.0), watchos(2.0,3.0), tvos(9.0,10.0))
+		macos(10.11,10.13), ios(9.0,11.0), watchos(2.0,4.0), tvos(9.0,11.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t

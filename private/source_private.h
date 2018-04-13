@@ -107,7 +107,7 @@ DISPATCH_SOURCE_TYPE_DECL(sock);
  * @discussion A dispatch source that monitors events on a network channel.
  */
 #define DISPATCH_SOURCE_TYPE_NW_CHANNEL (&_dispatch_source_type_nw_channel)
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) DISPATCH_LINUX_UNAVAILABLE()
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0)) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(nw_channel);
 
 __END_DECLS
@@ -293,7 +293,7 @@ enum {
 enum {
 	DISPATCH_PROC_REAP DISPATCH_ENUM_API_DEPRECATED("unsupported flag",
 			macos(10.6,10.9), ios(4.0,7.0)) = 0x10000000,
-	DISPATCH_PROC_EXIT_STATUS DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(2.0)) = 0x04000000,
+	DISPATCH_PROC_EXIT_STATUS DISPATCH_ENUM_API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(2.0)) = 0x04000000,
 };
 
 /*!
@@ -357,7 +357,7 @@ enum {
 
 	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_CRITICAL DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 0x20,
 	
-	DISPATCH_MEMORYPRESSURE_MSL_STATUS DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 0xf0000000,
+	DISPATCH_MEMORYPRESSURE_MSL_STATUS DISPATCH_ENUM_API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0)) = 0xf0000000,
 };
 
 /*!
@@ -425,7 +425,7 @@ __BEGIN_DECLS
  * The result of passing NULL in this parameter is undefined.
  */
 #ifdef __BLOCKS__
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_source_set_mandatory_cancel_handler(dispatch_source_t source,
@@ -452,7 +452,7 @@ dispatch_source_set_mandatory_cancel_handler(dispatch_source_t source,
  * context of the dispatch source at the time the handler call is made.
  * The result of passing NULL in this parameter is undefined.
  */
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_source_set_mandatory_cancel_handler_f(dispatch_source_t source,
@@ -583,7 +583,7 @@ typedef struct dispatch_source_extended_data_s {
  * the value of the size argument. If this is less than the value of the size
  * argument, the remaining space in data will have been populated with zeroes.
  */
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
 DISPATCH_NOTHROW
 size_t

@@ -225,7 +225,7 @@ mach_port_t
 _dispatch_runloop_root_queue_get_port_4CF(dispatch_queue_t queue);
 
 #ifdef __BLOCKS__
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
@@ -261,7 +261,7 @@ void (*_Nullable _dispatch_end_NSAutoReleasePool)(void *);
 
 #endif /* DISPATCH_COCOA_COMPAT */
 
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 _dispatch_poll_for_events_4launchd(void);

@@ -811,7 +811,7 @@ dispatch_mach_get_checkin_port(dispatch_mach_t channel);
 typedef void (*_Nonnull dispatch_mach_async_reply_callback_t)(void *context,
 		dispatch_mach_reason_t reason, dispatch_mach_msg_t message);
 
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 typedef const struct dispatch_mach_xpc_hooks_s {
 #define DISPATCH_MACH_XPC_HOOKS_VERSION     3
 	unsigned long version;
@@ -893,7 +893,7 @@ typedef const struct dispatch_mach_xpc_hooks_s {
  * @param hooks
  * A pointer to the channel hooks structure. This must remain valid once set.
  */
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_mach_hooks_install_4libxpc(dispatch_mach_xpc_hooks_t hooks);
@@ -933,7 +933,7 @@ dispatch_mach_hooks_install_4libxpc(dispatch_mach_xpc_hooks_t hooks);
  * @result
  * The newly created dispatch mach channel.
  */
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NONNULL4 DISPATCH_NOTHROW
 dispatch_mach_t
@@ -1014,7 +1014,7 @@ dispatch_mach_create_4libxpc(const char *_Nullable label,
  * Out parameter to return the error from the immediate send attempt.
  * If a deferred send is required, returns 0. Must not be NULL.
  */
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL2 DISPATCH_NONNULL5
 DISPATCH_NONNULL6 DISPATCH_NOTHROW
 void

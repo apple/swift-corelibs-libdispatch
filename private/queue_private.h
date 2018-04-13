@@ -133,7 +133,7 @@ dispatch_queue_attr_make_with_overcommit(dispatch_queue_attr_t _Nullable attr,
  * @param label
  * The new label for the queue.
  */
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_queue_set_label_nocopy(dispatch_queue_t queue, const char *label);
