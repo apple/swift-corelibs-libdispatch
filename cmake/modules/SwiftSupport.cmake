@@ -38,9 +38,7 @@ function(add_swift_library library)
     endforeach()
   endif()
 
-  if(CMAKE_SYSTEM_NAME STREQUAL Android)
-    list(APPEND flags -sdk;${CMAKE_SYSROOT})
-  endif()
+  list(APPEND flags -sdk;${CMAKE_SYSROOT})
 
   # FIXME: We shouldn't /have/ to build things in a single process.
   # <rdar://problem/15972329>
