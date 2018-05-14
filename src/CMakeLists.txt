@@ -109,6 +109,10 @@ if(ENABLE_SWIFT)
                  PRIVATE
                    swift/DispatchStubs.cc
                    ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o)
+  target_link_libraries(dispatch
+                        PRIVATE
+                          swiftCore
+                          swiftSwiftOnoneSupport)
 endif()
 if(ENABLE_DTRACE)
   dtrace_usdt_probe(${CMAKE_CURRENT_SOURCE_DIR}/provider.d
