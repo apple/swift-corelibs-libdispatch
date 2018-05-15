@@ -101,7 +101,7 @@ if(ENABLE_SWIFT)
                       -fmodule-map-file=${CMAKE_SOURCE_DIR}/dispatch/module.modulemap
                     SWIFT_FLAGS
                       -I ${CMAKE_SOURCE_DIR}
-                      -I/usr/include
+                      -I ${CMAKE_SYSROOT}/usr/include
                       ${swift_optimization_flags}
                     DEPENDS
                       ${CMAKE_SOURCE_DIR}/dispatch/module.modulemap)
