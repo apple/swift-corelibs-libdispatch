@@ -2075,7 +2075,9 @@ pick:
 		_dispatch_stream_complete_operation(stream, op);
 		// Fall through
 	case DISPATCH_OP_RESUME:
-		if (_dispatch_stream_operation_avail(stream)) {
+		if (_dispatch_stream_operation_avail(stream) && !stream->source_running) {
+			dispatch_async_f(stream->dq, stream->dq, _dispatch_stream_queue_handler);
+		} else if (_dispatch_stream_operation_avail(stream)) {
 			stream->source_running = true;
 			dispatch_resume(_dispatch_stream_source(stream, op));
 		}
