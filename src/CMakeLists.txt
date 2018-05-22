@@ -234,6 +234,8 @@ add_custom_command(TARGET dispatch POST_BUILD
                    COMMAND cmake -E copy $<TARGET_FILE:dispatch> .libs
                    COMMENT "Copying libdispatch to .libs")
 
+get_swift_host_arch(SWIFT_HOST_ARCH)
+
 install(TARGETS
           dispatch
         DESTINATION
@@ -243,6 +245,6 @@ if(ENABLE_SWIFT)
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftdoc
           DESTINATION
-            "${INSTALL_TARGET_DIR}/${CMAKE_SYSTEM_PROCESSOR}")
+            "${INSTALL_TARGET_DIR}/${SWIFT_HOST_ARCH}")
 endif()
 
