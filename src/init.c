@@ -112,7 +112,7 @@ void (*_dispatch_end_NSAutoReleasePool)(void *);
 #endif
 
 #if DISPATCH_USE_THREAD_LOCAL_STORAGE
-__thread struct dispatch_tsd __dispatch_tsd;
+_Thread_local struct dispatch_tsd __dispatch_tsd;
 #if defined(_WIN32)
 DWORD __dispatch_tsd_key;
 #else

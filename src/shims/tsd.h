@@ -115,7 +115,6 @@ _dispatch_thread_key_create(DWORD *k, void (DISPATCH_TSD_DTOR_CC *d)(void *))
 	dispatch_assert_zero((*k = FlsAlloc(d)));
 }
 
-extern __declspec(thread) struct dispatch_tsd __dispatch_tsd;
 extern DWORD __dispatch_tsd_key;
 
 #else
@@ -127,7 +126,6 @@ _dispatch_thread_key_create(pthread_key_t *k, void (DISPATCH_TSD_DTOR_CC *d)(voi
 	dispatch_assert_zero(pthread_key_create(k, d));
 }
 
-extern __thread struct dispatch_tsd __dispatch_tsd;
 extern pthread_key_t __dispatch_tsd_key;
 
 #endif
@@ -155,6 +153,8 @@ struct dispatch_tsd {
 	void *dispatch_voucher_key;
 	void *dispatch_deferred_items_key;
 };
+
+extern _Thread_local struct dispatch_tsd __dispatch_tsd;
 
 extern void libdispatch_tsd_init(void);
 extern void _libdispatch_tsd_cleanup(void *ctx);
