@@ -230,8 +230,8 @@ endif()
 # So for now, make a copy so we don't have to do a coordinated commit across
 # all the swift projects to change this assumption.
 add_custom_command(TARGET dispatch POST_BUILD
-                   COMMAND cmake -E make_directory .libs
-                   COMMAND cmake -E copy $<TARGET_FILE:dispatch> .libs
+                   COMMAND ${CMAKE_COMMAND} -E make_directory .libs
+                   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:dispatch> .libs
                    COMMENT "Copying libdispatch to .libs")
 
 install(TARGETS
