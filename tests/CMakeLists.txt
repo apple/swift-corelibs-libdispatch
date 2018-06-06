@@ -23,6 +23,7 @@ endif()
 
 add_executable(bsdtestharness
                bsdtestharness.c)
+dispatch_set_linker(bsdtestharness)
 target_include_directories(bsdtestharness
                            PRIVATE
                              ${CMAKE_CURRENT_BINARY_DIR}
@@ -84,6 +85,7 @@ function(add_unit_test name)
   target_compile_options(${name} PRIVATE -fblocks)
   # TODO(compnerd) make this portable
   target_compile_options(${name} PRIVATE -Wall -Wno-deprecated-declarations)
+  dispatch_set_linker(${name})
   target_link_libraries(${name} PRIVATE dispatch Threads::Threads)
   if(WITH_BLOCKS_RUNTIME)
     target_link_libraries(${name} PRIVATE BlocksRuntime)
