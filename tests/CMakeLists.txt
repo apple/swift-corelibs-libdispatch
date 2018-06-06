@@ -140,16 +140,16 @@ set(DISPATCH_C_TESTS
 # Excluded by default for purposes of Swift CI
 if(EXTENDED_TEST_SUITE)
   list(APPEND DISPATCH_C_TESTS
-	priority
-	concur
-	read
-	read2
-	suspend_timer
-	pingpong
-	drift
-	readsync
-	cascade
-	io)
+       priority
+       concur
+       read
+       read2
+       suspend_timer
+       pingpong
+       drift
+       readsync
+       cascade
+       io)
   # an oddball; dispatch_priority.c compiled with -DUSE_SET_TARGET_QUEUE=1
   add_unit_test(dispatch_priority2 SOURCES dispatch_priority.c)
   target_compile_options(dispatch_priority2 PRIVATE -DUSE_SET_TARGET_QUEUE=1)
@@ -158,10 +158,10 @@ endif()
 # add C tests for platform-specific functionality when applicable
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
   list(APPEND DISPATCH_C_TESTS
-	deadname
-	proc
-	vm
-	vnode)
+       deadname
+       proc
+       vm
+       vnode)
 endif()
 
 foreach(test ${DISPATCH_C_TESTS})
