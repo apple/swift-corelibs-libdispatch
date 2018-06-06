@@ -1,7 +1,7 @@
 
 cmake_minimum_required(VERSION 3.4.3)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/modules")
 
 project(dispatch
         VERSION 1.3
@@ -30,6 +30,7 @@ include(CheckLibraryExists)
 include(CheckSymbolExists)
 include(GNUInstallDirs)
 include(SwiftSupport)
+include(DispatchUtilities)
 
 set(SWIFT_LIBDIR "lib" CACHE PATH "Library folder name, defined by swift main buildscript")
 set(INSTALL_LIBDIR "${SWIFT_LIBDIR}" CACHE PATH "Path where the libraries should be installed")
