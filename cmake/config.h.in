@@ -2,7 +2,7 @@
 /* Define if building pthread work queues from source */
 #cmakedefine01 DISPATCH_USE_INTERNAL_WORKQUEUE
 
-/* Enable usage of thread local storage via __thread */
+/* Enable usage of thread local storage via _Thread_local */
 #cmakedefine01 DISPATCH_USE_THREAD_LOCAL_STORAGE
 
 /* Define to 1 if you have the declaration of `CLOCK_MONOTONIC', and to 0 if
