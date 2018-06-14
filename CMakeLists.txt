@@ -1,7 +1,7 @@
 
 cmake_minimum_required(VERSION 3.4.3)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/modules")
 
 project(dispatch
         VERSION 1.3
@@ -30,6 +30,7 @@ include(CheckLibraryExists)
 include(CheckSymbolExists)
 include(GNUInstallDirs)
 include(SwiftSupport)
+include(DispatchUtilities)
 
 set(SWIFT_LIBDIR "lib" CACHE PATH "Library folder name, defined by swift main buildscript")
 set(INSTALL_LIBDIR "${SWIFT_LIBDIR}" CACHE PATH "Path where the libraries should be installed")
@@ -91,16 +92,17 @@ option(BUILD_SHARED_LIBS "build shared libraries" ON)
 
 option(ENABLE_TESTING "build libdispatch tests" ON)
 
+option(USE_LLD_LINKER "use the lld linker" OFF)
+
 if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
    CMAKE_SYSTEM_NAME STREQUAL FreeBSD OR
-   CMAKE_SYSTEM_NAME STREQUAL Android)
+   CMAKE_SYSTEM_NAME STREQUAL Android AND
+   NOT USE_LLD_LINKER)
   set(USE_GOLD_LINKER_DEFAULT ON)
 else()
   set(USE_GOLD_LINKER_DEFAULT OFF)
 endif()
 option(USE_GOLD_LINKER "use the gold linker" ${USE_GOLD_LINKER_DEFAULT})
-
-option(USE_LLD_LINKER "use the lld linker" OFF)
 
 option(ENABLE_THREAD_LOCAL_STORAGE "enable usage of thread local storage via _Thread_local" ON)
 set(DISPATCH_USE_THREAD_LOCAL_STORAGE ${ENABLE_THREAD_LOCAL_STORAGE})

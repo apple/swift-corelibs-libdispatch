@@ -212,26 +212,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
                  "-Xlinker -dead_strip"
                  "-Xlinker -alias_list -Xlinker ${CMAKE_SOURCE_DIR}/xcodeconfig/libdispatch.aliases")
 endif()
-if(USE_GOLD_LINKER)
-  set_property(TARGET dispatch
-               APPEND_STRING
-               PROPERTY LINK_FLAGS
-                 -fuse-ld=gold)
-endif()
-if(USE_LLD_LINKER)
-  set_property(TARGET dispatch
-               APPEND_STRING
-               PROPERTY LINK_FLAGS
-                 -fuse-ld=lld)
-endif()
+dispatch_set_linker(dispatch)
 
 # Temporary staging; the various swift projects that depend on libdispatch
 # all expect libdispatch.so to be in src/.libs/libdispatch.so
 # So for now, make a copy so we don't have to do a coordinated commit across
 # all the swift projects to change this assumption.
 add_custom_command(TARGET dispatch POST_BUILD
-                   COMMAND cmake -E make_directory .libs
-                   COMMAND cmake -E copy $<TARGET_FILE:dispatch> .libs
+                   COMMAND ${CMAKE_COMMAND} -E make_directory .libs
+                   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:dispatch> .libs
                    COMMENT "Copying libdispatch to .libs")
 
 install(TARGETS
