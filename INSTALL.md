@@ -130,7 +130,7 @@ Typical configuration line for FreeBSD 8.x and 9.x to build libdispatch with
 clang and blocks support:
 
     ```
-    cmake -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DWITH_BLOCKS_RUNTIME=/usr/local/lib <path-to-source>
+    cmake -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DBlocksRuntime_INCLUDE_DIR=/usr/local/include -DBlocksRuntime_LIBRARIES=/usr/local/lib/libBlocksRuntime.so <path-to-source>
     ninja
     ninja test
     ```

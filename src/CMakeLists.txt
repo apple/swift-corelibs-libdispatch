@@ -134,11 +134,9 @@ target_include_directories(dispatch
                              ${CMAKE_CURRENT_SOURCE_DIR}
                              ${CMAKE_CURRENT_BINARY_DIR}
                              ${CMAKE_SOURCE_DIR}/private)
-if(WITH_BLOCKS_RUNTIME)
-  target_include_directories(dispatch
-                             SYSTEM BEFORE PRIVATE
-                               "${WITH_BLOCKS_RUNTIME}")
-endif()
+target_include_directories(dispatch
+                           SYSTEM BEFORE PRIVATE
+                             "${BlocksRuntime_INCLUDE_DIR}")
 if(WIN32)
   target_compile_definitions(dispatch
                              PRIVATE
@@ -190,10 +188,10 @@ endif()
 if(BSD_OVERLAY_FOUND)
   target_link_libraries(dispatch PRIVATE ${BSD_OVERLAY_LDFLAGS})
 endif()
-target_link_libraries(dispatch PRIVATE Threads::Threads)
-if(WITH_BLOCKS_RUNTIME)
-  target_link_libraries(dispatch PRIVATE BlocksRuntime)
-endif()
+target_link_libraries(dispatch
+                      PRIVATE
+                        Threads::Threads
+                        BlocksRuntime::BlocksRuntime)
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
   target_link_libraries(dispatch
                         PRIVATE
