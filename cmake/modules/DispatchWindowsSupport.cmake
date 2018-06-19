@@ -2,7 +2,7 @@
 function(dispatch_windows_arch_spelling arch var)
   if(${arch} STREQUAL i686)
     set(${var} x86 PARENT_SCOPE)
-  elseif(${arch} STREQUAL x86_64)
+  elseif(${arch} STREQUAL x86_64 OR ${arch} STREQUAL AMD64)
     set(${var} x64 PARENT_SCOPE)
   elseif(${arch} STREQUAL armv7)
     set(${var} arm PARENT_SCOPE)
