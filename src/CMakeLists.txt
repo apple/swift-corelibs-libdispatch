@@ -62,7 +62,8 @@ elseif(WIN32)
   target_sources(dispatch
                  PRIVATE
                    shims/generic_win_stubs.c
-                   shims/generic_win_stubs.h)
+                   shims/generic_win_stubs.h
+                   shims/getprogname.c)
 endif()
 if(DISPATCH_USE_INTERNAL_WORKQUEUE)
   target_sources(dispatch
