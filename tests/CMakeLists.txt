@@ -82,7 +82,11 @@ function(add_unit_test name)
                            PRIVATE
                              ${BSD_OVERLAY_CFLAGS})
   endif()
-  target_compile_options(${name} PRIVATE -fblocks)
+  if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+    target_compile_options(${name} PRIVATE -Xclang -fblocks)
+  else()
+    target_compile_options(${name} PRIVATE -fblocks)
+  endif()
   # TODO(compnerd) make this portable
   target_compile_options(${name} PRIVATE -Wall -Wno-deprecated-declarations)
   dispatch_set_linker(${name})
