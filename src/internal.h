@@ -242,11 +242,11 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #endif
 
 #include <sys/stat.h>
-#include <sys/queue.h>
 
 #if defined(_WIN32)
 #include <time.h>
 #else
+#include <sys/queue.h>
 #include <sys/mount.h>
 #ifdef __ANDROID__
 #include <linux/sysctl.h>

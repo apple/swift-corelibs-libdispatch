@@ -32,6 +32,7 @@
 #endif
 #if defined(_WIN32)
 #include "shims/generic_win_stubs.h"
+#include "shims/generic_sys_queue.h"
 #elif defined(__unix__)
 #include "shims/generic_unix_stubs.h"
 #endif
