@@ -309,6 +309,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
                        ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/dispatch/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
                      COMMAND
                        ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/private/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
+elseif(CMAKE_SYSTEM_NAME STREQUAL Windows)
+  add_custom_command(OUTPUT
+                       "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                       "${CMAKE_SOURCE_DIR}/private/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/dispatch/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/private/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
 else()
   add_custom_command(OUTPUT
                        "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
