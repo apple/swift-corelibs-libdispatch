@@ -30,6 +30,10 @@
 extern const char *__progname;
 #endif /* __ANDROID */
 
+#if defined(_WIN32)
+const char *getprogname(void);
+#else
+
 static inline char *
 getprogname(void)
 {
@@ -41,6 +45,7 @@ getprogname(void)
 #   error getprogname(3) is not available on this platform
 # endif
 }
+#endif /* _WIN32 */
 #endif /* HAVE_GETPROGNAME */
 
 #endif /* __DISPATCH_SHIMS_GETPROGNAME__ */
