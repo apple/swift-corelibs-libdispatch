@@ -293,6 +293,7 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #endif
 #if defined(_WIN32)
 #include <io.h>
+#include <crtdbg.h>
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -876,9 +877,19 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 #define _dispatch_hardware_crash() \
 		__asm__(""); __builtin_trap() // <rdar://problem/17464981>
 
+#ifdef _WIN32
+#define _dispatch_set_crash_log_cause_and_message(ac, msg) do { \
+		(void)(ac); \
+		_dispatch_set_crash_log_message_dynamic((msg)); \
+	} while (0)
+#define _dispatch_set_crash_log_message(msg) \
+		_dispatch_set_crash_log_message_dynamic((msg))
+#define _dispatch_set_crash_log_message_dynamic(msg) _RPTF0(_CRT_ASSERT, (msg))
+#else
 #define _dispatch_set_crash_log_cause_and_message(ac, msg) ((void)(ac))
 #define _dispatch_set_crash_log_message(msg)
 #define _dispatch_set_crash_log_message_dynamic(msg)
+#endif
 
 #if HAVE_MACH
 // MIG_REPLY_MISMATCH means either:
