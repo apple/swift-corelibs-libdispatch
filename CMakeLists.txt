@@ -34,7 +34,6 @@ include(DispatchUtilities)
 
 set(SWIFT_LIBDIR "lib" CACHE PATH "Library folder name, defined by swift main buildscript")
 set(INSTALL_LIBDIR "${SWIFT_LIBDIR}" CACHE PATH "Path where the libraries should be installed")
-set(WITH_BLOCKS_RUNTIME "" CACHE PATH "Path to blocks runtime")
 
 include(DispatchAppleOptions)
 include(DispatchSanitization)
@@ -133,14 +132,14 @@ endif()
 
 option(INSTALL_PRIVATE_HEADERS "installs private headers in the same location as the public ones" OFF)
 
-if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
-   CMAKE_SYSTEM_NAME STREQUAL Android OR
-   CMAKE_SYSTEM_NAME STREQUAL FreeBSD OR
-   CMAKE_SYSTEM_NAME STREQUAL Windows)
+find_package(BlocksRuntime QUIET)
+if(NOT BlocksRuntime_FOUND)
+  set(BlocksRuntime_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/src/BlocksRuntime)
+
   add_library(BlocksRuntime
               STATIC
                 ${CMAKE_SOURCE_DIR}/src/BlocksRuntime/data.c
-                ${CMAKE_SOURCE_DIR}/src/BlocksRuntime/runtime.c)            
+                ${CMAKE_SOURCE_DIR}/src/BlocksRuntime/runtime.c)
   set_target_properties(BlocksRuntime
                         PROPERTIES
                           POSITION_INDEPENDENT_CODE TRUE)
@@ -149,8 +148,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
                           PROPERTIES
                             INTERFACE_LINK_LIBRARIES ${CMAKE_DL_LIBS})
   endif()
-  set(WITH_BLOCKS_RUNTIME "${CMAKE_SOURCE_DIR}/src/BlocksRuntime" CACHE PATH "Path to blocks runtime" FORCE)
-  
+
+  add_library(BlocksRuntime::BlocksRuntime ALIAS BlocksRuntime)
+
   install(FILES
             ${CMAKE_SOURCE_DIR}/src/BlocksRuntime/Block.h
           DESTINATION
@@ -161,9 +161,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
             DESTINATION
               "${INSTALL_BLOCK_HEADERS_DIR}")
   endif()
-else()
-  # TODO(compnerd) support system installed BlocksRuntime
-  # find_package(BlocksRuntime REQUIRED)
 endif()
 
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)

@@ -72,11 +72,9 @@ function(add_unit_test name)
     target_compile_options(${name} PRIVATE -DLENIENT_DEADLINES=1)
     target_link_libraries(${name} PRIVATE swiftCore swiftSwiftOnoneSupport)
   endif()
-  if(WITH_BLOCKS_RUNTIME)
-    target_include_directories(${name}
-                               SYSTEM BEFORE PRIVATE
-                                 "${WITH_BLOCKS_RUNTIME}")
-  endif()
+  target_include_directories(${name}
+                             SYSTEM BEFORE PRIVATE
+                               "${BlocksRuntime_INCLUDE_DIR}")
   if(BSD_OVERLAY_FOUND AND NOT AUT_NO_BSD_OVERLAY)
     target_compile_options(${name}
                            PRIVATE
@@ -90,10 +88,11 @@ function(add_unit_test name)
   # TODO(compnerd) make this portable
   target_compile_options(${name} PRIVATE -Wall -Wno-deprecated-declarations)
   dispatch_set_linker(${name})
-  target_link_libraries(${name} PRIVATE dispatch Threads::Threads)
-  if(WITH_BLOCKS_RUNTIME)
-    target_link_libraries(${name} PRIVATE BlocksRuntime)
-  endif()
+  target_link_libraries(${name}
+                        PRIVATE
+                          dispatch
+                          Threads::Threads
+                          BlocksRuntime::BlocksRuntime)
   if(BSD_OVERLAY_FOUND AND NOT AUT_NO_BSD_OVERLAY)
     target_link_libraries(${name}
                           PRIVATE
