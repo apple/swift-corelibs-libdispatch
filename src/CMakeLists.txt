@@ -41,6 +41,7 @@ add_library(dispatch
               event/event_epoll.c
               event/event_internal.h
               event/event_kevent.c
+              event/event_windows.c
               firehose/firehose_internal.h
               shims/android_stubs.h
               shims/atomic.h
