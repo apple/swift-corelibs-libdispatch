@@ -928,7 +928,7 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 		dispatch_assert(_length != -1); \
 		_msg = (char *)malloc((unsigned)_length + 1); \
 		dispatch_assert(_msg); \
-		_snprintf(_msg, (unsigned)_length, "%s" fmt, DISPATCH_ASSERTION_FAILED_MESSAGE, ##__VA_ARGS__); \
+		snprintf(_msg, (unsigned)_length + 1, "%s" fmt, DISPATCH_ASSERTION_FAILED_MESSAGE, ##__VA_ARGS__); \
 		_dispatch_assert_crash(_msg); \
 		free(_msg); \
 	} while (0)
