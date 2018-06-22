@@ -44,7 +44,6 @@ typedef __typeof__(_Generic((__SIZE_TYPE__)0,                                  \
 #define O_NONBLOCK 04000
 
 #define bzero(ptr,len) memset((ptr), 0, (len))
-#define snprintf _snprintf
 
 #endif
 
