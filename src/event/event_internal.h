@@ -418,7 +418,9 @@ void _dispatch_unote_resume(dispatch_unote_t du);
 bool _dispatch_unote_unregister(dispatch_unote_t du, uint32_t flags);
 void _dispatch_unote_dispose(dispatch_unote_t du);
 
+#if !DISPATCH_EVENT_BACKEND_WINDOWS
 void _dispatch_event_loop_atfork_child(void);
+#endif
 #define DISPATCH_EVENT_LOOP_CONSUME_2 DISPATCH_WAKEUP_CONSUME_2
 #define DISPATCH_EVENT_LOOP_OVERRIDE  0x80000000
 void _dispatch_event_loop_poke(dispatch_wlh_t wlh, uint64_t dq_state,

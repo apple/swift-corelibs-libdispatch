@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include <Windows.h>
+#include <crtdbg.h>
 
 #include <io.h>
 #include <process.h>
@@ -46,5 +47,8 @@ typedef __typeof__(_Generic((__SIZE_TYPE__)0,                                  \
 #define bzero(ptr,len) memset((ptr), 0, (len))
 #define snprintf _snprintf
 
-#endif
+// Report when an unported code path executes.
+#define WIN_PORT_ERROR() \
+		_RPTF1(_CRT_ASSERT, "WIN_PORT_ERROR in %s", __FUNCTION__)
 
+#endif
