@@ -1,6 +1,19 @@
 
-execute_process(COMMAND "${CMAKE_COMMAND}" -E create_symlink "${CMAKE_SOURCE_DIR}/private" "${CMAKE_CURRENT_BINARY_DIR}/dispatch")
-execute_process(COMMAND "${CMAKE_COMMAND}" -E create_symlink "${CMAKE_CURRENT_SOURCE_DIR}/leaks-wrapper.sh" "${CMAKE_CURRENT_BINARY_DIR}/leaks-wrapper")
+if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+    execute_process(COMMAND
+                      "${CMAKE_COMMAND}" -E copy "${CMAKE_SOURCE_DIR}/private"
+                      "${CMAKE_CURRENT_BINARY_DIR}/dispatch")
+    execute_process(COMMAND
+                      "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_SOURCE_DIR}/leaks-wrapper.sh"
+                      "${CMAKE_CURRENT_BINARY_DIR}/leaks-wrapper")
+else()
+    execute_process(COMMAND
+                      "${CMAKE_COMMAND}" -E create_symlink "${CMAKE_SOURCE_DIR}/private"
+                      "${CMAKE_CURRENT_BINARY_DIR}/dispatch")
+    execute_process(COMMAND
+                      "${CMAKE_COMMAND}" -E create_symlink "${CMAKE_CURRENT_SOURCE_DIR}/leaks-wrapper.sh"
+                      "${CMAKE_CURRENT_BINARY_DIR}/leaks-wrapper")
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lrt")
