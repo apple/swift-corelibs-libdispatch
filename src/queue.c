@@ -961,9 +961,57 @@ _dispatch_install_thread_detach_callback(dispatch_function_t cb)
 }
 #endif
 
+#if defined(_WIN32)
+static bool
+_dispatch_process_is_exiting(void)
+{
+	// The goal here is to detect if the current thread is executing cleanup
+	// code (e.g. FLS destructors) as a result of calling ExitProcess(). Windows
+	// doesn't provide an official method of getting this information, so we
+	// take advantage of how ExitProcess() works internally. The first thing
+	// that it does (according to MSDN) is terminate every other thread in the
+	// process. Logically, it should not be possible to create more threads
+	// after this point, and Windows indeed enforces this. Try to create a
+	// lightweight suspended thread, and if access is denied, assume that this
+	// is because the process is exiting.
+	//
+	// We aren't worried about any race conditions here during process exit.
+	// Cleanup code is only run on the thread that already called ExitProcess(),
+	// and every other thread will have been forcibly terminated by the time
+	// that happens. Additionally, while CreateThread() could conceivably fail
+	// due to resource exhaustion, the process would already be in a bad state
+	// if that happens. This is only intended to prevent unwanted cleanup code
+	// from running, so the worst case is that a thread doesn't clean up after
+	// itself when the process is about to die anyway.
+	const size_t stack_size = 1;  // As small as possible
+	HANDLE thread = CreateThread(NULL, stack_size, NULL, NULL,
+			CREATE_SUSPENDED | STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
+	if (thread) {
+		// Although Microsoft recommends against using TerminateThread, it's
+		// safe to use it here because we know that the thread is suspended and
+		// it has not executed any code due to a NULL lpStartAddress. There was
+		// a bug in Windows Server 2003 and Windows XP where the initial stack
+		// would not be freed, but libdispatch does not support them anyway.
+		TerminateThread(thread, 0);
+		CloseHandle(thread);
+		return false;
+	}
+	return GetLastError() == ERROR_ACCESS_DENIED;
+}
+#endif
+
 void DISPATCH_TSD_DTOR_CC
 _libdispatch_tsd_cleanup(void *ctx)
 {
+#if defined(_WIN32)
+	// On Windows, exiting a process will still call FLS destructors for the
+	// thread that called ExitProcess(). pthreads-based platforms don't call key
+	// destructors on exit, so be consistent.
+	if (_dispatch_process_is_exiting()) {
+		return;
+	}
+#endif
+
 	struct dispatch_tsd *tsd = (struct dispatch_tsd*) ctx;
 
 	_tsd_call_cleanup(dispatch_priority_key, NULL);
