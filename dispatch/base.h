@@ -65,6 +65,29 @@
 #define DISPATCH_ALWAYS_INLINE __attribute__((__always_inline__))
 #define DISPATCH_UNAVAILABLE __attribute__((__unavailable__))
 #define DISPATCH_UNAVAILABLE_MSG(msg) __attribute__((__unavailable__(msg)))
+#elif defined(_MSC_VER)
+#define DISPATCH_NORETURN __declspec(noreturn)
+#define DISPATCH_NOTHROW __declspec(nothrow)
+#define DISPATCH_NONNULL1
+#define DISPATCH_NONNULL2
+#define DISPATCH_NONNULL3
+#define DISPATCH_NONNULL4
+#define DISPATCH_NONNULL5
+#define DISPATCH_NONNULL6
+#define DISPATCH_NONNULL7
+#define DISPATCH_NONNULL_ALL
+#define DISPATCH_SENTINEL
+#define DISPATCH_PURE
+#define DISPATCH_CONST
+#if (_MSC_VER >= 1700)
+#define DISPATCH_WARN_RESULT _Check_return_
+#else
+#define DISPATCH_WARN_RESULT
+#endif
+#define DISPATCH_MALLOC
+#define DISPATCH_ALWAYS_INLINE __forceinline
+#define DISPATCH_UNAVAILABLE
+#define DISPATCH_UNAVAILABLE_MSG(msg)
 #else
 /*! @parseOnly */
 #define DISPATCH_NORETURN
