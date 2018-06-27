@@ -158,6 +158,12 @@
 #else
 #define DISPATCH_EXPORT extern __declspec(dllexport)
 #endif
+#elif defined(__DISPATCH_BUILDING_SWIFT_DISPATCH__)
+#if defined(__cplusplus)
+#define DISPATCH_EXPORT extern "C"
+#else
+#define DISPATCH_EXPORT extern
+#endif
 #else
 #if defined(__cplusplus)
 #define DISPATCH_EXPORT extern "C" __declspec(dllimport)

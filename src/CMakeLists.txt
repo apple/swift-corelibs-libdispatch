@@ -109,6 +109,7 @@ if(ENABLE_SWIFT)
                     TARGET
                       ${CMAKE_C_COMPILER_TARGET}
                     CFLAGS
+                      -D__DISPATCH_BUILDING_SWIFT_DISPATCH__
                       -fblocks
                       -fmodule-map-file=${CMAKE_SOURCE_DIR}/dispatch/module.modulemap
                     SWIFT_FLAGS
@@ -144,6 +145,15 @@ if(WIN32)
   target_compile_definitions(dispatch
                              PRIVATE
                                _CRT_NONSTDC_NO_WARNINGS)
+  # Tell the linker to ignore references to dispatch.lib inside the
+  # swiftDispatch.obj file. This reference was put in there by swiftc because
+  # the dispatch.modulemap contains a 'link' line. We don't want the linker to
+  # follow this reference while we are trying to build dispatch.lib.
+  set_property(TARGET
+                 dispatch
+               APPEND_STRING PROPERTY
+               LINK_FLAGS
+                 " /NODEFAULTLIB:dispatch.lib")
 endif()
 if(NOT "${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
   target_compile_options(dispatch PRIVATE -fno-exceptions)
