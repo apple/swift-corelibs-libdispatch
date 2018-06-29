@@ -21,13 +21,13 @@
 #include "internal.h"
 
 DISPATCH_WEAK // rdar://problem/8503746
-long _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema);
+dispatch_long_t _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema);
 
 #pragma mark -
 #pragma mark dispatch_semaphore_class_t
 
 static void
-_dispatch_semaphore_class_init(long value, dispatch_semaphore_class_t dsemau)
+_dispatch_semaphore_class_init(dispatch_long_t value, dispatch_semaphore_class_t dsemau)
 {
 	struct dispatch_semaphore_header_s *dsema = dsemau._dsema_hdr;
 
@@ -41,7 +41,7 @@ _dispatch_semaphore_class_init(long value, dispatch_semaphore_class_t dsemau)
 #pragma mark dispatch_semaphore_t
 
 dispatch_semaphore_t
-dispatch_semaphore_create(long value)
+dispatch_semaphore_create(dispatch_long_t value)
 {
 	dispatch_semaphore_t dsema;
 
@@ -87,12 +87,12 @@ _dispatch_semaphore_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 			dsema->dsema_sema);
 #endif
 	offset += dsnprintf(&buf[offset], bufsiz - offset,
-			"value = %ld, orig = %ld }", dsema->dsema_value, dsema->dsema_orig);
+			"value = "PRIDISPATCHLONG", orig = "PRIDISPATCHLONG" }", dsema->dsema_value, dsema->dsema_orig);
 	return offset;
 }
 
 DISPATCH_NOINLINE
-long
+dispatch_long_t
 _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 {
 	_dispatch_sema4_create(&dsema->dsema_sema, _DSEMA4_POLICY_FIFO);
@@ -100,14 +100,14 @@ _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 	return 1;
 }
 
-long
+dispatch_long_t
 dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 {
-	long value = os_atomic_inc2o(dsema, dsema_value, release);
+	dispatch_long_t value = os_atomic_inc2o(dsema, dsema_value, release);
 	if (fastpath(value > 0)) {
 		return 0;
 	}
-	if (slowpath(value == LONG_MIN)) {
+	if (slowpath(value == DISPATCH_LONG_MIN)) {
 		DISPATCH_CLIENT_CRASH(value,
 				"Unbalanced call to dispatch_semaphore_signal()");
 	}
@@ -115,11 +115,11 @@ dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 }
 
 DISPATCH_NOINLINE
-static long
+static dispatch_long_t
 _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 		dispatch_time_t timeout)
 {
-	long orig;
+	dispatch_long_t orig;
 
 	_dispatch_sema4_create(&dsema->dsema_sema, _DSEMA4_POLICY_FIFO);
 	switch (timeout) {
@@ -146,10 +146,10 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 	return 0;
 }
 
-long
+dispatch_long_t
 dispatch_semaphore_wait(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 {
-	long value = os_atomic_dec2o(dsema, dsema_value, acquire);
+	dispatch_long_t value = os_atomic_dec2o(dsema, dsema_value, acquire);
 	if (fastpath(value >= 0)) {
 		return 0;
 	}

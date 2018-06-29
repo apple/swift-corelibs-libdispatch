@@ -288,6 +288,34 @@
 #define DISPATCH_TRANSPARENT_UNION
 #endif
 
+#if defined(_WIN64)
+// LLP64
+typedef long long dispatch_long_t;
+typedef unsigned long long dispatch_ulong_t;
+
+#define DISPATCH_LONG_MIN LLONG_MIN
+#define DISPATCH_LONG MAX LLONG_MAX
+
+#define DISPATCH_ULONG_MIN ULLONG_MIN
+#define DISPATCH_ULONG_MAX ULLONG_MAX
+
+#define PRIDISPATCHLONG "%lld"
+#define PRIDISPATCHULONG "%llu"
+#else
+// LP64 and ILP32
+typedef long dispatch_long_t;
+typedef unsigned long dispatch_ulong_t;
+
+#define DISPATCH_LONG_MIN LONG_MIN
+#define DISPATCH_LONG MAX LONG_MAX
+
+#define DISPATCH_ULONG_MIN ULONG_MIN
+#define DISPATCH_ULONG_MAX ULONG_MAX
+
+#define PRIDISPATCHLONG "%ld"
+#define PRIDISPATCHULONG "%lu"
+#endif
+
 typedef void (*dispatch_function_t)(void *_Nullable);
 
 #endif
