@@ -105,13 +105,13 @@ if(ENABLE_SWIFT)
                       ${CMAKE_C_COMPILER_TARGET}
                     CFLAGS
                       -fblocks
-                      -fmodule-map-file=${CMAKE_SOURCE_DIR}/dispatch/module.modulemap
+                      -fmodule-map-file=${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
                     SWIFT_FLAGS
-                      -I ${CMAKE_SOURCE_DIR}
+                      -I ${PROJECT_SOURCE_DIR}
                       -I/usr/include
                       ${swift_optimization_flags}
                     DEPENDS
-                      ${CMAKE_SOURCE_DIR}/dispatch/module.modulemap)
+                      ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap)
   target_sources(dispatch
                  PRIVATE
                    swift/DispatchStubs.cc
@@ -132,11 +132,11 @@ if(ENABLE_DTRACE)
 endif()
 target_include_directories(dispatch
                            PRIVATE
-                             ${CMAKE_BINARY_DIR}
-                             ${CMAKE_SOURCE_DIR}
+                             ${PROJECT_BINARY_DIR}
+                             ${PROJECT_SOURCE_DIR}
                              ${CMAKE_CURRENT_SOURCE_DIR}
                              ${CMAKE_CURRENT_BINARY_DIR}
-                             ${CMAKE_SOURCE_DIR}/private)
+                             ${PROJECT_SOURCE_DIR}/private)
 target_include_directories(dispatch
                            SYSTEM BEFORE PRIVATE
                              "${BlocksRuntime_INCLUDE_DIR}")
@@ -212,7 +212,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
                  "-Xlinker -compatibility_version -Xlinker 1"
                  "-Xlinker -current_version -Xlinker ${VERSION}"
                  "-Xlinker -dead_strip"
-                 "-Xlinker -alias_list -Xlinker ${CMAKE_SOURCE_DIR}/xcodeconfig/libdispatch.aliases")
+                 "-Xlinker -alias_list -Xlinker ${PROJECT_SOURCE_DIR}/xcodeconfig/libdispatch.aliases")
 endif()
 dispatch_set_linker(dispatch)
 
