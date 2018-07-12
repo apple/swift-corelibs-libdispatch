@@ -33,12 +33,14 @@
 #if defined(_WIN32)
 #include "shims/generic_win_stubs.h"
 #include "shims/generic_sys_queue.h"
-#elif defined(__unix__)
-#include "shims/generic_unix_stubs.h"
 #endif
 
 #ifdef __ANDROID__
 #include "shims/android_stubs.h"
+#endif
+
+#if !HAVE_MACH
+#include "shims/mach.h"
 #endif
 
 #include "shims/hw_config.h"
@@ -78,6 +80,12 @@
 size_t strlcpy(char *dst, const char *src, size_t size);
 
 #endif // HAVE_STRLCPY
+
+#ifndef TAILQ_FOREACH_SAFE
+#define TAILQ_FOREACH_SAFE(var, head, field, temp)                         \
+	for ((var) = TAILQ_FIRST((head));                                      \
+		(var) && ((temp) = TAILQ_NEXT((var), field), 1); (var) = (temp))
+#endif
 
 #if PTHREAD_WORKQUEUE_SPI_VERSION < 20140716
 static inline int
