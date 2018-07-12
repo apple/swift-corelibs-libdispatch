@@ -11,24 +11,8 @@
 #include <process.h>
 
 /*
- * Stub out defines for some mach types and related macros
+ * Stub out defines for missing types
  */
-
-typedef uint32_t mach_port_t;
-
-#define MACH_PORT_NULL (0)
-
-typedef uint32_t mach_msg_bits_t;
-typedef void *mach_msg_header_t;
-
-/*
- * Stub out defines for other missing types
- */
-
-// SIZE_T_MAX should not be hardcoded like this here.
-#ifndef SIZE_T_MAX
-#define SIZE_T_MAX (~(size_t)0)
-#endif
 
 typedef __typeof__(_Generic((__SIZE_TYPE__)0,                                  \
 			    unsigned long long int : (long long int)0,         \
