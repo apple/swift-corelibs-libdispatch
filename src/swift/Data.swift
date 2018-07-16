@@ -117,8 +117,22 @@ public struct DispatchData : RandomAccessCollection {
 		return try body(contentPtr)
 	}
 
+	@available(swift 4.2)
+	public func enumerateBytes(
+		_ block: (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void)
+	{
+		enumerateBytesCommon(block)
+	}
+
+	@available(swift, obsoleted: 4.2, renamed: "enumerateBytes(_:)")
 	public func enumerateBytes(
 		block: (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void)
+	{
+		enumerateBytesCommon(block)
+	}
+
+	private func enumerateBytesCommon(
+		_ block: (_ buffer: UnsafeBufferPointer<UInt8>, _ byteIndex: Int, _ stop: inout Bool) -> Void)
 	{
 		// we know that capturing block in the closure being created/passed to dispatch_data_apply
 		// does not cause block to escape because dispatch_data_apply does not allow its
