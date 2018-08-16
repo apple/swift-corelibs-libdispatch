@@ -13,7 +13,7 @@
 import CDispatch
 import _SwiftDispatchOverlayShims
 
-public extension DispatchSourceProtocol {
+extension DispatchSourceProtocol {
 
 	public func setEventHandler(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], handler: DispatchSourceHandler?) {
 		if #available(macOS 10.10, iOS 8.0, *), let h = handler, qos != .unspecified || !flags.isEmpty {
@@ -91,7 +91,7 @@ public extension DispatchSourceProtocol {
 	}
 }
 
-public extension DispatchSource {
+extension DispatchSource {
 #if HAVE_MACH
 	public struct MachSendEvent : OptionSet, RawRepresentable {
 		public let rawValue: UInt
@@ -222,7 +222,7 @@ public extension DispatchSource {
 }
 
 #if HAVE_MACH
-public extension DispatchSourceMachSend {
+extension DispatchSourceMachSend {
 	public var handle: mach_port_t {
 		return mach_port_t(dispatch_source_get_handle(self as! DispatchSource))
 	}
@@ -240,7 +240,7 @@ public extension DispatchSourceMachSend {
 #endif
 
 #if HAVE_MACH
-public extension DispatchSourceMachReceive {
+extension DispatchSourceMachReceive {
 	public var handle: mach_port_t {
 		return mach_port_t(dispatch_source_get_handle(self as! DispatchSource))
 	}
@@ -248,7 +248,7 @@ public extension DispatchSourceMachReceive {
 #endif
 
 #if HAVE_MACH
-public extension DispatchSourceMemoryPressure {
+extension DispatchSourceMemoryPressure {
 	public var data: DispatchSource.MemoryPressureEvent {
 		let data = dispatch_source_get_data(self as! DispatchSource)
 		return DispatchSource.MemoryPressureEvent(rawValue: data)
@@ -262,7 +262,7 @@ public extension DispatchSourceMemoryPressure {
 #endif
 
 #if !os(Linux) && !os(Android)
-public extension DispatchSourceProcess {
+extension DispatchSourceProcess {
 	public var handle: pid_t {
 		return pid_t(dispatch_source_get_handle(self as! DispatchSource))
 	}
@@ -277,7 +277,7 @@ public extension DispatchSourceProcess {
 }
 #endif
 
-public extension DispatchSourceTimer {
+extension DispatchSourceTimer {
 	///
 	/// Sets the deadline and leeway for a timer event that fires once.
 	///
@@ -618,7 +618,7 @@ public extension DispatchSourceTimer {
 }
 
 #if !os(Linux) && !os(Android)
-public extension DispatchSourceFileSystemObject {
+extension DispatchSourceFileSystemObject {
 	public var handle: Int32 {
 		return Int32(dispatch_source_get_handle((self as! DispatchSource).__wrapped))
 	}
@@ -635,7 +635,7 @@ public extension DispatchSourceFileSystemObject {
 }
 #endif
 
-public extension DispatchSourceUserDataAdd {
+extension DispatchSourceUserDataAdd {
 	/// Merges data into a dispatch source of type `DISPATCH_SOURCE_TYPE_DATA_ADD`
 	/// and submits its event handler block to its target queue.
 	///
@@ -646,7 +646,7 @@ public extension DispatchSourceUserDataAdd {
 	}
 }
 
-public extension DispatchSourceUserDataOr {
+extension DispatchSourceUserDataOr {
 	/// Merges data into a dispatch source of type `DISPATCH_SOURCE_TYPE_DATA_OR` and
 	/// submits its event handler block to its target queue.
 	///
@@ -657,7 +657,7 @@ public extension DispatchSourceUserDataOr {
 	}
 }
 
-public extension DispatchSourceUserDataReplace {
+extension DispatchSourceUserDataReplace {
 	/// Merges data into a dispatch source of type `DISPATCH_SOURCE_TYPE_DATA_REPLACE`
 	/// and submits its event handler block to its target queue.
 	///
