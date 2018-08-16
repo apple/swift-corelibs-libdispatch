@@ -133,7 +133,7 @@ public enum DispatchTimeoutResult {
 
 /// dispatch_group
 
-public extension DispatchGroup {
+extension DispatchGroup {
 	public func notify(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], queue: DispatchQueue, execute work: @escaping @convention(block) () -> ()) {
 		if #available(macOS 10.10, iOS 8.0, *), qos != .unspecified || !flags.isEmpty {
 			let item = DispatchWorkItem(qos: qos, flags: flags, block: work)
@@ -163,7 +163,7 @@ public extension DispatchGroup {
 
 /// dispatch_semaphore
 
-public extension DispatchSemaphore {
+extension DispatchSemaphore {
 	@discardableResult
 	public func signal() -> Int {
 		return Int(dispatch_semaphore_signal(self.__wrapped))
