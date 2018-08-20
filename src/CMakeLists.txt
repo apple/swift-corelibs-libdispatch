@@ -79,7 +79,7 @@ if(HAVE_OBJC)
 endif()
 if(ENABLE_SWIFT)
   set(swift_optimization_flags)
-  if(CMAKE_BUILD_TYPE MATCHES Release)
+  if(NOT CMAKE_BUILD_TYPE MATCHES Debug)
     set(swift_optimization_flags -O)
   endif()
   add_swift_library(swiftDispatch
@@ -116,6 +116,11 @@ if(ENABLE_SWIFT)
                  PRIVATE
                    swift/DispatchStubs.cc
                    ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o)
+  if(CMAKE_BUILD_TYPE MATCHES Debug)
+    target_link_libraries(dispatch
+                          PRIVATE
+                            swiftSwiftOnoneSupport)
+  endif()
 endif()
 if(ENABLE_DTRACE)
   dtrace_usdt_probe(${CMAKE_CURRENT_SOURCE_DIR}/provider.d
