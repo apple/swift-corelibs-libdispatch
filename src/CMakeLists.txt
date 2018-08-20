@@ -54,12 +54,7 @@ add_library(dispatch
               shims/time.h
               shims/tsd.h
               shims/yield.h)
-if(UNIX)
-  target_sources(dispatch
-                 PRIVATE
-                   shims/generic_unix_stubs.c
-                   shims/generic_unix_stubs.h)
-elseif(WIN32)
+if(WIN32)
   target_sources(dispatch
                  PRIVATE
                    shims/generic_sys_queue.h

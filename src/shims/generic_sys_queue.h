@@ -62,11 +62,6 @@
 	(var) != NULL; \
 	(var) = TAILQ_NEXT(var, field))
 
-#define TAILQ_FOREACH_SAFE(var, list, field, temp) \
-	for ((var) = TAILQ_FIRST(list); \
-	((var) != NULL) && (temp = TAILQ_NEXT(var, field), 1); \
-	(var) = (temp))
-
 #define TAILQ_REMOVE(list, elem, field) do { \
 		if (TAILQ_NEXT(elem, field) != NULL) { \
 			TAILQ_NEXT(elem, field)->field.te_prev = (elem)->field.te_prev; \

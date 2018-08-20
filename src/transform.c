@@ -662,7 +662,7 @@ _dispatch_transform_to_base32_with_table(dispatch_data_t data, const unsigned ch
 	dest_size = howmany(total, 5);
 	// <rdar://problem/25676583>
 	// os_mul_overflow(dest_size, 8, &dest_size)
-	if (dest_size > SIZE_T_MAX / 8) {
+	if (dest_size > SIZE_MAX / 8) {
 		return NULL;
 	}
 	dest_size *= 8;
@@ -897,7 +897,7 @@ _dispatch_transform_to_base64(dispatch_data_t data)
 	dest_size = howmany(total, 3);
 	// <rdar://problem/25676583>
 	// os_mul_overflow(dest_size, 4, &dest_size)
-	if (dest_size > SIZE_T_MAX / 4) {
+	if (dest_size > SIZE_MAX / 4) {
 		return NULL;
 	}
 	dest_size *= 4;
