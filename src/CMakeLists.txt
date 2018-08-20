@@ -191,6 +191,9 @@ endif()
 if(BSD_OVERLAY_FOUND)
   target_link_libraries(dispatch PRIVATE ${BSD_OVERLAY_LDFLAGS})
 endif()
+if(LibRT_FOUND)
+  target_link_libraries(dispatch PRIVATE RT::rt)
+endif()
 target_link_libraries(dispatch
                       PRIVATE
                         Threads::Threads
