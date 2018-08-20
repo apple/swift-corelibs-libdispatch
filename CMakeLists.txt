@@ -1,7 +1,7 @@
 
 cmake_minimum_required(VERSION 3.4.3)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/modules")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
 project(dispatch
         VERSION 1.3
@@ -134,12 +134,12 @@ option(INSTALL_PRIVATE_HEADERS "installs private headers in the same location as
 
 find_package(BlocksRuntime QUIET)
 if(NOT BlocksRuntime_FOUND)
-  set(BlocksRuntime_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/src/BlocksRuntime)
+  set(BlocksRuntime_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/src/BlocksRuntime)
 
   add_library(BlocksRuntime
               STATIC
-                ${CMAKE_SOURCE_DIR}/src/BlocksRuntime/data.c
-                ${CMAKE_SOURCE_DIR}/src/BlocksRuntime/runtime.c)
+                ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/data.c
+                ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/runtime.c)
   set_target_properties(BlocksRuntime
                         PROPERTIES
                           POSITION_INDEPENDENT_CODE TRUE)
@@ -152,12 +152,12 @@ if(NOT BlocksRuntime_FOUND)
   add_library(BlocksRuntime::BlocksRuntime ALIAS BlocksRuntime)
 
   install(FILES
-            ${CMAKE_SOURCE_DIR}/src/BlocksRuntime/Block.h
+            ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/Block.h
           DESTINATION
             "${INSTALL_BLOCK_HEADERS_DIR}")
   if(INSTALL_PRIVATE_HEADERS)
     install(FILES
-              ${CMAKE_SOURCE_DIR}/src/BlocksRuntime/Block_private.h
+              ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/Block_private.h
             DESTINATION
               "${INSTALL_BLOCK_HEADERS_DIR}")
   endif()
@@ -300,35 +300,35 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
   add_custom_command(OUTPUT
-                       "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
-                       "${CMAKE_SOURCE_DIR}/private/module.modulemap"
+                       "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                       "${PROJECT_SOURCE_DIR}/private/module.modulemap"
                      COMMAND
-                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/dispatch/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/dispatch/darwin/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
                      COMMAND
-                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/private/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
+                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/private/darwin/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
 elseif(CMAKE_SYSTEM_NAME STREQUAL Windows)
   add_custom_command(OUTPUT
-                       "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
-                       "${CMAKE_SOURCE_DIR}/private/module.modulemap"
+                       "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                       "${PROJECT_SOURCE_DIR}/private/module.modulemap"
                      COMMAND
-                       ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/dispatch/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                       ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
                      COMMAND
-                       ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/private/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
+                       ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/private/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
 else()
   add_custom_command(OUTPUT
-                       "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
-                       "${CMAKE_SOURCE_DIR}/private/module.modulemap"
+                       "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                       "${PROJECT_SOURCE_DIR}/private/module.modulemap"
                      COMMAND
-                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/dispatch/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
                      COMMAND
-                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/private/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
+                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/private/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
 endif()
 add_custom_target(module-map-symlinks
                   DEPENDS
-                     "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
-                     "${CMAKE_SOURCE_DIR}/private/module.modulemap")
-configure_file("${CMAKE_SOURCE_DIR}/cmake/config.h.in"
-               "${CMAKE_BINARY_DIR}/config/config_ac.h")
+                     "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                     "${PROJECT_SOURCE_DIR}/private/module.modulemap")
+configure_file("${PROJECT_SOURCE_DIR}/cmake/config.h.in"
+               "${PROJECT_BINARY_DIR}/config/config_ac.h")
 add_definitions(-DHAVE_CONFIG_H)
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)

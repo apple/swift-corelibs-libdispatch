@@ -64,11 +64,11 @@ function(dispatch_windows_generate_sdk_vfs_overlay flags)
   set(UCRTVersion $ENV{UCRTVersion})
 
   # TODO(compnerd) use a target to avoid re-creating this file all the time
-  configure_file("${CMAKE_SOURCE_DIR}/utils/WindowsSDKVFSOverlay.yaml.in"
-                 "${CMAKE_BINARY_DIR}/windows-sdk-vfs-overlay.yaml"
+  configure_file("${PROJECT_SOURCE_DIR}/utils/WindowsSDKVFSOverlay.yaml.in"
+                 "${PROJECT_BINARY_DIR}/windows-sdk-vfs-overlay.yaml"
                  @ONLY)
 
   set(${flags}
-      -ivfsoverlay;"${CMAKE_BINARY_DIR}/windows-sdk-vfs-overlay.yaml"
+      -ivfsoverlay;"${PROJECT_BINARY_DIR}/windows-sdk-vfs-overlay.yaml"
       PARENT_SCOPE)
 endfunction()

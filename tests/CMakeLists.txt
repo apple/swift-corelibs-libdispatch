@@ -1,14 +1,14 @@
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     execute_process(COMMAND
-                      "${CMAKE_COMMAND}" -E copy "${CMAKE_SOURCE_DIR}/private"
+                      "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/private"
                       "${CMAKE_CURRENT_BINARY_DIR}/dispatch")
     execute_process(COMMAND
                       "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_SOURCE_DIR}/leaks-wrapper.sh"
                       "${CMAKE_CURRENT_BINARY_DIR}/leaks-wrapper")
 else()
     execute_process(COMMAND
-                      "${CMAKE_COMMAND}" -E create_symlink "${CMAKE_SOURCE_DIR}/private"
+                      "${CMAKE_COMMAND}" -E create_symlink "${PROJECT_SOURCE_DIR}/private"
                       "${CMAKE_CURRENT_BINARY_DIR}/dispatch")
     execute_process(COMMAND
                       "${CMAKE_COMMAND}" -E create_symlink "${CMAKE_CURRENT_SOURCE_DIR}/leaks-wrapper.sh"
@@ -27,7 +27,7 @@ target_include_directories(bsdtests
                            PRIVATE
                              ${CMAKE_CURRENT_BINARY_DIR}
                              ${CMAKE_CURRENT_SOURCE_DIR}
-                             ${CMAKE_SOURCE_DIR})
+                             ${PROJECT_SOURCE_DIR})
 if(BSD_OVERLAY_FOUND)
   target_compile_options(bsdtests
                          PRIVATE
@@ -41,7 +41,7 @@ target_include_directories(bsdtestharness
                            PRIVATE
                              ${CMAKE_CURRENT_BINARY_DIR}
                              ${CMAKE_CURRENT_SOURCE_DIR}
-                             ${CMAKE_SOURCE_DIR})
+                             ${PROJECT_SOURCE_DIR})
 if(BSD_OVERLAY_FOUND)
   target_compile_options(bsdtestharness
                          PRIVATE
@@ -78,7 +78,7 @@ function(add_unit_test name)
                              PRIVATE
                                ${CMAKE_CURRENT_BINARY_DIR}
                                ${CMAKE_CURRENT_SOURCE_DIR}
-                               ${CMAKE_SOURCE_DIR})
+                               ${PROJECT_SOURCE_DIR})
   if(ENABLE_SWIFT)
     # For testing in swift.org CI system; make deadlines lenient by default
     # to reduce probability of test failures due to machine load.
