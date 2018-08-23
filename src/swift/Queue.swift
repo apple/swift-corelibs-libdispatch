@@ -51,19 +51,19 @@ public extension DispatchQueue {
 
 	public enum GlobalQueuePriority {
 		@available(macOS, deprecated: 10.10, message: "Use qos attributes instead")
-		@available(*, deprecated: 8.0, message: "Use qos attributes instead")
+		@available(iOS, deprecated: 8.0, message: "Use qos attributes instead")
 		case high
 
 		@available(macOS, deprecated: 10.10, message: "Use qos attributes instead")
-		@available(*, deprecated: 8.0, message: "Use qos attributes instead")
+		@available(iOS, deprecated: 8.0, message: "Use qos attributes instead")
 		case `default`
 
 		@available(macOS, deprecated: 10.10, message: "Use qos attributes instead")
-		@available(*, deprecated: 8.0, message: "Use qos attributes instead")
+		@available(iOS, deprecated: 8.0, message: "Use qos attributes instead")
 		case low
 
 		@available(macOS, deprecated: 10.10, message: "Use qos attributes instead")
-		@available(*, deprecated: 8.0, message: "Use qos attributes instead")
+		@available(iOS, deprecated: 8.0, message: "Use qos attributes instead")
 		case background
 
 		internal var _translatedValue: Int {
@@ -113,7 +113,7 @@ public extension DispatchQueue {
 	}
 
 	@available(macOS, deprecated: 10.10, message: "")
-	@available(*, deprecated: 8.0, message: "")
+	@available(iOS, deprecated: 8.0, message: "")
 	public class func global(priority: GlobalQueuePriority) -> DispatchQueue {
 		return DispatchQueue(queue: CDispatch.dispatch_get_global_queue(Int(priority._translatedValue), 0))
 	}
