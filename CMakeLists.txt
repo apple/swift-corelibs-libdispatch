@@ -67,6 +67,7 @@ if(ENABLE_SWIFT)
   endif()
 
   set(INSTALL_TARGET_DIR "${INSTALL_LIBDIR}/${swift_dir}/${swift_os}" CACHE PATH "Path where the libraries will be installed")
+  set(INSTALL_RSRC_DIR "${INSTALL_LIBDIR}/${swift_dir}/${swift_os}/${swift_arch}" CACHE PATH "Path where the compiler resources will be installed")
   set(INSTALL_DISPATCH_HEADERS_DIR "${INSTALL_LIBDIR}/${swift_dir}/dispatch" CACHE PATH "Path where the headers will be installed for libdispatch")
   set(INSTALL_BLOCK_HEADERS_DIR "${INSTALL_LIBDIR}/${swift_dir}/Block" CACHE PATH "Path where the headers will be installed for the blocks runtime")
   set(INSTALL_OS_HEADERS_DIR "${INSTALL_LIBDIR}/${swift_dir}/os" CACHE PATH "Path where the os/ headers will be installed")
@@ -168,6 +169,14 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL Darwin)
             BlocksRuntime
           DESTINATION
             ${INSTALL_TARGET_DIR})
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL Darwin)
+    # Install also in the architecture subdir for platforms that do not support
+    # fat libraries
+    install(TARGETS
+              BlocksRuntime
+            DESTINATION
+              ${INSTALL_RSRC_DIR})
+  endif()
 endif()
 
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)
@@ -347,4 +356,3 @@ add_subdirectory(src)
 if(ENABLE_TESTING)
   add_subdirectory(tests)
 endif()
-

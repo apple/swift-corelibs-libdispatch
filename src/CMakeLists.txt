@@ -254,7 +254,7 @@ if(ENABLE_SWIFT)
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftdoc
           DESTINATION
-            ${INSTALL_TARGET_DIR}/${swift_arch})
+            ${INSTALL_RSRC_DIR})
 
   if(BUILD_SHARED_LIBS)
     set(library_kind SHARED)
@@ -267,5 +267,17 @@ if(ENABLE_SWIFT)
             ${swiftDispatch_OUTPUT_FILE}
           DESTINATION
             ${INSTALL_TARGET_DIR})
-endif()
 
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL Darwin)
+    # Install also in the architecture subdir for platforms that do not support
+    # fat libraries
+    install(TARGETS
+              dispatch
+            DESTINATION
+              ${INSTALL_RSRC_DIR})
+    install(FILES
+              ${swiftDispatch_OUTPUT_FILE}
+            DESTINATION
+              ${INSTALL_RSRC_DIR})
+  endif()
+endif()
