@@ -72,6 +72,7 @@ if(ENABLE_SWIFT)
                            ${SWIFT_RUNTIME_LIBDIR}/${CMAKE_SHARED_LIBRARY_PREFIX}swiftSwiftOnoneSupport${CMAKE_SHARED_LIBRARY_SUFFIX})
 
   set(INSTALL_TARGET_DIR "${INSTALL_LIBDIR}/swift/${SWIFT_OS}" CACHE PATH "Path where the libraries will be installed")
+  set(INSTALL_STATIC_TARGET_DIR "${INSTALL_LIBDIR}/swift_static/${SWIFT_OS}" CACHE PATH "Path where the static libraries will be installed")
   set(INSTALL_DISPATCH_HEADERS_DIR "${INSTALL_LIBDIR}/swift/dispatch" CACHE PATH "Path where the headers will be installed for libdispatch")
   set(INSTALL_BLOCK_HEADERS_DIR "${INSTALL_LIBDIR}/swift/Block" CACHE PATH "Path where the headers will be installed for the blocks runtime")
   set(INSTALL_OS_HEADERS_DIR "${INSTALL_LIBDIR}/swift/os" CACHE PATH "Path where the os/ headers will be installed")
