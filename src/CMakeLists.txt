@@ -2,7 +2,74 @@
 include(SwiftSupport)
 include(DTrace)
 
-add_library(dispatch
+if(ENABLE_SWIFT)
+    set(dispatch_targets dispatch dispatch_static dispatch_objects)
+else()
+   set(dispatch_targets dispatch)
+endif()
+
+function(dispatch_add_library)
+    # Swift builds both shared and static libraries
+    if(ENABLE_SWIFT)
+        add_library(dispatch_objects OBJECT ${ARGV})
+        set_property(TARGET dispatch_objects PROPERTY POSITION_INDEPENDENT_CODE ON)
+        add_library(dispatch SHARED $<TARGET_OBJECTS:dispatch_objects>)
+        set_target_properties(dispatch PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/swift/${SWIFT_OS}
+            ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/swift/${SWIFT_OS}
+        )
+        add_library(dispatch_static STATIC $<TARGET_OBJECTS:dispatch_objects>)
+        set_target_properties(dispatch_static PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/swift_static/${SWIFT_OS}
+            ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/swift_static/${SWIFT_OS}
+            OUTPUT_NAME dispatch
+        )
+    else()
+        add_library(dispatch ${ARGV})
+    endif()
+endfunction()
+
+function(dispatch_target_sources)
+    if(ENABLE_SWIFT)
+        target_sources(dispatch_objects ${ARGV})
+    else()
+        target_sources(dispatch ${ARGV})
+    endif()
+endfunction()
+
+function(dispatch_target_include_directories)
+    foreach(target IN LISTS dispatch_targets)
+        target_include_directories(${target} ${ARGV})
+    endforeach()
+endfunction()
+
+function(dispatch_target_compile_definitions)
+    foreach(target IN LISTS dispatch_targets)
+        target_compile_definitions(${target} ${ARGV})
+    endforeach()
+endfunction()
+
+function(dispatch_target_compile_options)
+    foreach(target IN LISTS dispatch_targets)
+        target_compile_options(${target} ${ARGV})
+    endforeach()
+endfunction()
+
+function(dispatch_target_link_libraries)
+    foreach(target IN LISTS dispatch_targets)
+        if(NOT target STREQUAL "dispatch_objects")
+            target_link_libraries(${target} ${ARGV})
+        endif()
+    endforeach()
+endfunction()
+
+function(dispatch_target_set_property)
+    foreach(target IN LISTS dispatch_targets)
+        set_property(TARGET ${target} ${ARGV})
+    endforeach()
+endfunction()
+
+dispatch_add_library(
               allocator.c
               apply.c
               benchmark.c
@@ -54,27 +121,27 @@ add_library(dispatch
               shims/tsd.h
               shims/yield.h)
 if(UNIX)
-  target_sources(dispatch
+  dispatch_target_sources(
                  PRIVATE
                    shims/generic_unix_stubs.c
                    shims/generic_unix_stubs.h)
 elseif(WIN32)
-  target_sources(dispatch
+  dispatch_target_sources(
                  PRIVATE
                    shims/generic_win_stubs.c
                    shims/generic_win_stubs.h)
 endif()
 if(DISPATCH_USE_INTERNAL_WORKQUEUE)
-  target_sources(dispatch
+  dispatch_target_sources(
                  PRIVATE
                    event/workqueue.c
                    event/workqueue_internal.h)
 endif()
-target_sources(dispatch
+dispatch_target_sources(
                PRIVATE
                  block.cpp)
 if(HAVE_OBJC)
-  target_sources(dispatch
+  dispatch_target_sources(dispatch
                  PRIVATE
                    data.m
                    object.m)
@@ -114,20 +181,23 @@ if(ENABLE_SWIFT)
                       ${swift_optimization_flags}
                     DEPENDS
                       ${CMAKE_SOURCE_DIR}/dispatch/module.modulemap)
-  target_sources(dispatch
+  dispatch_target_sources(
                  PRIVATE
-                   swift/DispatchStubs.cc
-                   ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o)
+                   swift/DispatchStubs.cc)
+  foreach(target dispatch dispatch_static)
+    add_dependencies(${target} swiftDispatch)
+    target_sources(${target} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o)
+  endforeach()
 endif()
 if(ENABLE_DTRACE)
   dtrace_usdt_probe(${CMAKE_CURRENT_SOURCE_DIR}/provider.d
                     OUTPUT_SOURCES
                       dispatch_dtrace_provider_headers)
-  target_sources(dispatch
+  dispatch_target_sources(
                  PRIVATE
                    ${dispatch_dtrace_provider_headers})
 endif()
-target_include_directories(dispatch
+dispatch_target_include_directories(
                            PRIVATE
                              ${CMAKE_BINARY_DIR}
                              ${CMAKE_SOURCE_DIR}
@@ -135,104 +205,95 @@ target_include_directories(dispatch
                              ${CMAKE_CURRENT_BINARY_DIR}
                              ${CMAKE_SOURCE_DIR}/private)
 if(WITH_BLOCKS_RUNTIME)
-  target_include_directories(dispatch
+  dispatch_target_include_directories(
                              SYSTEM BEFORE PRIVATE
                                "${WITH_BLOCKS_RUNTIME}")
 endif()
 if(WIN32)
-  target_compile_definitions(dispatch
+  dispatch_target_compile_definitions(
                              PRIVATE
                                _CRT_NONSTDC_NO_WARNINGS)
 endif()
 if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
-  target_compile_options(dispatch PRIVATE /EHsc-)
+  dispatch_target_compile_options(PRIVATE /EHsc-)
 else()
-  target_compile_options(dispatch PRIVATE -fno-exceptions)
+  dispatch_target_compile_options(PRIVATE -fno-exceptions)
 endif()
 if(DISPATCH_ENABLE_ASSERTS)
-  target_compile_definitions(dispatch
+  dispatch_target_compile_definitions(
                              PRIVATE
-                               -DDISPATCH_DEBUG=1)
+                               DISPATCH_DEBUG=1)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-  target_compile_definitions(dispatch
+  dispatch_target_compile_definitions(
                              PRIVATE
-                               -D_CRT_SECURE_NO_WARNINGS)
+                               _CRT_SECURE_NO_WARNINGS)
 elseif(CMAKE_SYSTEM_NAME STREQUAL Android)
-  target_compile_options(dispatch
+  dispatch_target_compile_options(
                          PRIVATE
                            -U_GNU_SOURCE)
 endif()
 if(BSD_OVERLAY_FOUND)
-  target_compile_options(dispatch
+  dispatch_target_compile_options(
                          PRIVATE
                            ${BSD_OVERLAY_CFLAGS})
 endif()
 if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
-  target_compile_options(dispatch
+  dispatch_target_compile_options(
                          PRIVATE
                            /W3)
 else()
-  target_compile_options(dispatch
+  dispatch_target_compile_options(
                          PRIVATE
                            -Wall)
 endif()
 # FIXME(compnerd) add check for -fblocks?
 if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
-  target_compile_options(dispatch
+  dispatch_target_compile_options(
                          PRIVATE
                            -Xclang -fblocks)
 else()
   # FIXME(compnerd) add check for -momit-leaf-frame-pointer?
-  target_compile_options(dispatch
+  dispatch_target_compile_options(
                          PRIVATE
                            -fblocks
                            -momit-leaf-frame-pointer)
 endif()
 if(BSD_OVERLAY_FOUND)
-  target_link_libraries(dispatch PRIVATE ${BSD_OVERLAY_LDFLAGS})
+  dispatch_target_link_libraries(PRIVATE ${BSD_OVERLAY_LDFLAGS})
 endif()
-target_link_libraries(dispatch PRIVATE Threads::Threads)
+dispatch_target_link_libraries(PRIVATE Threads::Threads)
 if(WITH_BLOCKS_RUNTIME)
-  target_link_libraries(dispatch PRIVATE BlocksRuntime)
+  dispatch_target_link_libraries(PRIVATE BlocksRuntime)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-  target_link_libraries(dispatch
+  dispatch_target_link_libraries(
                         PRIVATE
                           WS2_32
                           WinMM
                           synchronization)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
-  set_property(TARGET dispatch
-               APPEND_STRING
-               PROPERTY LINK_FLAGS
-                 "-Xlinker -compatibility_version -Xlinker 1"
-                 "-Xlinker -current_version -Xlinker ${VERSION}"
-                 "-Xlinker -dead_strip"
-                 "-Xlinker -alias_list -Xlinker ${CMAKE_SOURCE_DIR}/xcodeconfig/libdispatch.aliases")
+  dispatch_target_set_property(
+                 APPEND_STRING
+                 PROPERTY LINK_FLAGS
+                   "-Xlinker -compatibility_version -Xlinker 1"
+                   "-Xlinker -current_version -Xlinker ${VERSION}"
+                   "-Xlinker -dead_strip"
+                   "-Xlinker -alias_list -Xlinker ${CMAKE_SOURCE_DIR}/xcodeconfig/libdispatch.aliases")
 endif()
 if(USE_GOLD_LINKER)
-  set_property(TARGET dispatch
-               APPEND_STRING
-               PROPERTY LINK_FLAGS
-                 -fuse-ld=gold)
+  dispatch_target_set_property(
+                 APPEND_STRING
+                 PROPERTY LINK_FLAGS
+                   -fuse-ld=gold)
 endif()
 if(USE_LLD_LINKER)
-  set_property(TARGET dispatch
-               APPEND_STRING
-               PROPERTY LINK_FLAGS
-                 -fuse-ld=lld)
+  dispatch_target_set_property(
+                 APPEND_STRING
+                 PROPERTY LINK_FLAGS
+                   -fuse-ld=lld)
 endif()
-
-# Temporary staging; the various swift projects that depend on libdispatch
-# all expect libdispatch.so to be in src/.libs/libdispatch.so
-# So for now, make a copy so we don't have to do a coordinated commit across
-# all the swift projects to change this assumption.
-add_custom_command(TARGET dispatch POST_BUILD
-                   COMMAND cmake -E make_directory .libs
-                   COMMAND cmake -E copy $<TARGET_FILE:dispatch> .libs
-                   COMMENT "Copying libdispatch to .libs")
 
 install(TARGETS
           dispatch
@@ -244,5 +305,9 @@ if(ENABLE_SWIFT)
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftdoc
           DESTINATION
             "${INSTALL_TARGET_DIR}/${CMAKE_SYSTEM_PROCESSOR}")
+  install(TARGETS
+            dispatch_static
+          DESTINATION
+            "${INSTALL_STATIC_TARGET_DIR}")
 endif()
 
