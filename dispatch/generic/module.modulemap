@@ -2,6 +2,7 @@ module Dispatch {
 	requires blocks
 	export *
 	link "dispatch"
+	link "BlocksRuntime"
 }
 
 module DispatchIntrospection [system] [extern_c] {
