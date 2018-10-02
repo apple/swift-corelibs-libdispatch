@@ -87,6 +87,9 @@ endif()
 
 option(ENABLE_DTRACE "enable dtrace support" "")
 
+# NOTE(abdulras) this is the CMake supported way to control whether we generate
+# shared or static libraries.  This impacts the behaviour of `add_library` in
+# what type of library it generates.
 option(BUILD_SHARED_LIBS "build shared libraries" ON)
 
 option(ENABLE_TESTING "build libdispatch tests" ON)
@@ -131,21 +134,22 @@ endif()
 
 option(INSTALL_PRIVATE_HEADERS "installs private headers in the same location as the public ones" OFF)
 
-find_package(BlocksRuntime QUIET)
-if(NOT BlocksRuntime_FOUND)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL Darwin)
   set(BlocksRuntime_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/src/BlocksRuntime)
 
+  # NOTE(compnerd) use the `BUILD_SHARED_LIBS` variable to determine what type
+  # of library to build.  If it is true, we will generate shared libraries,
+  # otherwise we will generate static libraries.
   add_library(BlocksRuntime
-              STATIC
-                ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/data.c
-                ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/runtime.c)
+              ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/data.c
+              ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/runtime.c)
   set_target_properties(BlocksRuntime
                         PROPERTIES
                           POSITION_INDEPENDENT_CODE TRUE)
   if(HAVE_OBJC AND CMAKE_DL_LIBS)
-    set_target_properties(BlocksRuntime
-                          PROPERTIES
-                            INTERFACE_LINK_LIBRARIES ${CMAKE_DL_LIBS})
+    target_link_libraries(BlocksRuntime
+                          PUBLIC
+                            ${CMAKE_DL_LIBS})
   endif()
 
   add_library(BlocksRuntime::BlocksRuntime ALIAS BlocksRuntime)
@@ -160,6 +164,10 @@ if(NOT BlocksRuntime_FOUND)
             DESTINATION
               "${INSTALL_BLOCK_HEADERS_DIR}")
   endif()
+  install(TARGETS
+            BlocksRuntime
+          DESTINATION
+            ${INSTALL_TARGET_DIR})
 endif()
 
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)
