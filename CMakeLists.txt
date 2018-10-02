@@ -142,7 +142,9 @@ if(NOT BlocksRuntime_FOUND)
                 ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/runtime.c)
   set_target_properties(BlocksRuntime
                         PROPERTIES
-                          POSITION_INDEPENDENT_CODE TRUE)
+                          POSITION_INDEPENDENT_CODE TRUE
+                          C_VISIBILITY_PRESET HIDDEN
+                          VISIBILITY_INLINES_HIDDEN YES)
   if(HAVE_OBJC AND CMAKE_DL_LIBS)
     set_target_properties(BlocksRuntime
                           PROPERTIES
