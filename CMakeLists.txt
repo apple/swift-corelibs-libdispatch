@@ -144,6 +144,16 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL Darwin)
   add_library(BlocksRuntime
               ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/data.c
               ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/runtime.c)
+  if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+    target_sources(BlocksRuntime
+                   PRIVATE
+                     ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/BlocksRuntime.def)
+    if(NOT BUILD_SHARED_LIBS)
+      target_compile_definitions(BlocksRuntime
+                                 PRIVATE
+                                   BlocksRuntime_STATIC)
+    endif()
+  endif()
   set_target_properties(BlocksRuntime
                         PROPERTIES
                           POSITION_INDEPENDENT_CODE TRUE)

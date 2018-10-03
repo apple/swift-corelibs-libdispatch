@@ -11,11 +11,25 @@
 #ifndef _Block_H_
 #define _Block_H_
 
+#if defined(_WIN32)
+#    if defined(BlocksRuntime_STATIC)
+#        define BLOCK_ABI
+#    else
+#        if defined(BlocksRuntime_EXPORTS)
+#            define BLOCK_ABI __declspec(dllexport)
+#        else
+#            define BLOCK_ABI __declspec(dllimport)
+#        endif
+#    endif
+#else
+#    define BLOCK_ABI __attribute__((__visibility__("default")))
+#endif
+
 #if !defined(BLOCK_EXPORT)
 #   if defined(__cplusplus)
-#       define BLOCK_EXPORT extern "C" __attribute__((visibility("default")))
+#       define BLOCK_EXPORT extern "C" BLOCK_ABI
 #   else
-#       define BLOCK_EXPORT extern __attribute__((visibility("default")))
+#       define BLOCK_EXPORT extern BLOCK_ABI
 #   endif
 #endif
 
@@ -38,8 +52,13 @@ BLOCK_EXPORT void _Block_object_assign(void *, const void *, const int);
 BLOCK_EXPORT void _Block_object_dispose(const void *, const int);
 
 // Used by the compiler. Do not use these variables yourself.
+#if defined(_WIN32)
+extern void * _NSConcreteGlobalBlock[32];
+extern void * _NSConcreteStackBlock[32];
+#else
 BLOCK_EXPORT void * _NSConcreteGlobalBlock[32];
 BLOCK_EXPORT void * _NSConcreteStackBlock[32];
+#endif
 
 #if __cplusplus
 }
