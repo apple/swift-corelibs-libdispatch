@@ -59,8 +59,8 @@ endif()
 if(ENABLE_SWIFT)
   target_link_libraries(bsdtestharness
                         PRIVATE
-                          swiftCore
-                          swiftSwiftOnoneSupport)
+                          swiftCore-${swift_os}-${swift_arch}
+                          swiftSwiftOnoneSupport-${swift_os}-${swift_arch})
 endif()
 
 function(add_unit_test name)
@@ -83,7 +83,10 @@ function(add_unit_test name)
     # For testing in swift.org CI system; make deadlines lenient by default
     # to reduce probability of test failures due to machine load.
     target_compile_options(${name} PRIVATE -DLENIENT_DEADLINES=1)
-    target_link_libraries(${name} PRIVATE swiftCore swiftSwiftOnoneSupport)
+    target_link_libraries(${name}
+                          PRIVATE
+                            swiftCore-${swift_os}-${swift_arch}
+                            swiftSwiftOnoneSupport-${swift_os}-${swift_arch})
   endif()
   target_include_directories(${name}
                              SYSTEM BEFORE PRIVATE
@@ -114,8 +117,8 @@ function(add_unit_test name)
   if(ENABLE_SWIFT)
     target_link_libraries(${name}
                           PRIVATE
-                            swiftCore
-                            swiftSwiftOnoneSupport)
+                            swiftCore-${swift_os}-${swift_arch}
+                            swiftSwiftOnoneSupport-${swift_os}-${swift_arch})
   endif()
   target_link_libraries(${name} PRIVATE bsdtests)
   add_test(NAME ${name}

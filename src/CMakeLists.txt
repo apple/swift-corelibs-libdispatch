@@ -112,11 +112,16 @@ if(ENABLE_SWIFT)
                       ${swift_optimization_flags}
                     DEPENDS
                       ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap)
+
+  get_filename_component(swift_toolchain ${CMAKE_SWIFT_COMPILER} DIRECTORY)
+  get_filename_component(swift_toolchain ${swift_toolchain} DIRECTORY)
+  set(swift_runtime_libdir ${swift_toolchain}/lib/${swift_dir}/${swift_os}/${swift_arch})
+
   target_sources(dispatch
                  PRIVATE
                    swift/DispatchStubs.cc
                    ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o
-                   ${SWIFT_RUNTIME_LIBDIR}/swiftrt.o)
+                   ${swift_runtime_libdir}/swiftrt.o)
   if(CMAKE_BUILD_TYPE MATCHES Debug)
     target_link_libraries(dispatch
                           PRIVATE
