@@ -66,6 +66,9 @@ DISPATCH_DECL(dispatch_mach);
  *
  * @const DISPATCH_MACH_MESSAGE_RECEIVED
  * A message was received, it is passed in the message parameter.
+ * It is the responsibility of the client of this API to handle this and consume
+ * or dispose of the rights in the message (for example by calling
+ * mach_msg_destroy()).
  *
  * @const DISPATCH_MACH_MESSAGE_SENT
  * A message was sent, it is passed in the message parameter (so that associated
@@ -115,15 +118,15 @@ DISPATCH_DECL(dispatch_mach);
  * once during the lifetime of the channel. This event is sent only for XPC
  * channels (i.e. channels that were created by calling
  * dispatch_mach_create_4libxpc()) and only if the
- * dmxh_enable_sigterm_notification function in the XPC hooks structure is not
- * set or it returned true when it was called at channel activation time.
+ * dmxh_enable_sigterm_notification function in the XPC hooks structure returned
+ * true when it was called at channel activation time.
  *
  * @const DISPATCH_MACH_ASYNC_WAITER_DISCONNECTED
  * The channel has been disconnected by a call to dispatch_mach_reconnect() or
  * dispatch_mach_cancel(), an empty message is passed in the message parameter
  * (so that associated port rights can be disposed of). The message header will
  * contain a local port with the receive right previously allocated to receive
- * an asynchronous reply to a message previously sent to the channel. Used 
+ * an asynchronous reply to a message previously sent to the channel. Used
  * only if the channel is disconnected while waiting for a reply to a message
  * sent with dispatch_mach_send_with_result_and_async_reply_4libxpc().
  */
@@ -431,6 +434,82 @@ API_AVAILABLE(macos(10.9), ios(6.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_mach_cancel(dispatch_mach_t channel);
+
+/*!
+ * @function dispatch_mach_mig_demux
+ *
+ * @abstract
+ * Handles an incoming DISPATCH_MACH_MESSAGE_RECEIVED event through a series of
+ * MIG subsystem demultiplexers.
+ *
+ * @discussion
+ * This function can be used with a static array of MIG subsystems to try.
+ * If it returns true, then the dispatch mach message has been consumed as per
+ * usual MIG rules.
+ *
+ * If it returns false, then the mach message has not been touched, and
+ * consuming or disposing of the rights in the message is mandatory.
+ *
+ * It is hence possible to write a manual demuxer this way:
+ *
+ * <code>
+ * if (!dispatch_mach_mig_demux(context, subsystems, count, message)) {
+ *     mach_msg_header_t hdr = dispatch_mach_msg_get_msg(message, NULL);
+ *     switch (hdr->msgh_id) {
+ *     case ...: // manual consumption of messages
+ *         ...
+ *         break;
+ *     default:
+ *         mach_msg_destroy(hdr); // no one claimed the message, destroy it
+ *     }
+ * }
+ * </code>
+ *
+ * @param context
+ * An optional context that the MIG routines can query with
+ * dispatch_mach_mig_demux_get_context() as MIG doesn't support contexts.
+ *
+ * @param subsystems
+ * An array of mig_subsystem structs for all the demuxers to try.
+ * These are exposed by MIG in the Server header of the generated interface.
+ *
+ * @param count
+ * The number of entries in the subsystems array.
+ *
+ * @param msg
+ * The dispatch mach message to process.
+ *
+ * @returns
+ * Whether or not the dispatch mach message has been consumed.
+ * If false is returned, then it is the responsibility of the caller to consume
+ * or dispose of the received message rights.
+ */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NONNULL4 DISPATCH_NOTHROW
+bool
+dispatch_mach_mig_demux(void *_Nullable context,
+		const struct mig_subsystem *_Nonnull const subsystems[_Nonnull],
+		size_t count, dispatch_mach_msg_t msg);
+
+/*!
+ * @function dispatch_mach_mig_demux_get_context
+ *
+ * @abstract
+ * Returns the context passed to dispatch_mach_mig_demux() from the context of
+ * a MIG routine implementation.
+ *
+ * @discussion
+ * Calling this function from another context than a MIG routine called from the
+ * context of dispatch_mach_mig_demux_get_context() is invalid and will cause
+ * your process to be terminated.
+ *
+ * @returns
+ * The context passed to the outer call to dispatch_mach_mig_demux().
+ */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+DISPATCH_EXPORT DISPATCH_NOTHROW
+void *_Nullable
+dispatch_mach_mig_demux_get_context(void);
 
 /*!
  * @function dispatch_mach_send
@@ -813,6 +892,7 @@ typedef void (*_Nonnull dispatch_mach_async_reply_callback_t)(void *context,
 
 API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 typedef const struct dispatch_mach_xpc_hooks_s {
+#define DISPATCH_MACH_XPC_MIN_HOOKS_VERSION 3
 #define DISPATCH_MACH_XPC_HOOKS_VERSION     3
 	unsigned long version;
 
@@ -838,12 +918,12 @@ typedef const struct dispatch_mach_xpc_hooks_s {
 	 * Gets the queue to which a reply to a message sent using
 	 * dispatch_mach_send_with_result_and_async_reply_4libxpc() should be
 	 * delivered. The msg_context argument is the value of the do_ctxt field
-	 * of the outgoing message, as returned by dispatch_get_context(). If this
-	 * function returns NULL, the reply will be delivered to the channel queue.
-	 * This function should not make any assumptions about the thread on which
-	 * it is called and, since it may be called more than once per message, it
-	 * should execute as quickly as possible and not attempt to synchronize with
-	 * other code.
+	 * of the outgoing message, as returned by dispatch_get_context().
+	 *
+	 * This function should return a consistent result until an event is
+	 * received for this message. This function must return NULL if
+	 * dispatch_mach_send_with_result_and_async_reply_4libxpc() wasn't used to
+	 * send the message, and non NULL otherwise.
 	 */
 	dispatch_queue_t _Nullable (*_Nonnull dmxh_msg_context_reply_queue)(
 			void *_Nonnull msg_context);
@@ -870,11 +950,9 @@ typedef const struct dispatch_mach_xpc_hooks_s {
 	 * returns true, a DISPATCH_MACH_SIGTERM_RECEIVED notification will be
 	 * delivered to the channel's event handler when a SIGTERM is received.
 	 */
-	bool (* _Nullable dmxh_enable_sigterm_notification)(
+	bool (*_Nonnull dmxh_enable_sigterm_notification)(
 			void *_Nullable context);
 } *dispatch_mach_xpc_hooks_t;
-
-#define DISPATCH_MACH_XPC_SUPPORTS_ASYNC_REPLIES(hooks) ((hooks)->version >= 2)
 
 /*!
  * @function dispatch_mach_hooks_install_4libxpc
@@ -907,7 +985,7 @@ dispatch_mach_hooks_install_4libxpc(dispatch_mach_xpc_hooks_t hooks);
  * for each message received and for each message that was successfully sent,
  * that failed to be sent, or was not sent; as well as when a barrier block
  * has completed, or when channel connection, reconnection or cancellation has
- * taken effect. However, the handler will not be called for messages that 
+ * taken effect. However, the handler will not be called for messages that
  * were passed to the XPC hooks dmxh_direct_message_handler function if that
  * function returned true.
  *
@@ -951,7 +1029,7 @@ dispatch_mach_create_4libxpc(const char *_Nullable label,
  * dmxh_msg_context_reply_queue function in the dispatch_mach_xpc_hooks_s
  * structure, which is called with a single argument whose value is the
  * do_ctxt field of the message argument to this function. The reply message is
- * delivered to the dmxh_async_reply_handler hook function instead of being 
+ * delivered to the dmxh_async_reply_handler hook function instead of being
  * passed to the channel event handler.
  *
  * If the dmxh_msg_context_reply_queue function is not implemented or returns

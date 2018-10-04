@@ -48,13 +48,14 @@ __BEGIN_DECLS
  *
  * @const DISPATCH_BLOCK_DETACHED
  * Flag indicating that a dispatch block object should execute disassociated
- * from current execution context attributes such as QOS class, os_activity_t
- * and properties of the current IPC request (if any). If invoked directly, the
- * block object will remove these attributes from the calling thread for the
- * duration of the block body (before applying attributes assigned to the block
- * object, if any). If submitted to a queue, the block object will be executed
- * with the attributes of the queue (or any attributes specifically assigned to
- * the block object).
+ * from current execution context attributes such as os_activity_t
+ * and properties of the current IPC request (if any). With regard to QoS class,
+ * the behavior is the same as for DISPATCH_BLOCK_NO_QOS. If invoked directly,
+ * the block object will remove the other attributes from the calling thread for
+ * the duration of the block body (before applying attributes assigned to the
+ * block object, if any). If submitted to a queue, the block object will be
+ * executed with the attributes of the queue (or any attributes specifically
+ * assigned to the block object).
  *
  * @const DISPATCH_BLOCK_ASSIGN_CURRENT
  * Flag indicating that a dispatch block object should be assigned the execution

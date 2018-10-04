@@ -51,7 +51,7 @@ _OS_OBJECT_DECL_PROTOCOL(dispatch_data, dispatch_object);
 #define DISPATCH_DATA_CLASS DISPATCH_VTABLE(data)
 #define DISPATCH_DATA_EMPTY_CLASS DISPATCH_VTABLE(data_empty)
 #else
-DISPATCH_CLASS_DECL(data);
+DISPATCH_CLASS_DECL(data, OBJECT);
 #define DISPATCH_DATA_CLASS DISPATCH_VTABLE(data)
 #endif // DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 
@@ -103,8 +103,10 @@ struct dispatch_data_format_type_s {
 void _dispatch_data_init_with_bytes(dispatch_data_t data, const void *buffer,
 		size_t size, dispatch_block_t destructor);
 void _dispatch_data_dispose(dispatch_data_t data, bool *allow_free);
+#if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 void _dispatch_data_set_target_queue(struct dispatch_data_s *dd,
 		dispatch_queue_t tq);
+#endif
 size_t _dispatch_data_debug(dispatch_data_t data, char* buf, size_t bufsiz);
 const void* _dispatch_data_get_flattened_bytes(struct dispatch_data_s *dd);
 
@@ -127,13 +129,13 @@ _dispatch_data_map_direct(struct dispatch_data_s *dd, size_t offset,
 	const void *buffer = NULL;
 
 	dispatch_assert(dd->size);
-	if (slowpath(!_dispatch_data_leaf(dd)) &&
+	if (unlikely(!_dispatch_data_leaf(dd)) &&
 			_dispatch_data_num_records(dd) == 1) {
 		offset += dd->records[0].from;
 		dd = (struct dispatch_data_s *)dd->records[0].data_object;
 	}
 
-	if (fastpath(_dispatch_data_leaf(dd))) {
+	if (likely(_dispatch_data_leaf(dd))) {
 		buffer = dd->buf + offset;
 	} else {
 		buffer = os_atomic_load((void **)&dd->buf, relaxed);

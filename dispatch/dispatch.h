@@ -48,10 +48,9 @@
 #endif
 #endif
 
-#define DISPATCH_API_VERSION 20170124
+#define DISPATCH_API_VERSION 20180109
 
 #ifndef __DISPATCH_BUILDING_DISPATCH__
-
 #ifndef __DISPATCH_INDIRECT__
 #define __DISPATCH_INDIRECT__
 #endif
@@ -70,7 +69,6 @@
 #include <dispatch/io.h>
 
 #undef __DISPATCH_INDIRECT__
-
 #endif /* !__DISPATCH_BUILDING_DISPATCH__ */
 
 #endif

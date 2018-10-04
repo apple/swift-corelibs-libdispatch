@@ -43,6 +43,13 @@
 #error "could not determine pointer size as a constant int"
 #endif // __SIZEOF_POINTER__
 
+#define DISPATCH_CACHELINE_SIZE 64u
+#define ROUND_UP_TO_CACHELINE_SIZE(x) \
+		(((x) + (DISPATCH_CACHELINE_SIZE - 1u)) & \
+		~(DISPATCH_CACHELINE_SIZE - 1u))
+#define DISPATCH_CACHELINE_ALIGN \
+		__attribute__((__aligned__(DISPATCH_CACHELINE_SIZE)))
+
 #if !TARGET_OS_WIN32
 
 typedef enum {

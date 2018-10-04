@@ -122,7 +122,7 @@ enum {
 #if DISPATCH_IO_DEBUG
 #if !DISPATCH_DEBUG
 #define _dispatch_io_log(x, ...) do { \
-			_dispatch_log("%llu\t%p\t" x, _dispatch_absolute_time(), \
+			_dispatch_log("%llu\t%p\t" x, _dispatch_uptime(), \
 			(void *)_dispatch_thread_self(), ##__VA_ARGS__); \
 		} while (0)
 #ifdef _dispatch_object_debug
@@ -151,39 +151,28 @@ enum {
 #pragma mark -
 #pragma mark dispatch_io_hashtables
 
-// Global hashtable of dev_t -> disk_s mappings
-DISPATCH_CACHELINE_ALIGN
-static TAILQ_HEAD(, dispatch_disk_s) _dispatch_io_devs[DIO_HASH_SIZE];
-// Global hashtable of fd -> fd_entry_s mappings
-DISPATCH_CACHELINE_ALIGN
-static TAILQ_HEAD(, dispatch_fd_entry_s) _dispatch_io_fds[DIO_HASH_SIZE];
+LIST_HEAD(dispatch_disk_head_s, dispatch_disk_s);
+LIST_HEAD(dispatch_fd_entry_head_s, dispatch_fd_entry_s);
 
-static dispatch_once_t  _dispatch_io_devs_lockq_pred;
-static dispatch_queue_t _dispatch_io_devs_lockq;
-static dispatch_queue_t _dispatch_io_fds_lockq;
+// Global hashtable of dev_t -> disk_s mappings
+DISPATCH_STATIC_GLOBAL(struct dispatch_disk_head_s _dispatch_io_devs[DIO_HASH_SIZE]);
+DISPATCH_STATIC_GLOBAL(dispatch_queue_t _dispatch_io_devs_lockq);
+
+// Global hashtable of fd -> fd_entry_s mappings
+DISPATCH_STATIC_GLOBAL(struct dispatch_fd_entry_head_s _dispatch_io_fds[DIO_HASH_SIZE]);
+DISPATCH_STATIC_GLOBAL(dispatch_queue_t _dispatch_io_fds_lockq);
+
+DISPATCH_STATIC_GLOBAL(dispatch_once_t _dispatch_io_init_pred);
 
 static char const * const _dispatch_io_key = "io";
 
 static void
-_dispatch_io_fds_lockq_init(void *context DISPATCH_UNUSED)
+_dispatch_io_queues_init(void *context DISPATCH_UNUSED)
 {
 	_dispatch_io_fds_lockq = dispatch_queue_create(
 			"com.apple.libdispatch-io.fd_lockq", NULL);
-	unsigned int i;
-	for (i = 0; i < DIO_HASH_SIZE; i++) {
-		TAILQ_INIT(&_dispatch_io_fds[i]);
-	}
-}
-
-static void
-_dispatch_io_devs_lockq_init(void *context DISPATCH_UNUSED)
-{
 	_dispatch_io_devs_lockq = dispatch_queue_create(
 			"com.apple.libdispatch-io.dev_lockq", NULL);
-	unsigned int i;
-	for (i = 0; i < DIO_HASH_SIZE; i++) {
-		TAILQ_INIT(&_dispatch_io_devs[i]);
-	}
 }
 
 #pragma mark -
@@ -196,14 +185,16 @@ enum {
 	DISPATCH_IOCNTL_MAX_PENDING_IO_REQS,
 };
 
-static struct dispatch_io_defaults_s {
+extern struct dispatch_io_defaults_s {
 	size_t chunk_size, low_water_chunks, max_pending_io_reqs;
 	bool initial_delivery;
-} dispatch_io_defaults = {
+} dispatch_io_defaults;
+
+DISPATCH_GLOBAL_INIT(struct dispatch_io_defaults_s dispatch_io_defaults, {
 	.chunk_size = DIO_MAX_CHUNK_SIZE,
 	.low_water_chunks = DIO_DEFAULT_LOW_WATER_CHUNKS,
 	.max_pending_io_reqs = DIO_MAX_PENDING_IO_REQS,
-};
+});
 
 #define _dispatch_iocntl_set_default(p, v) do { \
 		dispatch_io_defaults.p = (typeof(dispatch_io_defaults.p))(v); \
@@ -221,6 +212,7 @@ _dispatch_iocntl(uint32_t param, uint64_t value)
 		break;
 	case DISPATCH_IOCNTL_INITIAL_DELIVERY:
 		_dispatch_iocntl_set_default(initial_delivery, value);
+		break;
 	case DISPATCH_IOCNTL_MAX_PENDING_IO_REQS:
 		_dispatch_iocntl_set_default(max_pending_io_reqs, value);
 		break;
@@ -236,7 +228,7 @@ _dispatch_io_create(dispatch_io_type_t type)
 	dispatch_io_t channel = _dispatch_object_alloc(DISPATCH_VTABLE(io),
 			sizeof(struct dispatch_io_s));
 	channel->do_next = DISPATCH_OBJECT_LISTLESS;
-	channel->do_targetq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, true);
+	channel->do_targetq = _dispatch_get_default_queue(true);
 	channel->params.type = type;
 	channel->params.high = SIZE_MAX;
 	channel->params.low = dispatch_io_defaults.low_water_chunks *
@@ -457,8 +449,8 @@ dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 			return;
 		}
 		dispatch_suspend(channel->queue);
-		dispatch_once_f(&_dispatch_io_devs_lockq_pred, NULL,
-				_dispatch_io_devs_lockq_init);
+		dispatch_once_f(&_dispatch_io_init_pred, NULL,
+				_dispatch_io_queues_init);
 		dispatch_async(_dispatch_io_devs_lockq, ^{
 			dispatch_fd_entry_t fd_entry = _dispatch_fd_entry_create_with_path(
 					path_data, st.st_dev, st.st_mode);
@@ -697,7 +689,7 @@ _dispatch_io_stop(dispatch_io_t channel)
 							channel);
 					dispatch_fd_entry_t fdi;
 					uintptr_t hash = DIO_HASH(channel->fd);
-					TAILQ_FOREACH(fdi, &_dispatch_io_fds[hash], fd_list) {
+					LIST_FOREACH(fdi, &_dispatch_io_fds[hash], fd_list) {
 						if (fdi->fd == channel->fd) {
 							_dispatch_fd_entry_cleanup_operations(fdi, channel);
 							break;
@@ -892,7 +884,7 @@ dispatch_read(dispatch_fd_t fd, size_t length, dispatch_queue_t queue,
 		dispatch_operation_t op =
 			_dispatch_operation_create(DOP_DIR_READ, channel, 0,
 					length, dispatch_data_empty,
-					_dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false),
+					_dispatch_get_default_queue(false),
 					^(bool done, dispatch_data_t data, int error) {
 				if (data) {
 					data = dispatch_data_create_concat(deliver_data, data);
@@ -963,7 +955,7 @@ dispatch_write(dispatch_fd_t fd, dispatch_data_t data, dispatch_queue_t queue,
 		dispatch_operation_t op =
 			_dispatch_operation_create(DOP_DIR_WRITE, channel, 0,
 					dispatch_data_get_size(data), data,
-					_dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false),
+					_dispatch_get_default_queue(false),
 					^(bool done, dispatch_data_t d, int error) {
 				if (done) {
 					if (d) {
@@ -1006,6 +998,7 @@ _dispatch_operation_create(dispatch_op_direction_t direction,
 	if (err || !length) {
 		_dispatch_io_data_retain(data);
 		_dispatch_retain(queue);
+		_dispatch_retain(channel);
 		dispatch_async(channel->barrier_queue, ^{
 			dispatch_async(queue, ^{
 				dispatch_data_t d = data;
@@ -1017,6 +1010,7 @@ _dispatch_operation_create(dispatch_op_direction_t direction,
 				_dispatch_channel_debug("IO handler invoke: err %d", channel,
 						err);
 				handler(true, d, err);
+				_dispatch_release(channel);
 				_dispatch_io_data_release(data);
 			});
 			_dispatch_release(queue);
@@ -1041,7 +1035,7 @@ _dispatch_operation_create(dispatch_op_direction_t direction,
 	// Take a snapshot of the priority of the channel queue. The actual I/O
 	// for this operation will be performed at this priority
 	dispatch_queue_t targetq = op->channel->do_targetq;
-	while (fastpath(targetq->do_targetq)) {
+	while (targetq->do_targetq) {
 		targetq = targetq->do_targetq;
 	}
 	op->do_targetq = targetq;
@@ -1275,14 +1269,13 @@ static void
 _dispatch_fd_entry_init_async(dispatch_fd_t fd,
 		dispatch_fd_entry_init_callback_t completion_callback)
 {
-	static dispatch_once_t _dispatch_io_fds_lockq_pred;
-	dispatch_once_f(&_dispatch_io_fds_lockq_pred, NULL,
-			_dispatch_io_fds_lockq_init);
+	dispatch_once_f(&_dispatch_io_init_pred, NULL,
+			_dispatch_io_queues_init);
 	dispatch_async(_dispatch_io_fds_lockq, ^{
 		dispatch_fd_entry_t fd_entry = NULL;
 		// Check to see if there is an existing entry for the given fd
 		uintptr_t hash = DIO_HASH(fd);
-		TAILQ_FOREACH(fd_entry, &_dispatch_io_fds[hash], fd_list) {
+		LIST_FOREACH(fd_entry, &_dispatch_io_fds[hash], fd_list) {
 			if (fd_entry->fd == fd) {
 				// Retain the fd_entry to ensure it cannot go away until the
 				// stat() has completed
@@ -1326,7 +1319,7 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 			_dispatch_io_fds_lockq);
 	_dispatch_fd_entry_debug("create: fd %d", fd_entry, fd);
 	fd_entry->fd = fd;
-	TAILQ_INSERT_TAIL(&_dispatch_io_fds[hash], fd_entry, fd_list);
+	LIST_INSERT_HEAD(&_dispatch_io_fds[hash], fd_entry, fd_list);
 	fd_entry->barrier_queue = dispatch_queue_create(
 			"com.apple.libdispatch-io.barrierq", NULL);
 	fd_entry->barrier_group = dispatch_group_create();
@@ -1376,8 +1369,8 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 			// We have to get the disk on the global dev queue. The
 			// barrier queue cannot continue until that is complete
 			dispatch_suspend(fd_entry->barrier_queue);
-			dispatch_once_f(&_dispatch_io_devs_lockq_pred, NULL,
-					_dispatch_io_devs_lockq_init);
+			dispatch_once_f(&_dispatch_io_init_pred, NULL,
+					_dispatch_io_queues_init);
 			dispatch_async(_dispatch_io_devs_lockq, ^{
 				_dispatch_disk_init(fd_entry, dev);
 				dispatch_resume(fd_entry->barrier_queue);
@@ -1394,7 +1387,7 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 			}
 
 			_dispatch_stream_init(fd_entry,
-					_dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false));
+					_dispatch_get_default_queue(false));
 		}
 		fd_entry->orig_flags = orig_flags;
 		fd_entry->orig_nosigpipe = orig_nosigpipe;
@@ -1416,7 +1409,7 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 			});
 		}
 		// Remove this entry from the global fd list
-		TAILQ_REMOVE(&_dispatch_io_fds[hash], fd_entry, fd_list);
+		LIST_REMOVE(fd_entry, fd_list);
 	});
 	// If there was a source associated with this stream, disposing of the
 	// source cancels it and suspends the close queue. Freeing the fd_entry
@@ -1462,7 +1455,7 @@ _dispatch_fd_entry_create_with_path(dispatch_io_path_data_t path_data,
 		_dispatch_disk_init(fd_entry, major(dev));
 	} else {
 			_dispatch_stream_init(fd_entry,
-					_dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false));
+					_dispatch_get_default_queue(false));
 	}
 	fd_entry->fd = -1;
 	fd_entry->orig_flags = -1;
@@ -1625,7 +1618,7 @@ _dispatch_disk_init(dispatch_fd_entry_t fd_entry, dev_t dev)
 	dispatch_disk_t disk;
 	// Check to see if there is an existing entry for the given device
 	uintptr_t hash = DIO_HASH(dev);
-	TAILQ_FOREACH(disk, &_dispatch_io_devs[hash], disk_list) {
+	LIST_FOREACH(disk, &_dispatch_io_devs[hash], disk_list) {
 		if (disk->dev == dev) {
 			_dispatch_retain(disk);
 			goto out;
@@ -1639,7 +1632,7 @@ _dispatch_disk_init(dispatch_fd_entry_t fd_entry, dev_t dev)
 	disk->do_next = DISPATCH_OBJECT_LISTLESS;
 	disk->do_xref_cnt = -1;
 	disk->advise_list_depth = pending_reqs_depth;
-	disk->do_targetq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false);
+	disk->do_targetq = _dispatch_get_default_queue(false);
 	disk->dev = dev;
 	TAILQ_INIT(&disk->operations);
 	disk->cur_rq = TAILQ_FIRST(&disk->operations);
@@ -1647,7 +1640,7 @@ _dispatch_disk_init(dispatch_fd_entry_t fd_entry, dev_t dev)
 	snprintf(label, sizeof(label), "com.apple.libdispatch-io.deviceq.%d",
 			(int)dev);
 	disk->pick_queue = dispatch_queue_create(label, NULL);
-	TAILQ_INSERT_TAIL(&_dispatch_io_devs[hash], disk, disk_list);
+	LIST_INSERT_HEAD(&_dispatch_io_devs[hash], disk, disk_list);
 out:
 	fd_entry->disk = disk;
 	TAILQ_INIT(&fd_entry->stream_ops);
@@ -1656,11 +1649,10 @@ out:
 void
 _dispatch_disk_dispose(dispatch_disk_t disk, DISPATCH_UNUSED bool *allow_free)
 {
-	uintptr_t hash = DIO_HASH(disk->dev);
-	TAILQ_REMOVE(&_dispatch_io_devs[hash], disk, disk_list);
+	LIST_REMOVE(disk, disk_list);
 	dispatch_assert(TAILQ_EMPTY(&disk->operations));
 	size_t i;
-	for (i=0; i<disk->advise_list_depth; ++i) {
+	for (i = 0; i < disk->advise_list_depth; ++i) {
 		dispatch_assert(!disk->advise_list[i]);
 	}
 	dispatch_release(disk->pick_queue);
@@ -2092,7 +2084,7 @@ _dispatch_disk_perform(void *ctxt)
 	op = disk->advise_list[disk->req_idx];
 	int result = _dispatch_operation_perform(op);
 	disk->advise_list[disk->req_idx] = NULL;
-	disk->req_idx = (++disk->req_idx)%disk->advise_list_depth;
+	disk->req_idx = (disk->req_idx + 1) % disk->advise_list_depth;
 	_dispatch_op_debug("async perform completion: disk %p", op, disk);
 	dispatch_async(disk->pick_queue, ^{
 		_dispatch_op_debug("perform completion", op);
@@ -2446,7 +2438,7 @@ _dispatch_io_debug(dispatch_io_t channel, char* buf, size_t bufsiz)
 {
 	size_t offset = 0;
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "%s[%p] = { ",
-			dx_kind(channel), channel);
+			_dispatch_object_class_name(channel), channel);
 	offset += _dispatch_object_debug_attr(channel, &buf[offset],
 			bufsiz - offset);
 	offset += _dispatch_io_debug_attr(channel, &buf[offset], bufsiz - offset);
@@ -2481,7 +2473,7 @@ _dispatch_operation_debug(dispatch_operation_t op, char* buf, size_t bufsiz)
 {
 	size_t offset = 0;
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "%s[%p] = { ",
-			dx_kind(op), op);
+			_dispatch_object_class_name(op), op);
 	offset += _dispatch_object_debug_attr(op, &buf[offset], bufsiz - offset);
 	offset += _dispatch_operation_debug_attr(op, &buf[offset], bufsiz - offset);
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "}");

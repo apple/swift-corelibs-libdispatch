@@ -106,9 +106,6 @@
 /* Define to 1 if you have the `mach_approximate_time' function. */
 #define HAVE_MACH_APPROXIMATE_TIME 1
 
-/* Define to 1 if you have the `mach_port_construct' function. */
-#define HAVE_MACH_PORT_CONSTRUCT 1
-
 /* Define to 1 if you have the `malloc_create_zone' function. */
 #define HAVE_MALLOC_CREATE_ZONE 1
 
@@ -147,9 +144,6 @@
 
 /* Define to 1 if you have the <pthread/workqueue_private.h> header file. */
 #define HAVE_PTHREAD_WORKQUEUE_PRIVATE_H 1
-
-/* Define to 1 if you have the `pthread_workqueue_setdispatch_np' function. */
-#define HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP 1
 
 /* Define to 1 if you have the <stdint.h> header file. */
 #define HAVE_STDINT_H 1

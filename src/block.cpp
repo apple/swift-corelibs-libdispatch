@@ -28,9 +28,7 @@
 #error Must build without C++ exceptions
 #endif
 
-extern "C" {
 #include "internal.h"
-}
 
 // NOTE: this file must not contain any atomic operations
 
@@ -68,7 +66,9 @@ struct dispatch_block_private_data_s {
 			dbpd_block(), dbpd_group(), dbpd_queue(), dbpd_thread()
 	{
 		// copy constructor, create copy with retained references
-		if (dbpd_voucher) voucher_retain(dbpd_voucher);
+		if (dbpd_voucher && dbpd_voucher != DISPATCH_NO_VOUCHER) {
+			voucher_retain(dbpd_voucher);
+		}
 		if (o.dbpd_block) dbpd_block = _dispatch_Block_copy(o.dbpd_block);
 		_dispatch_block_private_data_debug("copy from %p, block: %p from %p",
 				&o, dbpd_block, o.dbpd_block);
@@ -79,17 +79,24 @@ struct dispatch_block_private_data_s {
 	{
 		_dispatch_block_private_data_debug("destroy%s, block: %p",
 				dbpd_magic ? "" : " (stack)", dbpd_block);
+
+#if DISPATCH_INTROSPECTION
+		void *db = (char *) this - sizeof(struct Block_layout);
+		_dispatch_ktrace1(DISPATCH_QOS_TRACE_private_block_dispose, db);
+#endif /* DISPATCH_INTROSPECTION */
+
 		if (dbpd_magic != DISPATCH_BLOCK_PRIVATE_DATA_MAGIC) return;
 		if (dbpd_group) {
 			if (!dbpd_performed) dispatch_group_leave(dbpd_group);
-			((void (*)(dispatch_group_t))dispatch_release)(dbpd_group);
+			_os_object_release(dbpd_group->_as_os_obj);
 		}
 		if (dbpd_queue) {
-			((void (*)(os_mpsc_queue_t, uint16_t))
-					_os_object_release_internal_n)(dbpd_queue, 2);
+			_os_object_release_internal_n(dbpd_queue->_as_os_obj, 2);
 		}
 		if (dbpd_block) Block_release(dbpd_block);
-		if (dbpd_voucher) voucher_release(dbpd_voucher);
+		if (dbpd_voucher && dbpd_voucher != DISPATCH_NO_VOUCHER) {
+			voucher_release(dbpd_voucher);
+		}
 	}
 };
 
@@ -114,7 +121,7 @@ extern void DISPATCH_BLOCK_SPECIAL_INVOKE(void *)
 #else
 		asm("____dispatch_block_create_block_invoke");
 #endif
-void (*_dispatch_block_special_invoke)(void*) = DISPATCH_BLOCK_SPECIAL_INVOKE;
+void (*const _dispatch_block_special_invoke)(void*) = DISPATCH_BLOCK_SPECIAL_INVOKE;
 }
 
 #endif // __BLOCKS__

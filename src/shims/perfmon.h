@@ -67,7 +67,7 @@ _dispatch_perfmon_workitem_dec(void)
 
 #define _dispatch_perfmon_start_impl(trace) ({ \
 		if (trace) _dispatch_ktrace0(DISPATCH_PERF_MON_worker_thread_start); \
-		perfmon_start = _dispatch_absolute_time(); \
+		perfmon_start = _dispatch_uptime(); \
 	})
 #define _dispatch_perfmon_start() \
 		DISPATCH_PERF_MON_VAR _dispatch_perfmon_start_impl(true)

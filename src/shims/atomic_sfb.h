@@ -90,11 +90,11 @@ os_atomic_set_first_bit(volatile unsigned long *p, unsigned int max_index)
 	os_atomic_rmw_loop(p, b, b_masked, relaxed, {
 		// ffs returns 1 + index, or 0 if none set
 		index = (unsigned int)__builtin_ffsl((long)~b);
-		if (slowpath(index == 0)) {
+		if (unlikely(index == 0)) {
 			os_atomic_rmw_loop_give_up(return UINT_MAX);
 		}
 		index--;
-		if (slowpath(index > max_index)) {
+		if (unlikely(index > max_index)) {
 			os_atomic_rmw_loop_give_up(return UINT_MAX);
 		}
 		b_masked = b | (1UL << index);

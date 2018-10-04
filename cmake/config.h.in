@@ -152,9 +152,6 @@
 /* Define to 1 if you have the <pthread/workqueue_private.h> header file. */
 #cmakedefine HAVE_PTHREAD_WORKQUEUE_PRIVATE_H
 
-/* Define to 1 if you have the `pthread_workqueue_setdispatch_np' function. */
-#cmakedefine HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP
-
 /* Define to 1 if you have the <stdint.h> header file. */
 #cmakedefine01 HAVE_STDINT_H
 
@@ -175,9 +172,6 @@
 
 /* Define to 1 if you have the `sysconf' function. */
 #cmakedefine01 HAVE_SYSCONF
-
-/* Define to 1 if you have the <sys/cdefs.h> header file. */
-#cmakedefine01 HAVE_SYS_CDEFS_H
 
 /* Define to 1 if you have the <sys/guarded.h> header file. */
 #cmakedefine HAVE_SYS_GUARDED_H

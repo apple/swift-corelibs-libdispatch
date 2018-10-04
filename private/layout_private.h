@@ -54,7 +54,6 @@ DISPATCH_EXPORT const struct dispatch_queue_offsets_s {
 #endif
 
 #if DISPATCH_LAYOUT_SPI
-
 /*!
  * @group Data Structure Layout SPI
  * SPI intended for CoreSymbolication only
@@ -67,8 +66,36 @@ DISPATCH_EXPORT const struct dispatch_tsd_indexes_s {
 	const uint16_t dti_queue_index;
 	const uint16_t dti_voucher_index;
 	const uint16_t dti_qos_class_index;
+	/* version 3 */
+	const uint16_t dti_continuation_cache_index;
 } dispatch_tsd_indexes;
 
+#if TARGET_OS_MAC
+
+#include <malloc/malloc.h>
+
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+DISPATCH_EXPORT const struct dispatch_allocator_layout_s {
+	const uint16_t dal_version;
+	/* version 1 */
+	/* Pointer to the allocator metadata address, points to NULL if unused */
+	void **const dal_allocator_zone;
+	/* Magical "isa" for allocations that are on freelists */
+	void *const *const dal_deferred_free_isa;
+	/* Size of allocations made in the magazine */
+	const uint16_t dal_allocation_size;
+	/* fields used by the enumerator */
+	const uint16_t dal_magazine_size;
+	const uint16_t dal_first_allocation_offset;
+	const uint16_t dal_allocation_isa_offset;
+	/* Enumerates allocated continuations */
+	kern_return_t (*dal_enumerator)(task_t remote_task,
+			const struct dispatch_allocator_layout_s *remote_allocator_layout,
+			vm_address_t zone_address, memory_reader_t reader,
+			void (^recorder)(vm_address_t dc_address, void *dc_mem,
+					size_t size, bool *stop));
+} dispatch_allocator_layout;
+#endif // TARGET_OS_MAC
 #endif // DISPATCH_LAYOUT_SPI
 
 __END_DECLS

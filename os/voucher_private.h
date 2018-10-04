@@ -199,22 +199,9 @@ voucher_decrement_importance_count4CF(voucher_t _Nullable voucher);
  * voucher adopted on the calling thread. If the block object is submitted to a
  * queue, this replaces the default behavior of associating the submitted block
  * instance with the voucher adopted at the time of submission.
- * This flag is ignored if a specific voucher object is assigned with the
- * dispatch_block_create_with_voucher* functions, and is equivalent to passing
- * the NULL voucher to these functions.
+ * This flag is ignored if used with the dispatch_block_create_with_voucher*()
+ * functions.
  *
- * @const DISPATCH_BLOCK_IF_LAST_RESET_QUEUE_QOS_OVERRIDE
- * Flag indicating that this dispatch block object should try to reset the
- * recorded maximum QoS of all currently enqueued items on a serial dispatch
- * queue at the base of a queue hierarchy.
- *
- * This is only works if the queue becomes empty by dequeuing the block in
- * question, and then allows that block to enqueue more work on this hierarchy
- * without perpetuating QoS overrides resulting from items previously executed
- * on the hierarchy.
- *
- * A dispatch block object created with this flag set cannot be used with
- * dispatch_block_wait() or dispatch_block_cancel().
  */
 #define DISPATCH_BLOCK_NO_VOUCHER (0x40ul)
 
@@ -238,9 +225,7 @@ voucher_decrement_importance_count4CF(voucher_t _Nullable voucher);
  * on with dispatch_block_wait() or observed with dispatch_block_notify().
  *
  * The returned dispatch block will be executed with the specified voucher
- * adopted for the duration of the block body. If the NULL voucher is passed,
- * the block will be executed with the voucher adopted on the calling thread, or
- * with no voucher if the DISPATCH_BLOCK_DETACHED flag was also provided.
+ * adopted for the duration of the block body.
  *
  * If the returned dispatch block object is submitted to a dispatch queue, the
  * submitted block instance will be associated with the QOS class current at the
@@ -265,11 +250,11 @@ voucher_decrement_importance_count4CF(voucher_t _Nullable voucher);
  * @param flags
  * Configuration flags for the block object.
  * Passing a value that is not a bitwise OR of flags from dispatch_block_flags_t
- * results in NULL being returned.
+ * results in NULL being returned. The DISPATCH_BLOCK_NO_VOUCHER flag is
+ * ignored.
  *
  * @param voucher
- * A voucher object or NULL. Passing NULL is equivalent to specifying the
- * DISPATCH_BLOCK_NO_VOUCHER flag.
+ * A voucher object or NULL.
  *
  * @param block
  * The block to create the dispatch block object from.
@@ -305,9 +290,7 @@ dispatch_block_create_with_voucher(dispatch_block_flags_t flags,
  * on with dispatch_block_wait() or observed with dispatch_block_notify().
  *
  * The returned dispatch block will be executed with the specified voucher
- * adopted for the duration of the block body. If the NULL voucher is passed,
- * the block will be executed with the voucher adopted on the calling thread, or
- * with no voucher if the DISPATCH_BLOCK_DETACHED flag was also provided.
+ * adopted for the duration of the block body.
  *
  * If invoked directly, the returned dispatch block object will be executed with
  * the assigned QOS class as long as that does not result in a lower QOS class
@@ -330,11 +313,11 @@ dispatch_block_create_with_voucher(dispatch_block_flags_t flags,
  * @param flags
  * Configuration flags for the block object.
  * Passing a value that is not a bitwise OR of flags from dispatch_block_flags_t
- * results in NULL being returned.
+ * results in NULL being returned. The DISPATCH_BLOCK_NO_VOUCHER and
+ * DISPATCH_BLOCK_NO_QOS flags are ignored.
  *
  * @param voucher
- * A voucher object or NULL. Passing NULL is equivalent to specifying the
- * DISPATCH_BLOCK_NO_VOUCHER flag.
+ * A voucher object or NULL.
  *
  * @param qos_class
  * A QOS class value:
@@ -418,6 +401,55 @@ API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t _Nullable
 voucher_create_with_mach_msg(mach_msg_header_t *msg);
+
+/*!
+ * @function voucher_kvoucher_debug
+ *
+ * @abstract
+ * Writes a human-readable representation of a voucher to a memory buffer.
+ *
+ * @discussion
+ * The formatted representation of the voucher is written starting at a given
+ * offset in the buffer. If the remaining space in the buffer is too small, the
+ * output is truncated. Nothing is written before buf[offset] or at or beyond
+ * buf[bufsize].
+ *
+ * @param task
+ * The task port for the task that owns the voucher port.
+ *
+ * @param voucher
+ * The voucher port name.
+ *
+ * @param buf
+ * The buffer to which the formatted representation of the voucher should be
+ * written.
+ *
+ * @param bufsiz
+ * The size of the buffer.
+ *
+ * @param offset
+ * The offset of the first byte in the buffer to be used for output.
+ *
+ * @param prefix
+ * A string to be written at the start of each line of formatted output.
+ * Typically used to generate leading whitespace for indentation. Use NULL if
+ * no prefix is required.
+ *
+ * @param max_hex_data
+ * The maximum number of bytes of hex data to be formatted for voucher content
+ * that is not of type MACH_VOUCHER_ATTR_KEY_ATM, MACH_VOUCHER_ATTR_KEY_BANK
+ * or MACH_VOUCHER_ATTR_KEY_IMPORTANCE.
+ *
+ * @result
+ * The offset of the first byte in the buffer following the formatted voucher
+ * representation.
+ */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW
+size_t
+voucher_kvoucher_debug(mach_port_t task, mach_port_name_t voucher, char *buf,
+		   size_t bufsiz, size_t offset, char * _Nullable prefix,
+		   size_t max_hex_data);
 
 /*!
  * @group Voucher Persona SPI

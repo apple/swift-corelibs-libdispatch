@@ -198,7 +198,7 @@ _dispatch_thread_setspecific(pthread_key_t k, void *v)
 	if (_pthread_has_direct_tsd()) {
 		(void)_pthread_setspecific_direct(k, v);
 	} else {
-#if TARGET_IPHONE_SIMULATOR
+#if TARGET_OS_SIMULATOR
 		(void)_pthread_setspecific_static(k, v); // rdar://26058142
 #else
 		__builtin_trap(); // unreachable

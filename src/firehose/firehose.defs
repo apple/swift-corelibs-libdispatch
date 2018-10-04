@@ -27,32 +27,35 @@ subsystem firehose	11600;
 serverprefix		firehose_server_;
 userprefix			firehose_send_;
 
-simpleroutine
-register(
+UseSpecialReplyPort 1;
+
+simpleroutine register(
 			server_port		: mach_port_t;
 			mem_port		: mach_port_move_send_t;
 			mem_size		: mach_vm_size_t;
-			comm_recvp		: mach_port_move_receive_t;
+			comm_mem_recvp	: mach_port_move_receive_t;
+			comm_io_recvp	: mach_port_move_receive_t;
 			comm_sendp		: mach_port_make_send_t;
 			extra_info_port : mach_port_move_send_t;
 			extra_info_size : mach_vm_size_t;
 			ServerAuditToken atoken : audit_token_t
 );
 
-routine
-push_and_wait(
+routine push_and_wait(
 RequestPort	comm_port		: mach_port_t;
-SReplyPort	reply_port		: mach_port_make_send_once_t;
-			qos_class		: qos_class_t;
-			for_io			: boolean_t;
+SReplyPort  reply_port      : mach_port_make_send_once_t;
 out			push_reply		: firehose_push_reply_t;
 out			quarantinedOut	: boolean_t
 );
 
-simpleroutine
-push_async(
-			comm_port		: mach_port_t;
-			qos_class		: qos_class_t;
-			for_io			: boolean_t;
-			expects_notify	: boolean_t
+simpleroutine push_async(
+RequestPort	comm_port		: mach_port_t;
+in			qos_class		: qos_class_t;
+WaitTime	timeout			: natural_t
+);
+
+routine get_logging_prefs(
+RequestPort	server_port		: mach_port_t;
+out			mem_port		: mach_port_t;
+out			mem_size		: mach_vm_size_t
 );

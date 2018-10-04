@@ -59,7 +59,7 @@ enum {
 static const unsigned char base32_encode_table[] =
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
-static const char base32_decode_table[] = {
+static const signed char base32_decode_table[] = {
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 26,
@@ -67,13 +67,13 @@ static const char base32_decode_table[] = {
 	 3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
 	20, 21, 22, 23, 24, 25
 };
-static const ssize_t base32_decode_table_size = sizeof(base32_decode_table)
-		/ sizeof(*base32_decode_table);
+static const ssize_t base32_decode_table_size =
+		sizeof(base32_decode_table) / sizeof(*base32_decode_table);
 
 static const unsigned char base32hex_encode_table[] =
 		"0123456789ABCDEFGHIJKLMNOPQRSTUV";
 
-static const char base32hex_decode_table[] = {
+static const signed char base32hex_decode_table[] = {
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  0,  1,  2,
@@ -87,7 +87,7 @@ static const ssize_t base32hex_decode_table_size =
 static const unsigned char base64_encode_table[] =
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-static const char base64_decode_table[] = {
+static const signed char base64_decode_table[] = {
 	-1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
 	-1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
 	-1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
@@ -99,8 +99,8 @@ static const char base64_decode_table[] = {
 	41,  42,  43,  44,  45,  46,  47,  48,  49,  50,  51
 };
 
-static const ssize_t base64_decode_table_size = sizeof(base64_decode_table)
-		/ sizeof(*base64_decode_table);
+static const ssize_t base64_decode_table_size =
+		sizeof(base64_decode_table) / sizeof(*base64_decode_table);
 
 #pragma mark -
 #pragma mark dispatch_transform_buffer
@@ -344,7 +344,9 @@ _dispatch_transform_to_utf16(dispatch_data_t data, int32_t byteOrder)
 			if (os_mul_overflow(size - i, sizeof(uint16_t), &next)) {
 				return (bool)false;
 			}
-			if (wch >= 0xd800 && wch < 0xdfff) {
+			if (wch == 0xfeff && offset + i == 3) {
+				// skip the BOM if any, as we already inserted one ourselves
+			} else if (wch >= 0xd800 && wch < 0xdfff) {
 				// Illegal range (surrogate pair)
 				return (bool)false;
 			} else if (wch >= 0x10000) {
@@ -550,12 +552,32 @@ _dispatch_transform_to_utf16be(dispatch_data_t data)
 	return _dispatch_transform_to_utf16(data, OSBigEndian);
 }
 
+static dispatch_data_t
+_dispatch_transform_to_utf8_without_bom(dispatch_data_t data)
+{
+	static uint8_t const utf8_bom[] = { 0xef, 0xbb, 0xbf };
+	const void *p;
+	dispatch_data_t subrange = _dispatch_data_subrange_map(data, &p, 0, 3);
+	bool has_bom = false;
+
+	if (subrange) {
+		has_bom = (memcmp(p, utf8_bom, sizeof(utf8_bom)) == 0);
+		dispatch_release(subrange);
+	}
+	if (has_bom) {
+		return dispatch_data_create_subrange(data, 3,
+				dispatch_data_get_size(data) - 3);
+	}
+	dispatch_retain(data);
+	return data;
+}
+
 #pragma mark -
 #pragma mark base32
 
 static dispatch_data_t
 _dispatch_transform_from_base32_with_table(dispatch_data_t data,
-		const char* table, ssize_t table_size)
+		const signed char* table, ssize_t table_size)
 {
 	__block uint64_t x = 0, count = 0, pad = 0;
 
@@ -585,7 +607,7 @@ _dispatch_transform_from_base32_with_table(dispatch_data_t data,
 			}
 			count++;
 
-			char value = table[index];
+			signed char value = table[index];
 			if (value == -2) {
 				value = 0;
 				pad++;
@@ -830,7 +852,7 @@ _dispatch_transform_from_base64(dispatch_data_t data)
 			}
 			count++;
 
-			char value = base64_decode_table[index];
+			signed char value = base64_decode_table[index];
 			if (value == -2) {
 				value = 0;
 				pad++;
@@ -1081,7 +1103,7 @@ const struct dispatch_data_format_type_s _dispatch_data_format_type_utf8 = {
 	.output_mask = (_DISPATCH_DATA_FORMAT_UTF8 | _DISPATCH_DATA_FORMAT_UTF16BE |
 			_DISPATCH_DATA_FORMAT_UTF16LE),
 	.decode = NULL,
-	.encode = NULL,
+	.encode = _dispatch_transform_to_utf8_without_bom,
 };
 
 const struct dispatch_data_format_type_s _dispatch_data_format_type_utf_any = {

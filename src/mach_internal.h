@@ -55,16 +55,15 @@ enum {
 	DISPATCH_MACH_RECV_MESSAGE = 0x2,
 };
 
+DISPATCH_CLASS_DECL(mach, QUEUE);
+DISPATCH_CLASS_DECL(mach_msg, OBJECT);
 
-DISPATCH_CLASS_DECL(mach);
-DISPATCH_CLASS_DECL(mach_msg);
-
-#ifndef __cplusplus
 struct dispatch_mach_s {
-	DISPATCH_SOURCE_HEADER(mach);
+	DISPATCH_SOURCE_CLASS_HEADER(mach);
 	dispatch_mach_send_refs_t dm_send_refs;
 	dispatch_xpc_term_refs_t dm_xpc_term_refs;
 } DISPATCH_ATOMIC64_ALIGN;
+dispatch_assert_valid_lane_type(dispatch_mach_s);
 
 struct dispatch_mach_msg_s {
 	DISPATCH_OBJECT_HEADER(mach_msg);
@@ -91,30 +90,29 @@ _dispatch_mach_xref_dispose(struct dispatch_mach_s *dm)
 		dm->dm_recv_refs->dmrr_handler_ctxt = (void *)0xbadfeed;
 	}
 }
-#endif // __cplusplus
 
-dispatch_source_t
-_dispatch_source_create_mach_msg_direct_recv(mach_port_t recvp,
-		const struct dispatch_continuation_s *dc);
+extern dispatch_mach_xpc_hooks_t _dispatch_mach_xpc_hooks;
+extern const struct dispatch_mach_xpc_hooks_s _dispatch_mach_xpc_hooks_default;
 
 void _dispatch_mach_msg_async_reply_invoke(dispatch_continuation_t dc,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 void _dispatch_mach_dispose(dispatch_mach_t dm, bool *allow_free);
-void _dispatch_mach_finalize_activation(dispatch_mach_t dm, bool *allow_resume);
+void _dispatch_mach_activate(dispatch_mach_t dm, bool *allow_resume);
 void _dispatch_mach_invoke(dispatch_mach_t dm, dispatch_invoke_context_t dic,
 		dispatch_invoke_flags_t flags);
 void _dispatch_mach_wakeup(dispatch_mach_t dm, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
 size_t _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz);
-void _dispatch_mach_merge_notification(dispatch_unote_t du,
-		uint32_t flags, uintptr_t data, uintptr_t status,
-		pthread_priority_t pp);
+void _dispatch_mach_notification_merge_evt(dispatch_unote_t du,
+		uint32_t flags, uintptr_t data, pthread_priority_t pp);
 void _dispatch_mach_merge_msg(dispatch_unote_t du, uint32_t flags,
-		mach_msg_header_t *msg, mach_msg_size_t msgsz);
+		mach_msg_header_t *msg, mach_msg_size_t msgsz,
+		pthread_priority_t msg_pp, pthread_priority_t ovr_pp);
 void _dispatch_mach_reply_merge_msg(dispatch_unote_t du, uint32_t flags,
-		mach_msg_header_t *msg, mach_msg_size_t msgsz);
-void _dispatch_xpc_sigterm_merge(dispatch_unote_t du, uint32_t flags,
-		uintptr_t data, uintptr_t status, pthread_priority_t pp);
+		mach_msg_header_t *msg, mach_msg_size_t msgsz,
+		pthread_priority_t msg_pp, pthread_priority_t ovr_pp);
+void _dispatch_xpc_sigterm_merge_evt(dispatch_unote_t du, uint32_t flags,
+		uintptr_t data, pthread_priority_t pp);
 
 void _dispatch_mach_msg_dispose(dispatch_mach_msg_t dmsg, bool *allow_free);
 void _dispatch_mach_msg_invoke(dispatch_mach_msg_t dmsg,

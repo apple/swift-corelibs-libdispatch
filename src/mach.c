@@ -24,20 +24,19 @@
 #define DISPATCH_MACH_RETURN_IMMEDIATE_SEND_RESULT 0x1
 #define DISPATCH_MACH_REGISTER_FOR_REPLY 0x2
 #define DISPATCH_MACH_WAIT_FOR_REPLY 0x4
-#define DISPATCH_MACH_OWNED_REPLY_PORT 0x8
-#define DISPATCH_MACH_ASYNC_REPLY 0x10
 #define DISPATCH_MACH_OPTIONS_MASK 0xffff
 
 #define DM_SEND_STATUS_SUCCESS 0x1
 #define DM_SEND_STATUS_RETURNING_IMMEDIATE_SEND_RESULT 0x2
 
+#define DM_CHECKIN_CANCELED ((dispatch_mach_msg_t)~0ul)
+
 DISPATCH_ENUM(dispatch_mach_send_invoke_flags, uint32_t,
 	DM_SEND_INVOKE_NONE            = 0x0,
 	DM_SEND_INVOKE_MAKE_DIRTY      = 0x1,
 	DM_SEND_INVOKE_NEEDS_BARRIER   = 0x2,
-	DM_SEND_INVOKE_CANCEL          = 0x4,
-	DM_SEND_INVOKE_CAN_RUN_BARRIER = 0x8,
-	DM_SEND_INVOKE_IMMEDIATE_SEND  = 0x10,
+	DM_SEND_INVOKE_CAN_RUN_BARRIER = 0x4,
+	DM_SEND_INVOKE_IMMEDIATE_SEND  = 0x8,
 );
 #define DM_SEND_INVOKE_IMMEDIATE_SEND_MASK \
 		((dispatch_mach_send_invoke_flags_t)DM_SEND_INVOKE_IMMEDIATE_SEND)
@@ -48,7 +47,7 @@ static mach_port_t _dispatch_mach_msg_get_reply_port(dispatch_object_t dou);
 static void _dispatch_mach_msg_disconnected(dispatch_mach_t dm,
 		mach_port_t local_port, mach_port_t remote_port);
 static inline void _dispatch_mach_msg_reply_received(dispatch_mach_t dm,
-		dispatch_mach_reply_refs_t dmr, mach_port_t local_port);
+		dispatch_mach_reply_wait_refs_t dwr, mach_port_t local_port);
 static dispatch_mach_msg_t _dispatch_mach_msg_create_reply_disconnected(
 		dispatch_object_t dou, dispatch_mach_reply_refs_t dmr,
 		dispatch_mach_reason_t reason);
@@ -58,11 +57,10 @@ static inline mach_msg_header_t* _dispatch_mach_msg_get_msg(
 		dispatch_mach_msg_t dmsg);
 static void _dispatch_mach_send_push(dispatch_mach_t dm, dispatch_object_t dou,
 		dispatch_qos_t qos);
-static void _dispatch_mach_cancel(dispatch_mach_t dm);
 static void _dispatch_mach_push_send_barrier_drain(dispatch_mach_t dm,
 		dispatch_qos_t qos);
 static void _dispatch_mach_handle_or_push_received_msg(dispatch_mach_t dm,
-		dispatch_mach_msg_t dmsg);
+		dispatch_mach_msg_t dmsg, pthread_priority_t pp);
 static void _dispatch_mach_push_async_reply_msg(dispatch_mach_t dm,
 		dispatch_mach_msg_t dmsg, dispatch_queue_t drq);
 static dispatch_queue_t _dispatch_mach_msg_context_async_reply_queue(
@@ -76,79 +74,16 @@ static void _dispatch_mach_notification_kevent_register(dispatch_mach_t dm,
 // For tests only.
 DISPATCH_EXPORT void _dispatch_mach_hooks_install_default(void);
 
-dispatch_source_t
-_dispatch_source_create_mach_msg_direct_recv(mach_port_t recvp,
-		const struct dispatch_continuation_s *dc)
-{
-	dispatch_source_t ds;
-	ds = dispatch_source_create(&_dispatch_source_type_mach_recv_direct,
-			recvp, 0, &_dispatch_mgr_q);
-	os_atomic_store(&ds->ds_refs->ds_handler[DS_EVENT_HANDLER],
-			(dispatch_continuation_t)dc, relaxed);
-	return ds;
-}
-
 #pragma mark -
 #pragma mark dispatch to XPC callbacks
-
-static dispatch_mach_xpc_hooks_t _dispatch_mach_xpc_hooks;
-
-// Default dmxh_direct_message_handler callback that does not handle
-// messages inline.
-static bool
-_dispatch_mach_xpc_no_handle_message(
-		void *_Nullable context DISPATCH_UNUSED,
-		dispatch_mach_reason_t reason DISPATCH_UNUSED,
-		dispatch_mach_msg_t message DISPATCH_UNUSED,
-		mach_error_t error DISPATCH_UNUSED)
-{
-	return false;
-}
-
-// Default dmxh_msg_context_reply_queue callback that returns a NULL queue.
-static dispatch_queue_t
-_dispatch_mach_msg_context_no_async_reply_queue(
-		void *_Nonnull msg_context DISPATCH_UNUSED)
-{
-	return NULL;
-}
-
-// Default dmxh_async_reply_handler callback that crashes when called.
-DISPATCH_NORETURN
-static void
-_dispatch_mach_default_async_reply_handler(void *context DISPATCH_UNUSED,
-		dispatch_mach_reason_t reason DISPATCH_UNUSED,
-		dispatch_mach_msg_t message DISPATCH_UNUSED)
-{
-	DISPATCH_CLIENT_CRASH(_dispatch_mach_xpc_hooks,
-			"_dispatch_mach_default_async_reply_handler called");
-}
-
-// Default dmxh_enable_sigterm_notification callback that enables delivery of
-// SIGTERM notifications (for backwards compatibility).
-static bool
-_dispatch_mach_enable_sigterm(void *_Nullable context DISPATCH_UNUSED)
-{
-	return true;
-}
-
-// Callbacks from dispatch to XPC. The default is to not support any callbacks.
-static const struct dispatch_mach_xpc_hooks_s _dispatch_mach_xpc_hooks_default
-		= {
-	.version = DISPATCH_MACH_XPC_HOOKS_VERSION,
-	.dmxh_direct_message_handler = &_dispatch_mach_xpc_no_handle_message,
-	.dmxh_msg_context_reply_queue =
-			&_dispatch_mach_msg_context_no_async_reply_queue,
-	.dmxh_async_reply_handler = &_dispatch_mach_default_async_reply_handler,
-	.dmxh_enable_sigterm_notification = &_dispatch_mach_enable_sigterm,
-};
-
-static dispatch_mach_xpc_hooks_t _dispatch_mach_xpc_hooks
-		= &_dispatch_mach_xpc_hooks_default;
 
 void
 dispatch_mach_hooks_install_4libxpc(dispatch_mach_xpc_hooks_t hooks)
 {
+	if (hooks->version < DISPATCH_MACH_XPC_MIN_HOOKS_VERSION) {
+		DISPATCH_CLIENT_CRASH(hooks,
+				"trying to install hooks with unsupported version");
+	}
 	if (!os_atomic_cmpxchg(&_dispatch_mach_xpc_hooks,
 			&_dispatch_mach_xpc_hooks_default, hooks, relaxed)) {
 		DISPATCH_CLIENT_CRASH(_dispatch_mach_xpc_hooks,
@@ -174,13 +109,10 @@ _dispatch_mach_create(const char *label, dispatch_queue_t q, void *context,
 	dispatch_mach_recv_refs_t dmrr;
 	dispatch_mach_send_refs_t dmsr;
 	dispatch_mach_t dm;
-	dm = _dispatch_object_alloc(DISPATCH_VTABLE(mach),
-			sizeof(struct dispatch_mach_s));
-	_dispatch_queue_init(dm->_as_dq, DQF_LEGACY, 1,
-			DISPATCH_QUEUE_INACTIVE | DISPATCH_QUEUE_ROLE_INNER);
 
+	dm = _dispatch_queue_alloc(mach, DQF_MUTABLE, 1,
+			DISPATCH_QUEUE_INACTIVE | DISPATCH_QUEUE_ROLE_INNER)._dm;
 	dm->dq_label = label;
-	dm->do_ref_cnt++; // the reference _dispatch_mach_cancel_invoke holds
 	dm->dm_is_xpc = is_xpc;
 
 	dmrr = dux_create(&_dispatch_mach_type_recv, 0, 0)._dmrr;
@@ -196,8 +128,8 @@ _dispatch_mach_create(const char *label, dispatch_queue_t q, void *context,
 	dmsr->du_owner_wref = _dispatch_ptr2wref(dm);
 	dm->dm_send_refs = dmsr;
 
-	if (slowpath(!q)) {
-		q = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, true);
+	if (unlikely(!q)) {
+		q = _dispatch_get_default_queue(true);
 	} else {
 		_dispatch_retain(q);
 	}
@@ -242,7 +174,7 @@ _dispatch_mach_dispose(dispatch_mach_t dm, bool *allow_free)
 		_dispatch_unote_dispose(dm->dm_xpc_term_refs);
 		dm->dm_xpc_term_refs = NULL;
 	}
-	_dispatch_queue_destroy(dm->_as_dq, allow_free);
+	_dispatch_lane_class_dispose(dm, allow_free);
 }
 
 void
@@ -250,11 +182,9 @@ dispatch_mach_connect(dispatch_mach_t dm, mach_port_t receive,
 		mach_port_t send, dispatch_mach_msg_t checkin)
 {
 	dispatch_mach_send_refs_t dmsr = dm->dm_send_refs;
-	uint32_t disconnect_cnt;
 
 	if (MACH_PORT_VALID(receive)) {
 		dm->dm_recv_refs->du_ident = receive;
-		_dispatch_retain(dm); // the reference the manager queue holds
 	}
 	dmsr->dmsr_send = send;
 	if (MACH_PORT_VALID(send)) {
@@ -266,151 +196,153 @@ dispatch_mach_connect(dispatch_mach_t dm, mach_port_t receive,
 		}
 		dmsr->dmsr_checkin = checkin;
 	}
-	dispatch_assert(DISPATCH_MACH_NEVER_CONNECTED - 1 ==
-			DISPATCH_MACH_NEVER_INSTALLED);
-	disconnect_cnt = os_atomic_dec2o(dmsr, dmsr_disconnect_cnt, release);
-	if (unlikely(disconnect_cnt != DISPATCH_MACH_NEVER_INSTALLED)) {
+
+	uint32_t disconnect_cnt = os_atomic_and_orig2o(dmsr, dmsr_disconnect_cnt,
+			~DISPATCH_MACH_NEVER_CONNECTED, relaxed);
+	if (unlikely(!(disconnect_cnt & DISPATCH_MACH_NEVER_CONNECTED))) {
 		DISPATCH_CLIENT_CRASH(disconnect_cnt, "Channel already connected");
 	}
 	_dispatch_object_debug(dm, "%s", __func__);
 	return dispatch_activate(dm);
 }
 
+static inline void
+_dispatch_mach_reply_list_insert(dispatch_mach_send_refs_t dmsr,
+		dispatch_mach_reply_refs_t dmr)
+{
+	_dispatch_unfair_lock_lock(&dmsr->dmsr_replies_lock);
+	dispatch_assert(!_LIST_IS_ENQUEUED(dmr, dmr_list));
+	LIST_INSERT_HEAD(&dmsr->dmsr_replies, dmr, dmr_list);
+	_dispatch_unfair_lock_unlock(&dmsr->dmsr_replies_lock);
+}
+
+static inline void
+_dispatch_mach_reply_list_remove_locked(dispatch_mach_reply_refs_t dmr)
+{
+	dispatch_assert(_LIST_IS_ENQUEUED(dmr, dmr_list));
+	LIST_REMOVE(dmr, dmr_list);
+	_LIST_MARK_NOT_ENQUEUED(dmr, dmr_list);
+}
+
 static inline bool
-_dispatch_mach_reply_tryremove(dispatch_mach_t dm,
+_dispatch_mach_reply_list_tryremove(dispatch_mach_send_refs_t dmsr,
 		dispatch_mach_reply_refs_t dmr)
 {
 	bool removed;
-	_dispatch_unfair_lock_lock(&dm->dm_send_refs->dmsr_replies_lock);
-	if ((removed = _TAILQ_IS_ENQUEUED(dmr, dmr_list))) {
-		TAILQ_REMOVE(&dm->dm_send_refs->dmsr_replies, dmr, dmr_list);
-		_TAILQ_MARK_NOT_ENQUEUED(dmr, dmr_list);
+	_dispatch_unfair_lock_lock(&dmsr->dmsr_replies_lock);
+	if ((removed = _LIST_IS_ENQUEUED(dmr, dmr_list))) {
+		_dispatch_mach_reply_list_remove_locked(dmr);
 	}
-	_dispatch_unfair_lock_unlock(&dm->dm_send_refs->dmsr_replies_lock);
+	_dispatch_unfair_lock_unlock(&dmsr->dmsr_replies_lock);
 	return removed;
 }
+
+#define DMRU_DELETE_ACK     DUU_DELETE_ACK
+#define DMRU_PROBE          DUU_PROBE
+#define DMRU_MUST_SUCCEED   DUU_MUST_SUCCEED
+#define DMRU_DUU_MASK       0x0f
+#define DMRU_DISCONNECTED   0x10
+#define DMRU_REMOVE         0x20
+#define DMRU_ASYNC_MERGE    0x40
+#define DMRU_CANCEL         0x80
 
 DISPATCH_NOINLINE
 static void
-_dispatch_mach_reply_waiter_unregister(dispatch_mach_t dm,
+_dispatch_mach_reply_unregister(dispatch_mach_t dm,
 		dispatch_mach_reply_refs_t dmr, uint32_t options)
 {
-	dispatch_mach_msg_t dmsgr = NULL;
-	bool disconnected = (options & DU_UNREGISTER_DISCONNECTED);
-	if (options & DU_UNREGISTER_REPLY_REMOVE) {
-		_dispatch_unfair_lock_lock(&dm->dm_send_refs->dmsr_replies_lock);
-		if (unlikely(!_TAILQ_IS_ENQUEUED(dmr, dmr_list))) {
-			DISPATCH_INTERNAL_CRASH(0, "Could not find reply registration");
-		}
-		TAILQ_REMOVE(&dm->dm_send_refs->dmsr_replies, dmr, dmr_list);
-		_TAILQ_MARK_NOT_ENQUEUED(dmr, dmr_list);
-		_dispatch_unfair_lock_unlock(&dm->dm_send_refs->dmsr_replies_lock);
-	}
-	if (disconnected) {
-		dmsgr = _dispatch_mach_msg_create_reply_disconnected(NULL, dmr,
-				DISPATCH_MACH_DISCONNECTED);
-	} else if (dmr->dmr_voucher) {
-		_voucher_release(dmr->dmr_voucher);
-		dmr->dmr_voucher = NULL;
-	}
-	_dispatch_debug("machport[0x%08x]: unregistering for sync reply%s, ctxt %p",
-			_dispatch_mach_reply_get_reply_port((mach_port_t)dmr->du_ident),
+	// - async waiters have a dmr of type &_dispatch_mach_type_reply
+	//   heap-allocated in _dispatch_mach_reply_kevent_register().
+	//
+	// - sync waiters have a dmr of type DISPATCH_MACH_TYPE_WAITER,
+	//   stack-allocated in _dispatch_mach_send_and_wait_for_reply().
+	bool sync_waiter = (dux_type(dmr) == DISPATCH_MACH_TYPE_WAITER);
+	dispatch_mach_send_refs_t dmsr = dm->dm_send_refs;
+	bool disconnected = (options & DMRU_DISCONNECTED);
+	bool wakeup = false;
+
+	_dispatch_debug("machport[0x%08x]: unregistering for%s reply%s, ctxt %p",
+			(mach_port_t)dmr->du_ident, sync_waiter ? " sync" : "",
+			(options & DMRU_CANCEL) ? " (canceled)" :
 			disconnected ? " (disconnected)" : "", dmr->dmr_ctxt);
-	if (dmsgr) {
-		return _dispatch_mach_handle_or_push_received_msg(dm, dmsgr);
+
+	if (options & DMRU_REMOVE) {
+		_dispatch_unfair_lock_lock(&dmsr->dmsr_replies_lock);
+		_dispatch_mach_reply_list_remove_locked(dmr);
+		if (LIST_EMPTY(&dmsr->dmsr_replies) && dmsr->dmsr_disconnect_cnt) {
+			wakeup = true;
+		}
+		_dispatch_unfair_lock_unlock(&dmsr->dmsr_replies_lock);
 	}
-}
 
-DISPATCH_NOINLINE
-static bool
-_dispatch_mach_reply_list_remove(dispatch_mach_t dm,
-		dispatch_mach_reply_refs_t dmr) {
-	// dmsr_replies_lock must be held by the caller.
-	bool removed = false;
-	if (likely(_TAILQ_IS_ENQUEUED(dmr, dmr_list))) {
-		TAILQ_REMOVE(&dm->dm_send_refs->dmsr_replies, dmr, dmr_list);
-		_TAILQ_MARK_NOT_ENQUEUED(dmr, dmr_list);
-		removed = true;
-	}
-	return removed;
-}
-
-DISPATCH_NOINLINE
-static bool
-_dispatch_mach_reply_kevent_unregister(dispatch_mach_t dm,
-		dispatch_mach_reply_refs_t dmr, uint32_t options)
-{
-	dispatch_assert(!_TAILQ_IS_ENQUEUED(dmr, dmr_list));
-
-	bool disconnected = (options & DU_UNREGISTER_DISCONNECTED);
-	_dispatch_debug("machport[0x%08x]: unregistering for reply%s, ctxt %p",
-			(mach_port_t)dmr->du_ident, disconnected ? " (disconnected)" : "",
-			dmr->dmr_ctxt);
-	if (!_dispatch_unote_unregister(dmr, options)) {
-		_dispatch_debug("machport[0x%08x]: deferred delete kevent[%p]",
-						(mach_port_t)dmr->du_ident, dmr);
-		dispatch_assert(options == DU_UNREGISTER_DISCONNECTED);
-		return false;
+	if (_dispatch_unote_registered(dmr) &&
+			!_dispatch_unote_unregister(dmr, options & DMRU_DUU_MASK)) {
+		dispatch_assert(!sync_waiter); // sync waiters never use kevent
+		if (options & DMRU_CANCEL) {
+			// when canceling, failed unregistrations are put back in the list
+			// the caller has the lock held
+			LIST_INSERT_HEAD(&dmsr->dmsr_replies, dmr, dmr_list);
+		}
+		return;
 	}
 
 	dispatch_mach_msg_t dmsgr = NULL;
 	dispatch_queue_t drq = NULL;
 	if (disconnected) {
-		// The next call is guaranteed to always transfer or consume the voucher
-		// in the dmr, if there is one.
-		dmsgr = _dispatch_mach_msg_create_reply_disconnected(NULL, dmr,
-			dmr->dmr_async_reply ? DISPATCH_MACH_ASYNC_WAITER_DISCONNECTED
-			: DISPATCH_MACH_DISCONNECTED);
-		if (dmr->dmr_ctxt) {
+		if (dm->dm_is_xpc && dmr->dmr_ctxt) {
 			drq = _dispatch_mach_msg_context_async_reply_queue(dmr->dmr_ctxt);
 		}
+		dmsgr = _dispatch_mach_msg_create_reply_disconnected(NULL, dmr,
+				drq ? DISPATCH_MACH_ASYNC_WAITER_DISCONNECTED
+				: DISPATCH_MACH_DISCONNECTED);
+		// _dispatch_mach_msg_create_reply_disconnected() consumes the voucher
 		dispatch_assert(dmr->dmr_voucher == NULL);
 	} else if (dmr->dmr_voucher) {
 		_voucher_release(dmr->dmr_voucher);
 		dmr->dmr_voucher = NULL;
 	}
-	_dispatch_unote_dispose(dmr);
+	if (!sync_waiter) {
+		_dispatch_unote_dispose(dmr);
+	}
 
 	if (dmsgr) {
 		if (drq) {
 			_dispatch_mach_push_async_reply_msg(dm, dmsgr, drq);
 		} else {
-			_dispatch_mach_handle_or_push_received_msg(dm, dmsgr);
+			_dispatch_mach_handle_or_push_received_msg(dm, dmsgr, 0);
 		}
 	}
-	return true;
+	if (options & DMRU_ASYNC_MERGE) {
+		if (wakeup) {
+			return dx_wakeup(dm, 0,
+					DISPATCH_WAKEUP_CONSUME_2 | DISPATCH_WAKEUP_MAKE_DIRTY);
+		}
+		return _dispatch_release_2_tailcall(dm);
+	}
 }
 
 DISPATCH_NOINLINE
 static void
 _dispatch_mach_reply_waiter_register(dispatch_mach_t dm,
-		dispatch_mach_reply_refs_t dmr, mach_port_t reply_port,
-		dispatch_mach_msg_t dmsg, mach_msg_option_t msg_opts)
+		dispatch_mach_reply_wait_refs_t dwr, mach_port_t reply_port,
+		dispatch_mach_msg_t dmsg)
 {
+	dispatch_mach_reply_refs_t dmr = &dwr->dwr_refs;
 	dmr->du_owner_wref = _dispatch_ptr2wref(dm);
-	dmr->du_wlh = NULL;
 	dmr->du_filter = EVFILT_MACHPORT;
 	dmr->du_ident = reply_port;
-	if (msg_opts & DISPATCH_MACH_OWNED_REPLY_PORT) {
-		_dispatch_mach_reply_mark_reply_port_owned(dmr);
-	} else {
+	if (!dmr->dmr_reply_port_owned) {
 		if (dmsg->dmsg_voucher) {
 			dmr->dmr_voucher = _voucher_retain(dmsg->dmsg_voucher);
 		}
-		dmr->dmr_priority = _dispatch_priority_from_pp(dmsg->dmsg_priority);
+		dmr->dmr_priority = dmsg->dmsg_priority;
 		// make reply context visible to leaks rdar://11777199
 		dmr->dmr_ctxt = dmsg->do_ctxt;
 	}
 
 	_dispatch_debug("machport[0x%08x]: registering for sync reply, ctxt %p",
 			reply_port, dmsg->do_ctxt);
-	_dispatch_unfair_lock_lock(&dm->dm_send_refs->dmsr_replies_lock);
-	if (unlikely(_TAILQ_IS_ENQUEUED(dmr, dmr_list))) {
-		DISPATCH_INTERNAL_CRASH(dmr->dmr_list.tqe_prev,
-				"Reply already registered");
-	}
-	TAILQ_INSERT_TAIL(&dm->dm_send_refs->dmsr_replies, dmr, dmr_list);
-	_dispatch_unfair_lock_unlock(&dm->dm_send_refs->dmsr_replies_lock);
+	_dispatch_mach_reply_list_insert(dm->dm_send_refs, dmr);
 }
 
 DISPATCH_NOINLINE
@@ -420,6 +352,7 @@ _dispatch_mach_reply_kevent_register(dispatch_mach_t dm, mach_port_t reply_port,
 {
 	dispatch_mach_reply_refs_t dmr;
 	dispatch_priority_t mpri, pri, overcommit;
+	dispatch_qos_t fallback;
 	dispatch_wlh_t wlh;
 
 	dmr = dux_create(&_dispatch_mach_type_reply, reply_port, 0)._dmr;
@@ -428,58 +361,51 @@ _dispatch_mach_reply_kevent_register(dispatch_mach_t dm, mach_port_t reply_port,
 	if (dmsg->dmsg_voucher) {
 		dmr->dmr_voucher = _voucher_retain(dmsg->dmsg_voucher);
 	}
-	dmr->dmr_priority = _dispatch_priority_from_pp(dmsg->dmsg_priority);
+	dmr->dmr_priority = dmsg->dmsg_priority;
 	// make reply context visible to leaks rdar://11777199
 	dmr->dmr_ctxt = dmsg->do_ctxt;
 
 	dispatch_queue_t drq = NULL;
-	if (dmsg->dmsg_options & DISPATCH_MACH_ASYNC_REPLY) {
-		dmr->dmr_async_reply = true;
+	if (dm->dm_is_xpc && dmsg->do_ctxt) {
 		drq = _dispatch_mach_msg_context_async_reply_queue(dmsg->do_ctxt);
 	}
-
-	if (!drq) {
+	if (unlikely(!drq && _dispatch_unote_wlh(dm->dm_recv_refs))) {
+		wlh = _dispatch_unote_wlh(dm->dm_recv_refs);
 		pri = dm->dq_priority;
-		wlh = dm->dm_recv_refs->du_wlh;
-	} else if (dx_type(drq) == DISPATCH_QUEUE_NETWORK_EVENT_TYPE) {
-		pri = DISPATCH_PRIORITY_FLAG_MANAGER;
-		wlh = (dispatch_wlh_t)drq;
 	} else if (dx_hastypeflag(drq, QUEUE_ROOT)) {
-		pri = drq->dq_priority;
 		wlh = DISPATCH_WLH_ANON;
-	} else if (drq == dm->do_targetq) {
-		pri = dm->dq_priority;
-		wlh = dm->dm_recv_refs->du_wlh;
+		if (_dispatch_is_in_root_queues_array(drq)) {
+			pri = drq->dq_priority;
+		} else {
+			pri = DISPATCH_PRIORITY_FLAG_MANAGER;
+		}
 	} else if (!(pri = _dispatch_queue_compute_priority_and_wlh(drq, &wlh))) {
-		pri = drq->dq_priority;
 		wlh = DISPATCH_WLH_ANON;
+		pri = drq->dq_priority;
 	}
+	mpri = _dispatch_priority_from_pp_strip_flags(dmsg->dmsg_priority);
+	overcommit = pri & DISPATCH_PRIORITY_FLAG_OVERCOMMIT;
+	fallback = _dispatch_priority_fallback_qos(pri);
 	if (pri & DISPATCH_PRIORITY_REQUESTED_MASK) {
-		overcommit = pri & DISPATCH_PRIORITY_FLAG_OVERCOMMIT;
 		pri &= DISPATCH_PRIORITY_REQUESTED_MASK;
-		mpri = _dispatch_priority_from_pp_strip_flags(dmsg->dmsg_priority);
 		if (pri < mpri) pri = mpri;
 		pri |= overcommit;
+	} else if (fallback && mpri) {
+		pri = mpri | overcommit;
+	} else if (fallback && !mpri) {
+		pri = _dispatch_priority_make(fallback, 0) | overcommit;
 	} else {
 		pri = DISPATCH_PRIORITY_FLAG_MANAGER;
+		wlh = DISPATCH_WLH_ANON;
 	}
 
 	_dispatch_debug("machport[0x%08x]: registering for reply, ctxt %p",
 			reply_port, dmsg->do_ctxt);
-	_dispatch_unfair_lock_lock(&dm->dm_send_refs->dmsr_replies_lock);
-	if (unlikely(_TAILQ_IS_ENQUEUED(dmr, dmr_list))) {
-		DISPATCH_INTERNAL_CRASH(dmr->dmr_list.tqe_prev,
-				"Reply already registered");
-	}
-	TAILQ_INSERT_TAIL(&dm->dm_send_refs->dmsr_replies, dmr, dmr_list);
-	_dispatch_unfair_lock_unlock(&dm->dm_send_refs->dmsr_replies_lock);
+	_dispatch_mach_reply_list_insert(dm->dm_send_refs, dmr);
 
 	if (!_dispatch_unote_register(dmr, wlh, pri)) {
-		_dispatch_unfair_lock_lock(&dm->dm_send_refs->dmsr_replies_lock);
-		_dispatch_mach_reply_list_remove(dm, dmr);
-		_dispatch_unfair_lock_unlock(&dm->dm_send_refs->dmsr_replies_lock);
-		_dispatch_mach_reply_kevent_unregister(dm, dmr,
-				DU_UNREGISTER_DISCONNECTED);
+		uint32_t options = DMRU_MUST_SUCCEED | DMRU_REMOVE | DMRU_DISCONNECTED;
+		_dispatch_mach_reply_unregister(dm, dmr, options);
 	}
 }
 
@@ -496,6 +422,22 @@ _dispatch_use_mach_special_reply_port(void)
 #define thread_get_special_reply_port() ({__builtin_trap(); MACH_PORT_NULL;})
 	return false;
 #endif
+}
+
+static void
+_dispatch_destruct_reply_port(mach_port_t reply_port,
+		enum thread_destruct_special_reply_port_rights rights)
+{
+	kern_return_t kr = KERN_SUCCESS;
+
+	if (_dispatch_use_mach_special_reply_port()) {
+		kr = thread_destruct_special_reply_port(reply_port, rights);
+	} else if (rights == THREAD_SPECIAL_REPLY_PORT_ALL ||
+			rights == THREAD_SPECIAL_REPLY_PORT_RECEIVE_ONLY) {
+		kr = mach_port_destruct(mach_task_self(), reply_port, 0, 0);
+	}
+	DISPATCH_VERIFY_MIG(kr);
+	dispatch_assume_zero(kr);
 }
 
 static mach_port_t
@@ -567,10 +509,8 @@ _dispatch_set_thread_reply_port(mach_port_t reply_port)
 		mrp = _dispatch_get_thread_mig_reply_port();
 	}
 	if (mrp) {
-		kern_return_t kr = mach_port_mod_refs(mach_task_self(), reply_port,
-				MACH_PORT_RIGHT_RECEIVE, -1);
-		DISPATCH_VERIFY_MIG(kr);
-		dispatch_assume_zero(kr);
+		_dispatch_destruct_reply_port(reply_port,
+				THREAD_SPECIAL_REPLY_PORT_ALL);
 		_dispatch_debug("machport[0x%08x]: deallocated sync reply port "
 				"(found 0x%08x)", reply_port, mrp);
 	} else {
@@ -626,22 +566,20 @@ _dispatch_mach_msg_get_reason(dispatch_mach_msg_t dmsg, mach_error_t *err_ptr)
 
 static inline dispatch_mach_msg_t
 _dispatch_mach_msg_create_recv(mach_msg_header_t *hdr, mach_msg_size_t siz,
-		dispatch_mach_reply_refs_t dmr, uint32_t flags)
+		dispatch_mach_reply_refs_t dmr, uint32_t flags, pthread_priority_t pp)
 {
 	dispatch_mach_msg_destructor_t destructor;
 	dispatch_mach_msg_t dmsg;
 	voucher_t voucher;
-	pthread_priority_t pp;
 
 	if (dmr) {
 		_voucher_mach_msg_clear(hdr, false); // deallocate reply message voucher
-		pp = _dispatch_priority_to_pp(dmr->dmr_priority);
+		pp = dmr->dmr_priority;
 		voucher = dmr->dmr_voucher;
 		dmr->dmr_voucher = NULL; // transfer reference
 	} else {
 		voucher = voucher_create_with_mach_msg(hdr);
-		pp = _dispatch_priority_compute_propagated(
-				_voucher_get_priority(voucher), 0);
+		pp = _dispatch_priority_compute_propagated(pp, 0);
 	}
 
 	destructor = (flags & DISPATCH_EV_MSG_NEEDS_FREE) ?
@@ -663,81 +601,56 @@ _dispatch_mach_msg_create_recv(mach_msg_header_t *hdr, mach_msg_size_t siz,
 
 void
 _dispatch_mach_merge_msg(dispatch_unote_t du, uint32_t flags,
-		mach_msg_header_t *hdr, mach_msg_size_t siz)
+		mach_msg_header_t *hdr, mach_msg_size_t siz,
+		pthread_priority_t msg_pp, pthread_priority_t ovr_pp)
+
 {
-	// this function is very similar with what _dispatch_source_merge_evt does
-	// but can't reuse it as handling the message must be protected by the
-	// internal refcount between the first half and the trailer of what
-	// _dispatch_source_merge_evt does.
-
-	dispatch_mach_recv_refs_t dmrr = du._dmrr;
-	dispatch_mach_t dm = _dispatch_wref2ptr(dmrr->du_owner_wref);
-	dispatch_queue_flags_t dqf;
-	dispatch_mach_msg_t dmsg;
-
-	dispatch_assert(_dispatch_unote_needs_rearm(du));
-
 	if (flags & EV_VANISHED) {
 		DISPATCH_CLIENT_CRASH(du._du->du_ident,
 				"Unexpected EV_VANISHED (do not destroy random mach ports)");
-	}
-
-	// once we modify the queue atomic flags below, it will allow concurrent
-	// threads running _dispatch_mach_invoke2 to dispose of the source,
-	// so we can't safely borrow the reference we get from the muxnote udata
-	// anymore, and need our own
-	dispatch_wakeup_flags_t wflags = DISPATCH_WAKEUP_CONSUME_2;
-	_dispatch_retain_2(dm); // rdar://20382435
-
-	if (unlikely((flags & EV_ONESHOT) && !(flags & EV_DELETE))) {
-		dqf = _dispatch_queue_atomic_flags_set_and_clear(dm->_as_dq,
-				DSF_DEFERRED_DELETE, DSF_ARMED);
-		_dispatch_debug("kevent-source[%p]: deferred delete oneshot kevent[%p]",
-				dm, dmrr);
-	} else if (unlikely(flags & (EV_ONESHOT | EV_DELETE))) {
-		_dispatch_source_refs_unregister(dm->_as_ds,
-				DU_UNREGISTER_ALREADY_DELETED);
-		dqf = _dispatch_queue_atomic_flags(dm->_as_dq);
-		_dispatch_debug("kevent-source[%p]: deleted kevent[%p]", dm, dmrr);
-	} else {
-		dqf = _dispatch_queue_atomic_flags_clear(dm->_as_dq, DSF_ARMED);
-		_dispatch_debug("kevent-source[%p]: disarmed kevent[%p]", dm, dmrr);
 	}
 
 	_dispatch_debug_machport(hdr->msgh_remote_port);
 	_dispatch_debug("machport[0x%08x]: received msg id 0x%x, reply on 0x%08x",
 			hdr->msgh_local_port, hdr->msgh_id, hdr->msgh_remote_port);
 
-	if (dqf & DSF_CANCELED) {
+	dispatch_mach_t dm = _dispatch_wref2ptr(du._dmrr->du_owner_wref);
+	if (unlikely(_dispatch_queue_atomic_flags(dm) & DSF_CANCELED)) {
 		_dispatch_debug("machport[0x%08x]: drop msg id 0x%x, reply on 0x%08x",
 				hdr->msgh_local_port, hdr->msgh_id, hdr->msgh_remote_port);
 		mach_msg_destroy(hdr);
 		if (flags & DISPATCH_EV_MSG_NEEDS_FREE) {
 			free(hdr);
 		}
-		return dx_wakeup(dm, 0, wflags | DISPATCH_WAKEUP_MAKE_DIRTY);
+	} else {
+		// Once the mach channel disarming is visible, cancellation will switch
+		// to immediately destroy messages.  If we're preempted here, then the
+		// whole cancellation sequence may be complete by the time we really
+		// enqueue the message.
+		//
+		// _dispatch_mach_msg_invoke_with_mach() is responsible for filtering it
+		// out to keep the promise that DISPATCH_MACH_DISCONNECTED is the last
+		// event sent.
+		dispatch_mach_msg_t dmsg;
+		dmsg = _dispatch_mach_msg_create_recv(hdr, siz, NULL, flags, msg_pp);
+		_dispatch_mach_handle_or_push_received_msg(dm, dmsg, ovr_pp);
 	}
 
-	// Once the mach channel disarming is visible, cancellation will switch to
-	// immediate deletion.  If we're preempted here, then the whole cancellation
-	// sequence may be complete by the time we really enqueue the message.
-	//
-	// _dispatch_mach_msg_invoke_with_mach() is responsible for filtering it out
-	// to keep the promise that DISPATCH_MACH_DISCONNECTED is the last
-	// event sent.
-
-	dmsg = _dispatch_mach_msg_create_recv(hdr, siz, NULL, flags);
-	_dispatch_mach_handle_or_push_received_msg(dm, dmsg);
+	if (unlikely(_dispatch_unote_needs_delete(du))) {
+		return dx_wakeup(dm, 0, DISPATCH_WAKEUP_EVENT |
+				DISPATCH_WAKEUP_CONSUME_2 | DISPATCH_WAKEUP_MAKE_DIRTY);
+	}
 	return _dispatch_release_2_tailcall(dm);
 }
 
 void
 _dispatch_mach_reply_merge_msg(dispatch_unote_t du, uint32_t flags,
-		mach_msg_header_t *hdr, mach_msg_size_t siz)
+		mach_msg_header_t *hdr, mach_msg_size_t siz,
+		pthread_priority_t msg_pp, pthread_priority_t ovr_pp)
 {
 	dispatch_mach_reply_refs_t dmr = du._dmr;
 	dispatch_mach_t dm = _dispatch_wref2ptr(dmr->du_owner_wref);
-	bool canceled = (_dispatch_queue_atomic_flags(dm->_as_dq) & DSF_CANCELED);
+	bool canceled = (_dispatch_queue_atomic_flags(dm) & DSF_CANCELED);
 	dispatch_mach_msg_t dmsg = NULL;
 
 	_dispatch_debug_machport(hdr->msgh_remote_port);
@@ -745,18 +658,18 @@ _dispatch_mach_reply_merge_msg(dispatch_unote_t du, uint32_t flags,
 			hdr->msgh_local_port, hdr->msgh_id, hdr->msgh_remote_port);
 
 	if (!canceled) {
-		dmsg = _dispatch_mach_msg_create_recv(hdr, siz, dmr, flags);
+		dmsg = _dispatch_mach_msg_create_recv(hdr, siz, dmr, flags, msg_pp);
 	}
 
 	if (dmsg) {
 		dispatch_queue_t drq = NULL;
-		if (dmsg->do_ctxt) {
+		if (dm->dm_is_xpc && dmsg->do_ctxt) {
 			drq = _dispatch_mach_msg_context_async_reply_queue(dmsg->do_ctxt);
 		}
 		if (drq) {
 			_dispatch_mach_push_async_reply_msg(dm, dmsg, drq);
 		} else {
-			_dispatch_mach_handle_or_push_received_msg(dm, dmsg);
+			_dispatch_mach_handle_or_push_received_msg(dm, dmsg, ovr_pp);
 		}
 	} else {
 		_dispatch_debug("machport[0x%08x]: drop msg id 0x%x, reply on 0x%08x",
@@ -767,41 +680,41 @@ _dispatch_mach_reply_merge_msg(dispatch_unote_t du, uint32_t flags,
 		}
 	}
 
-	dispatch_wakeup_flags_t wflags = 0;
-	uint32_t options = DU_UNREGISTER_IMMEDIATE_DELETE;
-	if (canceled) {
-		options |= DU_UNREGISTER_DISCONNECTED;
-	}
+	uint32_t options = DMRU_ASYNC_MERGE | DMRU_REMOVE;
+	options |= DMRU_MUST_SUCCEED | DMRU_DELETE_ACK;
+	if (canceled) options |= DMRU_DISCONNECTED;
+	dispatch_assert(_dispatch_unote_needs_delete(dmr));
+	_dispatch_mach_reply_unregister(dm, dmr, options); // consumes the +2
+}
 
-	_dispatch_unfair_lock_lock(&dm->dm_send_refs->dmsr_replies_lock);
-	bool removed = _dispatch_mach_reply_list_remove(dm, dmr);
-	dispatch_assert(removed);
-	if (TAILQ_EMPTY(&dm->dm_send_refs->dmsr_replies) &&
-			(dm->dm_send_refs->dmsr_disconnect_cnt ||
-			(dm->dq_atomic_flags & DSF_CANCELED))) {
-		// When the list is empty, _dispatch_mach_disconnect() may release the
-		// last reference count on the Mach channel. To avoid this, take our
-		// own reference before releasing the lock.
-		wflags = DISPATCH_WAKEUP_MAKE_DIRTY | DISPATCH_WAKEUP_CONSUME_2;
-		_dispatch_retain_2(dm);
+DISPATCH_ALWAYS_INLINE
+static void
+_dispatch_mach_stack_probe(void *addr, size_t size)
+{
+#if TARGET_OS_MAC && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101400) && \
+		(defined(__x86_64__) || defined(__arm64__))
+	// <rdar://problem/40708879> there should be a __has_feature() macro test
+	// for this, for now we approximate it, for when the compiler
+	// is generating calls to ____chkstk_darwin on our behalf
+	(void)addr; (void)size;
+#else
+	for (mach_vm_address_t p = mach_vm_trunc_page(addr + vm_page_size);
+			p < (mach_vm_address_t)addr + size; p += vm_page_size) {
+		*(char*)p = 0; // ensure alloca buffer doesn't overlap with stack guard
 	}
-	_dispatch_unfair_lock_unlock(&dm->dm_send_refs->dmsr_replies_lock);
-
-	bool result = _dispatch_mach_reply_kevent_unregister(dm, dmr, options);
-	dispatch_assert(result);
-	if (wflags) dx_wakeup(dm, 0, wflags);
+#endif
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_mach_msg_t
 _dispatch_mach_msg_reply_recv(dispatch_mach_t dm,
-		dispatch_mach_reply_refs_t dmr, mach_port_t reply_port,
+		dispatch_mach_reply_wait_refs_t dwr, mach_port_t reply_port,
 		mach_port_t send)
 {
-	if (slowpath(!MACH_PORT_VALID(reply_port))) {
+	if (unlikely(!MACH_PORT_VALID(reply_port))) {
 		DISPATCH_CLIENT_CRASH(reply_port, "Invalid reply port");
 	}
-	void *ctxt = dmr->dmr_ctxt;
+	void *ctxt = dwr->dwr_refs.dmr_ctxt;
 	mach_msg_header_t *hdr, *hdr2 = NULL;
 	void *hdr_copyout_addr;
 	mach_msg_size_t siz, msgsiz = 0;
@@ -811,10 +724,7 @@ _dispatch_mach_msg_reply_recv(dispatch_mach_t dm,
 	siz = mach_vm_round_page(DISPATCH_MACH_RECEIVE_MAX_INLINE_MESSAGE_SIZE +
 			DISPATCH_MACH_TRAILER_SIZE);
 	hdr = alloca(siz);
-	for (mach_vm_address_t p = mach_vm_trunc_page(hdr + vm_page_size);
-			p < (mach_vm_address_t)hdr + siz; p += vm_page_size) {
-		*(char*)p = 0; // ensure alloca buffer doesn't overlap with stack guard
-	}
+	_dispatch_mach_stack_probe(hdr, siz);
 	options = DISPATCH_MACH_RCV_OPTIONS & (~MACH_RCV_VOUCHER);
 	if (MACH_PORT_VALID(send)) {
 		notify = send;
@@ -834,8 +744,7 @@ retry:
 			mach_error_string(kr), kr);
 	switch (kr) {
 	case MACH_RCV_TOO_LARGE:
-		if (!fastpath(hdr->msgh_size <= UINT_MAX -
-				DISPATCH_MACH_TRAILER_SIZE)) {
+		if (unlikely(hdr->msgh_size > UINT_MAX - DISPATCH_MACH_TRAILER_SIZE)) {
 			DISPATCH_CLIENT_CRASH(hdr->msgh_size, "Overlarge message");
 		}
 		if (options & MACH_RCV_LARGE) {
@@ -860,6 +769,10 @@ retry:
 		// channel was disconnected/canceled and reply port destroyed
 		_dispatch_debug("machport[0x%08x]: sync reply port destroyed, ctxt %p: "
 				"%s - 0x%x", reply_port, ctxt, mach_error_string(kr), kr);
+		if (dwr->dwr_refs.dmr_reply_port_owned) {
+			_dispatch_destruct_reply_port(reply_port,
+					THREAD_SPECIAL_REPLY_PORT_SEND_ONLY);
+		}
 		goto out;
 	case MACH_MSG_SUCCESS:
 		if (hdr->msgh_remote_port) {
@@ -879,9 +792,9 @@ retry:
 		DISPATCH_INTERNAL_CRASH(kr, "Unexpected error from mach_msg_receive");
 		break;
 	}
-	_dispatch_mach_msg_reply_received(dm, dmr, hdr->msgh_local_port);
+	_dispatch_mach_msg_reply_received(dm, dwr, hdr->msgh_local_port);
 	hdr->msgh_local_port = MACH_PORT_NULL;
-	if (slowpath((dm->dq_atomic_flags & DSF_CANCELED) || kr)) {
+	if (unlikely((dm->dq_atomic_flags & DSF_CANCELED) || kr)) {
 		if (!kr) mach_msg_destroy(hdr);
 		goto out;
 	}
@@ -904,26 +817,38 @@ out:
 
 static inline void
 _dispatch_mach_msg_reply_received(dispatch_mach_t dm,
-		dispatch_mach_reply_refs_t dmr, mach_port_t local_port)
+		dispatch_mach_reply_wait_refs_t dwr, mach_port_t local_port)
 {
-	bool removed = _dispatch_mach_reply_tryremove(dm, dmr);
+	dispatch_mach_reply_refs_t dmr = &dwr->dwr_refs;
+	bool removed = _dispatch_mach_reply_list_tryremove(dm->dm_send_refs, dmr);
+	mach_port_t reply_port = (mach_port_t)dmr->du_ident;
+
+	if (removed) {
+		_dispatch_debug("machport[0x%08x]: unregistered for sync reply, ctxt %p",
+				reply_port, dmr->dmr_ctxt);
+	}
+
+	if (dmr->dmr_reply_port_owned) {
+		if (local_port != reply_port &&
+				(removed || MACH_PORT_VALID(local_port))) {
+			DISPATCH_CLIENT_CRASH(local_port,
+					"Reply received on unexpected port");
+		}
+		if (removed) {
+			_dispatch_set_thread_reply_port(reply_port);
+		} else {
+			_dispatch_destruct_reply_port(reply_port,
+					THREAD_SPECIAL_REPLY_PORT_SEND_ONLY);
+		}
+		return;
+	}
+
 	if (!MACH_PORT_VALID(local_port) || !removed) {
 		// port moved/destroyed during receive, or reply waiter was never
 		// registered or already removed (disconnected)
 		return;
 	}
-	mach_port_t reply_port = _dispatch_mach_reply_get_reply_port(
-			(mach_port_t)dmr->du_ident);
-	_dispatch_debug("machport[0x%08x]: unregistered for sync reply, ctxt %p",
-			reply_port, dmr->dmr_ctxt);
-	if (_dispatch_mach_reply_is_reply_port_owned(dmr)) {
-		_dispatch_set_thread_reply_port(reply_port);
-		if (local_port != reply_port) {
-			DISPATCH_CLIENT_CRASH(local_port,
-					"Reply received on unexpected port");
-		}
-		return;
-	}
+
 	mach_msg_header_t *hdr;
 	dispatch_mach_msg_t dmsg;
 	dmsg = dispatch_mach_msg_create(NULL, sizeof(mach_msg_header_t),
@@ -931,10 +856,10 @@ _dispatch_mach_msg_reply_received(dispatch_mach_t dm,
 	hdr->msgh_local_port = local_port;
 	dmsg->dmsg_voucher = dmr->dmr_voucher;
 	dmr->dmr_voucher = NULL;  // transfer reference
-	dmsg->dmsg_priority = _dispatch_priority_to_pp(dmr->dmr_priority);
+	dmsg->dmsg_priority = dmr->dmr_priority;
 	dmsg->do_ctxt = dmr->dmr_ctxt;
 	_dispatch_mach_msg_set_reason(dmsg, 0, DISPATCH_MACH_REPLY_RECEIVED);
-	return _dispatch_mach_handle_or_push_received_msg(dm, dmsg);
+	return _dispatch_mach_handle_or_push_received_msg(dm, dmsg, 0);
 }
 
 static inline void
@@ -950,7 +875,7 @@ _dispatch_mach_msg_disconnected(dispatch_mach_t dm, mach_port_t local_port,
 	_dispatch_mach_msg_set_reason(dmsg, 0, DISPATCH_MACH_DISCONNECTED);
 	_dispatch_debug("machport[0x%08x]: %s right disconnected", local_port ?
 			local_port : remote_port, local_port ? "receive" : "send");
-	return _dispatch_mach_handle_or_push_received_msg(dm, dmsg);
+	return _dispatch_mach_handle_or_push_received_msg(dm, dmsg, 0);
 }
 
 static inline dispatch_mach_msg_t
@@ -958,52 +883,44 @@ _dispatch_mach_msg_create_reply_disconnected(dispatch_object_t dou,
 		dispatch_mach_reply_refs_t dmr, dispatch_mach_reason_t reason)
 {
 	dispatch_mach_msg_t dmsg = dou._dmsg, dmsgr;
-	mach_port_t reply_port = dmsg ? dmsg->dmsg_reply :
-			_dispatch_mach_reply_get_reply_port((mach_port_t)dmr->du_ident);
-	voucher_t v;
+	mach_port_t reply_port = dmsg ? dmsg->dmsg_reply :(mach_port_t)dmr->du_ident;
 
 	if (!reply_port) {
-		if (!dmsg) {
-			v = dmr->dmr_voucher;
-			dmr->dmr_voucher = NULL; // transfer reference
-			if (v) _voucher_release(v);
+		if (!dmsg && dmr->dmr_voucher) {
+			_voucher_release(dmr->dmr_voucher);
+			dmr->dmr_voucher = NULL;
 		}
 		return NULL;
 	}
 
-	if (dmsg) {
-		v = dmsg->dmsg_voucher;
-		if (v) _voucher_retain(v);
-	} else {
-		v = dmr->dmr_voucher;
-		dmr->dmr_voucher = NULL; // transfer reference
-	}
-
-	if ((dmsg && (dmsg->dmsg_options & DISPATCH_MACH_WAIT_FOR_REPLY) &&
-			(dmsg->dmsg_options & DISPATCH_MACH_OWNED_REPLY_PORT)) ||
-			(dmr && !_dispatch_unote_registered(dmr) &&
-			_dispatch_mach_reply_is_reply_port_owned(dmr))) {
-		if (v) _voucher_release(v);
+	if (dmr && !_dispatch_unote_registered(dmr) && dmr->dmr_reply_port_owned) {
+		if (dmr->dmr_voucher) {
+			_voucher_release(dmr->dmr_voucher);
+			dmr->dmr_voucher = NULL;
+		}
 		// deallocate owned reply port to break _dispatch_mach_msg_reply_recv
-		// out of waiting in mach_msg(MACH_RCV_MSG)
-		kern_return_t kr = mach_port_mod_refs(mach_task_self(), reply_port,
-				MACH_PORT_RIGHT_RECEIVE, -1);
-		DISPATCH_VERIFY_MIG(kr);
-		dispatch_assume_zero(kr);
+		// out of waiting in mach_msg(MACH_RCV_MSG).
+		//
+		// after this call, dmr can become invalid
+		_dispatch_destruct_reply_port(reply_port,
+				THREAD_SPECIAL_REPLY_PORT_RECEIVE_ONLY);
 		return NULL;
 	}
 
 	mach_msg_header_t *hdr;
 	dmsgr = dispatch_mach_msg_create(NULL, sizeof(mach_msg_header_t),
 			DISPATCH_MACH_MSG_DESTRUCTOR_DEFAULT, &hdr);
-	dmsgr->dmsg_voucher = v;
 	hdr->msgh_local_port = reply_port;
 	if (dmsg) {
 		dmsgr->dmsg_priority = dmsg->dmsg_priority;
 		dmsgr->do_ctxt = dmsg->do_ctxt;
+		dmsgr->dmsg_voucher = dmsg->dmsg_voucher;
+		if (dmsgr->dmsg_voucher) _voucher_retain(dmsgr->dmsg_voucher);
 	} else {
-		dmsgr->dmsg_priority = _dispatch_priority_to_pp(dmr->dmr_priority);
+		dmsgr->dmsg_priority = dmr->dmr_priority;
 		dmsgr->do_ctxt = dmr->dmr_ctxt;
+		dmsgr->dmsg_voucher = dmr->dmr_voucher;
+		dmr->dmr_voucher = NULL; // transfer reference
 	}
 	_dispatch_mach_msg_set_reason(dmsgr, 0, reason);
 	_dispatch_debug("machport[0x%08x]: reply disconnected, ctxt %p",
@@ -1013,7 +930,8 @@ _dispatch_mach_msg_create_reply_disconnected(dispatch_object_t dou,
 
 DISPATCH_NOINLINE
 static void
-_dispatch_mach_msg_not_sent(dispatch_mach_t dm, dispatch_object_t dou)
+_dispatch_mach_msg_not_sent(dispatch_mach_t dm, dispatch_object_t dou,
+		dispatch_mach_reply_wait_refs_t dwr)
 {
 	dispatch_mach_msg_t dmsg = dou._dmsg, dmsgr;
 	dispatch_queue_t drq = NULL;
@@ -1025,20 +943,20 @@ _dispatch_mach_msg_not_sent(dispatch_mach_t dm, dispatch_object_t dou)
 			msg_opts, msg->msgh_voucher_port, dmsg->dmsg_reply);
 	unsigned long reason = (msg_opts & DISPATCH_MACH_REGISTER_FOR_REPLY) ?
 			0 : DISPATCH_MACH_MESSAGE_NOT_SENT;
-	dmsgr = _dispatch_mach_msg_create_reply_disconnected(dmsg, NULL,
-			msg_opts & DISPATCH_MACH_ASYNC_REPLY
-			? DISPATCH_MACH_ASYNC_WAITER_DISCONNECTED
-			: DISPATCH_MACH_DISCONNECTED);
-	if (dmsg->do_ctxt) {
+	if (dm->dm_is_xpc && dmsg->do_ctxt) {
 		drq = _dispatch_mach_msg_context_async_reply_queue(dmsg->do_ctxt);
 	}
+	dmsgr = _dispatch_mach_msg_create_reply_disconnected(dmsg,
+			dwr ? &dwr->dwr_refs : NULL,
+			drq ? DISPATCH_MACH_ASYNC_WAITER_DISCONNECTED
+			: DISPATCH_MACH_DISCONNECTED);
 	_dispatch_mach_msg_set_reason(dmsg, 0, reason);
-	_dispatch_mach_handle_or_push_received_msg(dm, dmsg);
+	_dispatch_mach_handle_or_push_received_msg(dm, dmsg, 0);
 	if (dmsgr) {
 		if (drq) {
 			_dispatch_mach_push_async_reply_msg(dm, dmsgr, drq);
 		} else {
-			_dispatch_mach_handle_or_push_received_msg(dm, dmsgr);
+			_dispatch_mach_handle_or_push_received_msg(dm, dmsgr, 0);
 		}
 	}
 }
@@ -1046,7 +964,7 @@ _dispatch_mach_msg_not_sent(dispatch_mach_t dm, dispatch_object_t dou)
 DISPATCH_NOINLINE
 static uint32_t
 _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
-		dispatch_mach_reply_refs_t dmr, dispatch_qos_t qos,
+		dispatch_mach_reply_wait_refs_t dwr, dispatch_qos_t qos,
 		dispatch_mach_send_invoke_flags_t send_flags)
 {
 	dispatch_mach_send_refs_t dsrr = dm->dm_send_refs;
@@ -1065,9 +983,9 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 		if (unlikely(dsrr->dmsr_checkin && dmsg != dsrr->dmsr_checkin)) {
 			// send initial checkin message
 			if (unlikely(_dispatch_unote_registered(dsrr) &&
-					_dispatch_queue_get_current() != &_dispatch_mgr_q)) {
+					_dispatch_queue_get_current() != _dispatch_mgr_q._as_dq)) {
 				// send kevent must be uninstalled on the manager queue
-				dm->dm_needs_mgr = 1;
+				dm->dm_needs_mgr = true;
 				goto out;
 			}
 			if (unlikely(!_dispatch_mach_msg_send(dm,
@@ -1086,18 +1004,16 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 			if (dmsg != dsrr->dmsr_checkin) {
 				msg->msgh_remote_port = dsrr->dmsr_send;
 			}
-			if (_dispatch_queue_get_current() == &_dispatch_mgr_q) {
+			if (_dispatch_queue_get_current() == _dispatch_mgr_q._as_dq) {
 				if (unlikely(!_dispatch_unote_registered(dsrr))) {
 					_dispatch_mach_notification_kevent_register(dm,
 							msg->msgh_remote_port);
+					dispatch_assert(_dispatch_unote_registered(dsrr));
 				}
-				if (likely(_dispatch_unote_registered(dsrr))) {
-					if (os_atomic_load2o(dsrr, dmsr_notification_armed,
-							relaxed)) {
-						goto out;
-					}
-					opts |= MACH_SEND_NOTIFY;
+				if (dsrr->dmsr_notification_armed) {
+					goto out;
 				}
+				opts |= MACH_SEND_NOTIFY;
 			}
 			opts |= MACH_SEND_TIMEOUT;
 			if (dmsg->dmsg_priority != _voucher_get_priority(voucher)) {
@@ -1122,14 +1038,13 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 		_dispatch_debug_machport(msg->msgh_remote_port);
 		if (reply_port) _dispatch_debug_machport(reply_port);
 		if (msg_opts & DISPATCH_MACH_WAIT_FOR_REPLY) {
-			if (msg_opts & DISPATCH_MACH_OWNED_REPLY_PORT) {
+			if (dwr->dwr_refs.dmr_reply_port_owned) {
 				if (_dispatch_use_mach_special_reply_port()) {
 					opts |= MACH_SEND_SYNC_OVERRIDE;
 				}
 				_dispatch_clear_thread_reply_port(reply_port);
 			}
-			_dispatch_mach_reply_waiter_register(dm, dmr, reply_port, dmsg,
-					msg_opts);
+			_dispatch_mach_reply_waiter_register(dm, dwr, reply_port, dmsg);
 		}
 		kr = mach_msg(msg, opts, msg->msgh_size, 0, MACH_PORT_NULL, 0,
 				msg_priority);
@@ -1139,8 +1054,9 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 				opts, msg_opts, msg->msgh_voucher_port, reply_port,
 				mach_error_string(kr), kr);
 		if (unlikely(kr && (msg_opts & DISPATCH_MACH_WAIT_FOR_REPLY))) {
-			_dispatch_mach_reply_waiter_unregister(dm, dmr,
-					DU_UNREGISTER_REPLY_REMOVE);
+			uint32_t options = DMRU_MUST_SUCCEED | DMRU_REMOVE;
+			dispatch_assert(dwr);
+			_dispatch_mach_reply_unregister(dm, &dwr->dwr_refs, options);
 		}
 		if (clear_voucher) {
 			if (kr == MACH_SEND_INVALID_VOUCHER && msg->msgh_voucher_port) {
@@ -1153,12 +1069,10 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 	}
 	if (kr == MACH_SEND_TIMED_OUT && (opts & MACH_SEND_TIMEOUT)) {
 		if (opts & MACH_SEND_NOTIFY) {
-			_dispatch_debug("machport[0x%08x]: send-possible notification "
-					"armed", (mach_port_t)dsrr->du_ident);
 			_dispatch_mach_notification_set_armed(dsrr);
 		} else {
 			// send kevent must be installed on the manager queue
-			dm->dm_needs_mgr = 1;
+			dm->dm_needs_mgr = true;
 		}
 		if (ipc_kvoucher) {
 			_dispatch_kvoucher_debug("reuse on re-send", ipc_kvoucher);
@@ -1184,15 +1098,15 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 			_dispatch_unote_registered(dsrr))) {
 		_dispatch_mach_notification_kevent_unregister(dm);
 	}
-	if (slowpath(kr)) {
+	if (unlikely(kr)) {
 		// Send failed, so reply was never registered <rdar://problem/14309159>
-		dmsgr = _dispatch_mach_msg_create_reply_disconnected(dmsg, NULL,
-				msg_opts & DISPATCH_MACH_ASYNC_REPLY
-				? DISPATCH_MACH_ASYNC_WAITER_DISCONNECTED
-				: DISPATCH_MACH_DISCONNECTED);
-		if (dmsg->do_ctxt) {
+		if (dm->dm_is_xpc && dmsg->do_ctxt) {
 			drq = _dispatch_mach_msg_context_async_reply_queue(dmsg->do_ctxt);
 		}
+		dmsgr = _dispatch_mach_msg_create_reply_disconnected(dmsg,
+				dwr ? &dwr->dwr_refs : NULL,
+				drq ? DISPATCH_MACH_ASYNC_WAITER_DISCONNECTED
+				: DISPATCH_MACH_DISCONNECTED);
 	}
 	_dispatch_mach_msg_set_reason(dmsg, kr, 0);
 	if ((send_flags & DM_SEND_INVOKE_IMMEDIATE_SEND) &&
@@ -1200,13 +1114,13 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 		// Return sent message synchronously <rdar://problem/25947334>
 		send_status |= DM_SEND_STATUS_RETURNING_IMMEDIATE_SEND_RESULT;
 	} else {
-		_dispatch_mach_handle_or_push_received_msg(dm, dmsg);
+		_dispatch_mach_handle_or_push_received_msg(dm, dmsg, 0);
 	}
 	if (dmsgr) {
 		if (drq) {
 			_dispatch_mach_push_async_reply_msg(dm, dmsgr, drq);
 		} else {
-			_dispatch_mach_handle_or_push_received_msg(dm, dmsgr);
+			_dispatch_mach_handle_or_push_received_msg(dm, dmsgr, 0);
 		}
 	}
 	send_status |= DM_SEND_STATUS_SUCCESS;
@@ -1249,30 +1163,18 @@ _dmsr_state_merge_override(uint64_t dmsr_state, dispatch_qos_t qos)
 }
 
 #define _dispatch_mach_send_push_update_tail(dmsr, tail) \
-		os_mpsc_push_update_tail(dmsr, dmsr, tail, do_next)
-#define _dispatch_mach_send_push_update_head(dmsr, head) \
-		os_mpsc_push_update_head(dmsr, dmsr, head)
+		os_mpsc_push_update_tail(os_mpsc(dmsr, dmsr), tail, do_next)
+#define _dispatch_mach_send_push_update_prev(dmsr, prev, head) \
+		os_mpsc_push_update_prev(os_mpsc(dmsr, dmsr), prev, head, do_next)
 #define _dispatch_mach_send_get_head(dmsr) \
-		os_mpsc_get_head(dmsr, dmsr)
-#define _dispatch_mach_send_unpop_head(dmsr, dc, dc_next) \
-		os_mpsc_undo_pop_head(dmsr, dmsr, dc, dc_next, do_next)
+		os_mpsc_get_head(os_mpsc(dmsr, dmsr))
+#define _dispatch_mach_send_undo_pop_head(dmsr, dc, dc_next) \
+		os_mpsc_undo_pop_head(os_mpsc(dmsr, dmsr), dc, dc_next, do_next)
 #define _dispatch_mach_send_pop_head(dmsr, head) \
-		os_mpsc_pop_head(dmsr, dmsr, head, do_next)
+		os_mpsc_pop_head(os_mpsc(dmsr, dmsr), head, do_next)
 
 #define dm_push(dm, dc, qos) \
-		_dispatch_queue_push((dm)->_as_dq, dc, qos)
-
-DISPATCH_ALWAYS_INLINE
-static inline bool
-_dispatch_mach_send_push_inline(dispatch_mach_send_refs_t dmsr,
-		dispatch_object_t dou)
-{
-	if (_dispatch_mach_send_push_update_tail(dmsr, dou._do)) {
-		_dispatch_mach_send_push_update_head(dmsr, dou._do);
-		return true;
-	}
-	return false;
-}
+		_dispatch_lane_push(dm, dc, qos)
 
 DISPATCH_NOINLINE
 static bool
@@ -1280,16 +1182,16 @@ _dispatch_mach_send_drain(dispatch_mach_t dm, dispatch_invoke_flags_t flags,
 		dispatch_mach_send_invoke_flags_t send_flags)
 {
 	dispatch_mach_send_refs_t dmsr = dm->dm_send_refs;
-	dispatch_mach_reply_refs_t dmr;
+	dispatch_mach_reply_wait_refs_t dwr;
 	dispatch_mach_msg_t dmsg;
 	struct dispatch_object_s *dc = NULL, *next_dc = NULL;
 	dispatch_qos_t qos = _dmsr_state_max_qos(dmsr->dmsr_state);
 	uint64_t old_state, new_state;
 	uint32_t send_status;
-	bool needs_mgr, disconnecting, returning_send_result = false;
+	bool returning_send_result = false;
+	dispatch_wakeup_flags_t wflags = 0;
 
 again:
-	needs_mgr = false; disconnecting = false;
 	while (dmsr->dmsr_tail) {
 		dc = _dispatch_mach_send_get_head(dmsr);
 		do {
@@ -1302,24 +1204,24 @@ again:
 				if (!(send_flags & DM_SEND_INVOKE_CAN_RUN_BARRIER)) {
 					goto partial_drain;
 				}
-				_dispatch_continuation_pop(dc, NULL, flags, dm->_as_dq);
+				_dispatch_continuation_pop(dc, NULL, flags, dm);
 				continue;
 			}
 			if (_dispatch_object_is_sync_waiter(dc)) {
 				dmsg = ((dispatch_continuation_t)dc)->dc_data;
-				dmr = ((dispatch_continuation_t)dc)->dc_other;
+				dwr = ((dispatch_continuation_t)dc)->dc_other;
 			} else if (_dispatch_object_has_vtable(dc)) {
 				dmsg = (dispatch_mach_msg_t)dc;
-				dmr = NULL;
+				dwr = NULL;
 			} else {
 				if (_dispatch_unote_registered(dmsr) &&
-						(_dispatch_queue_get_current() != &_dispatch_mgr_q)) {
+						(_dispatch_queue_get_current() != _dispatch_mgr_q._as_dq)) {
 					// send kevent must be uninstalled on the manager queue
-					needs_mgr = true;
+					dm->dm_needs_mgr = true;
+					wflags |= DISPATCH_WAKEUP_MAKE_DIRTY;
 					goto partial_drain;
 				}
 				if (unlikely(!_dispatch_mach_reconnect_invoke(dm, dc))) {
-					disconnecting = true;
 					goto partial_drain;
 				}
 				_dispatch_perfmon_workitem_inc();
@@ -1328,12 +1230,13 @@ again:
 			_dispatch_voucher_ktrace_dmsg_pop(dmsg);
 			if (unlikely(dmsr->dmsr_disconnect_cnt ||
 					(dm->dq_atomic_flags & DSF_CANCELED))) {
-				_dispatch_mach_msg_not_sent(dm, dmsg);
+				_dispatch_mach_msg_not_sent(dm, dmsg, dwr);
 				_dispatch_perfmon_workitem_inc();
 				continue;
 			}
-			send_status = _dispatch_mach_msg_send(dm, dmsg, dmr, qos, sf);
+			send_status = _dispatch_mach_msg_send(dm, dmsg, dwr, qos, sf);
 			if (unlikely(!send_status)) {
+				if (dm->dm_needs_mgr) wflags |= DISPATCH_WAKEUP_MAKE_DIRTY;
 				goto partial_drain;
 			}
 			if (send_status & DM_SEND_STATUS_RETURNING_IMMEDIATE_SEND_RESULT) {
@@ -1358,7 +1261,7 @@ again:
 
 partial_drain:
 	// if this is not a complete drain, we must undo some things
-	_dispatch_mach_send_unpop_head(dmsr, dc, next_dc);
+	_dispatch_mach_send_undo_pop_head(dmsr, dc, next_dc);
 
 	if (_dispatch_object_has_type(dc,
 			DISPATCH_CONTINUATION_TYPE(MACH_SEND_BARRIER))) {
@@ -1390,23 +1293,38 @@ out:
 		_dispatch_set_basepri_override_qos(_dmsr_state_max_qos(old_state));
 	}
 
+	qos = _dmsr_state_max_qos(new_state);
 	if (unlikely(new_state & DISPATCH_MACH_STATE_UNLOCK_MASK)) {
-		qos = _dmsr_state_max_qos(new_state);
 		os_atomic_thread_fence(dependency);
 		dmsr = os_atomic_force_dependency_on(dmsr, new_state);
 		goto again;
 	}
 
 	if (new_state & DISPATCH_MACH_STATE_PENDING_BARRIER) {
-		qos = _dmsr_state_max_qos(new_state);
+		// we don't need to wakeup the mach channel with DISPATCH_WAKEUP_EVENT
+		// because a push on the receive queue always causes a wakeup even
+		// wen DSF_NEEDS_EVENT is set.
 		_dispatch_mach_push_send_barrier_drain(dm, qos);
-	} else {
-		if (needs_mgr || dm->dm_needs_mgr) {
-			qos = _dmsr_state_max_qos(new_state);
+		return returning_send_result;
+	}
+
+	if (new_state == 0 && dm->dm_disconnected && !dm->dm_cancel_handler_called){
+		// cancelation waits for the send queue to be empty
+		// so when we know cancelation is pending, and we empty the queue,
+		// force an EVENT wakeup.
+		wflags |= DISPATCH_WAKEUP_EVENT | DISPATCH_WAKEUP_MAKE_DIRTY;
+	}
+	if ((old_state ^ new_state) & DISPATCH_MACH_STATE_ENQUEUED) {
+		if (wflags) {
+			wflags |= DISPATCH_WAKEUP_CONSUME_2;
 		} else {
-			qos = 0;
+			// <rdar://problem/26734097> Note that after this release
+			// the mach channel may be gone.
+			_dispatch_release_2(dm);
 		}
-		if (!disconnecting) dx_wakeup(dm, qos, DISPATCH_WAKEUP_MAKE_DIRTY);
+	}
+	if (wflags) {
+		dx_wakeup(dm, dm->dm_needs_mgr ? qos : 0, wflags);
 	}
 	return returning_send_result;
 }
@@ -1456,9 +1374,6 @@ retry:
 	if (unlikely((old_state & canlock_mask) != canlock_state)) {
 		return;
 	}
-	if (send_flags & DM_SEND_INVOKE_CANCEL) {
-		_dispatch_mach_cancel(dm);
-	}
 	_dispatch_mach_send_drain(dm, flags, send_flags);
 }
 
@@ -1468,15 +1383,15 @@ _dispatch_mach_send_barrier_drain_invoke(dispatch_continuation_t dc,
 		DISPATCH_UNUSED dispatch_invoke_context_t dic,
 		dispatch_invoke_flags_t flags)
 {
-	dispatch_mach_t dm = (dispatch_mach_t)_dispatch_queue_get_current();
-	uintptr_t dc_flags = DISPATCH_OBJ_CONSUME_BIT;
+	dispatch_mach_t dm = upcast(_dispatch_queue_get_current())._dm;
+	uintptr_t dc_flags = DC_FLAG_CONSUME | DC_FLAG_NO_INTROSPECTION;
 	dispatch_thread_frame_s dtf;
 
 	DISPATCH_COMPILER_CAN_ASSUME(dc->dc_priority == DISPATCH_NO_PRIORITY);
 	DISPATCH_COMPILER_CAN_ASSUME(dc->dc_voucher == DISPATCH_NO_VOUCHER);
 	// hide the mach channel (see _dispatch_mach_barrier_invoke comment)
 	_dispatch_thread_frame_stash(&dtf);
-	_dispatch_continuation_pop_forwarded(dc, DISPATCH_NO_VOUCHER, dc_flags,{
+	_dispatch_continuation_pop_forwarded(dc, dc_flags, dm, {
 		_dispatch_mach_send_invoke(dm, flags,
 				DM_SEND_INVOKE_NEEDS_BARRIER | DM_SEND_INVOKE_CAN_RUN_BARRIER);
 	});
@@ -1499,33 +1414,42 @@ _dispatch_mach_push_send_barrier_drain(dispatch_mach_t dm, dispatch_qos_t qos)
 
 DISPATCH_NOINLINE
 static void
-_dispatch_mach_send_push(dispatch_mach_t dm, dispatch_continuation_t dc,
+_dispatch_mach_send_push(dispatch_mach_t dm, dispatch_object_t dou,
 		dispatch_qos_t qos)
 {
 	dispatch_mach_send_refs_t dmsr = dm->dm_send_refs;
 	uint64_t old_state, new_state, state_flags = 0;
+	struct dispatch_object_s *prev;
+	dispatch_wakeup_flags_t wflags = 0;
+	bool is_send_barrier = (dou._dc->do_vtable == DC_VTABLE(MACH_SEND_BARRIER));
 	dispatch_tid owner;
-	bool wakeup;
 
-	// <rdar://problem/25896179> when pushing a send barrier that destroys
-	// the last reference to this channel, and the send queue is already
-	// draining on another thread, the send barrier may run as soon as
-	// _dispatch_mach_send_push_inline() returns.
-	_dispatch_retain_2(dm);
+	// <rdar://problem/25896179&26266265> the send queue needs to retain
+	// the mach channel if not empty, for the whole duration of this call
+	//
+	// When we may add the ENQUEUED bit, we need to reserve 2 more that we will
+	// transfer to _dispatch_mach_send_drain().
+	prev = _dispatch_mach_send_push_update_tail(dmsr, dou._do);
+	_dispatch_retain_n_unsafe(dm, os_mpsc_push_was_empty(prev) ? 4 : 2);
+	_dispatch_mach_send_push_update_prev(dmsr, prev, dou._do);
 
-	wakeup = _dispatch_mach_send_push_inline(dmsr, dc);
-	if (wakeup) {
-		state_flags = DISPATCH_MACH_STATE_DIRTY;
-		if (dc->do_vtable == DC_VTABLE(MACH_SEND_BARRIER)) {
+	if (unlikely(os_mpsc_push_was_empty(prev))) {
+		state_flags = DISPATCH_MACH_STATE_DIRTY | DISPATCH_MACH_STATE_ENQUEUED;
+		wflags |= DISPATCH_WAKEUP_MAKE_DIRTY;
+		if (is_send_barrier) {
 			state_flags |= DISPATCH_MACH_STATE_PENDING_BARRIER;
 		}
-	}
 
-	if (state_flags) {
 		os_atomic_rmw_loop2o(dmsr, dmsr_state, old_state, new_state, release, {
 			new_state = _dmsr_state_merge_override(old_state, qos);
 			new_state |= state_flags;
 		});
+		if ((old_state ^ new_state) & DISPATCH_MACH_STATE_ENQUEUED) {
+			// +2 transfered to the ENQUEUED state, _dispatch_mach_send_drain
+			// will consume it when clearing the bit.
+		} else {
+			_dispatch_release_2_no_dispose(dm);
+		}
 	} else {
 		os_atomic_rmw_loop2o(dmsr, dmsr_state, old_state, new_state, relaxed, {
 			new_state = _dmsr_state_merge_override(old_state, qos);
@@ -1535,6 +1459,7 @@ _dispatch_mach_send_push(dispatch_mach_t dm, dispatch_continuation_t dc,
 		});
 	}
 
+
 	qos = _dmsr_state_max_qos(new_state);
 	owner = _dispatch_lock_owner((dispatch_lock)old_state);
 	if (owner) {
@@ -1542,21 +1467,15 @@ _dispatch_mach_send_push(dispatch_mach_t dm, dispatch_continuation_t dc,
 			_dispatch_wqthread_override_start_check_owner(owner, qos,
 					&dmsr->dmsr_state_lock.dul_lock);
 		}
-		return _dispatch_release_2_tailcall(dm);
+	} else if (state_flags & DISPATCH_MACH_STATE_PENDING_BARRIER) {
+		_dispatch_mach_push_send_barrier_drain(dm, qos);
+	} else if (wflags || dmsr->dmsr_disconnect_cnt ||
+			(dm->dq_atomic_flags & DSF_CANCELED)) {
+		return dx_wakeup(dm, qos, wflags | DISPATCH_WAKEUP_CONSUME_2);
+	} else if (old_state & DISPATCH_MACH_STATE_PENDING_BARRIER) {
+		return dx_wakeup(dm, qos, DISPATCH_WAKEUP_CONSUME_2);
 	}
 
-	dispatch_wakeup_flags_t wflags = 0;
-	if (state_flags & DISPATCH_MACH_STATE_PENDING_BARRIER) {
-		_dispatch_mach_push_send_barrier_drain(dm, qos);
-	} else if (wakeup || dmsr->dmsr_disconnect_cnt ||
-			(dm->dq_atomic_flags & DSF_CANCELED)) {
-		wflags = DISPATCH_WAKEUP_MAKE_DIRTY | DISPATCH_WAKEUP_CONSUME_2;
-	} else if (old_state & DISPATCH_MACH_STATE_PENDING_BARRIER) {
-		wflags = DISPATCH_WAKEUP_CONSUME_2;
-	}
-	if (wflags) {
-		return dx_wakeup(dm, qos, wflags);
-	}
 	return _dispatch_release_2_tailcall(dm);
 }
 
@@ -1569,12 +1488,19 @@ _dispatch_mach_send_push_and_trydrain(dispatch_mach_t dm,
 	dispatch_mach_send_refs_t dmsr = dm->dm_send_refs;
 	dispatch_lock owner_self = _dispatch_lock_value_for_self();
 	uint64_t old_state, new_state, canlock_mask, state_flags = 0;
+	dispatch_wakeup_flags_t wflags = 0;
 	dispatch_tid owner;
+	struct dispatch_object_s *prev;
 
-	bool wakeup = _dispatch_mach_send_push_inline(dmsr, dou);
-	if (wakeup) {
-		state_flags = DISPATCH_MACH_STATE_DIRTY;
+	prev = _dispatch_mach_send_push_update_tail(dmsr, dou._do);
+	if (os_mpsc_push_was_empty(prev)) {
+		// <rdar://problem/25896179&26266265> the send queue needs to retain
+		// the mach channel if not empty.
+		_dispatch_retain_2(dm);
+		state_flags = DISPATCH_MACH_STATE_DIRTY | DISPATCH_MACH_STATE_ENQUEUED;
+		wflags = DISPATCH_WAKEUP_CONSUME_2 | DISPATCH_WAKEUP_MAKE_DIRTY;
 	}
+	_dispatch_mach_send_push_update_prev(dmsr, prev, dou._do);
 
 	if (unlikely(dmsr->dmsr_disconnect_cnt ||
 			(dm->dq_atomic_flags & DSF_CANCELED))) {
@@ -1582,7 +1508,10 @@ _dispatch_mach_send_push_and_trydrain(dispatch_mach_t dm,
 			new_state = _dmsr_state_merge_override(old_state, qos);
 			new_state |= state_flags;
 		});
-		dx_wakeup(dm, qos, DISPATCH_WAKEUP_MAKE_DIRTY);
+		if ((old_state ^ new_state) & DISPATCH_MACH_STATE_ENQUEUED) {
+			wflags &= ~(dispatch_wakeup_flags_t)DISPATCH_WAKEUP_CONSUME_2;
+		}
+		dx_wakeup(dm, qos, wflags);
 		return false;
 	}
 
@@ -1599,6 +1528,9 @@ _dispatch_mach_send_push_and_trydrain(dispatch_mach_t dm,
 				new_state &= ~DISPATCH_MACH_STATE_PENDING_BARRIER;
 			}
 		});
+		if ((old_state ^ new_state) & DISPATCH_MACH_STATE_ENQUEUED) {
+			wflags &= ~(dispatch_wakeup_flags_t)DISPATCH_WAKEUP_CONSUME_2;
+		}
 	} else {
 		os_atomic_rmw_loop2o(dmsr, dmsr_state, old_state, new_state, acquire, {
 			new_state = _dmsr_state_merge_override(old_state, qos);
@@ -1620,11 +1552,12 @@ _dispatch_mach_send_push_and_trydrain(dispatch_mach_t dm,
 			_dispatch_wqthread_override_start_check_owner(owner, qos,
 					&dmsr->dmsr_state_lock.dul_lock);
 		}
+		if (wflags & DISPATCH_WAKEUP_CONSUME_2) _dispatch_release_2(dm);
 		return false;
 	}
 
 	if (old_state & DISPATCH_MACH_STATE_PENDING_BARRIER) {
-		dx_wakeup(dm, qos, 0);
+		dx_wakeup(dm, qos, wflags);
 		return false;
 	}
 
@@ -1632,10 +1565,11 @@ _dispatch_mach_send_push_and_trydrain(dispatch_mach_t dm,
 	// been dequeued by another thread that raced us to the send queue lock.
 	// A plain load of the head and comparison against our object pointer is
 	// sufficient.
-	if (unlikely(!(wakeup && dou._do == dmsr->dmsr_head))) {
+	if (unlikely(!(wflags && dou._do == dmsr->dmsr_head))) {
 		// Don't request immediate send result for messages we don't own
 		send_flags &= ~DM_SEND_INVOKE_IMMEDIATE_SEND_MASK;
 	}
+	if (wflags & DISPATCH_WAKEUP_CONSUME_2) _dispatch_release_2_no_dispose(dm);
 	return _dispatch_mach_send_drain(dm, DISPATCH_INVOKE_NONE, send_flags);
 }
 
@@ -1646,10 +1580,9 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_mach_notification_kevent_unregister(dispatch_mach_t dm)
 {
+	uint32_t duu_options = DUU_DELETE_ACK | DUU_MUST_SUCCEED;
 	DISPATCH_ASSERT_ON_MANAGER_QUEUE();
-	if (_dispatch_unote_registered(dm->dm_send_refs)) {
-		dispatch_assume(_dispatch_unote_unregister(dm->dm_send_refs, 0));
-	}
+	_dispatch_unote_unregister(dm->dm_send_refs, duu_options);
 	dm->dm_send_refs->du_ident = 0;
 }
 
@@ -1660,13 +1593,12 @@ _dispatch_mach_notification_kevent_register(dispatch_mach_t dm,mach_port_t send)
 	DISPATCH_ASSERT_ON_MANAGER_QUEUE();
 	dm->dm_send_refs->du_ident = send;
 	dispatch_assume(_dispatch_unote_register(dm->dm_send_refs,
-			DISPATCH_WLH_ANON, 0));
+			DISPATCH_WLH_ANON, DISPATCH_PRIORITY_FLAG_MANAGER));
 }
 
 void
-_dispatch_mach_merge_notification(dispatch_unote_t du,
+_dispatch_mach_notification_merge_evt(dispatch_unote_t du,
 		uint32_t flags DISPATCH_UNUSED, uintptr_t data,
-		uintptr_t status DISPATCH_UNUSED,
 		pthread_priority_t pp DISPATCH_UNUSED)
 {
 	dispatch_mach_send_refs_t dmsr = du._dmsr;
@@ -1676,21 +1608,27 @@ _dispatch_mach_merge_notification(dispatch_unote_t du,
 		_dispatch_mach_send_invoke(dm, DISPATCH_INVOKE_MANAGER_DRAIN,
 				DM_SEND_INVOKE_MAKE_DIRTY);
 	}
+	_dispatch_release_2_tailcall(dm);
 }
 
 DISPATCH_NOINLINE
 static void
 _dispatch_mach_handle_or_push_received_msg(dispatch_mach_t dm,
-		dispatch_mach_msg_t dmsg)
+		dispatch_mach_msg_t dmsg, pthread_priority_t pp)
 {
 	mach_error_t error;
 	dispatch_mach_reason_t reason = _dispatch_mach_msg_get_reason(dmsg, &error);
+	dispatch_qos_t qos;
+
 	if (reason == DISPATCH_MACH_MESSAGE_RECEIVED || !dm->dm_is_xpc ||
 			!_dispatch_mach_xpc_hooks->dmxh_direct_message_handler(
 			dm->dm_recv_refs->dmrr_handler_ctxt, reason, dmsg, error)) {
 		// Not XPC client or not a message that XPC can handle inline - push
 		// it onto the channel queue.
-		dm_push(dm, dmsg, _dispatch_qos_from_pp(dmsg->dmsg_priority));
+		_dispatch_trace_item_push(dm, dmsg);
+		qos = _dispatch_qos_from_pp(pp);
+		if (!qos) qos = _dispatch_priority_qos(dm->dq_priority);
+		dm_push(dm, dmsg, qos);
 	} else {
 		// XPC handled the message inline. Do the cleanup that would otherwise
 		// have happened in _dispatch_mach_msg_invoke(), leaving out steps that
@@ -1703,12 +1641,13 @@ _dispatch_mach_handle_or_push_received_msg(dispatch_mach_t dm,
 DISPATCH_ALWAYS_INLINE
 static void
 _dispatch_mach_push_async_reply_msg(dispatch_mach_t dm,
-		dispatch_mach_msg_t dmsg, dispatch_queue_t drq) {
+		dispatch_mach_msg_t dmsg, dispatch_queue_t drq)
+{
 	// Push the message onto the given queue. This function is only used for
 	// replies to messages sent by
 	// dispatch_mach_send_with_result_and_async_reply_4libxpc().
 	dispatch_continuation_t dc = _dispatch_mach_msg_async_reply_wrap(dmsg, dm);
-	_dispatch_trace_continuation_push(drq, dc);
+	_dispatch_trace_item_push(drq, dc);
 	dx_push(drq, dc, _dispatch_qos_from_pp(dmsg->dmsg_priority));
 }
 
@@ -1726,6 +1665,7 @@ _dispatch_mach_checkin_options(void)
 }
 
 
+
 static inline mach_msg_option_t
 _dispatch_mach_send_options(void)
 {
@@ -1734,26 +1674,36 @@ _dispatch_mach_send_options(void)
 }
 
 DISPATCH_ALWAYS_INLINE
-static inline dispatch_qos_t
-_dispatch_mach_priority_propagate(mach_msg_option_t options,
-		pthread_priority_t *msg_pp)
+static inline mach_msg_option_t
+_dispatch_mach_send_msg_prepare(dispatch_mach_t dm,
+		dispatch_mach_msg_t dmsg, mach_msg_option_t options)
 {
-#if DISPATCH_USE_NOIMPORTANCE_QOS
-	if (options & MACH_SEND_NOIMPORTANCE) {
-		*msg_pp = 0;
-		return 0;
+#if DISPATCH_DEBUG
+	if (dm->dm_is_xpc && (options & DISPATCH_MACH_WAIT_FOR_REPLY) == 0 &&
+			_dispatch_mach_msg_get_reply_port(dmsg)) {
+		dispatch_assert(
+				_dispatch_mach_msg_context_async_reply_queue(dmsg->do_ctxt));
 	}
+#else
+	(void)dm;
 #endif
-	unsigned int flags = DISPATCH_PRIORITY_PROPAGATE_CURRENT;
-	if ((options & DISPATCH_MACH_WAIT_FOR_REPLY) &&
-			(options & DISPATCH_MACH_OWNED_REPLY_PORT) &&
-			_dispatch_use_mach_special_reply_port()) {
-		flags |= DISPATCH_PRIORITY_PROPAGATE_FOR_SYNC_IPC;
+	if (DISPATCH_USE_NOIMPORTANCE_QOS && (options & MACH_SEND_NOIMPORTANCE)) {
+		dmsg->dmsg_priority = 0;
+	} else {
+		unsigned int flags = DISPATCH_PRIORITY_PROPAGATE_CURRENT;
+		if ((options & DISPATCH_MACH_WAIT_FOR_REPLY) &&
+				_dispatch_use_mach_special_reply_port()) {
+			// TODO: remove QoS contribution of sync IPC messages to send queue
+			// rdar://31848737
+			flags |= DISPATCH_PRIORITY_PROPAGATE_FOR_SYNC_IPC;
+		}
+		dmsg->dmsg_priority = _dispatch_priority_compute_propagated(0, flags);
 	}
-	*msg_pp = _dispatch_priority_compute_propagated(0, flags);
-	// TODO: remove QoS contribution of sync IPC messages to send queue
-	// rdar://31848737
-	return _dispatch_qos_from_pp(*msg_pp);
+	dmsg->dmsg_voucher = _voucher_copy();
+	_dispatch_voucher_debug("mach-msg[%p] set", dmsg->dmsg_voucher, dmsg);
+	options |= _dispatch_mach_send_options();
+	dmsg->dmsg_options = options;
+	return options;
 }
 
 DISPATCH_NOINLINE
@@ -1762,21 +1712,16 @@ _dispatch_mach_send_msg(dispatch_mach_t dm, dispatch_mach_msg_t dmsg,
 		dispatch_continuation_t dc_wait, mach_msg_option_t options)
 {
 	dispatch_mach_send_refs_t dmsr = dm->dm_send_refs;
-	if (slowpath(dmsg->do_next != DISPATCH_OBJECT_LISTLESS)) {
+	if (unlikely(dmsg->do_next != DISPATCH_OBJECT_LISTLESS)) {
 		DISPATCH_CLIENT_CRASH(dmsg->do_next, "Message already enqueued");
 	}
+	options = _dispatch_mach_send_msg_prepare(dm, dmsg, options);
 	dispatch_retain(dmsg);
-	pthread_priority_t msg_pp;
-	dispatch_qos_t qos = _dispatch_mach_priority_propagate(options, &msg_pp);
-	options |= _dispatch_mach_send_options();
-	dmsg->dmsg_options = options;
+	dispatch_qos_t qos = _dispatch_qos_from_pp(dmsg->dmsg_priority);
 	mach_msg_header_t *msg = _dispatch_mach_msg_get_msg(dmsg);
 	dmsg->dmsg_reply = _dispatch_mach_msg_get_reply_port(dmsg);
 	bool is_reply = (MACH_MSGH_BITS_REMOTE(msg->msgh_bits) ==
 			MACH_MSG_TYPE_MOVE_SEND_ONCE);
-	dmsg->dmsg_priority = msg_pp;
-	dmsg->dmsg_voucher = _voucher_copy();
-	_dispatch_voucher_debug("mach-msg[%p] set", dmsg->dmsg_voucher, dmsg);
 
 	uint32_t send_status;
 	bool returning_send_result = false;
@@ -1816,7 +1761,7 @@ dispatch_mach_send(dispatch_mach_t dm, dispatch_mach_msg_t dmsg,
 {
 	dispatch_assert_zero(options & DISPATCH_MACH_OPTIONS_MASK);
 	options &= ~DISPATCH_MACH_OPTIONS_MASK;
-	bool returned_send_result = _dispatch_mach_send_msg(dm, dmsg, NULL,options);
+	bool returned_send_result = _dispatch_mach_send_msg(dm, dmsg, NULL, options);
 	dispatch_assert(!returned_send_result);
 }
 
@@ -1848,37 +1793,41 @@ _dispatch_mach_send_and_wait_for_reply(dispatch_mach_t dm,
 		dispatch_mach_msg_t dmsg, mach_msg_option_t options,
 		bool *returned_send_result)
 {
+	struct dispatch_mach_reply_wait_refs_s dwr_buf = {
+		.dwr_refs = {
+			.du_type = DISPATCH_MACH_TYPE_WAITER,
+			.dmr_ctxt = dmsg->do_ctxt,
+		},
+		.dwr_waiter_tid = _dispatch_tid_self(),
+	};
+	dispatch_mach_reply_wait_refs_t dwr = &dwr_buf;
 	mach_port_t send = MACH_PORT_NULL;
 	mach_port_t reply_port = _dispatch_mach_msg_get_reply_port(dmsg);
-	if (!reply_port) {
+
+	if (likely(!reply_port)) {
 		// use per-thread mach reply port <rdar://24597802>
 		reply_port = _dispatch_get_thread_reply_port();
 		mach_msg_header_t *hdr = _dispatch_mach_msg_get_msg(dmsg);
 		dispatch_assert(MACH_MSGH_BITS_LOCAL(hdr->msgh_bits) ==
 				MACH_MSG_TYPE_MAKE_SEND_ONCE);
 		hdr->msgh_local_port = reply_port;
-		options |= DISPATCH_MACH_OWNED_REPLY_PORT;
+		dwr->dwr_refs.dmr_reply_port_owned = true;
 	}
 	options |= DISPATCH_MACH_WAIT_FOR_REPLY;
 
-	dispatch_mach_reply_refs_t dmr;
 #if DISPATCH_DEBUG
-	dmr = _dispatch_calloc(1, sizeof(*dmr));
-#else
-	struct dispatch_mach_reply_refs_s dmr_buf = { };
-	dmr = &dmr_buf;
+	dwr = _dispatch_calloc(1, sizeof(*dwr));
+	*dwr = dwr_buf;
 #endif
 	struct dispatch_continuation_s dc_wait = {
-		.dc_flags = DISPATCH_OBJ_SYNC_WAITER_BIT,
+		.dc_flags = DC_FLAG_SYNC_WAITER,
 		.dc_data = dmsg,
-		.dc_other = dmr,
+		.dc_other = &dwr->dwr_refs,
 		.dc_priority = DISPATCH_NO_PRIORITY,
 		.dc_voucher = DISPATCH_NO_VOUCHER,
 	};
-	dmr->dmr_ctxt = dmsg->do_ctxt;
-	dmr->dmr_waiter_tid = _dispatch_tid_self();
 	*returned_send_result = _dispatch_mach_send_msg(dm, dmsg, &dc_wait,options);
-	if (options & DISPATCH_MACH_OWNED_REPLY_PORT) {
+	if (dwr->dwr_refs.dmr_reply_port_owned) {
 		_dispatch_clear_thread_reply_port(reply_port);
 		if (_dispatch_use_mach_special_reply_port()) {
 			// link special reply port to send right for remote receive right
@@ -1886,9 +1835,9 @@ _dispatch_mach_send_and_wait_for_reply(dispatch_mach_t dm,
 			send = dm->dm_send_refs->dmsr_send;
 		}
 	}
-	dmsg = _dispatch_mach_msg_reply_recv(dm, dmr, reply_port, send);
+	dmsg = _dispatch_mach_msg_reply_recv(dm, dwr, reply_port, send);
 #if DISPATCH_DEBUG
-	free(dmr);
+	free(dwr);
 #endif
 	return dmsg;
 }
@@ -1957,7 +1906,6 @@ dispatch_mach_send_with_result_and_async_reply_4libxpc(dispatch_mach_t dm,
 	if (!reply_port) {
 		DISPATCH_CLIENT_CRASH(0, "Reply port needed for async send with reply");
 	}
-	options |= DISPATCH_MACH_ASYNC_REPLY;
 	bool returned_send_result = _dispatch_mach_send_msg(dm, dmsg, NULL,options);
 	unsigned long reason = DISPATCH_MACH_NEEDS_DEFERRED_SEND;
 	mach_error_t err = 0;
@@ -1970,10 +1918,61 @@ dispatch_mach_send_with_result_and_async_reply_4libxpc(dispatch_mach_t dm,
 
 DISPATCH_NOINLINE
 static bool
-_dispatch_mach_disconnect(dispatch_mach_t dm)
+_dispatch_mach_cancel(dispatch_mach_t dm)
 {
+	bool uninstalled = dm->dm_disconnected;
+	if (dm->dm_send_refs->dmsr_disconnect_cnt) {
+		uninstalled = false; // <rdar://problem/31233110>
+	}
+
+	_dispatch_object_debug(dm, "%s", __func__);
+
+	uint32_t duu_options = DMRU_DELETE_ACK;
+	if (!(_dispatch_queue_atomic_flags(dm) & DSF_NEEDS_EVENT)) {
+		duu_options |= DMRU_PROBE;
+	}
+
+	dispatch_xpc_term_refs_t dxtr = dm->dm_xpc_term_refs;
+	if (dxtr && !_dispatch_unote_unregister(dxtr, duu_options)) {
+		uninstalled = false;
+	}
+
+	dispatch_mach_recv_refs_t dmrr = dm->dm_recv_refs;
+	mach_port_t local_port = (mach_port_t)dmrr->du_ident;
+	if (local_port) {
+		// handle the deferred delete case properly, similar to what
+		// _dispatch_source_invoke2() does
+		if (_dispatch_unote_unregister(dmrr, duu_options)) {
+			_dispatch_mach_msg_disconnected(dm, local_port, MACH_PORT_NULL);
+			dmrr->du_ident = 0;
+		} else {
+			uninstalled = false;
+		}
+	}
+
+	if (uninstalled) {
+		dispatch_queue_flags_t dqf;
+		dqf = _dispatch_queue_atomic_flags_set_and_clear_orig(dm,
+				DSF_DELETED, DSF_NEEDS_EVENT);
+		if (unlikely(dqf & (DSF_DELETED | DSF_CANCEL_WAITER))) {
+			DISPATCH_CLIENT_CRASH(dqf, "Corrupt channel state");
+		}
+		_dispatch_release_no_dispose(dm); // see _dispatch_queue_alloc()
+	} else {
+		_dispatch_queue_atomic_flags_set(dm, DSF_NEEDS_EVENT);
+	}
+	return uninstalled;
+}
+
+DISPATCH_NOINLINE
+static bool
+_dispatch_mach_reconnect_invoke(dispatch_mach_t dm, dispatch_object_t dou)
+{
+	_dispatch_object_debug(dm, "%s", __func__);
+
+	// 1. handle the send-possible notification and checkin message
+
 	dispatch_mach_send_refs_t dmsr = dm->dm_send_refs;
-	bool disconnected;
 	if (_dispatch_unote_registered(dmsr)) {
 		_dispatch_mach_notification_kevent_unregister(dm);
 	}
@@ -1982,87 +1981,60 @@ _dispatch_mach_disconnect(dispatch_mach_t dm)
 		dmsr->dmsr_send = MACH_PORT_NULL;
 	}
 	if (dmsr->dmsr_checkin) {
-		_dispatch_mach_msg_not_sent(dm, dmsr->dmsr_checkin);
+		_dispatch_mach_msg_not_sent(dm, dmsr->dmsr_checkin, NULL);
 		dmsr->dmsr_checkin = NULL;
 	}
-	_dispatch_unfair_lock_lock(&dm->dm_send_refs->dmsr_replies_lock);
+	dm->dm_needs_mgr = 0;
+
+	// 2. cancel all pending replies and break out synchronous waiters
+
 	dispatch_mach_reply_refs_t dmr, tmp;
-	TAILQ_FOREACH_SAFE(dmr, &dm->dm_send_refs->dmsr_replies, dmr_list, tmp) {
-		TAILQ_REMOVE(&dm->dm_send_refs->dmsr_replies, dmr, dmr_list);
-		_TAILQ_MARK_NOT_ENQUEUED(dmr, dmr_list);
-		if (_dispatch_unote_registered(dmr)) {
-			if (!_dispatch_mach_reply_kevent_unregister(dm, dmr,
-					DU_UNREGISTER_DISCONNECTED)) {
-				TAILQ_INSERT_HEAD(&dm->dm_send_refs->dmsr_replies, dmr,
-					dmr_list);
+	LIST_HEAD(, dispatch_mach_reply_refs_s) replies =
+			LIST_HEAD_INITIALIZER(replies);
+	bool disconnected;
+
+	// _dispatch_mach_reply_merge_msg is the one passing DMRU_DELETE_ACK
+	uint32_t dmru_options = DMRU_CANCEL | DMRU_DISCONNECTED;
+	if (!(_dispatch_queue_atomic_flags(dm) & DSF_NEEDS_EVENT)) {
+		dmru_options |= DMRU_PROBE;
+	}
+
+	_dispatch_unfair_lock_lock(&dmsr->dmsr_replies_lock);
+	LIST_SWAP(&replies, &dmsr->dmsr_replies,
+			dispatch_mach_reply_refs_s, dmr_list);
+	LIST_FOREACH_SAFE(dmr, &replies, dmr_list, tmp) {
+		_LIST_MARK_NOT_ENQUEUED(dmr, dmr_list);
+		_dispatch_mach_reply_unregister(dm, dmr, dmru_options);
+	}
+	// any unote unregistration that fails is put back on the reply list
+	disconnected = LIST_EMPTY(&dmsr->dmsr_replies);
+	_dispatch_unfair_lock_unlock(&dmsr->dmsr_replies_lock);
+
+	// 3. if no reply is left pending deferred deletion, finish reconnecting
+
+	if (disconnected) {
+		mach_port_t dmsr_send = (mach_port_t)dou._dc->dc_other;
+		dispatch_mach_msg_t dmsr_checkin = dou._dc->dc_data;
+
+		_dispatch_continuation_free(dou._dc);
+		if (dmsr_checkin == DM_CHECKIN_CANCELED) {
+			dm->dm_disconnected = true;
+			dmsr_checkin = NULL;
+		}
+		if (dm->dm_disconnected) {
+			if (MACH_PORT_VALID(dmsr_send)) {
+				_dispatch_mach_msg_disconnected(dm, MACH_PORT_NULL, dmsr_send);
+			}
+			if (dmsr_checkin) {
+				_dispatch_mach_msg_not_sent(dm, dmsr_checkin, NULL);
 			}
 		} else {
-			_dispatch_mach_reply_waiter_unregister(dm, dmr,
-				DU_UNREGISTER_DISCONNECTED);
+			dmsr->dmsr_send = dmsr_send;
+			dmsr->dmsr_checkin = dmsr_checkin;
 		}
+		(void)os_atomic_dec2o(dmsr, dmsr_disconnect_cnt, relaxed);
 	}
-	disconnected = TAILQ_EMPTY(&dm->dm_send_refs->dmsr_replies);
-	_dispatch_unfair_lock_unlock(&dm->dm_send_refs->dmsr_replies_lock);
 	return disconnected;
-}
-
-static void
-_dispatch_mach_cancel(dispatch_mach_t dm)
-{
-	_dispatch_object_debug(dm, "%s", __func__);
-	if (!_dispatch_mach_disconnect(dm)) return;
-
-	bool uninstalled = true;
-	dispatch_assert(!dm->dm_uninstalled);
-
-	if (dm->dm_xpc_term_refs) {
-		uninstalled = _dispatch_unote_unregister(dm->dm_xpc_term_refs, 0);
-	}
-
-	dispatch_mach_recv_refs_t dmrr = dm->dm_recv_refs;
-	mach_port_t local_port = (mach_port_t)dmrr->du_ident;
-	if (local_port) {
-		// handle the deferred delete case properly, similar to what
-		// _dispatch_source_invoke2() does
-		dispatch_queue_flags_t dqf = _dispatch_queue_atomic_flags(dm->_as_dq);
-		if ((dqf & DSF_DEFERRED_DELETE) && !(dqf & DSF_ARMED)) {
-			_dispatch_source_refs_unregister(dm->_as_ds,
-					DU_UNREGISTER_IMMEDIATE_DELETE);
-			dqf = _dispatch_queue_atomic_flags(dm->_as_dq);
-		} else if (!(dqf & DSF_DEFERRED_DELETE) && !(dqf & DSF_DELETED)) {
-			_dispatch_source_refs_unregister(dm->_as_ds, 0);
-			dqf = _dispatch_queue_atomic_flags(dm->_as_dq);
-		}
-		if ((dqf & DSF_STATE_MASK) == DSF_DELETED) {
-			_dispatch_mach_msg_disconnected(dm, local_port, MACH_PORT_NULL);
-			dmrr->du_ident = 0;
-		} else {
-			uninstalled = false;
-		}
-	} else {
-		_dispatch_queue_atomic_flags_set_and_clear(dm->_as_dq, DSF_DELETED,
-				DSF_ARMED | DSF_DEFERRED_DELETE);
-	}
-
-	if (dm->dm_send_refs->dmsr_disconnect_cnt) {
-		uninstalled = false; // <rdar://problem/31233110>
-	}
-	if (uninstalled) dm->dm_uninstalled = uninstalled;
-}
-
-DISPATCH_NOINLINE
-static bool
-_dispatch_mach_reconnect_invoke(dispatch_mach_t dm, dispatch_object_t dou)
-{
-	if (!_dispatch_mach_disconnect(dm)) return false;
-	dispatch_mach_send_refs_t dmsr = dm->dm_send_refs;
-	dmsr->dmsr_checkin = dou._dc->dc_data;
-	dmsr->dmsr_send = (mach_port_t)dou._dc->dc_other;
-	_dispatch_continuation_free(dou._dc);
-	(void)os_atomic_dec2o(dmsr, dmsr_disconnect_cnt, relaxed);
-	_dispatch_object_debug(dm, "%s", __func__);
-	_dispatch_release(dm); // <rdar://problem/26266265>
-	return true;
 }
 
 DISPATCH_NOINLINE
@@ -2078,11 +2050,11 @@ dispatch_mach_reconnect(dispatch_mach_t dm, mach_port_t send,
 		dmsg->dmsg_options = _dispatch_mach_checkin_options();
 		dmsr->dmsr_checkin_port = _dispatch_mach_msg_get_remote_port(dmsg);
 	} else {
-		checkin = NULL;
+		if (checkin != DM_CHECKIN_CANCELED) checkin = NULL;
 		dmsr->dmsr_checkin_port = MACH_PORT_NULL;
 	}
 	dispatch_continuation_t dc = _dispatch_continuation_alloc();
-	dc->dc_flags = DISPATCH_OBJ_CONSUME_BIT;
+	dc->dc_flags = DC_FLAG_CONSUME | DC_FLAG_ALLOCATED;
 	// actually called manually in _dispatch_mach_send_drain
 	dc->dc_func = (void*)_dispatch_mach_reconnect_invoke;
 	dc->dc_ctxt = dc;
@@ -2090,7 +2062,6 @@ dispatch_mach_reconnect(dispatch_mach_t dm, mach_port_t send,
 	dc->dc_other = (void*)(uintptr_t)send;
 	dc->dc_voucher = DISPATCH_NO_VOUCHER;
 	dc->dc_priority = DISPATCH_NO_PRIORITY;
-	_dispatch_retain(dm); // <rdar://problem/26266265>
 	return _dispatch_mach_send_push(dm, dc, 0);
 }
 
@@ -2099,7 +2070,7 @@ mach_port_t
 dispatch_mach_get_checkin_port(dispatch_mach_t dm)
 {
 	dispatch_mach_send_refs_t dmsr = dm->dm_send_refs;
-	if (slowpath(dm->dq_atomic_flags & DSF_CANCELED)) {
+	if (unlikely(dm->dq_atomic_flags & DSF_CANCELED)) {
 		return MACH_PORT_DEAD;
 	}
 	return dmsr->dmsr_checkin_port;
@@ -2127,6 +2098,8 @@ _dispatch_mach_msg_invoke_with_mach(dispatch_mach_msg_t dmsg,
 	dispatch_thread_set_self_t adopt_flags = DISPATCH_PRIORITY_ENFORCE|
 			DISPATCH_VOUCHER_CONSUME|DISPATCH_VOUCHER_REPLACE;
 
+	_dispatch_trace_item_pop(dm, dmsg);
+
 	dmrr = dm->dm_recv_refs;
 	dmsg->do_next = DISPATCH_OBJECT_LISTLESS;
 	_dispatch_voucher_ktrace_dmsg_pop(dmsg);
@@ -2139,14 +2112,14 @@ _dispatch_mach_msg_invoke_with_mach(dispatch_mach_msg_t dmsg,
 			_dispatch_client_callout3(dmrr->dmrr_handler_ctxt, reason, dmsg,
 					_dispatch_mach_xpc_hooks->dmxh_async_reply_handler);
 		} else {
-			if (slowpath(!dm->dm_connect_handler_called)) {
+			if (unlikely(!dm->dm_connect_handler_called)) {
 				_dispatch_mach_connect_invoke(dm);
 			}
 			if (reason == DISPATCH_MACH_MESSAGE_RECEIVED &&
-					(_dispatch_queue_atomic_flags(dm->_as_dq) & DSF_CANCELED)) {
+					(_dispatch_queue_atomic_flags(dm) & DSF_CANCELED)) {
 				// <rdar://problem/32184699> Do not deliver message received
 				// after cancellation: _dispatch_mach_merge_msg can be preempted
-				// for a long time between clearing DSF_ARMED but before
+				// for a long time right after disarming the unote but before
 				// enqueuing the message, allowing for cancellation to complete,
 				// and then the message event to be delivered.
 				//
@@ -2160,7 +2133,7 @@ _dispatch_mach_msg_invoke_with_mach(dispatch_mach_msg_t dmsg,
 		}
 		_dispatch_perfmon_workitem_inc();
 	});
-	_dispatch_introspection_queue_item_complete(dmsg);
+	_dispatch_trace_item_complete(dmsg);
 	dispatch_release(dmsg);
 }
 
@@ -2173,7 +2146,7 @@ _dispatch_mach_msg_invoke(dispatch_mach_msg_t dmsg,
 	dispatch_thread_frame_s dtf;
 
 	// hide mach channel
-	dispatch_mach_t dm = (dispatch_mach_t)_dispatch_thread_frame_stash(&dtf);
+	dispatch_mach_t dm = upcast(_dispatch_thread_frame_stash(&dtf))._dm;
 	_dispatch_mach_msg_invoke_with_mach(dmsg, flags, dm);
 	_dispatch_thread_frame_unstash(&dtf);
 }
@@ -2197,10 +2170,10 @@ _dispatch_mach_barrier_invoke(dispatch_continuation_t dc,
 		_dispatch_thread_frame_stash(&dtf);
 	}
 	dmrr = dm->dm_recv_refs;
-	DISPATCH_COMPILER_CAN_ASSUME(dc_flags & DISPATCH_OBJ_CONSUME_BIT);
-	_dispatch_continuation_pop_forwarded(dc, DISPATCH_NO_VOUCHER, dc_flags, {
+	DISPATCH_COMPILER_CAN_ASSUME(dc_flags & DC_FLAG_CONSUME);
+	_dispatch_continuation_pop_forwarded(dc, dc_flags, dm, {
 		dispatch_invoke_with_autoreleasepool(flags, {
-			if (slowpath(!dm->dm_connect_handler_called)) {
+			if (unlikely(!dm->dm_connect_handler_called)) {
 				_dispatch_mach_connect_invoke(dm);
 			}
 			_dispatch_client_callout(dc->dc_ctxt, dc->dc_func);
@@ -2230,13 +2203,13 @@ dispatch_mach_send_barrier_f(dispatch_mach_t dm, void *context,
 		dispatch_function_t func)
 {
 	dispatch_continuation_t dc = _dispatch_continuation_alloc();
-	uintptr_t dc_flags = DISPATCH_OBJ_CONSUME_BIT | DISPATCH_OBJ_MACH_BARRIER;
+	uintptr_t dc_flags = DC_FLAG_CONSUME | DC_FLAG_MACH_BARRIER;
 	dispatch_qos_t qos;
 
-	_dispatch_continuation_init_f(dc, dm, context, func, 0, 0, dc_flags);
+	_dispatch_continuation_init_f(dc, dm, context, func, 0, dc_flags);
 	_dispatch_mach_barrier_set_vtable(dc, dm, DC_VTABLE(MACH_SEND_BARRIER));
-	_dispatch_trace_continuation_push(dm->_as_dq, dc);
-	qos = _dispatch_continuation_override_qos(dm->_as_dq, dc);
+	_dispatch_trace_item_push(dm, dc);
+	qos = _dispatch_qos_from_pp(dc->dc_priority);
 	return _dispatch_mach_send_push(dm, dc, qos);
 }
 
@@ -2245,13 +2218,13 @@ void
 dispatch_mach_send_barrier(dispatch_mach_t dm, dispatch_block_t barrier)
 {
 	dispatch_continuation_t dc = _dispatch_continuation_alloc();
-	uintptr_t dc_flags = DISPATCH_OBJ_CONSUME_BIT | DISPATCH_OBJ_MACH_BARRIER;
+	uintptr_t dc_flags = DC_FLAG_CONSUME | DC_FLAG_MACH_BARRIER;
 	dispatch_qos_t qos;
 
-	_dispatch_continuation_init(dc, dm, barrier, 0, 0, dc_flags);
+	_dispatch_continuation_init(dc, dm, barrier, 0, dc_flags);
 	_dispatch_mach_barrier_set_vtable(dc, dm, DC_VTABLE(MACH_SEND_BARRIER));
-	_dispatch_trace_continuation_push(dm->_as_dq, dc);
-	qos = _dispatch_continuation_override_qos(dm->_as_dq, dc);
+	_dispatch_trace_item_push(dm, dc);
+	qos = _dispatch_qos_from_pp(dc->dc_priority);
 	return _dispatch_mach_send_push(dm, dc, qos);
 }
 
@@ -2261,11 +2234,12 @@ dispatch_mach_receive_barrier_f(dispatch_mach_t dm, void *context,
 		dispatch_function_t func)
 {
 	dispatch_continuation_t dc = _dispatch_continuation_alloc();
-	uintptr_t dc_flags = DISPATCH_OBJ_CONSUME_BIT | DISPATCH_OBJ_MACH_BARRIER;
+	uintptr_t dc_flags = DC_FLAG_CONSUME | DC_FLAG_MACH_BARRIER;
+	dispatch_qos_t qos;
 
-	_dispatch_continuation_init_f(dc, dm, context, func, 0, 0, dc_flags);
+	qos = _dispatch_continuation_init_f(dc, dm, context, func, 0, dc_flags);
 	_dispatch_mach_barrier_set_vtable(dc, dm, DC_VTABLE(MACH_RECV_BARRIER));
-	return _dispatch_continuation_async(dm->_as_dq, dc);
+	return _dispatch_continuation_async(dm, dc, qos, dc_flags);
 }
 
 DISPATCH_NOINLINE
@@ -2273,11 +2247,12 @@ void
 dispatch_mach_receive_barrier(dispatch_mach_t dm, dispatch_block_t barrier)
 {
 	dispatch_continuation_t dc = _dispatch_continuation_alloc();
-	uintptr_t dc_flags = DISPATCH_OBJ_CONSUME_BIT | DISPATCH_OBJ_MACH_BARRIER;
+	uintptr_t dc_flags = DC_FLAG_CONSUME | DC_FLAG_MACH_BARRIER;
+	dispatch_qos_t qos;
 
-	_dispatch_continuation_init(dc, dm, barrier, 0, 0, dc_flags);
+	qos = _dispatch_continuation_init(dc, dm, barrier, 0, dc_flags);
 	_dispatch_mach_barrier_set_vtable(dc, dm, DC_VTABLE(MACH_RECV_BARRIER));
-	return _dispatch_continuation_async(dm->_as_dq, dc);
+	return _dispatch_continuation_async(dm, dc, qos, dc_flags);
 }
 
 DISPATCH_NOINLINE
@@ -2287,7 +2262,7 @@ _dispatch_mach_cancel_invoke(dispatch_mach_t dm, dispatch_invoke_flags_t flags)
 	dispatch_mach_recv_refs_t dmrr = dm->dm_recv_refs;
 
 	dispatch_invoke_with_autoreleasepool(flags, {
-		if (slowpath(!dm->dm_connect_handler_called)) {
+		if (unlikely(!dm->dm_connect_handler_called)) {
 			_dispatch_mach_connect_invoke(dm);
 		}
 		_dispatch_client_callout4(dmrr->dmrr_handler_ctxt,
@@ -2295,121 +2270,122 @@ _dispatch_mach_cancel_invoke(dispatch_mach_t dm, dispatch_invoke_flags_t flags)
 		_dispatch_perfmon_workitem_inc();
 	});
 	dm->dm_cancel_handler_called = 1;
-	_dispatch_release(dm); // the retain is done at creation time
 }
 
 DISPATCH_NOINLINE
 void
 dispatch_mach_cancel(dispatch_mach_t dm)
 {
-	dispatch_source_cancel(dm->_as_ds);
+	dispatch_queue_flags_t dqf;
+
+	_dispatch_object_debug(dm, "%s", __func__);
+	// <rdar://problem/34849210> similar race to dispatch_source_cancel
+	// Once we set the DSF_CANCELED bit, anyone can notice and finish the
+	// unregistration causing use after free in dispatch_mach_reconnect() below.
+	_dispatch_retain(dm);
+	dqf = _dispatch_queue_atomic_flags_set_orig(dm, DSF_CANCELED);
+	if (!(dqf & DSF_CANCELED)) {
+		dispatch_mach_reconnect(dm, MACH_PORT_NULL, DM_CHECKIN_CANCELED);
+	}
+	_dispatch_release_tailcall(dm);
 }
 
 static void
 _dispatch_mach_install(dispatch_mach_t dm, dispatch_wlh_t wlh,
 		dispatch_priority_t pri)
 {
+	bool cancelled = (_dispatch_queue_atomic_flags(dm) & DSF_CANCELED);
 	dispatch_mach_recv_refs_t dmrr = dm->dm_recv_refs;
-	uint32_t disconnect_cnt;
 
-	if (dmrr->du_ident) {
-		_dispatch_source_refs_register(dm->_as_ds, wlh, pri);
+	dispatch_assert(!dm->ds_is_installed);
+	dm->ds_is_installed = true;
+
+	if (!cancelled && dmrr->du_ident) {
+		(void)_dispatch_unote_register(dmrr, wlh, pri);
 		dispatch_assert(dmrr->du_is_direct);
 	}
 
-	if (dm->dm_is_xpc) {
-		bool monitor_sigterm;
-		if (_dispatch_mach_xpc_hooks->version < 3) {
-			monitor_sigterm = true;
-		} else if (!_dispatch_mach_xpc_hooks->dmxh_enable_sigterm_notification){
-			monitor_sigterm = true;
-		} else {
-			monitor_sigterm =
-					_dispatch_mach_xpc_hooks->dmxh_enable_sigterm_notification(
-					dm->dm_recv_refs->dmrr_handler_ctxt);
-		}
-		if (monitor_sigterm) {
-			dispatch_xpc_term_refs_t _dxtr =
-					dux_create(&_dispatch_xpc_type_sigterm, SIGTERM, 0)._dxtr;
-			_dxtr->du_owner_wref = _dispatch_ptr2wref(dm);
-			dm->dm_xpc_term_refs = _dxtr;
-			_dispatch_unote_register(dm->dm_xpc_term_refs, wlh, pri);
-		}
+	if (!cancelled && dm->dm_is_xpc &&
+			_dispatch_mach_xpc_hooks->dmxh_enable_sigterm_notification(
+			dmrr->dmrr_handler_ctxt)) {
+		dispatch_xpc_term_refs_t _dxtr =
+				dux_create(&_dispatch_xpc_type_sigterm, SIGTERM, 0)._dxtr;
+		_dxtr->du_owner_wref = _dispatch_ptr2wref(dm);
+		dm->dm_xpc_term_refs = _dxtr;
+		_dispatch_unote_register(dm->dm_xpc_term_refs, wlh, pri);
 	}
 	if (!dm->dq_priority) {
 		// _dispatch_mach_reply_kevent_register assumes this has been done
-		// which is unlike regular sources or queues, the DEFAULTQUEUE flag
+		// which is unlike regular sources or queues, the FALLBACK flag
 		// is used so that the priority of the channel doesn't act as
 		// a QoS floor for incoming messages (26761457)
 		dm->dq_priority = pri;
 	}
-	dm->ds_is_installed = true;
-	if (unlikely(!os_atomic_cmpxchgv2o(dm->dm_send_refs, dmsr_disconnect_cnt,
-			DISPATCH_MACH_NEVER_INSTALLED, 0, &disconnect_cnt, release))) {
-		DISPATCH_INTERNAL_CRASH(disconnect_cnt, "Channel already installed");
+
+	uint32_t disconnect_cnt = os_atomic_load2o(dm->dm_send_refs,
+			dmsr_disconnect_cnt, relaxed);
+	if (unlikely(disconnect_cnt & DISPATCH_MACH_NEVER_CONNECTED)) {
+		DISPATCH_CLIENT_CRASH(disconnect_cnt, "Channel never connected");
 	}
 }
 
 void
-_dispatch_mach_finalize_activation(dispatch_mach_t dm, bool *allow_resume)
+_dispatch_mach_activate(dispatch_mach_t dm, bool *allow_resume)
 {
 	dispatch_priority_t pri;
 	dispatch_wlh_t wlh;
 
 	// call "super"
-	_dispatch_queue_finalize_activation(dm->_as_dq, allow_resume);
+	_dispatch_lane_activate(dm, allow_resume);
 
 	if (!dm->ds_is_installed) {
-		pri = _dispatch_queue_compute_priority_and_wlh(dm->_as_dq, &wlh);
+		pri = _dispatch_queue_compute_priority_and_wlh(dm, &wlh);
 		if (pri) _dispatch_mach_install(dm, wlh, pri);
 	}
 }
 
-DISPATCH_ALWAYS_INLINE
-static inline bool
-_dispatch_mach_tryarm(dispatch_mach_t dm, dispatch_queue_flags_t *out_dqf)
+DISPATCH_NOINLINE
+static void
+_dispatch_mach_handle_wlh_change(dispatch_mach_t dm)
 {
-	dispatch_queue_flags_t oqf, nqf;
-	bool rc = os_atomic_rmw_loop2o(dm, dq_atomic_flags, oqf, nqf, relaxed, {
-		nqf = oqf;
-		if (nqf & (DSF_ARMED | DSF_CANCELED | DSF_DEFERRED_DELETE |
-				DSF_DELETED)) {
-			// the test is inside the loop because it's convenient but the
-			// result should not change for the duration of the rmw_loop
-			os_atomic_rmw_loop_give_up(break);
+	dispatch_queue_flags_t dqf;
+
+	dqf = _dispatch_queue_atomic_flags_set_orig(dm, DSF_WLH_CHANGED);
+	if (!(dqf & DQF_MUTABLE)) {
+		if (dm->dm_is_xpc) {
+			DISPATCH_CLIENT_CRASH(0, "Changing target queue "
+					"hierarchy after xpc connection was activated");
+		} else {
+			DISPATCH_CLIENT_CRASH(0, "Changing target queue "
+					"hierarchy after mach channel was connected");
 		}
-		nqf |= DSF_ARMED;
-	});
-	if (out_dqf) *out_dqf = nqf;
-	return rc;
+	}
+	if (!(dqf & DSF_WLH_CHANGED)) {
+		if (dm->dm_is_xpc) {
+			_dispatch_bug_deprecated("Changing target queue "
+					"hierarchy after xpc connection was activated");
+		} else {
+			_dispatch_bug_deprecated("Changing target queue "
+					"hierarchy after mach channel was connected");
+		}
+	}
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_queue_wakeup_target_t
-_dispatch_mach_invoke2(dispatch_object_t dou,
+_dispatch_mach_invoke2(dispatch_mach_t dm,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags,
 		uint64_t *owned)
 {
-	dispatch_mach_t dm = dou._dm;
 	dispatch_queue_wakeup_target_t retq = NULL;
 	dispatch_queue_t dq = _dispatch_queue_get_current();
 	dispatch_mach_send_refs_t dmsr = dm->dm_send_refs;
 	dispatch_mach_recv_refs_t dmrr = dm->dm_recv_refs;
-	dispatch_queue_flags_t dqf = 0;
+	dispatch_queue_flags_t dqf;
 
-	if (!(flags & DISPATCH_INVOKE_MANAGER_DRAIN) && dmrr &&
-			_dispatch_unote_wlh_changed(dmrr, _dispatch_get_wlh())) {
-		dqf = _dispatch_queue_atomic_flags_set_orig(dm->_as_dq,
-				DSF_WLH_CHANGED);
-		if (!(dqf & DSF_WLH_CHANGED)) {
-			if (dm->dm_is_xpc) {
-				_dispatch_bug_deprecated("Changing target queue "
-						"hierarchy after xpc connection was activated");
-			} else {
-				_dispatch_bug_deprecated("Changing target queue "
-						"hierarchy after mach channel was activated");
-			}
-		}
+	if (unlikely(!(flags & DISPATCH_INVOKE_MANAGER_DRAIN) && dmrr &&
+			_dispatch_unote_wlh_changed(dmrr, _dispatch_get_event_wlh()))) {
+		_dispatch_mach_handle_wlh_change(dm);
 	}
 
 	// This function performs all mach channel actions. Each action is
@@ -2425,75 +2401,80 @@ _dispatch_mach_invoke2(dispatch_object_t dou,
 		if (unlikely(flags & DISPATCH_INVOKE_MANAGER_DRAIN)) {
 			return dm->do_targetq;
 		}
-		_dispatch_mach_install(dm, _dispatch_get_wlh(),_dispatch_get_basepri());
+		dispatch_priority_t pri = DISPATCH_PRIORITY_FLAG_MANAGER;
+		if (likely(flags & DISPATCH_INVOKE_WORKER_DRAIN)) {
+			pri = _dispatch_get_basepri();
+		}
+		_dispatch_mach_install(dm, _dispatch_get_event_wlh(), pri);
 		_dispatch_perfmon_workitem_inc();
 	}
 
 	if (_dispatch_queue_class_probe(dm)) {
 		if (dq == dm->do_targetq) {
 drain:
-			retq = _dispatch_queue_serial_drain(dm->_as_dq, dic, flags, owned);
+			retq = _dispatch_lane_serial_drain(dm, dic, flags, owned);
 		} else {
 			retq = dm->do_targetq;
 		}
 	}
 
-	if (!retq && _dispatch_unote_registered(dmrr)) {
-		if (_dispatch_mach_tryarm(dm, &dqf)) {
-			_dispatch_unote_resume(dmrr);
-			if (dq == dm->do_targetq && !dq->do_targetq && !dmsr->dmsr_tail &&
-					(dq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT) &&
-					_dispatch_wlh_should_poll_unote(dmrr)) {
-				// try to redrive the drain from under the lock for channels
-				// targeting an overcommit root queue to avoid parking
-				// when the next message has already fired
-				_dispatch_event_loop_drain(KEVENT_FLAG_IMMEDIATE);
-				if (dm->dq_items_tail) goto drain;
-			}
+	dqf = _dispatch_queue_atomic_flags(dm);
+	if (!retq && !(dqf & DSF_CANCELED) && _dispatch_unote_needs_rearm(dmrr)) {
+		_dispatch_unote_resume(dmrr);
+		if (dq == dm->do_targetq && !dq->do_targetq && !dmsr->dmsr_tail &&
+				(dq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT) &&
+				_dispatch_wlh_should_poll_unote(dmrr)) {
+			// try to redrive the drain from under the lock for channels
+			// targeting an overcommit root queue to avoid parking
+			// when the next message has already fired
+			_dispatch_event_loop_drain(KEVENT_FLAG_IMMEDIATE);
+			if (dm->dq_items_tail) goto drain;
 		}
-	} else {
-		dqf = _dispatch_queue_atomic_flags(dm->_as_dq);
+		dqf = _dispatch_queue_atomic_flags(dm);
 	}
 
 	if (dmsr->dmsr_tail) {
-		bool requires_mgr = dm->dm_needs_mgr || (dmsr->dmsr_disconnect_cnt &&
-				_dispatch_unote_registered(dmsr));
-		if (!os_atomic_load2o(dmsr, dmsr_notification_armed, relaxed) ||
-				(dqf & DSF_CANCELED) || dmsr->dmsr_disconnect_cnt) {
+		if (!dmsr->dmsr_notification_armed || dmsr->dmsr_disconnect_cnt) {
+			bool requires_mgr = dmsr->dmsr_disconnect_cnt ?
+					_dispatch_unote_registered(dmsr) : dm->dm_needs_mgr;
 			// The channel has pending messages to send.
-			if (unlikely(requires_mgr && dq != &_dispatch_mgr_q)) {
-				return retq ? retq : &_dispatch_mgr_q;
+			if (unlikely(requires_mgr && dq != _dispatch_mgr_q._as_dq)) {
+				return retq ? retq : _dispatch_mgr_q._as_dq;
 			}
 			dispatch_mach_send_invoke_flags_t send_flags = DM_SEND_INVOKE_NONE;
-			if (dq != &_dispatch_mgr_q) {
+			if (dq != _dispatch_mgr_q._as_dq) {
 				send_flags |= DM_SEND_INVOKE_CAN_RUN_BARRIER;
 			}
 			_dispatch_mach_send_invoke(dm, flags, send_flags);
+			if (!retq && dm->dq_items_tail) {
+				retq = dm->do_targetq;
+			}
 		}
-		if (!retq) retq = DISPATCH_QUEUE_WAKEUP_WAIT_FOR_EVENT;
-	} else if (!retq && (dqf & DSF_CANCELED)) {
+		if (!retq && dmsr->dmsr_tail) {
+			retq = DISPATCH_QUEUE_WAKEUP_WAIT_FOR_EVENT;
+		}
+	}
+
+	if (dqf & DSF_CANCELED) {
 		// The channel has been cancelled and needs to be uninstalled from the
-		// manager queue. After uninstallation, the cancellation handler needs
-		// to be delivered to the target queue.
-		if (!dm->dm_uninstalled) {
-			if ((dqf & DSF_STATE_MASK) == (DSF_ARMED | DSF_DEFERRED_DELETE)) {
-				// waiting for the delivery of a deferred delete event
-				return retq ? retq : DISPATCH_QUEUE_WAKEUP_WAIT_FOR_EVENT;
-			}
-			if (dq != &_dispatch_mgr_q) {
-				return retq ? retq : &_dispatch_mgr_q;
-			}
-			_dispatch_mach_send_invoke(dm, flags, DM_SEND_INVOKE_CANCEL);
-			if (unlikely(!dm->dm_uninstalled)) {
-				// waiting for the delivery of a deferred delete event
-				// or deletion didn't happen because send_invoke couldn't
-				// acquire the send lock
-				return retq ? retq : DISPATCH_QUEUE_WAKEUP_WAIT_FOR_EVENT;
-			}
+		// manager queue.
+		if (!(dqf & DSF_DELETED) && !_dispatch_mach_cancel(dm)) {
+			// waiting for the delivery of a deferred delete event
+			return retq ? retq : DISPATCH_QUEUE_WAKEUP_WAIT_FOR_EVENT;
 		}
+
+		// After uninstallation, the cancellation handler needs to be delivered
+		// to the target queue, but not before we drained all messages from the
+		// receive queue.
 		if (!dm->dm_cancel_handler_called) {
 			if (dq != dm->do_targetq) {
 				return retq ? retq : dm->do_targetq;
+			}
+			if (DISPATCH_QUEUE_IS_SUSPENDED(dm)) {
+				return dm->do_targetq;
+			}
+			if (_dispatch_queue_class_probe(dm)) {
+				goto drain;
 			}
 			_dispatch_mach_cancel_invoke(dm, flags);
 		}
@@ -2520,7 +2501,7 @@ _dispatch_mach_wakeup(dispatch_mach_t dm, dispatch_qos_t qos,
 
 	dispatch_mach_send_refs_t dmsr = dm->dm_send_refs;
 	dispatch_queue_wakeup_target_t tq = DISPATCH_QUEUE_WAKEUP_NONE;
-	dispatch_queue_flags_t dqf = _dispatch_queue_atomic_flags(dm->_as_dq);
+	dispatch_queue_flags_t dqf = _dispatch_queue_atomic_flags(dm);
 
 	if (!dm->ds_is_installed) {
 		// The channel needs to be installed on the kevent queue.
@@ -2533,52 +2514,47 @@ _dispatch_mach_wakeup(dispatch_mach_t dm, dispatch_qos_t qos,
 		goto done;
 	}
 
-	if (_dispatch_lock_is_locked(dmsr->dmsr_state_lock.dul_lock)) {
-		// Sending and uninstallation below require the send lock, the channel
-		// will be woken up when the lock is dropped <rdar://15132939&15203957>
-		goto done;
-	}
-
 	if (dmsr->dmsr_tail) {
-		bool requires_mgr = dm->dm_needs_mgr || (dmsr->dmsr_disconnect_cnt &&
-				_dispatch_unote_registered(dmsr));
-		if (!os_atomic_load2o(dmsr, dmsr_notification_armed, relaxed) ||
-				(dqf & DSF_CANCELED) || dmsr->dmsr_disconnect_cnt) {
+		if (_dispatch_lock_is_locked(dmsr->dmsr_state_lock.dul_lock)) {
+			// Sending require the send lock, the channel will be woken up
+			// when the lock is dropped <rdar://15132939&15203957>
+			goto done;
+		}
+
+		if (!dmsr->dmsr_notification_armed || dmsr->dmsr_disconnect_cnt) {
+			bool requires_mgr = dmsr->dmsr_disconnect_cnt ?
+					_dispatch_unote_registered(dmsr) : dm->dm_needs_mgr;
 			if (unlikely(requires_mgr)) {
 				tq = DISPATCH_QUEUE_WAKEUP_MGR;
 			} else {
 				tq = DISPATCH_QUEUE_WAKEUP_TARGET;
 			}
 		}
-	} else if (dqf & DSF_CANCELED) {
-		if (!dm->dm_uninstalled) {
-			if ((dqf & DSF_STATE_MASK) == (DSF_ARMED | DSF_DEFERRED_DELETE)) {
-				// waiting for the delivery of a deferred delete event
-			} else {
-				// The channel needs to be uninstalled from the manager queue
-				tq = DISPATCH_QUEUE_WAKEUP_MGR;
-			}
-		} else if (!dm->dm_cancel_handler_called) {
-			// the cancellation handler needs to be delivered to the target
-			// queue.
-			tq = DISPATCH_QUEUE_WAKEUP_TARGET;
-		}
+	} else if ((dqf & DSF_CANCELED) && (dqf & DSF_NEEDS_EVENT) &&
+			!(flags & DISPATCH_WAKEUP_EVENT)) {
+		// waiting for the delivery of a deferred delete event
+	} else if ((dqf & DSF_CANCELED) && !dm->dm_cancel_handler_called) {
+		// The channel needs to be cancelled and the cancellation handler
+		// needs to be delivered to the target queue.
+		tq = DISPATCH_QUEUE_WAKEUP_TARGET;
 	}
 
 done:
 	if ((tq == DISPATCH_QUEUE_WAKEUP_TARGET) &&
-			dm->do_targetq == &_dispatch_mgr_q) {
+			dm->do_targetq == _dispatch_mgr_q._as_dq) {
 		tq = DISPATCH_QUEUE_WAKEUP_MGR;
 	}
 
-	return _dispatch_queue_class_wakeup(dm->_as_dq, qos, flags, tq);
+	return _dispatch_queue_wakeup(dm, qos, flags, tq);
 }
 
 static void
 _dispatch_mach_sigterm_invoke(void *ctx)
 {
 	dispatch_mach_t dm = ctx;
-	if (!(dm->dq_atomic_flags & DSF_CANCELED)) {
+	uint32_t duu_options = DUU_DELETE_ACK | DUU_MUST_SUCCEED;
+	_dispatch_unote_unregister(dm->dm_xpc_term_refs, duu_options);
+	if (!(_dispatch_queue_atomic_flags(dm) & DSF_CANCELED)) {
 		dispatch_mach_recv_refs_t dmrr = dm->dm_recv_refs;
 		_dispatch_client_callout4(dmrr->dmrr_handler_ctxt,
 				DISPATCH_MACH_SIGTERM_RECEIVED, NULL, 0,
@@ -2587,27 +2563,15 @@ _dispatch_mach_sigterm_invoke(void *ctx)
 }
 
 void
-_dispatch_xpc_sigterm_merge(dispatch_unote_t du,
+_dispatch_xpc_sigterm_merge_evt(dispatch_unote_t du,
 		uint32_t flags DISPATCH_UNUSED, uintptr_t data DISPATCH_UNUSED,
-		uintptr_t status DISPATCH_UNUSED, pthread_priority_t pp)
+		pthread_priority_t pp)
 {
 	dispatch_mach_t dm = _dispatch_wref2ptr(du._du->du_owner_wref);
-	uint32_t options = 0;
-	if ((flags & EV_UDATA_SPECIFIC) && (flags & EV_ONESHOT) &&
-			!(flags & EV_DELETE)) {
-		options = DU_UNREGISTER_IMMEDIATE_DELETE;
-	} else {
-		dispatch_assert((flags & EV_ONESHOT) && (flags & EV_DELETE));
-		options = DU_UNREGISTER_ALREADY_DELETED;
-	}
-	_dispatch_unote_unregister(du, options);
 
-	if (!(dm->dq_atomic_flags & DSF_CANCELED)) {
-		_dispatch_barrier_async_detached_f(dm->_as_dq, dm,
-				_dispatch_mach_sigterm_invoke);
-	} else {
-		dx_wakeup(dm, _dispatch_qos_from_pp(pp), DISPATCH_WAKEUP_MAKE_DIRTY);
-	}
+	_dispatch_barrier_async_detached_f(dm, dm, _dispatch_mach_sigterm_invoke);
+	dx_wakeup(dm, _dispatch_qos_from_pp(pp), DISPATCH_WAKEUP_EVENT |
+			DISPATCH_WAKEUP_CONSUME_2 | DISPATCH_WAKEUP_MAKE_DIRTY);
 }
 
 #pragma mark -
@@ -2617,8 +2581,7 @@ dispatch_mach_msg_t
 dispatch_mach_msg_create(mach_msg_header_t *msg, size_t size,
 		dispatch_mach_msg_destructor_t destructor, mach_msg_header_t **msg_ptr)
 {
-	if (slowpath(size < sizeof(mach_msg_header_t)) ||
-			slowpath(destructor && !msg)) {
+	if (unlikely(size < sizeof(mach_msg_header_t) || (destructor && !msg))) {
 		DISPATCH_CLIENT_CRASH(size, "Empty message");
 	}
 
@@ -2636,7 +2599,7 @@ dispatch_mach_msg_create(mach_msg_header_t *msg, size_t size,
 		memcpy(dmsg->dmsg_buf, msg, size);
 	}
 	dmsg->do_next = DISPATCH_OBJECT_LISTLESS;
-	dmsg->do_targetq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false);
+	dmsg->do_targetq = _dispatch_get_default_queue(false);
 	dmsg->dmsg_destructor = destructor;
 	dmsg->dmsg_size = size;
 	if (msg_ptr) {
@@ -2689,7 +2652,7 @@ _dispatch_mach_msg_debug(dispatch_mach_msg_t dmsg, char* buf, size_t bufsiz)
 {
 	size_t offset = 0;
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "%s[%p] = { ",
-			dx_kind(dmsg), dmsg);
+			_dispatch_object_class_name(dmsg), dmsg);
 	offset += _dispatch_object_debug_attr(dmsg, buf + offset, bufsiz - offset);
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "opts/err = 0x%x, "
 			"msgh[%p] = { ", dmsg->dmsg_options, dmsg->dmsg_buf);
@@ -2732,11 +2695,7 @@ DISPATCH_ALWAYS_INLINE
 static dispatch_queue_t
 _dispatch_mach_msg_context_async_reply_queue(void *msg_context)
 {
-	if (DISPATCH_MACH_XPC_SUPPORTS_ASYNC_REPLIES(_dispatch_mach_xpc_hooks)) {
-		return _dispatch_mach_xpc_hooks->dmxh_msg_context_reply_queue(
-				msg_context);
-	}
-	return NULL;
+	return _dispatch_mach_xpc_hooks->dmxh_msg_context_reply_queue(msg_context);
 }
 
 static dispatch_continuation_t
@@ -2794,17 +2753,11 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
 
 	bufRequest = alloca(rcv_size);
 	bufRequest->RetCode = 0;
-	for (mach_vm_address_t p = mach_vm_trunc_page(bufRequest + vm_page_size);
-			p < (mach_vm_address_t)bufRequest + rcv_size; p += vm_page_size) {
-		*(char*)p = 0; // ensure alloca buffer doesn't overlap with stack guard
-	}
+	_dispatch_mach_stack_probe(bufRequest, rcv_size);
 
 	bufReply = alloca(rcv_size);
 	bufReply->Head.msgh_size = 0;
-	for (mach_vm_address_t p = mach_vm_trunc_page(bufReply + vm_page_size);
-			p < (mach_vm_address_t)bufReply + rcv_size; p += vm_page_size) {
-		*(char*)p = 0; // ensure alloca buffer doesn't overlap with stack guard
-	}
+	_dispatch_mach_stack_probe(bufReply, rcv_size);
 
 #if DISPATCH_DEBUG
 	options |= MACH_RCV_LARGE; // rdar://problem/8422992
@@ -2825,7 +2778,7 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
 
 		tmp_options = options;
 
-		if (slowpath(kr)) {
+		if (unlikely(kr)) {
 			switch (kr) {
 			case MACH_SEND_INVALID_DEST:
 			case MACH_SEND_TIMED_OUT:
@@ -2862,6 +2815,9 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
 							"requested size %zd: id = 0x%x, size = %d",
 							maxmsgsz, bufReply->Head.msgh_id,
 							bufReply->Head.msgh_size);
+					if (bufReply->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX) {
+						mach_msg_destroy(&bufReply->Head);
+					}
 				}
 				if (large_buf) {
 					free(large_buf);
@@ -2898,12 +2854,13 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 		int r = proc_importance_assertion_begin_with_msg(&bufRequest->Head,
 				NULL, &assertion_token);
-		if (r && slowpath(r != EIO)) {
+		if (r && r != EIO) {
 			(void)dispatch_assume_zero(r);
 		}
 #pragma clang diagnostic pop
 #endif
 		_voucher_replace(voucher_create_with_mach_msg(&bufRequest->Head));
+		bufReply->Head = (mach_msg_header_t){ };
 		demux_success = callback(&bufRequest->Head, &bufReply->Head);
 
 		if (!demux_success) {
@@ -2913,7 +2870,7 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
 		} else if (!(bufReply->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX)) {
 			// if MACH_MSGH_BITS_COMPLEX is _not_ set, then bufReply->RetCode
 			// is present
-			if (slowpath(bufReply->RetCode)) {
+			if (unlikely(bufReply->RetCode)) {
 				if (bufReply->RetCode == MIG_NO_REPLY) {
 					continue;
 				}
@@ -2945,6 +2902,111 @@ out:
 }
 
 #pragma mark -
+#pragma mark dispatch_mach_mig_demux
+
+static char const * const
+_dispatch_mach_mig_demux_context_key = "mach_mig_demux";
+
+static const mig_routine_descriptor *
+_dispatch_mach_mig_resolve(mach_msg_id_t msgid,
+		const struct mig_subsystem *const subsystems[], size_t count)
+{
+	const mig_routine_descriptor *desc;
+
+	for (size_t i = 0; i < count; i++) {
+		if (subsystems[i]->start <= msgid && msgid < subsystems[i]->end) {
+			desc = &subsystems[i]->routine[msgid - subsystems[i]->start];
+			return desc->stub_routine ? desc : NULL;
+		}
+	}
+	return NULL;
+}
+
+bool
+dispatch_mach_mig_demux(void *context,
+		const struct mig_subsystem *const subsystems[], size_t count,
+		dispatch_mach_msg_t dmsg)
+{
+	dispatch_thread_context_s dmmd_ctx = {
+		.dtc_key = _dispatch_mach_mig_demux_context_key,
+		.dtc_mig_demux_ctx = context,
+	};
+	mach_msg_header_t *hdr = dispatch_mach_msg_get_msg(dmsg, NULL);
+	mach_msg_id_t msgid = hdr->msgh_id;
+	const mig_routine_descriptor *desc;
+	mig_reply_error_t *bufReply;
+	mach_msg_size_t reply_size;
+	kern_return_t kr;
+
+	desc = _dispatch_mach_mig_resolve(msgid, subsystems, count);
+	if (!desc) return false;
+
+	_dispatch_thread_context_push(&dmmd_ctx);
+
+	reply_size = desc->max_reply_msg + MAX_TRAILER_SIZE;
+	bufReply = alloca(reply_size);
+	_dispatch_mach_stack_probe(bufReply, reply_size);
+	bufReply->Head = (mach_msg_header_t){
+		.msgh_bits = MACH_MSGH_BITS(MACH_MSGH_BITS_REMOTE(hdr->msgh_bits), 0),
+		.msgh_remote_port = hdr->msgh_remote_port,
+		.msgh_size = sizeof(mig_reply_error_t),
+		.msgh_id = msgid + 100,
+	};
+
+	desc->stub_routine(hdr, &bufReply->Head);
+
+	// if MACH_MSGH_BITS_COMPLEX is _not_ set, then bufReply->RetCode is present
+	if (unlikely(!(bufReply->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX) &&
+			bufReply->RetCode)) {
+		// destroy the request - but not the reply port
+		hdr->msgh_remote_port = 0;
+		if (bufReply->RetCode != MIG_NO_REPLY &&
+				(hdr->msgh_bits & MACH_MSGH_BITS_COMPLEX)) {
+			mach_msg_destroy(hdr);
+		}
+	}
+
+	if (bufReply->Head.msgh_remote_port) {
+		mach_msg_option_t options = MACH_SEND_MSG;
+		if (MACH_MSGH_BITS_REMOTE(bufReply->Head.msgh_bits) !=
+				MACH_MSG_TYPE_MOVE_SEND_ONCE) {
+			options |= MACH_SEND_TIMEOUT;
+		}
+		kr = mach_msg(&bufReply->Head, options, bufReply->Head.msgh_size,
+				0, MACH_PORT_NULL, 0, MACH_PORT_NULL);
+		switch (kr) {
+		case KERN_SUCCESS:
+			break;
+		case MACH_SEND_INVALID_DEST:
+		case MACH_SEND_TIMED_OUT:
+			if (bufReply->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX) {
+				mach_msg_destroy(&bufReply->Head);
+			}
+			break;
+		default:
+			DISPATCH_VERIFY_MIG(kr);
+			DISPATCH_CLIENT_CRASH(kr,
+					"dispatch_mach_mig_demux: mach_msg(MACH_SEND_MSG) failed");
+		}
+	}
+
+	_dispatch_thread_context_pop(&dmmd_ctx);
+	return true;
+}
+
+void *
+dispatch_mach_mig_demux_get_context(void)
+{
+	dispatch_thread_context_t dtc;
+	dtc = _dispatch_thread_context_find(_dispatch_mach_mig_demux_context_key);
+	if (unlikely(dtc == NULL)) {
+		DISPATCH_CLIENT_CRASH(0, "dispatch_mach_mig_demux_get_context "
+				"not called from dispatch_mach_mig_demux context");
+	}
+	return dtc->dtc_mig_demux_ctx;
+}
+
+#pragma mark -
 #pragma mark dispatch_mach_debug
 
 static size_t
@@ -2972,7 +3034,7 @@ _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz)
 	size_t offset = 0;
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "%s[%p] = { ",
 			dm->dq_label && !dm->dm_cancel_handler_called ? dm->dq_label :
-			dx_kind(dm), dm);
+			_dispatch_object_class_name(dm), dm);
 	offset += _dispatch_object_debug_attr(dm, &buf[offset], bufsiz - offset);
 	offset += _dispatch_mach_debug_attr(dm, &buf[offset], bufsiz - offset);
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "}");

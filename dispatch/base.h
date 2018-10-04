@@ -120,15 +120,20 @@
 #endif
 #endif
 
-#if TARGET_OS_WIN32 && defined(__DISPATCH_BUILDING_DISPATCH__) && \
-		defined(__cplusplus)
+#if TARGET_OS_WIN32
+#ifdef __cplusplus
+#ifdef __DISPATCH_BUILDING_DISPATCH__
 #define DISPATCH_EXPORT extern "C" extern __declspec(dllexport)
-#elif TARGET_OS_WIN32 && defined(__DISPATCH_BUILDING_DISPATCH__)
+#else
 #define DISPATCH_EXPORT extern __declspec(dllexport)
-#elif TARGET_OS_WIN32 && defined(__cplusplus)
+#endif // __DISPATCH_BUILDING_DISPATCH__
+#else // __cplusplus
+#ifdef __DISPATCH_BUILDING_DISPATCH__
 #define DISPATCH_EXPORT extern "C" extern __declspec(dllimport)
-#elif TARGET_OS_WIN32
+#else
 #define DISPATCH_EXPORT extern __declspec(dllimport)
+#endif // __DISPATCH_BUILDING_DISPATCH__
+#endif // __cplusplus
 #elif __GNUC__
 #define DISPATCH_EXPORT extern __attribute__((visibility("default")))
 #else

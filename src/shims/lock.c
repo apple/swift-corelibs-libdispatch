@@ -31,8 +31,8 @@
 	}
 
 #if TARGET_OS_MAC
-_Static_assert(DLOCK_LOCK_DATA_CONTENTION == ULF_WAIT_WORKQ_DATA_CONTENTION,
-		"values should be the same");
+dispatch_static_assert(DLOCK_LOCK_DATA_CONTENTION ==
+		ULF_WAIT_WORKQ_DATA_CONTENTION);
 
 #if !HAVE_UL_UNFAIR_LOCK
 DISPATCH_ALWAYS_INLINE
@@ -146,8 +146,8 @@ _dispatch_sema4_timedwait(_dispatch_sema4_t *sema, dispatch_time_t timeout)
 		uint64_t nsec = _dispatch_timeout(timeout);
 		_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
 		_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
-		kr = slowpath(semaphore_timedwait(*sema, _timeout));
-	} while (kr == KERN_ABORTED);
+		kr = semaphore_timedwait(*sema, _timeout);
+	} while (unlikely(kr == KERN_ABORTED));
 
 	if (kr == KERN_OPERATION_TIMED_OUT) {
 		return true;
@@ -202,8 +202,8 @@ _dispatch_sema4_timedwait(_dispatch_sema4_t *sema, dispatch_time_t timeout)
 		uint64_t nsec = _dispatch_time_nanoseconds_since_epoch(timeout);
 		_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
 		_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
-		ret = slowpath(sem_timedwait(sema, &_timeout));
-	} while (ret == -1 && errno == EINTR);
+		ret = sem_timedwait(sema, &_timeout);
+	} while (unlikely(ret == -1 && errno == EINTR));
 
 	if (ret == -1 && errno == ETIMEDOUT) {
 		return true;
@@ -322,8 +322,6 @@ _dispatch_ulock_wait(uint32_t *uaddr, uint32_t val, uint32_t timeout,
 		rc = __ulock_wait(UL_COMPARE_AND_WAIT | flags, uaddr, val, timeout),
 		case 0: return rc > 0 ? ENOTEMPTY : 0;
 		case ETIMEDOUT: case EFAULT: return err;
-		case EOWNERDEAD: DISPATCH_CLIENT_CRASH(*uaddr,
-				"corruption of lock owner");
 		default: DISPATCH_INTERNAL_CRASH(err, "ulock_wait() failed");
 	);
 }
@@ -432,21 +430,40 @@ _dispatch_futex_unlock_pi(uint32_t *uaddr, int opflags)
 #endif
 #pragma mark - wait for address
 
-void
-_dispatch_wait_on_address(uint32_t volatile *address, uint32_t value,
-		dispatch_lock_options_t flags)
+int
+_dispatch_wait_on_address(uint32_t volatile *_address, uint32_t value,
+		dispatch_time_t timeout, dispatch_lock_options_t flags)
 {
-#if HAVE_UL_COMPARE_AND_WAIT
-	_dispatch_ulock_wait((uint32_t *)address, value, 0, flags);
-#elif HAVE_FUTEX
-	_dispatch_futex_wait((uint32_t *)address, value, NULL, FUTEX_PRIVATE_FLAG);
-#else
-	mach_msg_timeout_t timeout = 1;
-	while (os_atomic_load(address, relaxed) == value) {
-		thread_switch(MACH_PORT_NULL, SWITCH_OPTION_WAIT, timeout++);
+	uint32_t *address = (uint32_t *)_address;
+	uint64_t nsecs = _dispatch_timeout(timeout);
+	if (nsecs == 0) {
+		return ETIMEDOUT;
 	}
+#if HAVE_UL_COMPARE_AND_WAIT
+	uint64_t usecs = 0;
+	int rc;
+	if (nsecs == DISPATCH_TIME_FOREVER) {
+		return _dispatch_ulock_wait(address, value, 0, flags);
+	}
+	do {
+		usecs = howmany(nsecs, NSEC_PER_USEC);
+		if (usecs > UINT32_MAX) usecs = UINT32_MAX;
+		rc = _dispatch_ulock_wait(address, value, (uint32_t)usecs, flags);
+	} while (usecs == UINT32_MAX && rc == ETIMEDOUT &&
+			(nsecs = _dispatch_timeout(timeout)) != 0);
+	return rc;
+#elif HAVE_FUTEX
+	if (nsecs != DISPATCH_TIME_FOREVER) {
+		struct timespec ts = {
+			.tv_sec = (typeof(ts.tv_sec))(nsec / NSEC_PER_SEC),
+			.tv_nsec = (typeof(ts.tv_nsec))(nsec % NSEC_PER_SEC),
+		};
+		return _dispatch_futex_wait(address, value, &ts, FUTEX_PRIVATE_FLAG);
+	}
+	return _dispatch_futex_wait(address, value, NULL, FUTEX_PRIVATE_FLAG);
+#else
+#error _dispatch_wait_on_address unimplemented for this platform
 #endif
-	(void)flags;
 }
 
 void
@@ -580,33 +597,42 @@ _dispatch_unfair_lock_unlock_slow(dispatch_unfair_lock_t dul, dispatch_lock cur)
 #pragma mark - gate lock
 
 void
-_dispatch_gate_wait_slow(dispatch_gate_t dgl, dispatch_lock value,
-		dispatch_lock_options_t flags)
+_dispatch_once_wait(dispatch_once_gate_t dgo)
 {
 	dispatch_lock self = _dispatch_lock_value_for_self();
-	dispatch_lock old_value, new_value;
+	uintptr_t old_v, new_v;
+	dispatch_lock *lock = &dgo->dgo_gate.dgl_lock;
 	uint32_t timeout = 1;
 
 	for (;;) {
-		os_atomic_rmw_loop(&dgl->dgl_lock, old_value, new_value, acquire, {
-			if (likely(old_value == value)) {
-				os_atomic_rmw_loop_give_up_with_fence(acquire, return);
+		os_atomic_rmw_loop(&dgo->dgo_once, old_v, new_v, relaxed, {
+			if (likely(old_v == DLOCK_ONCE_DONE)) {
+				os_atomic_rmw_loop_give_up(return);
 			}
-			new_value = old_value | DLOCK_WAITERS_BIT;
-			if (new_value == old_value) os_atomic_rmw_loop_give_up(break);
+#if DISPATCH_ONCE_USE_QUIESCENT_COUNTER
+			if (DISPATCH_ONCE_IS_GEN(old_v)) {
+				os_atomic_rmw_loop_give_up({
+					os_atomic_thread_fence(acquire);
+					return _dispatch_once_mark_done_if_quiesced(dgo, old_v);
+				});
+			}
+#endif
+			new_v = old_v | (uintptr_t)DLOCK_WAITERS_BIT;
+			if (new_v == old_v) os_atomic_rmw_loop_give_up(break);
 		});
-		if (unlikely(_dispatch_lock_is_locked_by(old_value, self))) {
+		if (unlikely(_dispatch_lock_is_locked_by((dispatch_lock)old_v, self))) {
 			DISPATCH_CLIENT_CRASH(0, "trying to lock recursively");
 		}
 #if HAVE_UL_UNFAIR_LOCK
-		_dispatch_unfair_lock_wait(&dgl->dgl_lock, new_value, 0, flags);
+		_dispatch_unfair_lock_wait(lock, (dispatch_lock)new_v, 0,
+				DLOCK_LOCK_NONE);
 #elif HAVE_FUTEX
-		_dispatch_futex_wait(&dgl->dgl_lock, new_value, NULL, FUTEX_PRIVATE_FLAG);
+		_dispatch_futex_wait(lock, (dispatch_lock)new_v, NULL,
+				FUTEX_PRIVATE_FLAG);
 #else
-		_dispatch_thread_switch(new_value, flags, timeout++);
+		_dispatch_thread_switch(new_v, flags, timeout++);
 #endif
 		(void)timeout;
-		(void)flags;
 	}
 }
 
@@ -625,3 +651,14 @@ _dispatch_gate_broadcast_slow(dispatch_gate_t dgl, dispatch_lock cur)
 	(void)dgl;
 #endif
 }
+
+#if TARGET_OS_MAC
+
+void
+_dispatch_firehose_gate_wait(dispatch_gate_t dgl, uint32_t owner,
+		uint32_t flags)
+{
+	_dispatch_unfair_lock_wait(&dgl->dgl_lock, owner, 0, flags);
+}
+
+#endif

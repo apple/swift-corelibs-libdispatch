@@ -32,6 +32,7 @@
 #pragma mark -
 #pragma mark dispatch_init
 
+
 #if USE_LIBDISPATCH_INIT_CONSTRUCTOR
 DISPATCH_NOTHROW __attribute__((constructor))
 void
@@ -143,14 +144,15 @@ voucher_activity_hooks_t _voucher_libtrace_hooks;
 dispatch_mach_t _voucher_activity_debug_channel;
 #endif
 #if HAVE_PTHREAD_WORKQUEUE_QOS && DISPATCH_DEBUG
-int _dispatch_set_qos_class_enabled;
+bool _dispatch_set_qos_class_enabled;
 #endif
 #if DISPATCH_USE_KEVENT_WORKQUEUE && DISPATCH_USE_MGR_THREAD
-int _dispatch_kevent_workqueue_enabled;
+bool _dispatch_kevent_workqueue_enabled = 1;
 #endif
 
 DISPATCH_HW_CONFIG();
 uint8_t _dispatch_unsafe_fork;
+uint8_t _dispatch_mode;
 bool _dispatch_child_of_unsafe_fork;
 #if DISPATCH_USE_MEMORYPRESSURE_SOURCE
 bool _dispatch_memory_warn;
@@ -191,133 +193,213 @@ const struct dispatch_queue_offsets_s dispatch_queue_offsets = {
 	.dqo_priority_size = 0,
 };
 
+#if TARGET_OS_MAC
+const struct dispatch_allocator_layout_s dispatch_allocator_layout = {
+	.dal_version = 1,
+#if DISPATCH_ALLOCATOR
+	.dal_allocator_zone = &_dispatch_main_heap,
+	.dal_deferred_free_isa = &_dispatch_main_heap,
+	.dal_allocation_size = DISPATCH_CONTINUATION_SIZE,
+	.dal_magazine_size = BYTES_PER_MAGAZINE,
+#if PACK_FIRST_PAGE_WITH_CONTINUATIONS
+	.dal_first_allocation_offset =
+			offsetof(struct dispatch_magazine_s, fp_conts),
+#else
+	.dal_first_allocation_offset =
+			offsetof(struct dispatch_magazine_s, conts),
+#endif
+	.dal_allocation_isa_offset =
+			offsetof(struct dispatch_continuation_s, dc_flags),
+	.dal_enumerator = &_dispatch_allocator_enumerate,
+#endif // DISPATCH_ALLOCATOR
+};
+#endif
+
 #if DISPATCH_USE_DIRECT_TSD
 const struct dispatch_tsd_indexes_s dispatch_tsd_indexes = {
-	.dti_version = 2,
+	.dti_version = 3,
 	.dti_queue_index = dispatch_queue_key,
 	.dti_voucher_index = dispatch_voucher_key,
 	.dti_qos_class_index = dispatch_priority_key,
+	.dti_continuation_cache_index = dispatch_cache_key,
 };
 #endif // DISPATCH_USE_DIRECT_TSD
 
 // 6618342 Contact the team that owns the Instrument DTrace probe before
 //         renaming this symbol
-DISPATCH_CACHELINE_ALIGN
-struct dispatch_queue_s _dispatch_main_q = {
+struct dispatch_queue_static_s _dispatch_main_q = {
 	DISPATCH_GLOBAL_OBJECT_HEADER(queue_main),
 #if !DISPATCH_USE_RESOLVERS
-	.do_targetq = &_dispatch_root_queues[
-			DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS_OVERCOMMIT],
+	.do_targetq = _dispatch_get_default_queue(true),
 #endif
 	.dq_state = DISPATCH_QUEUE_STATE_INIT_VALUE(1) |
 			DISPATCH_QUEUE_ROLE_BASE_ANON,
 	.dq_label = "com.apple.main-thread",
-	.dq_atomic_flags = DQF_THREAD_BOUND | DQF_CANNOT_TRYSYNC | DQF_WIDTH(1),
+	.dq_atomic_flags = DQF_THREAD_BOUND | DQF_WIDTH(1),
 	.dq_serialnum = 1,
 };
+
+#if DISPATCH_USE_MGR_THREAD && DISPATCH_USE_PTHREAD_ROOT_QUEUES
+static struct dispatch_pthread_root_queue_context_s
+_dispatch_mgr_root_queue_pthread_context;
+
+struct dispatch_queue_global_s _dispatch_mgr_root_queue = {
+	DISPATCH_GLOBAL_OBJECT_HEADER(queue_global),
+	.dq_state = DISPATCH_ROOT_QUEUE_STATE_INIT_VALUE,
+	.do_ctxt = &_dispatch_mgr_root_queue_pthread_context,
+	.dq_label = "com.apple.root.libdispatch-manager",
+	.dq_atomic_flags = DQF_WIDTH(DISPATCH_QUEUE_WIDTH_POOL),
+	.dq_priority = DISPATCH_PRIORITY_FLAG_MANAGER |
+			DISPATCH_PRIORITY_SATURATED_OVERRIDE,
+	.dq_serialnum = 3,
+	.dgq_thread_pool_size = 1,
+};
+#else
+#define _dispatch_mgr_root_queue _dispatch_root_queues[\
+		DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS_OVERCOMMIT]
+#endif
+
+// 6618342 Contact the team that owns the Instrument DTrace probe before
+//         renaming this symbol
+struct dispatch_queue_static_s _dispatch_mgr_q = {
+	DISPATCH_GLOBAL_OBJECT_HEADER(queue_mgr),
+	.dq_state = DISPATCH_QUEUE_STATE_INIT_VALUE(1) |
+			DISPATCH_QUEUE_ROLE_BASE_ANON,
+	.do_ctxt = (void *)-1,
+	.do_targetq = _dispatch_mgr_root_queue._as_dq,
+	.dq_label = "com.apple.libdispatch-manager",
+	.dq_atomic_flags = DQF_WIDTH(1),
+	.dq_priority = DISPATCH_PRIORITY_FLAG_MANAGER |
+			DISPATCH_PRIORITY_SATURATED_OVERRIDE,
+	.dq_serialnum = 2,
+};
+
+#if DISPATCH_USE_INTERNAL_WORKQUEUE
+static struct dispatch_pthread_root_queue_context_s
+		_dispatch_pthread_root_queue_contexts[DISPATCH_ROOT_QUEUE_COUNT];
+#define _dispatch_root_queue_ctxt(n) &_dispatch_pthread_root_queue_contexts[n]
+#else
+#define _dispatch_root_queue_ctxt(n) NULL
+#endif // DISPATCH_USE_INTERNAL_WORKQUEUE
+
+// 6618342 Contact the team that owns the Instrument DTrace probe before
+//         renaming this symbol
+struct dispatch_queue_global_s _dispatch_root_queues[] = {
+#define _DISPATCH_ROOT_QUEUE_IDX(n, flags) \
+		((flags & DISPATCH_PRIORITY_FLAG_OVERCOMMIT) ? \
+		DISPATCH_ROOT_QUEUE_IDX_##n##_QOS_OVERCOMMIT : \
+		DISPATCH_ROOT_QUEUE_IDX_##n##_QOS)
+#define _DISPATCH_ROOT_QUEUE_ENTRY(n, flags, ...) \
+	[_DISPATCH_ROOT_QUEUE_IDX(n, flags)] = { \
+		DISPATCH_GLOBAL_OBJECT_HEADER(queue_global), \
+		.dq_state = DISPATCH_ROOT_QUEUE_STATE_INIT_VALUE, \
+		.do_ctxt = _dispatch_root_queue_ctxt(_DISPATCH_ROOT_QUEUE_IDX(n, flags)), \
+		.dq_atomic_flags = DQF_WIDTH(DISPATCH_QUEUE_WIDTH_POOL), \
+		.dq_priority = flags | ((flags & DISPATCH_PRIORITY_FLAG_FALLBACK) ? \
+				_dispatch_priority_make_fallback(DISPATCH_QOS_##n) : \
+				_dispatch_priority_make(DISPATCH_QOS_##n, 0)), \
+		__VA_ARGS__ \
+	}
+	_DISPATCH_ROOT_QUEUE_ENTRY(MAINTENANCE, 0,
+		.dq_label = "com.apple.root.maintenance-qos",
+		.dq_serialnum = 4,
+	),
+	_DISPATCH_ROOT_QUEUE_ENTRY(MAINTENANCE, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
+		.dq_label = "com.apple.root.maintenance-qos.overcommit",
+		.dq_serialnum = 5,
+	),
+	_DISPATCH_ROOT_QUEUE_ENTRY(BACKGROUND, 0,
+		.dq_label = "com.apple.root.background-qos",
+		.dq_serialnum = 6,
+	),
+	_DISPATCH_ROOT_QUEUE_ENTRY(BACKGROUND, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
+		.dq_label = "com.apple.root.background-qos.overcommit",
+		.dq_serialnum = 7,
+	),
+	_DISPATCH_ROOT_QUEUE_ENTRY(UTILITY, 0,
+		.dq_label = "com.apple.root.utility-qos",
+		.dq_serialnum = 8,
+	),
+	_DISPATCH_ROOT_QUEUE_ENTRY(UTILITY, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
+		.dq_label = "com.apple.root.utility-qos.overcommit",
+		.dq_serialnum = 9,
+	),
+	_DISPATCH_ROOT_QUEUE_ENTRY(DEFAULT, DISPATCH_PRIORITY_FLAG_FALLBACK,
+		.dq_label = "com.apple.root.default-qos",
+		.dq_serialnum = 10,
+	),
+	_DISPATCH_ROOT_QUEUE_ENTRY(DEFAULT,
+			DISPATCH_PRIORITY_FLAG_FALLBACK | DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
+		.dq_label = "com.apple.root.default-qos.overcommit",
+		.dq_serialnum = 11,
+	),
+	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INITIATED, 0,
+		.dq_label = "com.apple.root.user-initiated-qos",
+		.dq_serialnum = 12,
+	),
+	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INITIATED, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
+		.dq_label = "com.apple.root.user-initiated-qos.overcommit",
+		.dq_serialnum = 13,
+	),
+	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INTERACTIVE, 0,
+		.dq_label = "com.apple.root.user-interactive-qos",
+		.dq_serialnum = 14,
+	),
+	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INTERACTIVE, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
+		.dq_label = "com.apple.root.user-interactive-qos.overcommit",
+		.dq_serialnum = 15,
+	),
+};
+
+unsigned long volatile _dispatch_queue_serial_numbers =
+		DISPATCH_QUEUE_SERIAL_NUMBER_INIT;
+
+
+dispatch_queue_global_t
+dispatch_get_global_queue(long priority, unsigned long flags)
+{
+	dispatch_assert(countof(_dispatch_root_queues) ==
+			DISPATCH_ROOT_QUEUE_COUNT);
+
+	if (flags & ~(unsigned long)DISPATCH_QUEUE_OVERCOMMIT) {
+		return DISPATCH_BAD_INPUT;
+	}
+	dispatch_qos_t qos = _dispatch_qos_from_queue_priority(priority);
+#if !HAVE_PTHREAD_WORKQUEUE_QOS
+	if (qos == QOS_CLASS_MAINTENANCE) {
+		qos = DISPATCH_QOS_BACKGROUND;
+	} else if (qos == QOS_CLASS_USER_INTERACTIVE) {
+		qos = DISPATCH_QOS_USER_INITIATED;
+	}
+#endif
+	if (qos == DISPATCH_QOS_UNSPECIFIED) {
+		return DISPATCH_BAD_INPUT;
+	}
+	return _dispatch_get_root_queue(qos, flags & DISPATCH_QUEUE_OVERCOMMIT);
+}
+
+dispatch_queue_t
+dispatch_get_current_queue(void)
+{
+	return _dispatch_queue_get_current_or_default();
+}
 
 #pragma mark -
 #pragma mark dispatch_queue_attr_t
 
-#define DISPATCH_QUEUE_ATTR_INIT(qos, prio, overcommit, freq, concurrent, \
-			inactive) \
-	{ \
-		DISPATCH_GLOBAL_OBJECT_HEADER(queue_attr), \
-		.dqa_qos_and_relpri = (_dispatch_priority_make(qos, prio) & \
-				DISPATCH_PRIORITY_REQUESTED_MASK), \
-		.dqa_overcommit = _dispatch_queue_attr_overcommit_##overcommit, \
-		.dqa_autorelease_frequency = DISPATCH_AUTORELEASE_FREQUENCY_##freq, \
-		.dqa_concurrent = (concurrent), \
-		.dqa_inactive = (inactive), \
-	}
-
-#define DISPATCH_QUEUE_ATTR_ACTIVE_INIT(qos, prio, overcommit, freq, \
-			concurrent) \
-	{ \
-		[DQA_INDEX_ACTIVE] = DISPATCH_QUEUE_ATTR_INIT( \
-				qos, prio, overcommit, freq, concurrent, false), \
-		[DQA_INDEX_INACTIVE] = DISPATCH_QUEUE_ATTR_INIT( \
-				qos, prio, overcommit, freq, concurrent, true), \
-	}
-
-#define DISPATCH_QUEUE_ATTR_OVERCOMMIT_INIT(qos, prio, overcommit) \
-	{ \
-		[DQA_INDEX_AUTORELEASE_FREQUENCY_INHERIT][DQA_INDEX_CONCURRENT] = \
-				DISPATCH_QUEUE_ATTR_ACTIVE_INIT( \
-						qos, prio, overcommit, INHERIT, 1), \
-		[DQA_INDEX_AUTORELEASE_FREQUENCY_INHERIT][DQA_INDEX_SERIAL] = \
-				DISPATCH_QUEUE_ATTR_ACTIVE_INIT( \
-						qos, prio, overcommit, INHERIT, 0), \
-		[DQA_INDEX_AUTORELEASE_FREQUENCY_WORK_ITEM][DQA_INDEX_CONCURRENT] = \
-				DISPATCH_QUEUE_ATTR_ACTIVE_INIT( \
-						qos, prio, overcommit, WORK_ITEM, 1), \
-		[DQA_INDEX_AUTORELEASE_FREQUENCY_WORK_ITEM][DQA_INDEX_SERIAL] = \
-				DISPATCH_QUEUE_ATTR_ACTIVE_INIT( \
-						qos, prio, overcommit, WORK_ITEM, 0), \
-		[DQA_INDEX_AUTORELEASE_FREQUENCY_NEVER][DQA_INDEX_CONCURRENT] = \
-				DISPATCH_QUEUE_ATTR_ACTIVE_INIT( \
-						qos, prio, overcommit, NEVER, 1), \
-		[DQA_INDEX_AUTORELEASE_FREQUENCY_NEVER][DQA_INDEX_SERIAL] = \
-				DISPATCH_QUEUE_ATTR_ACTIVE_INIT(\
-						qos, prio, overcommit, NEVER, 0), \
-	}
-
-#define DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, prio) \
-	[prio] = { \
-		[DQA_INDEX_UNSPECIFIED_OVERCOMMIT] = \
-				DISPATCH_QUEUE_ATTR_OVERCOMMIT_INIT(qos, -(prio), unspecified),\
-		[DQA_INDEX_NON_OVERCOMMIT] = \
-				DISPATCH_QUEUE_ATTR_OVERCOMMIT_INIT(qos, -(prio), disabled), \
-		[DQA_INDEX_OVERCOMMIT] = \
-				DISPATCH_QUEUE_ATTR_OVERCOMMIT_INIT(qos, -(prio), enabled), \
-	}
-
-#define DISPATCH_QUEUE_ATTR_PRIO_INIT(qos) \
-	{ \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 0), \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 1), \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 2), \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 3), \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 4), \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 5), \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 6), \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 7), \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 8), \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 9), \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 10), \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 11), \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 12), \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 13), \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 14), \
-		DISPATCH_QUEUE_ATTR_PRIO_INITIALIZER(qos, 15), \
-	}
-
-#define DISPATCH_QUEUE_ATTR_QOS_INITIALIZER(qos) \
-	[DQA_INDEX_QOS_CLASS_##qos] = \
-			DISPATCH_QUEUE_ATTR_PRIO_INIT(DISPATCH_QOS_##qos)
-
 // DISPATCH_QUEUE_CONCURRENT resp. _dispatch_queue_attr_concurrent is aliased
-// to array member [0][0][0][0][0][0] and their properties must match!
-const struct dispatch_queue_attr_s _dispatch_queue_attrs[]
-		[DISPATCH_QUEUE_ATTR_PRIO_COUNT]
-		[DISPATCH_QUEUE_ATTR_OVERCOMMIT_COUNT]
-		[DISPATCH_QUEUE_ATTR_AUTORELEASE_FREQUENCY_COUNT]
-		[DISPATCH_QUEUE_ATTR_CONCURRENCY_COUNT]
-		[DISPATCH_QUEUE_ATTR_INACTIVE_COUNT] = {
-	DISPATCH_QUEUE_ATTR_QOS_INITIALIZER(UNSPECIFIED),
-	DISPATCH_QUEUE_ATTR_QOS_INITIALIZER(MAINTENANCE),
-	DISPATCH_QUEUE_ATTR_QOS_INITIALIZER(BACKGROUND),
-	DISPATCH_QUEUE_ATTR_QOS_INITIALIZER(UTILITY),
-	DISPATCH_QUEUE_ATTR_QOS_INITIALIZER(DEFAULT),
-	DISPATCH_QUEUE_ATTR_QOS_INITIALIZER(USER_INITIATED),
-	DISPATCH_QUEUE_ATTR_QOS_INITIALIZER(USER_INTERACTIVE),
+// to array member [0] and their properties must match!
+const struct dispatch_queue_attr_s _dispatch_queue_attrs[] = {
+	[0 ... DISPATCH_QUEUE_ATTR_COUNT - 1] = {
+		DISPATCH_GLOBAL_OBJECT_HEADER(queue_attr),
+	},
 };
 
 #if DISPATCH_VARIANT_STATIC
 // <rdar://problem/16778703>
-struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent =
-	DISPATCH_QUEUE_ATTR_INIT(QOS_CLASS_UNSPECIFIED, 0,
-			unspecified, INHERIT, 1, false);
+struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent = {
+	DISPATCH_GLOBAL_OBJECT_HEADER(queue_attr),
+};
 #endif // DISPATCH_VARIANT_STATIC
 
 // _dispatch_queue_attr_concurrent is aliased using libdispatch.aliases
@@ -328,189 +410,359 @@ extern struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent
 	__attribute__((__alias__("_dispatch_queue_attrs")));
 #endif
 
+dispatch_queue_attr_info_t
+_dispatch_queue_attr_to_info(dispatch_queue_attr_t dqa)
+{
+	dispatch_queue_attr_info_t dqai = { };
+
+	if (!dqa) return dqai;
+
+#if DISPATCH_VARIANT_STATIC
+	if (dqa == &_dispatch_queue_attr_concurrent) {
+		dqai.dqai_concurrent = true;
+		return dqai;
+	}
+#endif
+
+	if (dqa < _dispatch_queue_attrs ||
+			dqa >= &_dispatch_queue_attrs[DISPATCH_QUEUE_ATTR_COUNT]) {
+		DISPATCH_CLIENT_CRASH(dqa->do_vtable, "Invalid queue attribute");
+	}
+
+	size_t idx = (size_t)(dqa - _dispatch_queue_attrs);
+
+	dqai.dqai_inactive = (idx % DISPATCH_QUEUE_ATTR_INACTIVE_COUNT);
+	idx /= DISPATCH_QUEUE_ATTR_INACTIVE_COUNT;
+
+	dqai.dqai_concurrent = !(idx % DISPATCH_QUEUE_ATTR_CONCURRENCY_COUNT);
+	idx /= DISPATCH_QUEUE_ATTR_CONCURRENCY_COUNT;
+
+	dqai.dqai_relpri = -(idx % DISPATCH_QUEUE_ATTR_PRIO_COUNT);
+	idx /= DISPATCH_QUEUE_ATTR_PRIO_COUNT;
+
+	dqai.dqai_qos = idx % DISPATCH_QUEUE_ATTR_QOS_COUNT;
+	idx /= DISPATCH_QUEUE_ATTR_QOS_COUNT;
+
+	dqai.dqai_autorelease_frequency =
+			idx % DISPATCH_QUEUE_ATTR_AUTORELEASE_FREQUENCY_COUNT;
+	idx /= DISPATCH_QUEUE_ATTR_AUTORELEASE_FREQUENCY_COUNT;
+
+	dqai.dqai_overcommit = idx % DISPATCH_QUEUE_ATTR_OVERCOMMIT_COUNT;
+	idx /= DISPATCH_QUEUE_ATTR_OVERCOMMIT_COUNT;
+
+	return dqai;
+}
+
+static dispatch_queue_attr_t
+_dispatch_queue_attr_from_info(dispatch_queue_attr_info_t dqai)
+{
+	size_t idx = 0;
+
+	idx *= DISPATCH_QUEUE_ATTR_OVERCOMMIT_COUNT;
+	idx += dqai.dqai_overcommit;
+
+	idx *= DISPATCH_QUEUE_ATTR_AUTORELEASE_FREQUENCY_COUNT;
+	idx += dqai.dqai_autorelease_frequency;
+
+	idx *= DISPATCH_QUEUE_ATTR_QOS_COUNT;
+	idx += dqai.dqai_qos;
+
+	idx *= DISPATCH_QUEUE_ATTR_PRIO_COUNT;
+	idx += (size_t)(-dqai.dqai_relpri);
+
+	idx *= DISPATCH_QUEUE_ATTR_CONCURRENCY_COUNT;
+	idx += !dqai.dqai_concurrent;
+
+	idx *= DISPATCH_QUEUE_ATTR_INACTIVE_COUNT;
+	idx += dqai.dqai_inactive;
+
+	return (dispatch_queue_attr_t)&_dispatch_queue_attrs[idx];
+}
+
+dispatch_queue_attr_t
+dispatch_queue_attr_make_with_qos_class(dispatch_queue_attr_t dqa,
+		dispatch_qos_class_t qos_class, int relpri)
+{
+	if (!_dispatch_qos_class_valid(qos_class, relpri)) {
+		return (dispatch_queue_attr_t)dqa;
+	}
+	dispatch_queue_attr_info_t dqai = _dispatch_queue_attr_to_info(dqa);
+	dqai.dqai_qos = _dispatch_qos_from_qos_class(qos_class);
+	dqai.dqai_relpri = relpri;
+	return _dispatch_queue_attr_from_info(dqai);
+}
+
+dispatch_queue_attr_t
+dispatch_queue_attr_make_initially_inactive(dispatch_queue_attr_t dqa)
+{
+	dispatch_queue_attr_info_t dqai = _dispatch_queue_attr_to_info(dqa);
+	dqai.dqai_inactive = true;
+	return _dispatch_queue_attr_from_info(dqai);
+}
+
+dispatch_queue_attr_t
+dispatch_queue_attr_make_with_overcommit(dispatch_queue_attr_t dqa,
+		bool overcommit)
+{
+	dispatch_queue_attr_info_t dqai = _dispatch_queue_attr_to_info(dqa);
+	if (overcommit) {
+		dqai.dqai_overcommit = _dispatch_queue_attr_overcommit_enabled;
+	} else {
+		dqai.dqai_overcommit = _dispatch_queue_attr_overcommit_disabled;
+	}
+	return _dispatch_queue_attr_from_info(dqai);
+}
+
+dispatch_queue_attr_t
+dispatch_queue_attr_make_with_autorelease_frequency(dispatch_queue_attr_t dqa,
+		dispatch_autorelease_frequency_t frequency)
+{
+	switch (frequency) {
+	case DISPATCH_AUTORELEASE_FREQUENCY_INHERIT:
+	case DISPATCH_AUTORELEASE_FREQUENCY_WORK_ITEM:
+	case DISPATCH_AUTORELEASE_FREQUENCY_NEVER:
+		break;
+	default:
+		return (dispatch_queue_attr_t)dqa;
+	}
+	dispatch_queue_attr_info_t dqai = _dispatch_queue_attr_to_info(dqa);
+	dqai.dqai_autorelease_frequency = (uint16_t)frequency;
+	return _dispatch_queue_attr_from_info(dqai);
+}
+
 #pragma mark -
 #pragma mark dispatch_vtables
 
+DISPATCH_NOINLINE
+static void
+_dispatch_object_no_dispose(dispatch_object_t dou,
+		DISPATCH_UNUSED bool *allow_free)
+{
+	DISPATCH_INTERNAL_CRASH(dx_type(dou._do), "do_dispose called");
+}
+
+DISPATCH_NOINLINE
+static size_t
+_dispatch_object_missing_debug(DISPATCH_UNUSED dispatch_object_t dou,
+		char *buf, size_t bufsiz)
+{
+	return strlcpy(buf, "missing do_debug vtable slot: ", bufsiz);
+}
+
+DISPATCH_NOINLINE
+static void
+_dispatch_object_no_invoke(dispatch_object_t dou,
+		DISPATCH_UNUSED dispatch_invoke_context_t dic,
+		DISPATCH_UNUSED dispatch_invoke_flags_t flags)
+{
+	DISPATCH_INTERNAL_CRASH(dx_type(dou._do), "do_invoke called");
+}
+
+/*
+ * Dispatch object cluster
+ */
+
 DISPATCH_VTABLE_INSTANCE(semaphore,
-	.do_type = DISPATCH_SEMAPHORE_TYPE,
-	.do_kind = "semaphore",
-	.do_dispose = _dispatch_semaphore_dispose,
-	.do_debug = _dispatch_semaphore_debug,
+	.do_type        = DISPATCH_SEMAPHORE_TYPE,
+	.do_dispose     = _dispatch_semaphore_dispose,
+	.do_debug       = _dispatch_semaphore_debug,
+	.do_invoke      = _dispatch_object_no_invoke,
 );
 
 DISPATCH_VTABLE_INSTANCE(group,
-	.do_type = DISPATCH_GROUP_TYPE,
-	.do_kind = "group",
-	.do_dispose = _dispatch_group_dispose,
-	.do_debug = _dispatch_group_debug,
+	.do_type        = DISPATCH_GROUP_TYPE,
+	.do_dispose     = _dispatch_group_dispose,
+	.do_debug       = _dispatch_group_debug,
+	.do_invoke      = _dispatch_object_no_invoke,
 );
 
-DISPATCH_VTABLE_INSTANCE(queue,
-	.do_type = DISPATCH_QUEUE_LEGACY_TYPE,
-	.do_kind = "queue",
-	.do_dispose = _dispatch_queue_dispose,
-	.do_suspend = _dispatch_queue_suspend,
-	.do_resume = _dispatch_queue_resume,
-	.do_push = _dispatch_queue_push,
-	.do_invoke = _dispatch_queue_invoke,
-	.do_wakeup = _dispatch_queue_wakeup,
-	.do_debug = dispatch_queue_debug,
-	.do_set_targetq = _dispatch_queue_set_target_queue,
+#if !DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
+DISPATCH_VTABLE_INSTANCE(data,
+	.do_type        = DISPATCH_DATA_TYPE,
+	.do_dispose     = _dispatch_data_dispose,
+	.do_debug       = _dispatch_data_debug,
+	.do_invoke      = _dispatch_object_no_invoke,
 );
-
-DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_serial, queue,
-	.do_type = DISPATCH_QUEUE_SERIAL_TYPE,
-	.do_kind = "serial-queue",
-	.do_dispose = _dispatch_queue_dispose,
-	.do_suspend = _dispatch_queue_suspend,
-	.do_resume = _dispatch_queue_resume,
-	.do_finalize_activation = _dispatch_queue_finalize_activation,
-	.do_push = _dispatch_queue_push,
-	.do_invoke = _dispatch_queue_invoke,
-	.do_wakeup = _dispatch_queue_wakeup,
-	.do_debug = dispatch_queue_debug,
-	.do_set_targetq = _dispatch_queue_set_target_queue,
-);
-
-DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_concurrent, queue,
-	.do_type = DISPATCH_QUEUE_CONCURRENT_TYPE,
-	.do_kind = "concurrent-queue",
-	.do_dispose = _dispatch_queue_dispose,
-	.do_suspend = _dispatch_queue_suspend,
-	.do_resume = _dispatch_queue_resume,
-	.do_finalize_activation = _dispatch_queue_finalize_activation,
-	.do_push = _dispatch_queue_push,
-	.do_invoke = _dispatch_queue_invoke,
-	.do_wakeup = _dispatch_queue_wakeup,
-	.do_debug = dispatch_queue_debug,
-	.do_set_targetq = _dispatch_queue_set_target_queue,
-);
-
-
-DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_root, queue,
-	.do_type = DISPATCH_QUEUE_GLOBAL_ROOT_TYPE,
-	.do_kind = "global-queue",
-	.do_dispose = _dispatch_pthread_root_queue_dispose,
-	.do_push = _dispatch_root_queue_push,
-	.do_invoke = NULL,
-	.do_wakeup = _dispatch_root_queue_wakeup,
-	.do_debug = dispatch_queue_debug,
-);
-
-
-DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_main, queue,
-	.do_type = DISPATCH_QUEUE_SERIAL_TYPE,
-	.do_kind = "main-queue",
-	.do_dispose = _dispatch_queue_dispose,
-	.do_push = _dispatch_queue_push,
-	.do_invoke = _dispatch_queue_invoke,
-	.do_wakeup = _dispatch_main_queue_wakeup,
-	.do_debug = dispatch_queue_debug,
-);
-
-DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_runloop, queue,
-	.do_type = DISPATCH_QUEUE_RUNLOOP_TYPE,
-	.do_kind = "runloop-queue",
-	.do_dispose = _dispatch_runloop_queue_dispose,
-	.do_push = _dispatch_queue_push,
-	.do_invoke = _dispatch_queue_invoke,
-	.do_wakeup = _dispatch_runloop_queue_wakeup,
-	.do_debug = dispatch_queue_debug,
-);
-
-DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_mgr, queue,
-	.do_type = DISPATCH_QUEUE_MGR_TYPE,
-	.do_kind = "mgr-queue",
-	.do_push = _dispatch_mgr_queue_push,
-	.do_invoke = _dispatch_mgr_thread,
-	.do_wakeup = _dispatch_mgr_queue_wakeup,
-	.do_debug = dispatch_queue_debug,
-);
-
-DISPATCH_VTABLE_INSTANCE(queue_specific_queue,
-	.do_type = DISPATCH_QUEUE_SPECIFIC_TYPE,
-	.do_kind = "queue-context",
-	.do_dispose = _dispatch_queue_specific_queue_dispose,
-	.do_push = (void *)_dispatch_queue_push,
-	.do_invoke = (void *)_dispatch_queue_invoke,
-	.do_wakeup = (void *)_dispatch_queue_wakeup,
-	.do_debug = (void *)dispatch_queue_debug,
-);
+#endif
 
 DISPATCH_VTABLE_INSTANCE(queue_attr,
-	.do_type = DISPATCH_QUEUE_ATTR_TYPE,
-	.do_kind = "queue-attr",
+	.do_type        = DISPATCH_QUEUE_ATTR_TYPE,
+	.do_dispose     = _dispatch_object_no_dispose,
+	.do_debug       = _dispatch_object_missing_debug,
+	.do_invoke      = _dispatch_object_no_invoke,
 );
 
+#if HAVE_MACH
+DISPATCH_VTABLE_INSTANCE(mach_msg,
+	.do_type        = DISPATCH_MACH_MSG_TYPE,
+	.do_dispose     = _dispatch_mach_msg_dispose,
+	.do_debug       = _dispatch_mach_msg_debug,
+	.do_invoke      = _dispatch_mach_msg_invoke,
+);
+#endif // HAVE_MACH
+
+DISPATCH_VTABLE_INSTANCE(io,
+	.do_type        = DISPATCH_IO_TYPE,
+	.do_dispose     = _dispatch_io_dispose,
+	.do_debug       = _dispatch_io_debug,
+	.do_invoke      = _dispatch_object_no_invoke,
+);
+
+DISPATCH_VTABLE_INSTANCE(operation,
+	.do_type        = DISPATCH_OPERATION_TYPE,
+	.do_dispose     = _dispatch_operation_dispose,
+	.do_debug       = _dispatch_operation_debug,
+	.do_invoke      = _dispatch_object_no_invoke,
+);
+
+DISPATCH_VTABLE_INSTANCE(disk,
+	.do_type        = DISPATCH_DISK_TYPE,
+	.do_dispose     = _dispatch_disk_dispose,
+	.do_debug       = _dispatch_object_missing_debug,
+	.do_invoke      = _dispatch_object_no_invoke,
+);
+
+/*
+ * Dispatch queue cluster
+ */
+
+DISPATCH_NOINLINE
+static void
+_dispatch_queue_no_activate(dispatch_queue_class_t dqu,
+		DISPATCH_UNUSED bool *allow_resume)
+{
+	DISPATCH_INTERNAL_CRASH(dx_type(dqu._dq), "dq_activate called");
+}
+
+DISPATCH_VTABLE_INSTANCE(queue,
+	// This is the base class for queues, no objects of this type are made
+	.do_type        = _DISPATCH_QUEUE_CLUSTER,
+	.do_dispose     = _dispatch_object_no_dispose,
+	.do_debug       = _dispatch_queue_debug,
+	.do_invoke      = _dispatch_object_no_invoke,
+
+	.dq_activate    = _dispatch_queue_no_activate,
+);
+
+DISPATCH_VTABLE_INSTANCE(workloop,
+	.do_type        = DISPATCH_WORKLOOP_TYPE,
+	.do_dispose     = _dispatch_workloop_dispose,
+	.do_debug       = _dispatch_queue_debug,
+	.do_invoke      = _dispatch_workloop_invoke,
+
+	.dq_activate    = _dispatch_queue_no_activate,
+	.dq_wakeup      = _dispatch_workloop_wakeup,
+	.dq_push        = _dispatch_workloop_push,
+);
+
+DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_serial, lane,
+	.do_type        = DISPATCH_QUEUE_SERIAL_TYPE,
+	.do_dispose     = _dispatch_lane_dispose,
+	.do_debug       = _dispatch_queue_debug,
+	.do_invoke      = _dispatch_lane_invoke,
+
+	.dq_activate    = _dispatch_lane_activate,
+	.dq_wakeup      = _dispatch_lane_wakeup,
+	.dq_push        = _dispatch_lane_push,
+);
+
+DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_concurrent, lane,
+	.do_type        = DISPATCH_QUEUE_CONCURRENT_TYPE,
+	.do_dispose     = _dispatch_lane_dispose,
+	.do_debug       = _dispatch_queue_debug,
+	.do_invoke      = _dispatch_lane_invoke,
+
+	.dq_activate    = _dispatch_lane_activate,
+	.dq_wakeup      = _dispatch_lane_wakeup,
+	.dq_push        = _dispatch_lane_concurrent_push,
+);
+
+DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_global, lane,
+	.do_type        = DISPATCH_QUEUE_GLOBAL_ROOT_TYPE,
+	.do_dispose     = _dispatch_object_no_dispose,
+	.do_debug       = _dispatch_queue_debug,
+	.do_invoke      = _dispatch_object_no_invoke,
+
+	.dq_activate    = _dispatch_queue_no_activate,
+	.dq_wakeup      = _dispatch_root_queue_wakeup,
+	.dq_push        = _dispatch_root_queue_push,
+);
+
+#if DISPATCH_USE_PTHREAD_ROOT_QUEUES
+DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_pthread_root, lane,
+	.do_type        = DISPATCH_QUEUE_PTHREAD_ROOT_TYPE,
+	.do_dispose     = _dispatch_pthread_root_queue_dispose,
+	.do_debug       = _dispatch_queue_debug,
+	.do_invoke      = _dispatch_object_no_invoke,
+
+	.dq_activate    = _dispatch_queue_no_activate,
+	.dq_wakeup      = _dispatch_root_queue_wakeup,
+	.dq_push        = _dispatch_root_queue_push,
+);
+#endif // DISPATCH_USE_PTHREAD_ROOT_QUEUES
+
+DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_mgr, lane,
+	.do_type        = DISPATCH_QUEUE_MGR_TYPE,
+	.do_dispose     = _dispatch_object_no_dispose,
+	.do_debug       = _dispatch_queue_debug,
+#if DISPATCH_USE_MGR_THREAD
+	.do_invoke      = _dispatch_mgr_thread,
+#else
+	.do_invoke      = _dispatch_object_no_invoke,
+#endif
+
+	.dq_activate    = _dispatch_queue_no_activate,
+	.dq_wakeup      = _dispatch_mgr_queue_wakeup,
+	.dq_push        = _dispatch_mgr_queue_push,
+);
+
+DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_main, lane,
+	.do_type        = DISPATCH_QUEUE_MAIN_TYPE,
+	.do_dispose     = _dispatch_lane_dispose,
+	.do_debug       = _dispatch_queue_debug,
+	.do_invoke      = _dispatch_lane_invoke,
+
+	.dq_activate    = _dispatch_queue_no_activate,
+	.dq_wakeup      = _dispatch_main_queue_wakeup,
+	.dq_push        = _dispatch_main_queue_push,
+);
+
+#if DISPATCH_COCOA_COMPAT
+DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_runloop, lane,
+	.do_type        = DISPATCH_QUEUE_RUNLOOP_TYPE,
+	.do_dispose     = _dispatch_runloop_queue_dispose,
+	.do_debug       = _dispatch_queue_debug,
+	.do_invoke      = _dispatch_lane_invoke,
+
+	.dq_activate    = _dispatch_queue_no_activate,
+	.dq_wakeup      = _dispatch_runloop_queue_wakeup,
+	.dq_push        = _dispatch_lane_push,
+);
+#endif
+
 DISPATCH_VTABLE_INSTANCE(source,
-	.do_type = DISPATCH_SOURCE_KEVENT_TYPE,
-	.do_kind = "kevent-source",
-	.do_dispose = _dispatch_source_dispose,
-	.do_suspend = (void *)_dispatch_queue_suspend,
-	.do_resume = (void *)_dispatch_queue_resume,
-	.do_finalize_activation = _dispatch_source_finalize_activation,
-	.do_push = (void *)_dispatch_queue_push,
-	.do_invoke = _dispatch_source_invoke,
-	.do_wakeup = _dispatch_source_wakeup,
-	.do_debug = _dispatch_source_debug,
-	.do_set_targetq = (void *)_dispatch_queue_set_target_queue,
+	.do_type        = DISPATCH_SOURCE_KEVENT_TYPE,
+	.do_dispose     = _dispatch_source_dispose,
+	.do_debug       = _dispatch_source_debug,
+	.do_invoke      = _dispatch_source_invoke,
+
+	.dq_activate    = _dispatch_source_activate,
+	.dq_wakeup      = _dispatch_source_wakeup,
+	.dq_push        = _dispatch_lane_push,
 );
 
 #if HAVE_MACH
 DISPATCH_VTABLE_INSTANCE(mach,
-	.do_type = DISPATCH_MACH_CHANNEL_TYPE,
-	.do_kind = "mach-channel",
-	.do_dispose = _dispatch_mach_dispose,
-	.do_suspend = (void *)_dispatch_queue_suspend,
-	.do_resume = (void *)_dispatch_queue_resume,
-	.do_finalize_activation = _dispatch_mach_finalize_activation,
-	.do_push = (void *)_dispatch_queue_push,
-	.do_invoke = _dispatch_mach_invoke,
-	.do_wakeup = _dispatch_mach_wakeup,
-	.do_debug = _dispatch_mach_debug,
-	.do_set_targetq = (void *)_dispatch_queue_set_target_queue,
-);
+	.do_type        = DISPATCH_MACH_CHANNEL_TYPE,
+	.do_dispose     = _dispatch_mach_dispose,
+	.do_debug       = _dispatch_mach_debug,
+	.do_invoke      = _dispatch_mach_invoke,
 
-DISPATCH_VTABLE_INSTANCE(mach_msg,
-	.do_type = DISPATCH_MACH_MSG_TYPE,
-	.do_kind = "mach-msg",
-	.do_dispose = _dispatch_mach_msg_dispose,
-	.do_invoke = _dispatch_mach_msg_invoke,
-	.do_debug = _dispatch_mach_msg_debug,
+	.dq_activate    = _dispatch_mach_activate,
+	.dq_wakeup      = _dispatch_mach_wakeup,
+	.dq_push        = _dispatch_lane_push,
 );
 #endif // HAVE_MACH
-
-#if !DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
-DISPATCH_VTABLE_INSTANCE(data,
-	.do_type = DISPATCH_DATA_TYPE,
-	.do_kind = "data",
-	.do_dispose = _dispatch_data_dispose,
-	.do_debug = _dispatch_data_debug,
-	.do_set_targetq = (void*)_dispatch_data_set_target_queue,
-);
-#endif
-
-DISPATCH_VTABLE_INSTANCE(io,
-	.do_type = DISPATCH_IO_TYPE,
-	.do_kind = "channel",
-	.do_dispose = _dispatch_io_dispose,
-	.do_debug = _dispatch_io_debug,
-	.do_set_targetq = _dispatch_io_set_target_queue,
-);
-
-DISPATCH_VTABLE_INSTANCE(operation,
-	.do_type = DISPATCH_OPERATION_TYPE,
-	.do_kind = "operation",
-	.do_dispose = _dispatch_operation_dispose,
-	.do_debug = _dispatch_operation_debug,
-);
-
-DISPATCH_VTABLE_INSTANCE(disk,
-	.do_type = DISPATCH_DISK_TYPE,
-	.do_kind = "disk",
-	.do_dispose = _dispatch_disk_dispose,
-);
-
 
 void
 _dispatch_vtable_init(void)
@@ -572,13 +824,13 @@ _dispatch_build_init(void *context DISPATCH_UNUSED)
 	size_t bufsz = sizeof(_dispatch_build);
 
 	sysctl(mib, 2, _dispatch_build, &bufsz, NULL, 0);
-#if TARGET_IPHONE_SIMULATOR
+#if TARGET_OS_SIMULATOR
 	char *sim_version = getenv("SIMULATOR_RUNTIME_BUILD_VERSION");
 	if (sim_version) {
 		(void)strlcat(_dispatch_build, " ", sizeof(_dispatch_build));
 		(void)strlcat(_dispatch_build, sim_version, sizeof(_dispatch_build));
 	}
-#endif // TARGET_IPHONE_SIMULATOR
+#endif // TARGET_OS_SIMULATOR
 
 #else
 	/*
@@ -590,6 +842,22 @@ _dispatch_build_init(void *context DISPATCH_UNUSED)
 
 static dispatch_once_t _dispatch_build_pred;
 
+bool
+_dispatch_parse_bool(const char *v)
+{
+	return strcasecmp(v, "YES") == 0 || strcasecmp(v, "Y") == 0 ||
+			strcasecmp(v, "TRUE") == 0 || atoi(v);
+}
+
+DISPATCH_NOINLINE
+bool
+_dispatch_getenv_bool(const char *env, bool default_v)
+{
+	const char *v = getenv(env);
+
+	return v ? _dispatch_parse_bool(v) : default_v;
+}
+
 char*
 _dispatch_get_build(void)
 {
@@ -597,58 +865,159 @@ _dispatch_get_build(void)
 	return _dispatch_build;
 }
 
-#define _dispatch_bug_log(msg, ...) do { \
-	static void *last_seen; \
-	void *ra = __builtin_return_address(0); \
-	if (last_seen != ra) { \
-		last_seen = ra; \
-		_dispatch_log(msg, ##__VA_ARGS__); \
-	} \
-} while(0)
+#define _dispatch_bug_log_is_repeated() ({ \
+		static void *last_seen; \
+		void *previous = last_seen; \
+		last_seen =__builtin_return_address(0); \
+		last_seen == previous; \
+	})
+
+#if HAVE_OS_FAULT_WITH_PAYLOAD
+__attribute__((__format__(__printf__,2,3)))
+static void
+_dispatch_fault(const char *reason, const char *fmt, ...)
+{
+	char buf[1024];
+	va_list ap;
+
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+
+	if (_dispatch_mode & DISPATCH_MODE_STRICT) {
+#if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+	} else if (!(_dispatch_mode & DISPATCH_MODE_NO_FAULTS)) {
+		os_fault_with_payload(OS_REASON_LIBSYSTEM,
+				OS_REASON_LIBSYSTEM_CODE_FAULT,
+				buf, (uint32_t)strlen(buf) + 1, reason, 0);
+#else
+		(void)reason;
+#endif
+	}
+}
+#else
+#define _dispatch_fault(reason, fmt, ...)
+#endif // HAVE_OS_FAULT_WITH_PAYLOAD
+
+#define _dispatch_log_fault(reason, fmt, ...)  ({ \
+		if (!_dispatch_bug_log_is_repeated()) { \
+			_dispatch_log(fmt, ##__VA_ARGS__); \
+			_dispatch_fault(reason, fmt, ##__VA_ARGS__); \
+			if (_dispatch_mode & DISPATCH_MODE_STRICT) { \
+				DISPATCH_CLIENT_CRASH(0, reason); \
+			} \
+		} \
+	})
 
 void
 _dispatch_bug(size_t line, long val)
 {
 	dispatch_once_f(&_dispatch_build_pred, NULL, _dispatch_build_init);
-	_dispatch_bug_log("BUG in libdispatch: %s - %lu - 0x%lx",
-			_dispatch_build, (unsigned long)line, val);
-}
 
-void
-_dispatch_bug_client(const char* msg)
-{
-	_dispatch_bug_log("BUG in libdispatch client: %s", msg);
+	if (_dispatch_bug_log_is_repeated()) return;
+
+	_dispatch_log("BUG in libdispatch: %s - %lu - 0x%lx",
+			_dispatch_build, (unsigned long)line, val);
 }
 
 #if HAVE_MACH
 void
-_dispatch_bug_mach_client(const char* msg, mach_msg_return_t kr)
+_dispatch_bug_mach_client(const char *msg, mach_msg_return_t kr)
 {
-	_dispatch_bug_log("BUG in libdispatch client: %s %s - 0x%x", msg,
+	_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_mach_client",
+			"BUG in libdispatch client: %s %s - 0x%x", msg,
 			mach_error_string(kr), kr);
 }
 #endif
 
-void
-_dispatch_bug_kevent_client(const char* msg, const char* filter,
-		const char *operation, int err)
+void *
+_dispatch_continuation_get_function_symbol(dispatch_continuation_t dc)
 {
+	if (dc->dc_flags & DC_FLAG_BLOCK_WITH_PRIVATE_DATA) {
+		dispatch_block_private_data_t dpbd = _dispatch_block_get_data(dc->dc_ctxt);
+		return _dispatch_Block_invoke(dpbd->dbpd_block);
+	}
+	if (dc->dc_flags & DC_FLAG_BLOCK) {
+		return _dispatch_Block_invoke(dc->dc_ctxt);
+	}
+	return dc->dc_func;
+}
+
+void
+_dispatch_bug_kevent_client(const char *msg, const char *filter,
+		const char *operation, int err, uint64_t ident, uint64_t udata,
+		dispatch_unote_t du)
+{
+	dispatch_continuation_t dc;
+	dispatch_object_t dou;
+	void *func = NULL;
+
+	if (du._du) {
+		dou._do = _dispatch_wref2ptr(du._du->du_owner_wref);
+		switch (dx_type(dou._do)) {
+		case DISPATCH_SOURCE_KEVENT_TYPE:
+			dc = du._dr->ds_handler[DS_EVENT_HANDLER];
+			if (dc) func = _dispatch_continuation_get_function_symbol(dc);
+			break;
+		case DISPATCH_MACH_CHANNEL_TYPE:
+			func = du._dmrr->dmrr_handler_func;
+			break;
+		}
+		filter = dux_type(du._du)->dst_kind;
+	}
+
 	if (operation && err) {
-		_dispatch_bug_log("BUG in libdispatch client: %s[%s] %s: \"%s\" - 0x%x",
-				msg, filter, operation, strerror(err), err);
+		_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_kevent_client",
+				"BUG in libdispatch client: %s %s: \"%s\" - 0x%x "
+				"{ 0x%llx[%s], ident: %lld / 0x%llx, handler: %p }",
+				msg, operation, strerror(err), err,
+				udata, filter, ident, ident, func);
 	} else if (operation) {
-		_dispatch_bug_log("BUG in libdispatch client: %s[%s] %s",
-				msg, filter, operation);
+		_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_kevent_client",
+				"BUG in libdispatch client: %s %s"
+				"{ 0x%llx[%s], ident: %lld / 0x%llx, handler: %p }",
+				msg, operation, udata, filter, ident, ident, func);
 	} else {
-		_dispatch_bug_log("BUG in libdispatch: %s[%s]: \"%s\" - 0x%x",
-				msg, filter, strerror(err), err);
+		_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_kevent_client",
+				"BUG in libdispatch: %s: \"%s\" - 0x%x"
+				"{ 0x%llx[%s], ident: %lld / 0x%llx, handler: %p }",
+				msg, strerror(err), err, udata, filter, ident, ident, func);
 	}
 }
 
 void
+_dispatch_bug_kevent_vanished(dispatch_unote_t du)
+{
+	dispatch_continuation_t dc;
+	dispatch_object_t dou;
+	void *func = NULL;
+
+	dou._do = _dispatch_wref2ptr(du._du->du_owner_wref);
+	switch (dx_type(dou._do)) {
+	case DISPATCH_SOURCE_KEVENT_TYPE:
+		dc = du._dr->ds_handler[DS_EVENT_HANDLER];
+		if (dc) func = _dispatch_continuation_get_function_symbol(dc);
+		break;
+	case DISPATCH_MACH_CHANNEL_TYPE:
+		func = du._dmrr->dmrr_handler_func;
+		break;
+	}
+	_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_kevent_vanished",
+			"BUG in libdispatch client: %s, monitored resource vanished before "
+			"the source cancel handler was invoked "
+			"{ %p[%s], ident: %d / 0x%x, handler: %p }",
+			dux_type(du._du)->dst_kind, dou._dq,
+			dou._dq->dq_label ? dou._dq->dq_label : "<unknown>",
+			du._du->du_ident, du._du->du_ident, func);
+}
+
+DISPATCH_NOINLINE DISPATCH_WEAK
+void
 _dispatch_bug_deprecated(const char *msg)
 {
-	_dispatch_bug_log("DEPRECATED USE in libdispatch client: %s", msg);
+	_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_deprecated",
+			"DEPRECATED USE in libdispatch client: %s; "
+			"set a breakpoint on _dispatch_bug_deprecated to debug", msg);
 }
 
 void
@@ -705,7 +1074,7 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 			struct timeval tv;
 			gettimeofday(&tv, NULL);
 #if DISPATCH_DEBUG
-			dispatch_log_basetime = _dispatch_absolute_time();
+			dispatch_log_basetime = _dispatch_uptime();
 #endif
 			dprintf(dispatch_logfile, "=== log file opened for %s[%u] at "
 					"%ld.%06u ===\n", getprogname() ?: "", getpid(),
@@ -722,7 +1091,7 @@ _dispatch_log_file(char *buf, size_t len)
 	buf[len++] = '\n';
 retry:
 	r = write(dispatch_logfile, buf, len);
-	if (slowpath(r == -1) && errno == EINTR) {
+	if (unlikely(r == -1) && errno == EINTR) {
 		goto retry;
 	}
 }
@@ -737,7 +1106,7 @@ _dispatch_logv_file(const char *msg, va_list ap)
 
 #if DISPATCH_DEBUG
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "%llu\t",
-			_dispatch_absolute_time() - dispatch_log_basetime);
+			_dispatch_uptime() - dispatch_log_basetime);
 #endif
 	r = vsnprintf(&buf[offset], bufsiz - offset, msg, ap);
 	if (r < 0) return;
@@ -759,7 +1128,7 @@ static inline void
 _dispatch_vsyslog(const char *msg, va_list ap)
 {
 	char *str;
-    vasprintf(&str, msg, ap);
+	vasprintf(&str, msg, ap);
 	if (str) {
 		_dispatch_syslog(str);
 		free(str);
@@ -784,10 +1153,10 @@ static inline void
 _dispatch_logv(const char *msg, size_t len, va_list *ap_ptr)
 {
 	dispatch_once_f(&_dispatch_logv_pred, NULL, _dispatch_logv_init);
-	if (slowpath(dispatch_log_disabled)) {
+	if (unlikely(dispatch_log_disabled)) {
 		return;
 	}
-	if (slowpath(dispatch_logfile != -1)) {
+	if (unlikely(dispatch_logfile != -1)) {
 		if (!ap_ptr) {
 			return _dispatch_log_file((char*)msg, len);
 		}
@@ -819,10 +1188,7 @@ static size_t
 _dispatch_object_debug2(dispatch_object_t dou, char* buf, size_t bufsiz)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_debug, dou, buf, bufsiz);
-	if (dx_vtable(dou._do)->do_debug) {
-		return dx_debug(dou._do, buf, bufsiz);
-	}
-	return strlcpy(buf, "NULL vtable slot: ", bufsiz);
+	return dx_debug(dou._do, buf, bufsiz);
 }
 
 DISPATCH_NOINLINE
@@ -834,7 +1200,7 @@ _dispatch_debugv(dispatch_object_t dou, const char *msg, va_list ap)
 	int r;
 #if DISPATCH_DEBUG && !DISPATCH_USE_OS_DEBUG_LOG
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "%llu\t\t%p\t",
-			_dispatch_absolute_time() - dispatch_log_basetime,
+			_dispatch_uptime() - dispatch_log_basetime,
 			(void *)_dispatch_thread_self());
 #endif
 	if (dou._do) {
@@ -904,7 +1270,7 @@ void *
 _dispatch_calloc(size_t num_items, size_t size)
 {
 	void *buf;
-	while (!fastpath(buf = calloc(num_items, size))) {
+	while (unlikely(!(buf = calloc(num_items, size)))) {
 		_dispatch_temporary_resource_shortage();
 	}
 	return buf;
@@ -919,7 +1285,7 @@ _dispatch_strdup_if_mutable(const char *str)
 {
 #if HAVE_DYLD_IS_MEMORY_IMMUTABLE
 	size_t size = strlen(str) + 1;
-	if (slowpath(!_dyld_is_memory_immutable(str, size))) {
+	if (unlikely(!_dyld_is_memory_immutable(str, size))) {
 		char *clone = (char *) malloc(size);
 		if (dispatch_assume(clone)) {
 			memcpy(clone, str, size);
@@ -942,8 +1308,8 @@ void *
 {
 	dispatch_block_t rval;
 
-	if (fastpath(db)) {
-		while (!fastpath(rval = Block_copy(db))) {
+	if (likely(db)) {
+		while (unlikely(!(rval = Block_copy(db)))) {
 			_dispatch_temporary_resource_shortage();
 		}
 		return rval;
@@ -982,7 +1348,7 @@ _dispatch_client_callout(void *ctxt, dispatch_function_t f)
 {
 	_dispatch_get_tsd_base();
 	void *u = _dispatch_get_unwind_tsd();
-	if (fastpath(!u)) return f(ctxt);
+	if (likely(!u)) return f(ctxt);
 	_dispatch_set_unwind_tsd(NULL);
 	f(ctxt);
 	_dispatch_free_unwind_tsd();
@@ -996,7 +1362,7 @@ _dispatch_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 {
 	_dispatch_get_tsd_base();
 	void *u = _dispatch_get_unwind_tsd();
-	if (fastpath(!u)) return f(ctxt, i);
+	if (likely(!u)) return f(ctxt, i);
 	_dispatch_set_unwind_tsd(NULL);
 	f(ctxt, i);
 	_dispatch_free_unwind_tsd();
@@ -1013,7 +1379,7 @@ _dispatch_client_callout3(void *ctxt, dispatch_mach_reason_t reason,
 {
 	_dispatch_get_tsd_base();
 	void *u = _dispatch_get_unwind_tsd();
-	if (fastpath(!u)) return f(ctxt, reason, dmsg);
+	if (likely(!u)) return f(ctxt, reason, dmsg);
 	_dispatch_set_unwind_tsd(NULL);
 	f(ctxt, reason, dmsg);
 	_dispatch_free_unwind_tsd();
@@ -1028,7 +1394,7 @@ _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 {
 	_dispatch_get_tsd_base();
 	void *u = _dispatch_get_unwind_tsd();
-	if (fastpath(!u)) return f(ctxt, reason, dmsg, error);
+	if (likely(!u)) return f(ctxt, reason, dmsg, error);
 	_dispatch_set_unwind_tsd(NULL);
 	f(ctxt, reason, dmsg, error);
 	_dispatch_free_unwind_tsd();
@@ -1056,7 +1422,7 @@ _os_object_alloc_realized(const void *cls, size_t size)
 {
 	_os_object_t obj;
 	dispatch_assert(size >= sizeof(struct _os_object_s));
-	while (!fastpath(obj = calloc(1u, size))) {
+	while (unlikely(!(obj = calloc(1u, size)))) {
 		_dispatch_temporary_resource_shortage();
 	}
 	obj->os_obj_isa = cls;
@@ -1081,7 +1447,7 @@ void
 _os_object_xref_dispose(_os_object_t obj)
 {
 	_os_object_xrefcnt_dispose_barrier(obj);
-	if (fastpath(obj->os_obj_isa->_os_obj_xref_dispose)) {
+	if (likely(obj->os_obj_isa->_os_obj_xref_dispose)) {
 		return obj->os_obj_isa->_os_obj_xref_dispose(obj);
 	}
 	return _os_object_release_internal(obj);
@@ -1091,7 +1457,7 @@ void
 _os_object_dispose(_os_object_t obj)
 {
 	_os_object_refcnt_dispose_barrier(obj);
-	if (fastpath(obj->os_obj_isa->_os_obj_dispose)) {
+	if (likely(obj->os_obj_isa->_os_obj_dispose)) {
 		return obj->os_obj_isa->_os_obj_dispose(obj);
 	}
 	return _os_object_dealloc(obj);
@@ -1100,7 +1466,7 @@ _os_object_dispose(_os_object_t obj)
 void*
 os_retain(void *obj)
 {
-	if (fastpath(obj)) {
+	if (likely(obj)) {
 		return _os_object_retain(obj);
 	}
 	return obj;
@@ -1110,7 +1476,7 @@ os_retain(void *obj)
 void
 os_release(void *obj)
 {
-	if (fastpath(obj)) {
+	if (likely(obj)) {
 		return _os_object_release(obj);
 	}
 }
@@ -1232,5 +1598,62 @@ _dispatch_mach_notify_send_once(mach_port_t notify DISPATCH_UNUSED)
 #endif
 	return KERN_SUCCESS;
 }
+
+#endif // HAVE_MACH
+#pragma mark -
+#pragma mark dispatch to XPC callbacks
+#if HAVE_MACH
+
+// Default dmxh_direct_message_handler callback that does not handle
+// messages inline.
+static bool
+_dispatch_mach_xpc_no_handle_message(
+		void *_Nullable context DISPATCH_UNUSED,
+		dispatch_mach_reason_t reason DISPATCH_UNUSED,
+		dispatch_mach_msg_t message DISPATCH_UNUSED,
+		mach_error_t error DISPATCH_UNUSED)
+{
+	return false;
+}
+
+// Default dmxh_msg_context_reply_queue callback that returns a NULL queue.
+static dispatch_queue_t
+_dispatch_mach_msg_context_no_async_reply_queue(
+		void *_Nonnull msg_context DISPATCH_UNUSED)
+{
+	return NULL;
+}
+
+// Default dmxh_async_reply_handler callback that crashes when called.
+DISPATCH_NORETURN
+static void
+_dispatch_mach_default_async_reply_handler(void *context DISPATCH_UNUSED,
+		dispatch_mach_reason_t reason DISPATCH_UNUSED,
+		dispatch_mach_msg_t message DISPATCH_UNUSED)
+{
+	DISPATCH_CLIENT_CRASH(_dispatch_mach_xpc_hooks,
+			"_dispatch_mach_default_async_reply_handler called");
+}
+
+// Default dmxh_enable_sigterm_notification callback that enables delivery of
+// SIGTERM notifications (for backwards compatibility).
+static bool
+_dispatch_mach_enable_sigterm(void *_Nullable context DISPATCH_UNUSED)
+{
+	return true;
+}
+
+// Callbacks from dispatch to XPC. The default is to not support any callbacks.
+const struct dispatch_mach_xpc_hooks_s _dispatch_mach_xpc_hooks_default = {
+	.version = DISPATCH_MACH_XPC_HOOKS_VERSION,
+	.dmxh_direct_message_handler = &_dispatch_mach_xpc_no_handle_message,
+	.dmxh_msg_context_reply_queue =
+			&_dispatch_mach_msg_context_no_async_reply_queue,
+	.dmxh_async_reply_handler = &_dispatch_mach_default_async_reply_handler,
+	.dmxh_enable_sigterm_notification = &_dispatch_mach_enable_sigterm,
+};
+
+dispatch_mach_xpc_hooks_t _dispatch_mach_xpc_hooks =
+		&_dispatch_mach_xpc_hooks_default;
 
 #endif // HAVE_MACH

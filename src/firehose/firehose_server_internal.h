@@ -21,7 +21,7 @@
 #ifndef __FIREHOSE_SERVER_INTERNAL__
 #define __FIREHOSE_SERVER_INTERNAL__
 
-OS_OBJECT_CLASS_DECL(firehose_client, object);
+OS_OBJECT_CLASS_DECL(firehose_client);
 #define FIREHOSE_CLIENT_CLASS OS_OBJECT_VTABLE(firehose_client)
 
 typedef struct firehose_snapshot_s *firehose_snapshot_t;
@@ -57,25 +57,26 @@ struct firehose_client_s {
 #define FC_STATE_IO_CANCELED            0x0200
 #define FC_STATE_CANCELED_MASK          0x0300
 
-	uintptr_t volatile	fc_state;
-
 	void *volatile		fc_ctxt;
 
 	union {
-		dispatch_mach_t	fc_mach_channel;
+		dispatch_mach_t	fc_mach_channel[FIREHOSE_BUFFER_NPUSHPORTS];
 		dispatch_source_t fc_kernel_source;
 	};
-	mach_port_t			fc_recvp;
+	mach_port_t			fc_recvp[FIREHOSE_BUFFER_NPUSHPORTS];
 	mach_port_t			fc_sendp;
 	os_unfair_lock      fc_lock;
 	pid_t				fc_pid;
 	int					fc_pidversion;
 	uid_t				fc_euid;
-	bool				fc_use_notifs;
-	bool				fc_memory_corrupted;
-	bool				fc_needs_io_snapshot;
-	bool				fc_needs_mem_snapshot;
-	bool				fc_quarantined;
+	os_atomic(uint16_t)	fc_state;
+	os_atomic(uint8_t)	fc_mach_channel_refcnt;
+	// These bits are mutated from different locking domains, and so cannot be
+	// safely consolidated into a bit-field.
+	bool volatile		fc_memory_corrupted;
+	bool volatile		fc_needs_io_snapshot;
+	bool volatile		fc_needs_mem_snapshot;
+	bool volatile		fc_quarantined;
 };
 
 void

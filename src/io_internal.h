@@ -34,7 +34,7 @@
 
 #define _DISPATCH_IO_LABEL_SIZE 16
 
-#if TARGET_OS_EMBEDDED // rdar://problem/9032036
+#if TARGET_OS_IPHONE // rdar://problem/9032036
 #define DIO_MAX_CHUNK_SIZE				(512u * 1024)
 #define DIO_HASH_SIZE					64u  // must be a power of two
 #else
@@ -66,8 +66,8 @@ typedef unsigned int dispatch_op_flags_t;
 #define DIO_CLOSED		1u // channel has been closed
 #define DIO_STOPPED		2u // channel has been stopped (implies closed)
 
-DISPATCH_INTERNAL_CLASS_DECL(operation);
-DISPATCH_INTERNAL_CLASS_DECL(disk);
+DISPATCH_INTERNAL_CLASS_DECL(operation, OBJECT);
+DISPATCH_INTERNAL_CLASS_DECL(disk, OBJECT);
 
 struct dispatch_stream_s {
 	dispatch_queue_t dq;
@@ -105,7 +105,7 @@ struct dispatch_disk_s {
 	size_t advise_idx;
 	dev_t dev;
 	bool io_active;
-	TAILQ_ENTRY(dispatch_disk_s) disk_list;
+	LIST_ENTRY(dispatch_disk_s) disk_list;
 	size_t advise_list_depth;
 	dispatch_operation_t advise_list[];
 };
@@ -127,7 +127,7 @@ struct dispatch_fd_entry_s {
 	dispatch_group_t barrier_group;
 	dispatch_io_t convenience_channel;
 	TAILQ_HEAD(, dispatch_operation_s) stream_ops;
-	TAILQ_ENTRY(dispatch_fd_entry_s) fd_list;
+	LIST_ENTRY(dispatch_fd_entry_s) fd_list;
 };
 
 typedef struct dispatch_fd_entry_s *dispatch_fd_entry_t;
@@ -163,7 +163,7 @@ struct dispatch_operation_s {
 	TAILQ_ENTRY(dispatch_operation_s) stream_list;
 };
 
-DISPATCH_CLASS_DECL(io);
+DISPATCH_CLASS_DECL(io, OBJECT);
 struct dispatch_io_s {
 	DISPATCH_OBJECT_HEADER(io);
 	dispatch_queue_t queue, barrier_queue;

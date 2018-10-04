@@ -38,21 +38,23 @@
 #define DISPATCH_EPOLL_MAX_EVENT_COUNT 16
 
 enum {
-	DISPATCH_EPOLL_EVENTFD    = 0x0001,
-	DISPATCH_EPOLL_CLOCK_WALL = 0x0002,
-	DISPATCH_EPOLL_CLOCK_MACH = 0x0003,
+	DISPATCH_EPOLL_EVENTFD         = 0x0001,
+	DISPATCH_EPOLL_CLOCK_WALL      = 0x0002,
+	DISPATCH_EPOLL_CLOCK_UPTIME    = 0x0003,
+	DISPATCH_EPOLL_CLOCK_MONOTONIC = 0x0004,
 };
 
 typedef struct dispatch_muxnote_s {
-	TAILQ_ENTRY(dispatch_muxnote_s) dmn_list;
-	TAILQ_HEAD(, dispatch_unote_linkage_s) dmn_readers_head;
-	TAILQ_HEAD(, dispatch_unote_linkage_s) dmn_writers_head;
-	int     dmn_fd;
-	uint32_t dmn_ident;
-	uint32_t dmn_events;
-	int16_t dmn_filter;
-	bool    dmn_skip_outq_ioctl;
-	bool    dmn_skip_inq_ioctl;
+	LIST_ENTRY(dispatch_muxnote_s) dmn_list;
+	LIST_HEAD(, dispatch_unote_linkage_s) dmn_readers_head;
+	LIST_HEAD(, dispatch_unote_linkage_s) dmn_writers_head;
+	int       dmn_fd;
+	uint32_t  dmn_ident;
+	uint32_t  dmn_events;
+	uint16_t  dmn_disarmed_events;
+	int8_t    dmn_filter;
+	bool      dmn_skip_outq_ioctl : 1;
+	bool      dmn_skip_inq_ioctl : 1;
 } *dispatch_muxnote_t;
 
 typedef struct dispatch_epoll_timeout_s {
@@ -67,8 +69,7 @@ static int _dispatch_epfd, _dispatch_eventfd;
 static dispatch_once_t epoll_init_pred;
 static void _dispatch_epoll_init(void *);
 
-DISPATCH_CACHELINE_ALIGN
-static TAILQ_HEAD(dispatch_muxnote_bucket_s, dispatch_muxnote_s)
+static LIST_HEAD(dispatch_muxnote_bucket_s, dispatch_muxnote_s)
 _dispatch_sources[DSL_HASH_SIZE];
 
 #define DISPATCH_EPOLL_TIMEOUT_INITIALIZER(clock) \
@@ -78,10 +79,18 @@ _dispatch_sources[DSL_HASH_SIZE];
 	}
 static struct dispatch_epoll_timeout_s _dispatch_epoll_timeout[] = {
 	DISPATCH_EPOLL_TIMEOUT_INITIALIZER(WALL),
-	DISPATCH_EPOLL_TIMEOUT_INITIALIZER(MACH),
+	DISPATCH_EPOLL_TIMEOUT_INITIALIZER(UPTIME),
+	DISPATCH_EPOLL_TIMEOUT_INITIALIZER(MONOTONIC),
 };
 
 #pragma mark dispatch_muxnote_t
+
+DISPATCH_ALWAYS_INLINE
+static inline uint32_t
+_dispatch_muxnote_armed_events(dispatch_muxnote_t dmn)
+{
+	return dmn->dmn_events & ~dmn->dmn_disarmed_events;
+}
 
 DISPATCH_ALWAYS_INLINE
 static inline struct dispatch_muxnote_bucket_s *
@@ -95,11 +104,11 @@ _dispatch_muxnote_bucket(uint32_t ident)
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_muxnote_t
 _dispatch_muxnote_find(struct dispatch_muxnote_bucket_s *dmb,
-		uint32_t ident, int16_t filter)
+		uint32_t ident, int8_t filter)
 {
 	dispatch_muxnote_t dmn;
 	if (filter == EVFILT_WRITE) filter = EVFILT_READ;
-	TAILQ_FOREACH(dmn, dmb, dmn_list) {
+	LIST_FOREACH(dmn, dmb, dmn_list) {
 		if (dmn->dmn_ident == ident && dmn->dmn_filter == filter) {
 			break;
 		}
@@ -143,7 +152,7 @@ _dispatch_muxnote_create(dispatch_unote_t du, uint32_t events)
 	dispatch_muxnote_t dmn;
 	struct stat sb;
 	int fd = (int)du._du->du_ident;
-	int16_t filter = du._du->du_filter;
+	int8_t filter = du._du->du_filter;
 	bool skip_outq_ioctl = false, skip_inq_ioctl = false;
 	sigset_t sigmask;
 
@@ -193,8 +202,8 @@ _dispatch_muxnote_create(dispatch_unote_t du, uint32_t events)
 	}
 
 	dmn = _dispatch_calloc(1, sizeof(struct dispatch_muxnote_s));
-	TAILQ_INIT(&dmn->dmn_readers_head);
-	TAILQ_INIT(&dmn->dmn_writers_head);
+	LIST_INIT(&dmn->dmn_readers_head);
+	LIST_INIT(&dmn->dmn_writers_head);
 	dmn->dmn_fd = fd;
 	dmn->dmn_ident = du._du->du_ident;
 	dmn->dmn_filter = filter;
@@ -207,33 +216,27 @@ _dispatch_muxnote_create(dispatch_unote_t du, uint32_t events)
 #pragma mark dispatch_unote_t
 
 static int
-_dispatch_epoll_update(dispatch_muxnote_t dmn, int op)
+_dispatch_epoll_update(dispatch_muxnote_t dmn, uint32_t events, int op)
 {
 	dispatch_once_f(&epoll_init_pred, NULL, _dispatch_epoll_init);
 	struct epoll_event ev = {
-		.events = dmn->dmn_events,
+		.events = events,
 		.data = { .ptr = dmn },
 	};
 	return epoll_ctl(_dispatch_epfd, op, dmn->dmn_fd, &ev);
 }
 
-bool
-_dispatch_unote_register(dispatch_unote_t du,
-		DISPATCH_UNUSED dispatch_wlh_t wlh, dispatch_priority_t pri)
+DISPATCH_ALWAYS_INLINE
+static inline uint32_t
+_dispatch_unote_required_events(dispatch_unote_t du)
 {
-	struct dispatch_muxnote_bucket_s *dmb;
-	dispatch_muxnote_t dmn;
 	uint32_t events = EPOLLFREE;
-
-	dispatch_assert(!_dispatch_unote_registered(du));
-	du._du->du_priority = pri;
 
 	switch (du._du->du_filter) {
 	case DISPATCH_EVFILT_CUSTOM_ADD:
 	case DISPATCH_EVFILT_CUSTOM_OR:
 	case DISPATCH_EVFILT_CUSTOM_REPLACE:
-		du._du->du_wlh = DISPATCH_WLH_ANON;
-		return true;
+		return 0;
 	case EVFILT_WRITE:
 		events |= EPOLLOUT;
 		break;
@@ -242,97 +245,112 @@ _dispatch_unote_register(dispatch_unote_t du,
 		break;
 	}
 
-	if (du._du->du_type->dst_flags & EV_DISPATCH) {
+	if (dux_type(du._du)->dst_flags & EV_DISPATCH) {
 		events |= EPOLLONESHOT;
 	}
+
+	return events;
+}
+
+bool
+_dispatch_unote_register_muxed(dispatch_unote_t du)
+{
+	struct dispatch_muxnote_bucket_s *dmb;
+	dispatch_muxnote_t dmn;
+	uint32_t events;
+
+	events = _dispatch_unote_required_events(du);
+	du._du->du_priority = pri;
 
 	dmb = _dispatch_unote_muxnote_bucket(du);
 	dmn = _dispatch_unote_muxnote_find(dmb, du);
 	if (dmn) {
-		events &= ~dmn->dmn_events;
-		if (events) {
-			dmn->dmn_events |= events;
-			if (_dispatch_epoll_update(dmn, EPOLL_CTL_MOD) < 0) {
-				dmn->dmn_events &= ~events;
+		if (events & ~_dispatch_muxnote_armed_events(dmn)) {
+			events |= _dispatch_muxnote_armed_events(dmn);
+			if (_dispatch_epoll_update(dmn, events, EPOLL_CTL_MOD) < 0) {
 				dmn = NULL;
+			} else {
+				dmn->dmn_events |= events;
+				dmn->dmn_disarmed_events &= ~events;
 			}
 		}
 	} else {
 		dmn = _dispatch_muxnote_create(du, events);
-		if (_dispatch_epoll_update(dmn, EPOLL_CTL_ADD) < 0) {
-			_dispatch_muxnote_dispose(dmn);
-			dmn = NULL;
-		} else {
-			TAILQ_INSERT_TAIL(dmb, dmn, dmn_list);
+		if (dmn) {
+			if (_dispatch_epoll_update(dmn, events, EPOLL_CTL_ADD) < 0) {
+				_dispatch_muxnote_dispose(dmn);
+				dmn = NULL;
+			} else {
+				LIST_INSERT_HEAD(dmb, dmn, dmn_list);
+			}
 		}
 	}
 
 	if (dmn) {
 		dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
 		if (events & EPOLLOUT) {
-			TAILQ_INSERT_TAIL(&dmn->dmn_writers_head, dul, du_link);
+			LIST_INSERT_HEAD(&dmn->dmn_writers_head, dul, du_link);
 		} else {
-			TAILQ_INSERT_TAIL(&dmn->dmn_readers_head, dul, du_link);
+			LIST_INSERT_HEAD(&dmn->dmn_readers_head, dul, du_link);
 		}
 		dul->du_muxnote = dmn;
-		dispatch_assert(du._du->du_wlh == NULL);
-		du._du->du_wlh = DISPATCH_WLH_ANON;
+		_dispatch_unote_state_set(du, DISPATCH_WLH_ANON, DU_STATE_ARMED);
 	}
 	return dmn != NULL;
 }
 
 void
-_dispatch_unote_resume(dispatch_unote_t du)
+_dispatch_unote_resume_muxed(dispatch_unote_t du)
 {
 	dispatch_muxnote_t dmn = _dispatch_unote_get_linkage(du)->du_muxnote;
 	dispatch_assert(_dispatch_unote_registered(du));
+	uint32_t events = _dispatch_unote_required_events(du);
 
-	_dispatch_epoll_update(dmn, EPOLL_CTL_MOD);
+	if (events & dmn->dmn_disarmed_events) {
+		dmn->dmn_disarmed_events &= ~events;
+		events = _dispatch_muxnote_armed_events(dmn);
+		_dispatch_epoll_update(dmn, events, EPOLL_CTL_MOD);
+	}
 }
 
 bool
-_dispatch_unote_unregister(dispatch_unote_t du, DISPATCH_UNUSED uint32_t flags)
+_dispatch_unote_unregister_muxed(dispatch_unote_t du)
 {
-	switch (du._du->du_filter) {
-	case DISPATCH_EVFILT_CUSTOM_ADD:
-	case DISPATCH_EVFILT_CUSTOM_OR:
-	case DISPATCH_EVFILT_CUSTOM_REPLACE:
-		du._du->du_wlh = NULL;
-		return true;
+	dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
+	dispatch_muxnote_t dmn = dul->du_muxnote;
+	uint32_t events = dmn->dmn_events;
+
+	LIST_REMOVE(dul, du_link);
+	_LIST_TRASH_ENTRY(dul, du_link);
+	dul->du_muxnote = NULL;
+
+	if (LIST_EMPTY(&dmn->dmn_readers_head)) {
+		events &= (uint32_t)~EPOLLIN;
+		if (dmn->dmn_disarmed_events & EPOLLIN) {
+			dmn->dmn_disarmed_events &= (uint16_t)~EPOLLIN;
+			dmn->dmn_events &= (uint32_t)~EPOLLIN;
+		}
 	}
-	if (_dispatch_unote_registered(du)) {
-		dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
-		dispatch_muxnote_t dmn = dul->du_muxnote;
-		uint32_t events = dmn->dmn_events;
-
-		if (du._du->du_filter == EVFILT_WRITE) {
-			TAILQ_REMOVE(&dmn->dmn_writers_head, dul, du_link);
-		} else {
-			TAILQ_REMOVE(&dmn->dmn_readers_head, dul, du_link);
+	if (LIST_EMPTY(&dmn->dmn_writers_head)) {
+		events &= (uint32_t)~EPOLLOUT;
+		if (dmn->dmn_disarmed_events & EPOLLOUT) {
+			dmn->dmn_disarmed_events &= (uint16_t)~EPOLLOUT;
+			dmn->dmn_events &= (uint32_t)~EPOLLOUT;
 		}
-		_TAILQ_TRASH_ENTRY(dul, du_link);
-		dul->du_muxnote = NULL;
+	}
 
-		if (TAILQ_EMPTY(&dmn->dmn_readers_head)) {
-			events &= (uint32_t)(~EPOLLIN);
-		}
-		if (TAILQ_EMPTY(&dmn->dmn_writers_head)) {
-			events &= (uint32_t)(~EPOLLOUT);
-		}
-
-		if (events == dmn->dmn_events) {
-			// nothing to do
-		} else if (events & (EPOLLIN | EPOLLOUT)) {
+	if (events & (EPOLLIN | EPOLLOUT)) {
+		if (events != _dispatch_muxnote_armed_events(dmn)) {
 			dmn->dmn_events = events;
-			_dispatch_epoll_update(dmn, EPOLL_CTL_MOD);
-		} else {
-			epoll_ctl(_dispatch_epfd, EPOLL_CTL_DEL, dmn->dmn_fd, NULL);
-			TAILQ_REMOVE(_dispatch_unote_muxnote_bucket(du), dmn, dmn_list);
-			_dispatch_muxnote_dispose(dmn);
+			events = _dispatch_muxnote_armed_events(dmn);
+			_dispatch_epoll_update(dmn, events, EPOLL_CTL_MOD);
 		}
-		dispatch_assert(du._du->du_wlh == DISPATCH_WLH_ANON);
-		du._du->du_wlh = NULL;
+	} else {
+		epoll_ctl(_dispatch_epfd, EPOLL_CTL_DEL, dmn->dmn_fd, NULL);
+		LIST_REMOVE(dmn, dmn_list);
+		_dispatch_muxnote_dispose(dmn);
 	}
+	_dispatch_unote_state_set(du, DU_STATE_UNREGISTERED);
 	return true;
 }
 
@@ -341,13 +359,14 @@ _dispatch_unote_unregister(dispatch_unote_t du, DISPATCH_UNUSED uint32_t flags)
 static void
 _dispatch_event_merge_timer(dispatch_clock_t clock)
 {
-	_dispatch_timers_expired = true;
-	_dispatch_timers_processing_mask |= 1 << DISPATCH_TIMER_INDEX(clock, 0);
-#if DISPATCH_USE_DTRACE
-	_dispatch_timers_will_wake |= 1 << 0;
-#endif
+	dispatch_timer_heap_t dth = _dispatch_timers_heap;
+	uint32_t tidx = DISPATCH_TIMER_INDEX(clock, 0);
+
 	_dispatch_epoll_timeout[clock].det_armed = false;
-	_dispatch_timers_heap[clock].dth_flags &= ~DTH_ARMED;
+
+	_dispatch_timers_heap_dirty(dth, tidx);
+	dth[tidx].dth_needs_program = true;
+	dth[tidx].dth_armed = false;
 }
 
 static void
@@ -370,8 +389,11 @@ _dispatch_timeout_program(uint32_t tidx, uint64_t target,
 		clockid_t clockid;
 		int fd;
 		switch (DISPATCH_TIMER_CLOCK(tidx)) {
-		case DISPATCH_CLOCK_MACH:
+		case DISPATCH_CLOCK_UPTIME:
 			clockid = CLOCK_MONOTONIC;
+			break;
+		case DISPATCH_CLOCK_MONOTONIC:
+			clockid = CLOCK_BOOTTIME;
 			break;
 		case DISPATCH_CLOCK_WALL:
 			clockid = CLOCK_REALTIME;
@@ -406,19 +428,17 @@ _dispatch_timeout_program(uint32_t tidx, uint64_t target,
 }
 
 void
-_dispatch_event_loop_timer_arm(uint32_t tidx, dispatch_timer_delay_s range,
-		dispatch_clock_now_cache_t nows)
+_dispatch_event_loop_timer_arm(dispatch_timer_heap_t dth, uint32_t tidx,
+		dispatch_timer_delay_s range, dispatch_clock_now_cache_t nows)
 {
-	uint64_t target = range.delay;
-	target += _dispatch_time_now_cached(DISPATCH_TIMER_CLOCK(tidx), nows);
-	_dispatch_timers_heap[tidx].dth_flags |= DTH_ARMED;
+	dispatch_clock_t clock = DISPATCH_TIMER_CLOCK(tidx);
+	uint64_t target = range.delay + _dispatch_time_now_cached(clock, nows);
 	_dispatch_timeout_program(tidx, target, range.leeway);
 }
 
 void
-_dispatch_event_loop_timer_delete(uint32_t tidx)
+_dispatch_event_loop_timer_delete(dispatch_timer_heap_t dth, uint32_t tidx)
 {
-	_dispatch_timers_heap[tidx].dth_flags &= ~DTH_ARMED;
 	_dispatch_timeout_program(tidx, UINT64_MAX, UINT64_MAX);
 }
 
@@ -433,11 +453,6 @@ static void
 _dispatch_epoll_init(void *context DISPATCH_UNUSED)
 {
 	_dispatch_fork_becomes_unsafe();
-
-	unsigned int i;
-	for (i = 0; i < DSL_HASH_SIZE; i++) {
-		TAILQ_INIT(&_dispatch_sources[i]);
-	}
 
 	_dispatch_epfd = epoll_create1(EPOLL_CLOEXEC);
 	if (_dispatch_epfd < 0) {
@@ -459,6 +474,7 @@ _dispatch_epoll_init(void *context DISPATCH_UNUSED)
 	}
 
 #if DISPATCH_USE_MGR_THREAD
+	_dispatch_trace_item_push(_dispatch_mgr_q.do_targetq, &_dispatch_mgr_q);
 	dx_push(_dispatch_mgr_q.do_targetq, &_dispatch_mgr_q, 0);
 #endif
 }
@@ -488,9 +504,13 @@ _dispatch_event_merge_signal(dispatch_muxnote_t dmn)
 	// will kick in, the thread with the wrong mask will be fixed up, and the
 	// signal delivered to us again properly.
 	if ((rc = read(dmn->dmn_fd, &si, sizeof(si))) == sizeof(si)) {
-		TAILQ_FOREACH_SAFE(dul, &dmn->dmn_readers_head, du_link, dul_next) {
+		LIST_FOREACH_SAFE(dul, &dmn->dmn_readers_head, du_link, dul_next) {
 			dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
-			dux_merge_evt(du._du, EV_ADD|EV_ENABLE|EV_CLEAR, 1, 0, 0);
+			// consumed by dux_merge_evt()
+			_dispatch_retain_unote_owner(du);
+			dispatch_assert(!dux_needs_rearm(du._du));
+			os_atomic_store2o(du._dr, ds_pending_data, 1, relaxed)
+			dux_merge_evt(du._du, EV_ADD|EV_ENABLE|EV_CLEAR, 1, 0);
 		}
 	} else {
 		dispatch_assume(rc == -1 && errno == EAGAIN);
@@ -533,21 +553,36 @@ _dispatch_event_merge_fd(dispatch_muxnote_t dmn, uint32_t events)
 	dispatch_unote_linkage_t dul, dul_next;
 	uintptr_t data;
 
+	dmn->dmn_disarmed_events |= (events & (EPOLLIN | EPOLLOUT));
+
 	if (events & EPOLLIN) {
 		data = _dispatch_get_buffer_size(dmn, false);
-		TAILQ_FOREACH_SAFE(dul, &dmn->dmn_readers_head, du_link, dul_next) {
+		LIST_FOREACH_SAFE(dul, &dmn->dmn_readers_head, du_link, dul_next) {
 			dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
-			dux_merge_evt(du._du, EV_ADD|EV_ENABLE|EV_DISPATCH, ~data, 0, 0);
+			// consumed by dux_merge_evt()
+			_dispatch_retain_unote_owner(du);
+			dispatch_assert(dux_needs_rearm(du._du));
+			_dispatch_unote_state_clear_bit(du, DU_STATE_ARMED);
+			os_atomic_store2o(du._dr, ds_pending_data, ~data, relaxed)
+			dux_merge_evt(du._du, EV_ADD|EV_ENABLE|EV_DISPATCH, data, 0, 0);
 		}
 	}
 
 	if (events & EPOLLOUT) {
 		data = _dispatch_get_buffer_size(dmn, true);
-		TAILQ_FOREACH_SAFE(dul, &dmn->dmn_writers_head, du_link, dul_next) {
+		LIST_FOREACH_SAFE(dul, &dmn->dmn_writers_head, du_link, dul_next) {
 			dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
-			dux_merge_evt(du._du, EV_ADD|EV_ENABLE|EV_DISPATCH, ~data, 0, 0);
+			// consumed by dux_merge_evt()
+			_dispatch_retain_unote_owner(du);
+			dispatch_assert(dux_needs_rearm(du._du));
+			_dispatch_unote_state_clear_bit(du, DU_STATE_ARMED);
+			os_atomic_store2o(du._dr, ds_pending_data, ~data, relaxed)
+			dux_merge_evt(du._du, EV_ADD|EV_ENABLE|EV_DISPATCH, data, 0, 0);
 		}
 	}
+
+	events = _dispatch_muxnote_armed_events(dmn);
+	if (events) _dispatch_epoll_update(dmn, events, EPOLL_CTL_MOD);
 }
 
 DISPATCH_NOINLINE
@@ -593,7 +628,7 @@ retry:
 			break;
 
 		case DISPATCH_EPOLL_CLOCK_MACH:
-			_dispatch_event_merge_timer(DISPATCH_CLOCK_MACH);
+			_dispatch_event_merge_timer(DISPATCH_CLOCK_UPTIME);
 			break;
 
 		default:
@@ -609,6 +644,12 @@ retry:
 			}
 		}
 	}
+}
+
+void
+_dispatch_event_loop_cancel_waiter(dispatch_sync_context_t dsc)
+{
+	(void)dsc;
 }
 
 void
@@ -642,9 +683,9 @@ _dispatch_event_loop_assert_not_owned(dispatch_wlh_t wlh)
 #endif
 
 void
-_dispatch_event_loop_leave_immediate(dispatch_wlh_t wlh, uint64_t dq_state)
+_dispatch_event_loop_leave_immediate(uint64_t dq_state)
 {
-	(void)wlh; (void)dq_state;
+	(void)dq_state;
 }
 
 #endif // DISPATCH_EVENT_BACKEND_EPOLL

@@ -122,7 +122,7 @@
 	_dispatch_data_debug(self, buf, sizeof(buf));
 	NSString *format = [nsstring stringWithUTF8String:"<%s: %s>"];
 	if (!format) return nil;
-	return [nsstring stringWithFormat:format, class_getName([self class]), buf];
+	return [nsstring stringWithFormat:format, object_getClassName(self), buf];
 }
 
 - (NSUInteger)length {

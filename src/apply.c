@@ -28,9 +28,8 @@ static char const * const _dispatch_apply_key = "apply";
 
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_apply_invoke2(void *ctxt, long invoke_flags)
+_dispatch_apply_invoke2(dispatch_apply_t da, long invoke_flags)
 {
-	dispatch_apply_t da = (dispatch_apply_t)ctxt;
 	size_t const iter = da->da_iterations;
 	size_t idx, done = 0;
 
@@ -40,7 +39,6 @@ _dispatch_apply_invoke2(void *ctxt, long invoke_flags)
 	// da_dc is only safe to access once the 'index lock' has been acquired
 	dispatch_apply_function_t const func = (void *)da->da_dc->dc_func;
 	void *const da_ctxt = da->da_dc->dc_ctxt;
-	dispatch_queue_t dq = da->da_dc->dc_data;
 
 	_dispatch_perfmon_workitem_dec(); // this unit executes many items
 
@@ -54,6 +52,7 @@ _dispatch_apply_invoke2(void *ctxt, long invoke_flags)
 	dispatch_thread_frame_s dtf;
 	dispatch_priority_t old_dbp = 0;
 	if (invoke_flags & DISPATCH_APPLY_INVOKE_REDIRECT) {
+		dispatch_queue_t dq = da->da_dc->dc_data;
 		_dispatch_thread_frame_push(&dtf, dq);
 		old_dbp = _dispatch_set_basepri(dq->dq_priority);
 	}
@@ -156,11 +155,12 @@ _dispatch_apply_serial(void *ctxt)
 
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_apply_f2(dispatch_queue_t dq, dispatch_apply_t da,
+_dispatch_apply_f(dispatch_queue_global_t dq, dispatch_apply_t da,
 		dispatch_function_t func)
 {
 	int32_t i = 0;
 	dispatch_continuation_t head = NULL, tail = NULL;
+	pthread_priority_t pp = _dispatch_get_priority();
 
 	// The current thread does not need a continuation
 	int32_t continuation_cnt = da->da_thr_cnt - 1;
@@ -169,9 +169,11 @@ _dispatch_apply_f2(dispatch_queue_t dq, dispatch_apply_t da,
 
 	for (i = 0; i < continuation_cnt; i++) {
 		dispatch_continuation_t next = _dispatch_continuation_alloc();
-		uintptr_t dc_flags = DISPATCH_OBJ_CONSUME_BIT;
+		uintptr_t dc_flags = DC_FLAG_CONSUME;
 
-		_dispatch_continuation_init_f(next, dq, da, func, 0, 0, dc_flags);
+		_dispatch_continuation_init_f(next, dq, da, func,
+				DISPATCH_BLOCK_HAS_PRIORITY, dc_flags);
+		next->dc_priority = pp | _PTHREAD_PRIORITY_ENFORCE_FLAG;
 		next->do_next = head;
 		head = next;
 
@@ -182,9 +184,48 @@ _dispatch_apply_f2(dispatch_queue_t dq, dispatch_apply_t da,
 
 	_dispatch_thread_event_init(&da->da_event);
 	// FIXME: dq may not be the right queue for the priority of `head`
+	_dispatch_trace_item_push_list(dq, head, tail);
 	_dispatch_root_queue_push_inline(dq, head, tail, continuation_cnt);
 	// Call the first element directly
 	_dispatch_apply_invoke_and_wait(da);
+}
+
+DISPATCH_ALWAYS_INLINE DISPATCH_WARN_RESULT
+static inline int32_t
+_dispatch_queue_try_reserve_apply_width(dispatch_queue_t dq, int32_t da_width)
+{
+	uint64_t old_state, new_state;
+	int32_t width;
+
+	if (unlikely(dq->dq_width == 1)) {
+		return 0;
+	}
+
+	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, relaxed, {
+		width = (int32_t)_dq_state_available_width(old_state);
+		if (unlikely(!width)) {
+			os_atomic_rmw_loop_give_up(return 0);
+		}
+		if (width > da_width) {
+			width = da_width;
+		}
+		new_state = old_state + (uint64_t)width * DISPATCH_QUEUE_WIDTH_INTERVAL;
+	});
+	return width;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_queue_relinquish_width(dispatch_queue_t top_dq,
+		dispatch_queue_t stop_dq, int32_t da_width)
+{
+	uint64_t delta = (uint64_t)da_width * DISPATCH_QUEUE_WIDTH_INTERVAL;
+	dispatch_queue_t dq = top_dq;
+
+	while (dq != stop_dq) {
+		os_atomic_sub2o(dq, dq_state, delta, relaxed);
+		dq = dq->do_targetq;
+	}
 }
 
 DISPATCH_NOINLINE
@@ -193,17 +234,15 @@ _dispatch_apply_redirect(void *ctxt)
 {
 	dispatch_apply_t da = (dispatch_apply_t)ctxt;
 	int32_t da_width = da->da_thr_cnt - 1;
-	dispatch_queue_t dq = da->da_dc->dc_data, rq = dq, tq;
+	dispatch_queue_t top_dq = da->da_dc->dc_data, dq = top_dq;
 
 	do {
-		int32_t width = _dispatch_queue_try_reserve_apply_width(rq, da_width);
+		int32_t width = _dispatch_queue_try_reserve_apply_width(dq, da_width);
 
 		if (unlikely(da_width > width)) {
 			int32_t excess = da_width - width;
-			for (tq = dq; tq != rq; tq = tq->do_targetq) {
-				_dispatch_queue_relinquish_width(tq, excess);
-			}
-			da_width -= excess;
+			_dispatch_queue_relinquish_width(top_dq, dq, excess);
+			da_width = width;
 			if (unlikely(!da_width)) {
 				return _dispatch_apply_serial(da);
 			}
@@ -215,19 +254,17 @@ _dispatch_apply_redirect(void *ctxt)
 			// this continuation.
 			da->da_flags = _dispatch_queue_autorelease_frequency(dq);
 		}
-		rq = rq->do_targetq;
-	} while (unlikely(rq->do_targetq));
-	_dispatch_apply_f2(rq, da, _dispatch_apply_redirect_invoke);
-	do {
-		_dispatch_queue_relinquish_width(dq, da_width);
 		dq = dq->do_targetq;
 	} while (unlikely(dq->do_targetq));
+
+	_dispatch_apply_f(upcast(dq)._dgq, da, _dispatch_apply_redirect_invoke);
+	_dispatch_queue_relinquish_width(top_dq, dq, da_width);
 }
 
 #define DISPATCH_APPLY_MAX UINT16_MAX // must be < sqrt(SIZE_MAX)
 
 DISPATCH_ALWAYS_INLINE
-static inline dispatch_queue_t
+static inline dispatch_queue_global_t
 _dispatch_apply_root_queue(dispatch_queue_t dq)
 {
 	if (dq) {
@@ -235,8 +272,8 @@ _dispatch_apply_root_queue(dispatch_queue_t dq)
 			dq = dq->do_targetq;
 		}
 		// if the current root queue is a pthread root queue, select it
-		if (!_dispatch_priority_qos(dq->dq_priority)) {
-			return dq;
+		if (!_dispatch_is_in_root_queues_array(dq)) {
+			return upcast(dq)._dgq;
 		}
 	}
 
@@ -247,7 +284,7 @@ _dispatch_apply_root_queue(dispatch_queue_t dq)
 
 DISPATCH_NOINLINE
 void
-dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
+dispatch_apply_f(size_t iterations, dispatch_queue_t _dq, void *ctxt,
 		void (*func)(void *, size_t))
 {
 	if (unlikely(iterations == 0)) {
@@ -257,11 +294,15 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 			_dispatch_thread_context_find(_dispatch_apply_key);
 	size_t nested = dtctxt ? dtctxt->dtc_apply_nesting : 0;
 	dispatch_queue_t old_dq = _dispatch_queue_get_current();
+	dispatch_queue_t dq;
 
-	if (likely(dq == DISPATCH_APPLY_AUTO)) {
-		dq = _dispatch_apply_root_queue(old_dq);
+	if (likely(_dq == DISPATCH_APPLY_AUTO)) {
+		dq = _dispatch_apply_root_queue(old_dq)->_as_dq;
+	} else {
+		dq = _dq; // silence clang Nullability complaints
 	}
-	dispatch_qos_t qos = _dispatch_priority_qos(dq->dq_priority);
+	dispatch_qos_t qos = _dispatch_priority_qos(dq->dq_priority) ?:
+			_dispatch_priority_fallback_qos(dq->dq_priority);
 	if (unlikely(dq->do_targetq)) {
 		// if the queue passed-in is not a root queue, use the current QoS
 		// since the caller participates in the work anyway
@@ -294,6 +335,7 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 #if DISPATCH_INTROSPECTION
 	da->da_dc = _dispatch_continuation_alloc();
 	*da->da_dc = dc;
+	da->da_dc->dc_flags = DC_FLAG_ALLOCATED;
 #else
 	da->da_dc = &dc;
 #endif
@@ -312,7 +354,7 @@ dispatch_apply_f(size_t iterations, dispatch_queue_t dq, void *ctxt,
 
 	dispatch_thread_frame_s dtf;
 	_dispatch_thread_frame_push(&dtf, dq);
-	_dispatch_apply_f2(dq, da, _dispatch_apply_invoke);
+	_dispatch_apply_f(upcast(dq)._dgq, da, _dispatch_apply_invoke);
 	_dispatch_thread_frame_pop(&dtf);
 }
 
@@ -322,41 +364,5 @@ dispatch_apply(size_t iterations, dispatch_queue_t dq, void (^work)(size_t))
 {
 	dispatch_apply_f(iterations, dq, work,
 			(dispatch_apply_function_t)_dispatch_Block_invoke(work));
-}
-#endif
-
-#if 0
-#ifdef __BLOCKS__
-void
-dispatch_stride(size_t offset, size_t stride, size_t iterations,
-		dispatch_queue_t dq, void (^work)(size_t))
-{
-	dispatch_stride_f(offset, stride, iterations, dq, work,
-			(dispatch_apply_function_t)_dispatch_Block_invoke(work));
-}
-#endif
-
-DISPATCH_NOINLINE
-void
-dispatch_stride_f(size_t offset, size_t stride, size_t iterations,
-		dispatch_queue_t dq, void *ctxt, void (*func)(void *, size_t))
-{
-	if (stride == 0) {
-		stride = 1;
-	}
-	dispatch_apply(iterations / stride, queue, ^(size_t idx) {
-		size_t i = idx * stride + offset;
-		size_t stop = i + stride;
-		do {
-			func(ctxt, i++);
-		} while (i < stop);
-	});
-
-	dispatch_sync(queue, ^{
-		size_t i;
-		for (i = iterations - (iterations % stride); i < iterations; i++) {
-			func(ctxt, i + offset);
-		}
-	});
 }
 #endif

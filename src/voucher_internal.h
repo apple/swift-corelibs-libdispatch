@@ -177,7 +177,6 @@ typedef struct voucher_s {
 
 typedef struct voucher_hash_head_s {
 	uintptr_t vhh_first;
-	uintptr_t vhh_last_ptr;
 } voucher_hash_head_s;
 
 DISPATCH_ALWAYS_INLINE
@@ -243,7 +242,7 @@ typedef struct voucher_recipe_s {
 } voucher_recipe_s;
 #endif
 
-#if TARGET_OS_EMBEDDED
+#if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 #define VL_HASH_SIZE  64u // must be a power of two
 #else
 #define VL_HASH_SIZE 256u // must be a power of two
@@ -262,7 +261,7 @@ typedef struct voucher_recipe_s {
 #define _dispatch_voucher_debug_machport(name) ((void)(name))
 #endif
 
-#if DISPATCH_USE_DTRACE
+#if DISPATCH_USE_DTRACE_INTROSPECTION && defined(__APPLE__) // rdar://33642820
 #define _voucher_trace(how, ...)  ({ \
 		if (unlikely(VOUCHER_##how##_ENABLED())) { \
 			VOUCHER_##how(__VA_ARGS__); \
@@ -576,11 +575,10 @@ _dispatch_voucher_ktrace(uint32_t code, voucher_t v, const void *container)
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_continuation_voucher_set(dispatch_continuation_t dc,
-		dispatch_queue_class_t dqu, dispatch_block_flags_t flags)
+		dispatch_block_flags_t flags)
 {
 	voucher_t v = NULL;
 
-	(void)dqu;
 	// _dispatch_continuation_voucher_set is never called for blocks with
 	// private data or with the DISPATCH_BLOCK_HAS_VOUCHER flag set.
 	// only _dispatch_continuation_init_slow handles this bit.
@@ -594,16 +592,14 @@ _dispatch_continuation_voucher_set(dispatch_continuation_t dc,
 	_dispatch_voucher_ktrace_dc_push(dc);
 }
 
-static inline dispatch_queue_t _dispatch_queue_get_current(void);
-
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_continuation_voucher_adopt(dispatch_continuation_t dc,
-		voucher_t ov, uintptr_t dc_flags)
+		uintptr_t dc_flags)
 {
 	voucher_t v = dc->dc_voucher;
-	dispatch_thread_set_self_t consume = (dc_flags & DISPATCH_OBJ_CONSUME_BIT);
-	dispatch_assert(DISPATCH_OBJ_CONSUME_BIT == DISPATCH_VOUCHER_CONSUME);
+	dispatch_thread_set_self_t consume = (dc_flags & DC_FLAG_CONSUME);
+	dispatch_assert(DC_FLAG_CONSUME == DISPATCH_VOUCHER_CONSUME);
 
 	if (consume) {
 		dc->dc_voucher = VOUCHER_INVALID;
@@ -611,17 +607,6 @@ _dispatch_continuation_voucher_adopt(dispatch_continuation_t dc,
 	if (likely(v != DISPATCH_NO_VOUCHER)) {
 		_dispatch_voucher_ktrace_dc_pop(dc, v);
 		_dispatch_voucher_debug("continuation[%p] adopt", v, dc);
-
-		if (likely(!(dc_flags & DISPATCH_OBJ_ENFORCE_VOUCHER))) {
-			if (unlikely(ov != DISPATCH_NO_VOUCHER && v != ov)) {
-				if (consume && v) _voucher_release(v);
-				consume = 0;
-				v = ov;
-			}
-		}
-	} else {
-		consume = 0;
-		v = ov;
 	}
 	(void)_dispatch_adopt_priority_and_set_voucher(dc->dc_priority, v,
 			consume | DISPATCH_VOUCHER_REPLACE);
@@ -759,17 +744,17 @@ _voucher_mach_msg_clear(mach_msg_header_t *msg, bool move_send)
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_continuation_voucher_set(dispatch_continuation_t dc,
-		dispatch_queue_class_t dqu, dispatch_block_flags_t flags)
+		dispatch_block_flags_t flags)
 {
-	(void)dc; (void)dqu; (void)flags;
+	(void)dc; (void)flags;
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_continuation_voucher_adopt(dispatch_continuation_t dc, voucher_t ov,
+_dispatch_continuation_voucher_adopt(dispatch_continuation_t dc,
 		uintptr_t dc_flags)
 {
-	(void)dc; (void)ov; (void)dc_flags;
+	(void)dc; (void)dc_flags;
 }
 
 #endif // VOUCHER_USE_MACH_VOUCHER

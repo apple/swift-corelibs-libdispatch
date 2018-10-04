@@ -357,6 +357,21 @@ void
 firehose_server_cancel(void);
 
 /*!
+ * @function firehose_server_set_logging_prefs
+ *
+ * @abstract
+ * Publishes a new preferences buffer.
+ *
+ * @description
+ * The server will take ownership of this buffer and will
+ * call munmap() on the previous one that was stored.
+ */
+OS_NOTHROW
+void
+firehose_server_set_logging_prefs(void *pointer, size_t length,
+		os_block_t block);
+
+/*!
  * @typedef firehose_server_queue_t
  *
  * @abstract

@@ -73,13 +73,14 @@ CLANG_WARN_OBJC_MISSING_PROPERTY_SYNTHESIS = YES
 CLANG_WARN_SUSPICIOUS_IMPLICIT_CONVERSION = YES
 CLANG_WARN_SUSPICIOUS_MOVE = YES
 CLANG_WARN_UNREACHABLE_CODE = YES
+CLANG_WARN_UNGUARDED_AVAILABILITY = YES
 GCC_TREAT_WARNINGS_AS_ERRORS = YES
 GCC_OPTIMIZATION_LEVEL = s
 GCC_NO_COMMON_BLOCKS = YES
 GCC_PREPROCESSOR_DEFINITIONS = __DARWIN_NON_CANCELABLE=1 $(DISPATCH_PREPROCESSOR_DEFINITIONS)
 STATICLIB_PREPROCESSOR_DEFINITIONS = DISPATCH_VARIANT_STATIC=1 USE_OBJC=0 DISPATCH_USE_DTRACE=0
-WARNING_CFLAGS = -Wall -Wextra -Warray-bounds-pointer-arithmetic -Watomic-properties -Wcomma -Wconditional-uninitialized -Wcovered-switch-default -Wdate-time -Wdeprecated -Wdouble-promotion -Wduplicate-enum -Wexpansion-to-defined -Wfloat-equal -Widiomatic-parentheses -Wignored-qualifiers -Wimplicit-fallthrough -Wnullable-to-nonnull-conversion -Wobjc-interface-ivars -Wover-aligned -Wpacked -Wpointer-arith -Wselector -Wstatic-in-inline -Wsuper-class-method-mismatch -Wswitch-enum -Wtautological-compare -Wunguarded-availability -Wunused -Wno-unknown-warning-option $(NO_WARNING_CFLAGS)
-NO_WARNING_CFLAGS = -Wno-pedantic -Wno-bad-function-cast -Wno-c++-compat -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-cast-align -Wno-cast-qual -Wno-disabled-macro-expansion -Wno-documentation-unknown-command -Wno-format-nonliteral -Wno-missing-variable-declarations -Wno-old-style-cast -Wno-padded -Wno-reserved-id-macro -Wno-shift-sign-overflow -Wno-undef -Wno-unreachable-code-aggressive -Wno-unused-macros -Wno-used-but-marked-unused -Wno-vla
+WARNING_CFLAGS = -Wall -Wextra -Warray-bounds-pointer-arithmetic -Watomic-properties -Wcomma -Wconditional-uninitialized -Wcovered-switch-default -Wdate-time -Wdeprecated -Wdouble-promotion -Wduplicate-enum -Wexpansion-to-defined -Wfloat-equal -Widiomatic-parentheses -Wignored-qualifiers -Wnullable-to-nonnull-conversion -Wobjc-interface-ivars -Wover-aligned -Wpacked -Wpointer-arith -Wselector -Wstatic-in-inline -Wsuper-class-method-mismatch -Wswitch-enum -Wtautological-compare -Wunused -Wno-unknown-warning-option $(NO_WARNING_CFLAGS)
+NO_WARNING_CFLAGS = -Wno-pedantic -Wno-bad-function-cast -Wno-c++-compat -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-cast-align -Wno-cast-qual -Wno-disabled-macro-expansion -Wno-documentation-unknown-command -Wno-format-nonliteral -Wno-missing-variable-declarations -Wno-old-style-cast -Wno-padded -Wno-reserved-id-macro -Wno-shift-sign-overflow -Wno-undef -Wno-unreachable-code-aggressive -Wno-unused-macros -Wno-used-but-marked-unused -Wno-vla -Wno-unguarded-availability-new
 OTHER_CFLAGS = -fverbose-asm -isystem $(SDKROOT)/System/Library/Frameworks/System.framework/PrivateHeaders $(PLATFORM_CFLAGS)
 OTHER_CFLAGS[arch=i386][sdk=macosx*] = $(OTHER_CFLAGS) -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-exceptions
 OTHER_CFLAGS_normal = -momit-leaf-frame-pointer
@@ -89,7 +90,14 @@ GENERATE_PROFILING_CODE = NO
 DYLIB_CURRENT_VERSION = $(CURRENT_PROJECT_VERSION)
 SIM_SUFFIX[sdk=*simulator*] = _sim
 DYLIB_LDFLAGS = -umbrella System -nodefaultlibs -ldyld -lcompiler_rt -lsystem$(SIM_SUFFIX)_kernel -lsystem$(SIM_SUFFIX)_platform -lsystem$(SIM_SUFFIX)_pthread -lsystem_malloc -lsystem_c -lsystem_blocks -lunwind
-OBJC_LDFLAGS = -Wl,-upward-lobjc -Wl,-order_file,$(SRCROOT)/xcodeconfig/libdispatch.order
+OBJC_LDFLAGS = -Wl,-upward-lobjc
+LIBDARWIN_LDFLAGS = -Wl,-upward-lsystem_darwin
+LIBDARWIN_LDFLAGS[sdk=*simulator*] =
+ORDER_LDFLAGS = -Wl,-order_file,$(SRCROOT)/xcodeconfig/libdispatch.order -Wl,-dirty_data_list,$(SRCROOT)/xcodeconfig/libdispatch.dirty
+ORDER_LDFLAGS[sdk=macosx*] = -Wl,-order_file,$(SRCROOT)/xcodeconfig/libdispatch.order
 ALIASES_LDFLAGS = -Wl,-alias_list,$(SRCROOT)/xcodeconfig/libdispatch.aliases
-OTHER_LDFLAGS = $(OTHER_LDFLAGS) $(DYLIB_LDFLAGS) $(CR_LDFLAGS) $(OBJC_LDFLAGS) $(ALIASES_LDFLAGS) $(PLATFORM_LDFLAGS)
+OTHER_LDFLAGS = $(OTHER_LDFLAGS) $(LIBDARWIN_LDFLAGS) $(DYLIB_LDFLAGS) $(CR_LDFLAGS) $(OBJC_LDFLAGS) $(ALIASES_LDFLAGS) $(PLATFORM_LDFLAGS) $(ORDER_LDFLAGS)
 OTHER_MIGFLAGS = -novouchers
+
+COPY_HEADERS_RUN_UNIFDEF = YES
+COPY_HEADERS_UNIFDEF_FLAGS = -U__DISPATCH_BUILDING_DISPATCH__ -U__linux__ -DTARGET_OS_WIN32=0 -U__ANDROID__

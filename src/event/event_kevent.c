@@ -33,52 +33,40 @@
 #define DISPATCH_MACH_AUDIT_TOKEN_PID (5)
 
 typedef struct dispatch_muxnote_s {
-	TAILQ_ENTRY(dispatch_muxnote_s) dmn_list;
-	TAILQ_HEAD(, dispatch_unote_linkage_s) dmn_unotes_head;
-	dispatch_wlh_t dmn_wlh;
-	dispatch_kevent_s dmn_kev;
+	LIST_ENTRY(dispatch_muxnote_s) dmn_list;
+	LIST_HEAD(, dispatch_unote_linkage_s) dmn_unotes_head;
+	dispatch_kevent_s dmn_kev DISPATCH_ATOMIC64_ALIGN;
 } *dispatch_muxnote_t;
 
-static bool _dispatch_timers_force_max_leeway;
-static int _dispatch_kq = -1;
-static struct {
-	dispatch_once_t pred;
-	dispatch_unfair_lock_s lock;
-} _dispatch_muxnotes;
-#if !DISPATCH_USE_KEVENT_WORKQUEUE
-#define _dispatch_muxnotes_lock() \
-		_dispatch_unfair_lock_lock(&_dispatch_muxnotes.lock)
-#define _dispatch_muxnotes_unlock() \
-		_dispatch_unfair_lock_unlock(&_dispatch_muxnotes.lock)
-#else
-#define _dispatch_muxnotes_lock()
-#define _dispatch_muxnotes_unlock()
-#endif // !DISPATCH_USE_KEVENT_WORKQUEUE
+LIST_HEAD(dispatch_muxnote_bucket_s, dispatch_muxnote_s);
 
-DISPATCH_CACHELINE_ALIGN
-static TAILQ_HEAD(dispatch_muxnote_bucket_s, dispatch_muxnote_s)
-_dispatch_sources[DSL_HASH_SIZE];
+DISPATCH_STATIC_GLOBAL(bool _dispatch_timers_force_max_leeway);
+DISPATCH_STATIC_GLOBAL(dispatch_once_t _dispatch_kq_poll_pred);
+DISPATCH_STATIC_GLOBAL(struct dispatch_muxnote_bucket_s _dispatch_sources[DSL_HASH_SIZE]);
 
-#define DISPATCH_NOTE_CLOCK_WALL NOTE_MACH_CONTINUOUS_TIME
-#define DISPATCH_NOTE_CLOCK_MACH 0
+#define DISPATCH_NOTE_CLOCK_WALL      NOTE_NSECONDS | NOTE_MACH_CONTINUOUS_TIME
+#define DISPATCH_NOTE_CLOCK_MONOTONIC NOTE_MACHTIME | NOTE_MACH_CONTINUOUS_TIME
+#define DISPATCH_NOTE_CLOCK_UPTIME	  NOTE_MACHTIME
 
 static const uint32_t _dispatch_timer_index_to_fflags[] = {
 #define DISPATCH_TIMER_FFLAGS_INIT(kind, qos, note) \
 	[DISPATCH_TIMER_INDEX(DISPATCH_CLOCK_##kind, DISPATCH_TIMER_QOS_##qos)] = \
-			DISPATCH_NOTE_CLOCK_##kind | NOTE_ABSOLUTE | \
-			NOTE_NSECONDS | NOTE_LEEWAY | (note)
+			DISPATCH_NOTE_CLOCK_##kind | NOTE_ABSOLUTE | NOTE_LEEWAY | (note)
 	DISPATCH_TIMER_FFLAGS_INIT(WALL, NORMAL, 0),
-	DISPATCH_TIMER_FFLAGS_INIT(MACH, NORMAL, 0),
+	DISPATCH_TIMER_FFLAGS_INIT(UPTIME, NORMAL, 0),
+	DISPATCH_TIMER_FFLAGS_INIT(MONOTONIC, NORMAL, 0),
 #if DISPATCH_HAVE_TIMER_QOS
 	DISPATCH_TIMER_FFLAGS_INIT(WALL, CRITICAL, NOTE_CRITICAL),
-	DISPATCH_TIMER_FFLAGS_INIT(MACH, CRITICAL, NOTE_CRITICAL),
+	DISPATCH_TIMER_FFLAGS_INIT(UPTIME, CRITICAL, NOTE_CRITICAL),
+	DISPATCH_TIMER_FFLAGS_INIT(MONOTONIC, CRITICAL, NOTE_CRITICAL),
 	DISPATCH_TIMER_FFLAGS_INIT(WALL, BACKGROUND, NOTE_BACKGROUND),
-	DISPATCH_TIMER_FFLAGS_INIT(MACH, BACKGROUND, NOTE_BACKGROUND),
+	DISPATCH_TIMER_FFLAGS_INIT(UPTIME, BACKGROUND, NOTE_BACKGROUND),
+	DISPATCH_TIMER_FFLAGS_INIT(MONOTONIC, BACKGROUND, NOTE_BACKGROUND),
 #endif
 #undef DISPATCH_TIMER_FFLAGS_INIT
 };
 
-static void _dispatch_kevent_timer_drain(dispatch_kevent_t ke);
+static inline void _dispatch_kevent_timer_drain(dispatch_kevent_t ke);
 
 #pragma mark -
 #pragma mark kevent debug
@@ -113,6 +101,7 @@ _evfiltstr(short filt)
 #endif // DISPATCH_EVENT_BACKEND_KEVENT
 
 	_evfilt2(DISPATCH_EVFILT_TIMER);
+	_evfilt2(DISPATCH_EVFILT_TIMER_WITH_CLOCK);
 	_evfilt2(DISPATCH_EVFILT_CUSTOM_ADD);
 	_evfilt2(DISPATCH_EVFILT_CUSTOM_OR);
 	_evfilt2(DISPATCH_EVFILT_CUSTOM_REPLACE);
@@ -228,6 +217,12 @@ dispatch_kevent_debug(const char *verb, const dispatch_kevent_s *kev,
 #define _dispatch_kevent_wlh_debug(verb, kev)  ((void)verb, (void)kev)
 #endif // DISPATCH_WLH_DEBUG
 
+#define _dispatch_du_debug(what, du) \
+		_dispatch_debug("kevent-source[%p]: %s kevent[%p] " \
+				"{ filter = %s, ident = 0x%x }", \
+				_dispatch_wref2ptr((du)->du_owner_wref), what, \
+				(du), _evfiltstr((du)->du_filter), (du)->du_ident)
+
 #if DISPATCH_MACHPORT_DEBUG
 #ifndef MACH_PORT_TYPE_SPREQUEST
 #define MACH_PORT_TYPE_SPREQUEST 0x40000000
@@ -294,8 +289,8 @@ dispatch_debug_machport(mach_port_t name, const char* str)
 
 #if HAVE_MACH
 
-static dispatch_once_t _dispatch_mach_host_port_pred;
-static mach_port_t _dispatch_mach_host_port;
+DISPATCH_STATIC_GLOBAL(dispatch_once_t _dispatch_mach_host_port_pred);
+DISPATCH_STATIC_GLOBAL(mach_port_t _dispatch_mach_host_port);
 
 static inline void*
 _dispatch_kevent_mach_msg_buf(dispatch_kevent_t ke)
@@ -322,7 +317,7 @@ static inline void _dispatch_mach_host_calendar_change_register(void);
 // - data is used to monitor the actual state of the
 //   mach_port_request_notification()
 // - ext[0] is a boolean that trackes whether the notification is armed or not
-#define DISPATCH_MACH_NOTIFICATION_ARMED(dk) ((dk)->ext[0])
+#define DISPATCH_MACH_NOTIFICATION_ARMED(dmn) ((dmn)->dmn_kev.ext[0])
 #endif
 
 DISPATCH_ALWAYS_INLINE
@@ -345,6 +340,7 @@ DISPATCH_NOINLINE
 static void
 _dispatch_kevent_print_error(dispatch_kevent_t ke)
 {
+	dispatch_unote_class_t du = NULL;
 	_dispatch_debug("kevent[0x%llx]: handling error",
 			(unsigned long long)ke->udata);
 	if (ke->flags & EV_DELETE) {
@@ -359,61 +355,137 @@ _dispatch_kevent_print_error(dispatch_kevent_t ke)
 	} else if (ke->udata & DISPATCH_KEVENT_MUXED_MARKER) {
 		ke->flags |= _dispatch_kevent_get_muxnote(ke)->dmn_kev.flags;
 	} else if (ke->udata) {
-		if (!_dispatch_unote_registered(_dispatch_kevent_get_unote(ke))) {
+		du = (dispatch_unote_class_t)(uintptr_t)ke->udata;
+		if (!_dispatch_unote_registered(du)) {
 			ke->flags |= EV_ADD;
 		}
 	}
 
-#if HAVE_MACH
-	if (ke->filter == EVFILT_MACHPORT && ke->data == ENOTSUP &&
-			(ke->flags & EV_ADD) && (ke->fflags & MACH_RCV_MSG)) {
-		DISPATCH_INTERNAL_CRASH(ke->ident,
-				"Missing EVFILT_MACHPORT support for ports");
-	}
-#endif
-
-	if (ke->data) {
+	switch (ke->data) {
+	case 0:
+		return;
+	case ERANGE: /* A broken QoS was passed to kevent_id() */
+		DISPATCH_INTERNAL_CRASH(ke->qos, "Invalid kevent priority");
+	default:
 		// log the unexpected error
 		_dispatch_bug_kevent_client("kevent", _evfiltstr(ke->filter),
 				!ke->udata ? NULL :
 				ke->flags & EV_DELETE ? "delete" :
 				ke->flags & EV_ADD ? "add" :
 				ke->flags & EV_ENABLE ? "enable" : "monitor",
-				(int)ke->data);
+				(int)ke->data, ke->ident, ke->udata, du);
 	}
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_kevent_merge_ev_flags(dispatch_unote_t du, uint32_t flags)
+{
+	if (unlikely(!(flags & EV_UDATA_SPECIFIC) && (flags & EV_ONESHOT))) {
+		_dispatch_unote_unregister(du, DUU_DELETE_ACK | DUU_MUST_SUCCEED);
+		return;
+	}
+
+	if (flags & EV_DELETE) {
+		// When a speculative deletion is requested by libdispatch,
+		// and the kernel is about to deliver an event, it can acknowledge
+		// our wish by delivering the event as a (EV_DELETE | EV_ONESHOT)
+		// event and dropping the knote at once.
+		_dispatch_unote_state_set(du, DU_STATE_NEEDS_DELETE);
+	} else if (flags & (EV_ONESHOT | EV_VANISHED)) {
+		// EV_VANISHED events if re-enabled will produce another EV_VANISHED
+		// event. To avoid an infinite loop of such events, mark the unote
+		// as needing deletion so that _dispatch_unote_needs_rearm()
+		// eventually returns false.
+		//
+		// mach channels crash on EV_VANISHED, and dispatch sources stay
+		// in a limbo until canceled (explicitly or not).
+		dispatch_unote_state_t du_state = _dispatch_unote_state(du);
+		du_state |= DU_STATE_NEEDS_DELETE;
+		du_state &= ~DU_STATE_ARMED;
+		_dispatch_unote_state_set(du, du_state);
+	} else if (likely(flags & EV_DISPATCH)) {
+		_dispatch_unote_state_clear_bit(du, DU_STATE_ARMED);
+	} else {
+		return;
+	}
+
+	_dispatch_du_debug((flags & EV_VANISHED) ? "vanished" :
+			(flags & EV_DELETE) ? "deleted oneshot" :
+			(flags & EV_ONESHOT) ? "oneshot" : "disarmed", du._du);
 }
 
 DISPATCH_NOINLINE
 static void
 _dispatch_kevent_merge(dispatch_unote_t du, dispatch_kevent_t ke)
 {
-	uintptr_t data;
-	uintptr_t status = 0;
+	dispatch_unote_action_t action = dux_type(du._du)->dst_action;
 	pthread_priority_t pp = 0;
-#if DISPATCH_USE_KEVENT_QOS
-	pp = ((pthread_priority_t)ke->qos) & ~_PTHREAD_PRIORITY_FLAGS_MASK;
+	uintptr_t data;
+
+	// once we modify the queue atomic flags below, it will allow concurrent
+	// threads running _dispatch_source_invoke2 to dispose of the source,
+	// so we can't safely borrow the reference we get from the muxnote udata
+	// anymore, and need our own <rdar://20382435>
+	_dispatch_retain_unote_owner(du);
+
+	switch (action) {
+	case DISPATCH_UNOTE_ACTION_PASS_DATA:
+		data = (uintptr_t)ke->data;
+		break;
+
+	case DISPATCH_UNOTE_ACTION_PASS_FFLAGS:
+		data = (uintptr_t)ke->fflags;
+#if HAVE_MACH
+		if (du._du->du_filter == EVFILT_MACHPORT) {
+			data = DISPATCH_MACH_RECV_MESSAGE;
+		}
 #endif
-	dispatch_unote_action_t action = du._du->du_data_action;
-	if (action == DISPATCH_UNOTE_ACTION_DATA_SET) {
+		break;
+
+	case DISPATCH_UNOTE_ACTION_SOURCE_SET_DATA:
 		// ke->data is signed and "negative available data" makes no sense
 		// zero bytes happens when EV_EOF is set
 		dispatch_assert(ke->data >= 0l);
-		data = ~(unsigned long)ke->data;
-#if HAVE_MACH
-	} else if (du._du->du_filter == EVFILT_MACHPORT) {
-		data = DISPATCH_MACH_RECV_MESSAGE;
-#endif
-	} else if (action == DISPATCH_UNOTE_ACTION_DATA_ADD) {
 		data = (unsigned long)ke->data;
-	} else if (action == DISPATCH_UNOTE_ACTION_DATA_OR) {
+		os_atomic_store2o(du._dr, ds_pending_data, ~data, relaxed);
+		break;
+
+	case DISPATCH_UNOTE_ACTION_SOURCE_ADD_DATA:
+		data = (unsigned long)ke->data;
+		if (data) os_atomic_add2o(du._dr, ds_pending_data, data, relaxed);
+		break;
+
+	case DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS:
 		data = ke->fflags & du._du->du_fflags;
-	} else if (action == DISPATCH_UNOTE_ACTION_DATA_OR_STATUS_SET) {
-		data = ke->fflags & du._du->du_fflags;
-		status = (unsigned long)ke->data;
-	} else {
+		if (du._dr->du_has_extended_status) {
+			uint64_t odata, ndata, value;
+			uint32_t status = (uint32_t)ke->data;
+
+			// We combine the data and status into a single 64-bit value.
+			value = DISPATCH_SOURCE_COMBINE_DATA_AND_STATUS(data, status);
+			os_atomic_rmw_loop2o(du._dr, ds_pending_data, odata, ndata, relaxed, {
+				ndata = DISPATCH_SOURCE_GET_DATA(odata) | value;
+			});
+#if HAVE_MACH
+		} else if (du._du->du_filter == EVFILT_MACHPORT) {
+			data = DISPATCH_MACH_RECV_MESSAGE;
+			os_atomic_store2o(du._dr, ds_pending_data, data, relaxed);
+#endif
+		} else {
+			if (data) os_atomic_or2o(du._dr, ds_pending_data, data, relaxed);
+		}
+		break;
+
+	default:
 		DISPATCH_INTERNAL_CRASH(action, "Corrupt unote action");
 	}
-	return dux_merge_evt(du._du, ke->flags, data, status, pp);
+
+	_dispatch_kevent_merge_ev_flags(du, ke->flags);
+#if DISPATCH_USE_KEVENT_QOS
+	pp = ((pthread_priority_t)ke->qos) & ~_PTHREAD_PRIORITY_FLAGS_MASK;
+#endif
+	return dux_merge_evt(du._du, ke->flags, data, pp);
 }
 
 DISPATCH_NOINLINE
@@ -423,7 +495,11 @@ _dispatch_kevent_merge_muxed(dispatch_kevent_t ke)
 	dispatch_muxnote_t dmn = _dispatch_kevent_get_muxnote(ke);
 	dispatch_unote_linkage_t dul, dul_next;
 
-	TAILQ_FOREACH_SAFE(dul, &dmn->dmn_unotes_head, du_link, dul_next) {
+	if (ke->flags & (EV_ONESHOT | EV_DELETE)) {
+		// tell _dispatch_unote_unregister_muxed() the kernel half is gone
+		dmn->dmn_kev.flags |= EV_DELETE;
+	}
+	LIST_FOREACH_SAFE(dul, &dmn->dmn_unotes_head, du_link, dul_next) {
 		_dispatch_kevent_merge(_dispatch_unote_linkage_get_unote(dul), ke);
 	}
 }
@@ -439,13 +515,12 @@ _dispatch_kevent_drain(dispatch_kevent_t ke)
 	_dispatch_kevent_debug("received", ke);
 	if (unlikely(ke->flags & EV_ERROR)) {
 		if (ke->filter == EVFILT_PROC && ke->data == ESRCH) {
-			// EVFILT_PROC may fail with ESRCH when the process exists but is a zombie
-			// <rdar://problem/5067725>. As a workaround, we simulate an exit event for
-			// any EVFILT_PROC with an invalid pid <rdar://problem/6626350>.
-			ke->flags &= ~(EV_ERROR | EV_ADD | EV_ENABLE | EV_UDATA_SPECIFIC);
-			ke->flags |= EV_ONESHOT;
+			// <rdar://problem/5067725&6626350> EVFILT_PROC may fail with ESRCH
+			// when the process exists but is a zombie. As a workaround, we
+			// simulate an exit event for any EVFILT_PROC with an invalid pid.
+			ke->flags  = EV_UDATA_SPECIFIC | EV_ONESHOT | EV_DELETE;
 			ke->fflags = NOTE_EXIT;
-			ke->data = 0;
+			ke->data   = 0;
 			_dispatch_kevent_debug("synthetic NOTE_EXIT", ke);
 		} else {
 			return _dispatch_kevent_print_error(ke);
@@ -456,10 +531,8 @@ _dispatch_kevent_drain(dispatch_kevent_t ke)
 	}
 
 #if HAVE_MACH
-	if (ke->filter == EVFILT_MACHPORT) {
-		if (_dispatch_kevent_mach_msg_size(ke)) {
-			return _dispatch_kevent_mach_msg_drain(ke);
-		}
+	if (ke->filter == EVFILT_MACHPORT && _dispatch_kevent_mach_msg_size(ke)) {
+		return _dispatch_kevent_mach_msg_drain(ke);
 	}
 #endif
 
@@ -473,8 +546,8 @@ _dispatch_kevent_drain(dispatch_kevent_t ke)
 
 #if DISPATCH_USE_MGR_THREAD
 DISPATCH_NOINLINE
-static int
-_dispatch_kq_create(const void *guard_ptr)
+static void
+_dispatch_kq_create(intptr_t *fd_ptr)
 {
 	static const dispatch_kevent_s kev = {
 		.ident = 1,
@@ -486,7 +559,7 @@ _dispatch_kq_create(const void *guard_ptr)
 
 	_dispatch_fork_becomes_unsafe();
 #if DISPATCH_USE_GUARDED_FD
-	guardid_t guard = (uintptr_t)guard_ptr;
+	guardid_t guard = (uintptr_t)fd_ptr;
 	kqfd = guarded_kqueue_np(&guard, GUARD_CLOSE | GUARD_DUP);
 #else
 	(void)guard_ptr;
@@ -517,9 +590,15 @@ _dispatch_kq_create(const void *guard_ptr)
 #else
 	dispatch_assume_zero(kevent(kqfd, &kev, 1, NULL, 0, NULL));
 #endif
-	return kqfd;
+	*fd_ptr = kqfd;
 }
 #endif
+
+static inline int
+_dispatch_kq_fd(void)
+{
+	return (int)(intptr_t)_dispatch_mgr_q.do_ctxt;
+}
 
 static void
 _dispatch_kq_init(void *context)
@@ -536,7 +615,7 @@ _dispatch_kq_init(void *context)
 	_dispatch_kevent_workqueue_init();
 	if (_dispatch_kevent_workqueue_enabled) {
 		int r;
-		int kqfd = _dispatch_kq;
+		int kqfd = _dispatch_kq_fd();
 		const dispatch_kevent_s ke = {
 			.ident = 1,
 			.filter = EVFILT_USER,
@@ -562,7 +641,8 @@ retry:
 	}
 #endif // DISPATCH_USE_KEVENT_WORKQUEUE
 #if DISPATCH_USE_MGR_THREAD
-	_dispatch_kq = _dispatch_kq_create(&_dispatch_mgr_q);
+	_dispatch_kq_create((intptr_t *)&_dispatch_mgr_q.do_ctxt);
+	_dispatch_trace_item_push(_dispatch_mgr_q.do_targetq, &_dispatch_mgr_q);
 	dx_push(_dispatch_mgr_q.do_targetq, &_dispatch_mgr_q, 0);
 #endif // DISPATCH_USE_MGR_THREAD
 }
@@ -579,11 +659,10 @@ _dispatch_kq_poll(dispatch_wlh_t wlh, dispatch_kevent_t ke, int n,
 		dispatch_kevent_t ke_out, int n_out, void *buf, size_t *avail,
 		uint32_t flags)
 {
-	static dispatch_once_t pred;
 	bool kq_initialized = false;
 	int r = 0;
 
-	dispatch_once_f(&pred, &kq_initialized, _dispatch_kq_init);
+	dispatch_once_f(&_dispatch_kq_poll_pred, &kq_initialized, _dispatch_kq_init);
 	if (unlikely(kq_initialized)) {
 		// The calling thread was the one doing the initialization
 		//
@@ -593,7 +672,6 @@ _dispatch_kq_poll(dispatch_wlh_t wlh, dispatch_kevent_t ke, int n,
 		_dispatch_memorypressure_init();
 		_voucher_activity_debug_channel_init();
 	}
-
 
 #if !DISPATCH_USE_KEVENT_QOS
 	if (flags & KEVENT_FLAG_ERROR_EVENTS) {
@@ -606,8 +684,10 @@ _dispatch_kq_poll(dispatch_wlh_t wlh, dispatch_kevent_t ke, int n,
 #endif
 
 retry:
-	if (wlh == DISPATCH_WLH_ANON) {
-		int kqfd = _dispatch_kq;
+	if (unlikely(wlh == NULL)) {
+		DISPATCH_INTERNAL_CRASH(wlh, "Invalid wlh");
+	} else if (wlh == DISPATCH_WLH_ANON) {
+		int kqfd = _dispatch_kq_fd();
 #if DISPATCH_USE_KEVENT_QOS
 		if (_dispatch_kevent_workqueue_enabled) {
 			flags |= KEVENT_FLAG_WORKQ;
@@ -706,13 +786,13 @@ _dispatch_kq_unote_set_kevent(dispatch_unote_t _du, dispatch_kevent_t dk,
 		uint16_t action)
 {
 	dispatch_unote_class_t du = _du._du;
-	dispatch_source_type_t dst = du->du_type;
+	dispatch_source_type_t dst = dux_type(du);
 	uint16_t flags = dst->dst_flags | action;
 
 	if ((flags & EV_VANISHED) && !(flags & EV_ADD)) {
 		flags &= ~EV_VANISHED;
 	}
-	pthread_priority_t pp = _dispatch_priority_to_pp(du->du_priority);
+
 	*dk = (dispatch_kevent_s){
 		.ident  = du->du_ident,
 		.filter = dst->dst_filter,
@@ -721,7 +801,8 @@ _dispatch_kq_unote_set_kevent(dispatch_unote_t _du, dispatch_kevent_t dk,
 		.fflags = du->du_fflags | dst->dst_fflags,
 		.data   = (typeof(dk->data))dst->dst_data,
 #if DISPATCH_USE_KEVENT_QOS
-		.qos    = (typeof(dk->qos))pp,
+		.qos    = (typeof(dk->qos))_dispatch_priority_to_pp_prefer_fallback(
+				du->du_priority),
 #endif
 	};
 }
@@ -779,7 +860,7 @@ _dispatch_kq_deferred_update(dispatch_wlh_t wlh, dispatch_kevent_t ke)
 {
 	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
 
-	if (ddi && ddi->ddi_maxevents && wlh == _dispatch_get_wlh()) {
+	if (ddi && ddi->ddi_wlh == wlh && ddi->ddi_maxevents) {
 		int slot = _dispatch_kq_deferred_find_slot(ddi, ke->filter, ke->ident,
 				ke->udata);
 		dispatch_kevent_t dk = _dispatch_kq_deferred_reuse_slot(wlh, ddi, slot);
@@ -797,7 +878,7 @@ static int
 _dispatch_kq_immediate_update(dispatch_wlh_t wlh, dispatch_kevent_t ke)
 {
 	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
-	if (ddi && wlh == _dispatch_get_wlh()) {
+	if (ddi && ddi->ddi_wlh == wlh) {
 		int slot = _dispatch_kq_deferred_find_slot(ddi, ke->filter, ke->ident,
 				ke->udata);
 		_dispatch_kq_deferred_discard_slot(ddi, slot);
@@ -817,13 +898,12 @@ _dispatch_kq_unote_update(dispatch_wlh_t wlh, dispatch_unote_t _du,
 
 	if (action_flags & EV_ADD) {
 		// as soon as we register we may get an event delivery and it has to
-		// see du_wlh already set, else it will not unregister the kevent
-		dispatch_assert(du->du_wlh == NULL);
+		// see du_state already set, else it will not unregister the kevent
 		_dispatch_wlh_retain(wlh);
-		du->du_wlh = wlh;
+		_dispatch_unote_state_set(du, wlh, DU_STATE_ARMED);
 	}
 
-	if (ddi && wlh == _dispatch_get_wlh()) {
+	if (ddi && ddi->ddi_wlh == wlh) {
 		int slot = _dispatch_kq_deferred_find_slot(ddi,
 				du->du_filter, du->du_ident, (uintptr_t)du);
 		if (slot < ddi->ddi_nevents) {
@@ -853,18 +933,24 @@ _dispatch_kq_unote_update(dispatch_wlh_t wlh, dispatch_unote_t _du,
 done:
 	if (action_flags & EV_ADD) {
 		if (unlikely(r)) {
-			_dispatch_wlh_release(du->du_wlh);
-			du->du_wlh = NULL;
+			_dispatch_wlh_release(wlh);
+			_dispatch_unote_state_set(du, DU_STATE_UNREGISTERED);
+		} else {
+			_dispatch_du_debug("installed", du);
 		}
 		return r == 0;
 	}
 
 	if (action_flags & EV_DELETE) {
 		if (r == EINPROGRESS) {
+			_dispatch_du_debug("deferred delete", du);
 			return false;
 		}
-		_dispatch_wlh_release(du->du_wlh);
-		du->du_wlh = NULL;
+		_dispatch_wlh_release(wlh);
+		_dispatch_unote_state_set(du, DU_STATE_UNREGISTERED);
+		_dispatch_du_debug("deleted", du);
+	} else if (action_flags & EV_ENABLE) {
+		_dispatch_du_debug("rearmed", du);
 	}
 
 	dispatch_assume_zero(r);
@@ -872,15 +958,6 @@ done:
 }
 
 #pragma mark dispatch_muxnote_t
-
-static void
-_dispatch_muxnotes_init(void *ctxt DISPATCH_UNUSED)
-{
-	uint32_t i;
-	for (i = 0; i < DSL_HASH_SIZE; i++) {
-		TAILQ_INIT(&_dispatch_sources[i]);
-	}
-}
 
 DISPATCH_ALWAYS_INLINE
 static inline struct dispatch_muxnote_bucket_s *
@@ -899,7 +976,6 @@ _dispatch_muxnote_bucket(uint64_t ident, int16_t filter)
 		break;
 	}
 
-	dispatch_once_f(&_dispatch_muxnotes.pred, NULL, _dispatch_muxnotes_init);
 	return &_dispatch_sources[DSL_HASH((uintptr_t)ident)];
 }
 #define _dispatch_unote_muxnote_bucket(du) \
@@ -908,21 +984,16 @@ _dispatch_muxnote_bucket(uint64_t ident, int16_t filter)
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_muxnote_t
 _dispatch_muxnote_find(struct dispatch_muxnote_bucket_s *dmb,
-		dispatch_wlh_t wlh, uint64_t ident, int16_t filter)
+		uint64_t ident, int16_t filter)
 {
 	dispatch_muxnote_t dmn;
-	_dispatch_muxnotes_lock();
-	TAILQ_FOREACH(dmn, dmb, dmn_list) {
-		if (dmn->dmn_wlh == wlh && dmn->dmn_kev.ident == ident &&
-				dmn->dmn_kev.filter == filter) {
+	LIST_FOREACH(dmn, dmb, dmn_list) {
+		if (dmn->dmn_kev.ident == ident && dmn->dmn_kev.filter == filter) {
 			break;
 		}
 	}
-	_dispatch_muxnotes_unlock();
 	return dmn;
 }
-#define _dispatch_unote_muxnote_find(dmb, du, wlh) \
-		_dispatch_muxnote_find(dmb, wlh, du._du->du_ident, du._du->du_filter)
 
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_muxnote_t
@@ -930,50 +1001,45 @@ _dispatch_mach_muxnote_find(mach_port_t name, int16_t filter)
 {
 	struct dispatch_muxnote_bucket_s *dmb;
 	dmb = _dispatch_muxnote_bucket(name, filter);
-	return _dispatch_muxnote_find(dmb, DISPATCH_WLH_ANON, name, filter);
+	return _dispatch_muxnote_find(dmb, name, filter);
 }
 
-DISPATCH_NOINLINE
-static bool
-_dispatch_unote_register_muxed(dispatch_unote_t du, dispatch_wlh_t wlh)
+bool
+_dispatch_unote_register_muxed(dispatch_unote_t du)
 {
 	struct dispatch_muxnote_bucket_s *dmb = _dispatch_unote_muxnote_bucket(du);
 	dispatch_muxnote_t dmn;
 	bool installed = true;
 
-	dmn = _dispatch_unote_muxnote_find(dmb, du, wlh);
+	dmn = _dispatch_muxnote_find(dmb, du._du->du_ident, du._du->du_filter);
 	if (dmn) {
 		uint32_t flags = du._du->du_fflags & ~dmn->dmn_kev.fflags;
 		if (flags) {
 			dmn->dmn_kev.fflags |= flags;
-			if (unlikely(du._du->du_type->dst_update_mux)) {
-				installed = du._du->du_type->dst_update_mux(dmn);
+			if (unlikely(dux_type(du._du)->dst_update_mux)) {
+				installed = dux_type(du._du)->dst_update_mux(dmn);
 			} else {
-				installed = !_dispatch_kq_immediate_update(dmn->dmn_wlh,
+				installed = !_dispatch_kq_immediate_update(DISPATCH_WLH_ANON,
 						&dmn->dmn_kev);
 			}
 			if (!installed) dmn->dmn_kev.fflags &= ~flags;
 		}
 	} else {
 		dmn = _dispatch_calloc(1, sizeof(struct dispatch_muxnote_s));
-		TAILQ_INIT(&dmn->dmn_unotes_head);
 		_dispatch_kq_unote_set_kevent(du, &dmn->dmn_kev, EV_ADD | EV_ENABLE);
 #if DISPATCH_USE_KEVENT_QOS
 		dmn->dmn_kev.qos = _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG;
 #endif
 		dmn->dmn_kev.udata = (uintptr_t)dmn | DISPATCH_KEVENT_MUXED_MARKER;
-		dmn->dmn_wlh = wlh;
-		if (unlikely(du._du->du_type->dst_update_mux)) {
-			installed = du._du->du_type->dst_update_mux(dmn);
+		if (unlikely(dux_type(du._du)->dst_update_mux)) {
+			installed = dux_type(du._du)->dst_update_mux(dmn);
 		} else {
-			installed = !_dispatch_kq_immediate_update(dmn->dmn_wlh,
+			installed = !_dispatch_kq_immediate_update(DISPATCH_WLH_ANON,
 					&dmn->dmn_kev);
 		}
 		if (installed) {
 			dmn->dmn_kev.flags &= ~(EV_ADD | EV_VANISHED);
-			_dispatch_muxnotes_lock();
-			TAILQ_INSERT_TAIL(dmb, dmn, dmn_list);
-			_dispatch_muxnotes_unlock();
+			LIST_INSERT_HEAD(dmb, dmn, dmn_list);
 		} else {
 			free(dmn);
 		}
@@ -981,58 +1047,34 @@ _dispatch_unote_register_muxed(dispatch_unote_t du, dispatch_wlh_t wlh)
 
 	if (installed) {
 		dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
-		TAILQ_INSERT_TAIL(&dmn->dmn_unotes_head, dul, du_link);
-		dul->du_muxnote = dmn;
-
+		LIST_INSERT_HEAD(&dmn->dmn_unotes_head, dul, du_link);
 		if (du._du->du_filter == DISPATCH_EVFILT_MACH_NOTIFICATION) {
-			bool armed = DISPATCH_MACH_NOTIFICATION_ARMED(&dmn->dmn_kev);
-			os_atomic_store2o(du._dmsr, dmsr_notification_armed, armed,relaxed);
+			os_atomic_store2o(du._dmsr, dmsr_notification_armed,
+					DISPATCH_MACH_NOTIFICATION_ARMED(dmn), relaxed);
 		}
-		du._du->du_wlh = DISPATCH_WLH_ANON;
+		dul->du_muxnote = dmn;
+		_dispatch_unote_state_set(du, DISPATCH_WLH_ANON, DU_STATE_ARMED);
+		_dispatch_du_debug("installed", du._du);
 	}
 	return installed;
 }
 
-bool
-_dispatch_unote_register(dispatch_unote_t du, dispatch_wlh_t wlh,
-		dispatch_priority_t pri)
-{
-	dispatch_assert(!_dispatch_unote_registered(du));
-	du._du->du_priority = pri;
-	switch (du._du->du_filter) {
-	case DISPATCH_EVFILT_CUSTOM_ADD:
-	case DISPATCH_EVFILT_CUSTOM_OR:
-	case DISPATCH_EVFILT_CUSTOM_REPLACE:
-		du._du->du_wlh = DISPATCH_WLH_ANON;
-		return true;
-	}
-	if (!du._du->du_is_direct) {
-		return _dispatch_unote_register_muxed(du, DISPATCH_WLH_ANON);
-	}
-	return _dispatch_kq_unote_update(wlh, du, EV_ADD | EV_ENABLE);
-}
-
 void
-_dispatch_unote_resume(dispatch_unote_t du)
+_dispatch_unote_resume_muxed(dispatch_unote_t du)
 {
-	dispatch_assert(_dispatch_unote_registered(du));
-
-	if (du._du->du_is_direct) {
-		dispatch_wlh_t wlh = du._du->du_wlh;
-		_dispatch_kq_unote_update(wlh, du, EV_ENABLE);
-	} else if (unlikely(du._du->du_type->dst_update_mux)) {
+	_dispatch_unote_state_set_bit(du, DU_STATE_ARMED);
+	if (unlikely(dux_type(du._du)->dst_update_mux)) {
 		dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
-		du._du->du_type->dst_update_mux(dul->du_muxnote);
+		dux_type(du._du)->dst_update_mux(dul->du_muxnote);
 	} else {
 		dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
 		dispatch_muxnote_t dmn = dul->du_muxnote;
-		_dispatch_kq_deferred_update(dmn->dmn_wlh, &dmn->dmn_kev);
+		_dispatch_kq_deferred_update(DISPATCH_WLH_ANON, &dmn->dmn_kev);
 	}
 }
 
-DISPATCH_NOINLINE
-static bool
-_dispatch_unote_unregister_muxed(dispatch_unote_t du, uint32_t flags)
+bool
+_dispatch_unote_unregister_muxed(dispatch_unote_t du)
 {
 	dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
 	dispatch_muxnote_t dmn = dul->du_muxnote;
@@ -1041,18 +1083,18 @@ _dispatch_unote_unregister_muxed(dispatch_unote_t du, uint32_t flags)
 	if (dmn->dmn_kev.filter == DISPATCH_EVFILT_MACH_NOTIFICATION) {
 		os_atomic_store2o(du._dmsr, dmsr_notification_armed, false, relaxed);
 	}
-	dispatch_assert(du._du->du_wlh == DISPATCH_WLH_ANON);
-	du._du->du_wlh = NULL;
-	TAILQ_REMOVE(&dmn->dmn_unotes_head, dul, du_link);
-	_TAILQ_TRASH_ENTRY(dul, du_link);
+	_dispatch_unote_state_set(du, DU_STATE_UNREGISTERED);
+	LIST_REMOVE(dul, du_link);
+	_LIST_TRASH_ENTRY(dul, du_link);
 	dul->du_muxnote = NULL;
 
-	if (TAILQ_EMPTY(&dmn->dmn_unotes_head)) {
+	if (LIST_EMPTY(&dmn->dmn_unotes_head)) {
+		dispose = true;
+		update = !(dmn->dmn_kev.flags & EV_DELETE);
 		dmn->dmn_kev.flags |= EV_DELETE;
-		update = dispose = true;
 	} else {
-		uint32_t fflags = du._du->du_type->dst_fflags;
-		TAILQ_FOREACH(dul, &dmn->dmn_unotes_head, du_link) {
+		uint32_t fflags = dux_type(du._du)->dst_fflags;
+		LIST_FOREACH(dul, &dmn->dmn_unotes_head, du_link) {
 			du = _dispatch_unote_linkage_get_unote(dul);
 			fflags |= du._du->du_fflags;
 		}
@@ -1061,54 +1103,107 @@ _dispatch_unote_unregister_muxed(dispatch_unote_t du, uint32_t flags)
 			update = true;
 		}
 	}
-	if (update && !(flags & DU_UNREGISTER_ALREADY_DELETED)) {
-		if (unlikely(du._du->du_type->dst_update_mux)) {
-			dispatch_assume(du._du->du_type->dst_update_mux(dmn));
+	if (update) {
+		if (unlikely(dux_type(du._du)->dst_update_mux)) {
+			dispatch_assume(dux_type(du._du)->dst_update_mux(dmn));
 		} else {
-			_dispatch_kq_deferred_update(dmn->dmn_wlh, &dmn->dmn_kev);
+			_dispatch_kq_deferred_update(DISPATCH_WLH_ANON, &dmn->dmn_kev);
 		}
 	}
 	if (dispose) {
-		struct dispatch_muxnote_bucket_s *dmb;
-		dmb = _dispatch_muxnote_bucket(dmn->dmn_kev.ident, dmn->dmn_kev.filter);
-		_dispatch_muxnotes_lock();
-		TAILQ_REMOVE(dmb, dmn, dmn_list);
-		_dispatch_muxnotes_unlock();
+		LIST_REMOVE(dmn, dmn_list);
 		free(dmn);
 	}
+	_dispatch_du_debug("deleted", du._du);
 	return true;
+}
+
+#if DISPATCH_HAVE_DIRECT_KNOTES
+bool
+_dispatch_unote_register_direct(dispatch_unote_t du, dispatch_wlh_t wlh)
+{
+	return _dispatch_kq_unote_update(wlh, du, EV_ADD | EV_ENABLE);
+}
+
+void
+_dispatch_unote_resume_direct(dispatch_unote_t du)
+{
+	_dispatch_unote_state_set_bit(du, DU_STATE_ARMED);
+	_dispatch_kq_unote_update(_dispatch_unote_wlh(du), du, EV_ENABLE);
 }
 
 bool
-_dispatch_unote_unregister(dispatch_unote_t du, uint32_t flags)
+_dispatch_unote_unregister_direct(dispatch_unote_t du, uint32_t flags)
 {
-	switch (du._du->du_filter) {
-	case DISPATCH_EVFILT_CUSTOM_ADD:
-	case DISPATCH_EVFILT_CUSTOM_OR:
-	case DISPATCH_EVFILT_CUSTOM_REPLACE:
-		du._du->du_wlh = NULL;
-		return true;
+	dispatch_unote_state_t du_state = _dispatch_unote_state(du);
+	dispatch_wlh_t du_wlh = _du_state_wlh(du_state);
+	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
+	uint16_t action = EV_DELETE;
+	if (likely(du_wlh != DISPATCH_WLH_ANON && ddi && ddi->ddi_wlh == du_wlh)) {
+		action |= EV_ENABLE;
+		flags |= DUU_DELETE_ACK | DUU_MUST_SUCCEED;
 	}
-	dispatch_wlh_t wlh = du._du->du_wlh;
-	if (wlh) {
-		if (!du._du->du_is_direct) {
-			return _dispatch_unote_unregister_muxed(du, flags);
+
+	if (!_du_state_needs_delete(du_state) || (flags & DUU_DELETE_ACK)) {
+		if (du_state == DU_STATE_NEEDS_DELETE) {
+			// There is no knote to unregister anymore, just do it.
+			_dispatch_unote_state_set(du, DU_STATE_UNREGISTERED);
+			_dispatch_du_debug("acknowledged deleted oneshot", du._du);
+			return true;
 		}
-		uint16_t action_flags;
-		if (flags & DU_UNREGISTER_ALREADY_DELETED) {
-			action_flags = 0;
-		} else if (flags & DU_UNREGISTER_IMMEDIATE_DELETE) {
-			action_flags = EV_DELETE | EV_ENABLE;
-		} else {
-			action_flags = EV_DELETE;
+		if (!_du_state_armed(du_state)) {
+			action |= EV_ENABLE;
+			flags |= DUU_MUST_SUCCEED;
 		}
-		return _dispatch_kq_unote_update(wlh, du, action_flags);
+		if ((action & EV_ENABLE) || (flags & DUU_PROBE)) {
+			if (_dispatch_kq_unote_update(du_wlh, du, action)) {
+				return true;
+			}
+		}
 	}
-	return true;
+	if (flags & DUU_MUST_SUCCEED) {
+		DISPATCH_INTERNAL_CRASH(0, "Unregistration failed");
+	}
+	return false;
 }
+#endif // DISPATCH_HAVE_DIRECT_KNOTES
 
 #pragma mark -
 #pragma mark dispatch_event_loop
+
+enum {
+	DISPATCH_WORKLOOP_ASYNC,
+	DISPATCH_WORKLOOP_ASYNC_FROM_SYNC,
+	DISPATCH_WORKLOOP_ASYNC_DISCOVER_SYNC,
+	DISPATCH_WORKLOOP_ASYNC_QOS_UPDATE,
+	DISPATCH_WORKLOOP_ASYNC_LEAVE,
+	DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_SYNC,
+	DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_TRANSFER,
+	DISPATCH_WORKLOOP_ASYNC_FORCE_END_OWNERSHIP,
+	DISPATCH_WORKLOOP_RETARGET,
+
+	DISPATCH_WORKLOOP_SYNC_WAIT,
+	DISPATCH_WORKLOOP_SYNC_WAKE,
+	DISPATCH_WORKLOOP_SYNC_FAKE,
+	DISPATCH_WORKLOOP_SYNC_END,
+};
+
+static char const * const _dispatch_workloop_actions[] = {
+	[DISPATCH_WORKLOOP_ASYNC]                       = "async",
+	[DISPATCH_WORKLOOP_ASYNC_FROM_SYNC]             = "async (from sync)",
+	[DISPATCH_WORKLOOP_ASYNC_DISCOVER_SYNC]         = "discover sync",
+	[DISPATCH_WORKLOOP_ASYNC_QOS_UPDATE]            = "qos update",
+	[DISPATCH_WORKLOOP_ASYNC_LEAVE]                 = "leave",
+	[DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_SYNC]       = "leave (from sync)",
+	[DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_TRANSFER]   = "leave (from transfer)",
+	[DISPATCH_WORKLOOP_ASYNC_FORCE_END_OWNERSHIP]   = "leave (forced)",
+	[DISPATCH_WORKLOOP_RETARGET]                    = "retarget",
+
+	[DISPATCH_WORKLOOP_SYNC_WAIT]                   = "sync-wait",
+	[DISPATCH_WORKLOOP_SYNC_FAKE]                   = "sync-fake",
+	[DISPATCH_WORKLOOP_SYNC_WAKE]                   = "sync-wake",
+	[DISPATCH_WORKLOOP_SYNC_END]                    = "sync-end",
+};
 
 void
 _dispatch_event_loop_atfork_child(void)
@@ -1142,14 +1237,15 @@ DISPATCH_NOINLINE
 void
 _dispatch_event_loop_drain(uint32_t flags)
 {
-	dispatch_wlh_t wlh = _dispatch_get_wlh();
 	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
+	dispatch_wlh_t wlh = ddi->ddi_wlh;
 	int n;
 
 again:
 	n = ddi->ddi_nevents;
 	ddi->ddi_nevents = 0;
 	_dispatch_kq_drain(wlh, ddi->ddi_eventlist, n, flags);
+
 
 	if ((flags & KEVENT_FLAG_IMMEDIATE) &&
 			!(flags & KEVENT_FLAG_ERROR_EVENTS) &&
@@ -1162,40 +1258,45 @@ void
 _dispatch_event_loop_merge(dispatch_kevent_t events, int nevents)
 {
 	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
+	dispatch_wlh_t wlh = ddi->ddi_wlh;
 	dispatch_kevent_s kev[nevents];
 
 	// now we can re-use the whole event list, but we need to save one slot
 	// for the event loop poke
 	memcpy(kev, events, sizeof(kev));
-	ddi->ddi_maxevents = DISPATCH_DEFERRED_ITEMS_EVENT_COUNT - 1;
+	ddi->ddi_maxevents = DISPATCH_DEFERRED_ITEMS_EVENT_COUNT - 2;
 
 	for (int i = 0; i < nevents; i++) {
 		_dispatch_kevent_drain(&kev[i]);
 	}
 
-	dispatch_wlh_t wlh = _dispatch_get_wlh();
-	if (wlh == DISPATCH_WLH_ANON && ddi->ddi_stashed_dou._do) {
-		if (ddi->ddi_nevents) {
+	if (wlh == DISPATCH_WLH_ANON) {
+		if (ddi->ddi_stashed_dou._do && ddi->ddi_nevents) {
 			// We will drain the stashed item and not return to the kernel
 			// right away. As a consequence, do not delay these updates.
 			_dispatch_event_loop_drain(KEVENT_FLAG_IMMEDIATE |
 					KEVENT_FLAG_ERROR_EVENTS);
 		}
-		_dispatch_trace_continuation_push(ddi->ddi_stashed_rq,
-				ddi->ddi_stashed_dou);
 	}
 }
 
 void
-_dispatch_event_loop_leave_immediate(dispatch_wlh_t wlh, uint64_t dq_state)
+_dispatch_event_loop_leave_immediate(uint64_t dq_state)
 {
-	(void)wlh; (void)dq_state;
+	(void)dq_state;
 }
 
 void
-_dispatch_event_loop_leave_deferred(dispatch_wlh_t wlh, uint64_t dq_state)
+_dispatch_event_loop_leave_deferred(dispatch_deferred_items_t ddi,
+		uint64_t dq_state)
 {
-	(void)wlh; (void)dq_state;
+	(void)ddi; (void)dq_state;
+}
+
+void
+_dispatch_event_loop_cancel_waiter(dispatch_sync_context_t dsc)
+{
+	(void)dsc;
 }
 
 void
@@ -1208,6 +1309,10 @@ _dispatch_event_loop_wake_owner(dispatch_sync_context_t dsc,
 void
 _dispatch_event_loop_wait_for_ownership(dispatch_sync_context_t dsc)
 {
+	if (dsc->dsc_waiter_needs_cancel) {
+		_dispatch_event_loop_cancel_waiter(dsc);
+		dsc->dsc_waiter_needs_cancel = false;
+	}
 	if (dsc->dsc_release_storage) {
 		_dispatch_queue_release_storage(dsc->dc_data);
 	}
@@ -1235,72 +1340,74 @@ _dispatch_event_loop_assert_not_owned(dispatch_wlh_t wlh)
 
 DISPATCH_NOINLINE
 static void
-_dispatch_kevent_timer_drain(dispatch_kevent_t ke)
-{
-	dispatch_assert(ke->data > 0);
-	dispatch_assert((ke->ident & DISPATCH_KEVENT_TIMEOUT_IDENT_MASK) ==
-			DISPATCH_KEVENT_TIMEOUT_IDENT_MASK);
-	uint32_t tidx = ke->ident & ~DISPATCH_KEVENT_TIMEOUT_IDENT_MASK;
-
-	dispatch_assert(tidx < DISPATCH_TIMER_COUNT);
-	_dispatch_timers_expired = true;
-	_dispatch_timers_processing_mask |= 1 << tidx;
-	_dispatch_timers_heap[tidx].dth_flags &= ~DTH_ARMED;
-#if DISPATCH_USE_DTRACE
-	_dispatch_timers_will_wake |= 1 << DISPATCH_TIMER_QOS(tidx);
-#endif
-}
-
-DISPATCH_NOINLINE
-static void
-_dispatch_event_loop_timer_program(uint32_t tidx,
+_dispatch_event_loop_timer_program(dispatch_timer_heap_t dth, uint32_t tidx,
 		uint64_t target, uint64_t leeway, uint16_t action)
 {
+	dispatch_wlh_t wlh = _dispatch_get_wlh();
+#if DISPATCH_USE_KEVENT_QOS
+	pthread_priority_t pp = _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG;
+	if (wlh != DISPATCH_WLH_ANON) {
+		pp = _dispatch_qos_to_pp(dth[tidx].dth_max_qos);
+	}
+#endif
 	dispatch_kevent_s ke = {
 		.ident = DISPATCH_KEVENT_TIMEOUT_IDENT_MASK | tidx,
 		.filter = EVFILT_TIMER,
 		.flags = action | EV_ONESHOT,
 		.fflags = _dispatch_timer_index_to_fflags[tidx],
 		.data = (int64_t)target,
-		.udata = (uintptr_t)&_dispatch_timers_heap[tidx],
+		.udata = (uintptr_t)dth,
 #if DISPATCH_HAVE_TIMER_COALESCING
 		.ext[1] = leeway,
 #endif
 #if DISPATCH_USE_KEVENT_QOS
-		.qos = _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG,
+		.qos = (typeof(ke.qos))pp,
 #endif
 	};
 
-	_dispatch_kq_deferred_update(DISPATCH_WLH_ANON, &ke);
+	_dispatch_kq_deferred_update(wlh, &ke);
 }
 
 void
-_dispatch_event_loop_timer_arm(uint32_t tidx, dispatch_timer_delay_s range,
-		dispatch_clock_now_cache_t nows)
+_dispatch_event_loop_timer_arm(dispatch_timer_heap_t dth, uint32_t tidx,
+		dispatch_timer_delay_s range, dispatch_clock_now_cache_t nows)
 {
+	dispatch_clock_t clock = DISPATCH_TIMER_CLOCK(tidx);
+	uint64_t target = range.delay + _dispatch_time_now_cached(clock, nows);
 	if (unlikely(_dispatch_timers_force_max_leeway)) {
-		range.delay += range.leeway;
+		target += range.leeway;
 		range.leeway = 0;
 	}
+
+	_dispatch_event_loop_timer_program(dth, tidx, target, range.leeway,
+			EV_ADD | EV_ENABLE);
 #if HAVE_MACH
-	if (DISPATCH_TIMER_CLOCK(tidx) == DISPATCH_CLOCK_WALL) {
+	if (clock == DISPATCH_CLOCK_WALL) {
 		_dispatch_mach_host_calendar_change_register();
 	}
 #endif
-
-	// <rdar://problem/13186331> EVFILT_TIMER NOTE_ABSOLUTE always expects
-	// a WALL deadline
-	uint64_t now = _dispatch_time_now_cached(DISPATCH_CLOCK_WALL, nows);
-	_dispatch_timers_heap[tidx].dth_flags |= DTH_ARMED;
-	_dispatch_event_loop_timer_program(tidx, now + range.delay, range.leeway,
-			EV_ADD | EV_ENABLE);
 }
 
 void
-_dispatch_event_loop_timer_delete(uint32_t tidx)
+_dispatch_event_loop_timer_delete(dispatch_timer_heap_t dth, uint32_t tidx)
 {
-	_dispatch_timers_heap[tidx].dth_flags &= ~DTH_ARMED;
-	_dispatch_event_loop_timer_program(tidx, 0, 0, EV_DELETE);
+	_dispatch_event_loop_timer_program(dth, tidx, 0, 0, EV_DELETE);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_kevent_timer_drain(dispatch_kevent_t ke)
+{
+	dispatch_timer_heap_t dth = (dispatch_timer_heap_t)ke->udata;
+	uint32_t tidx = ke->ident & ~DISPATCH_KEVENT_TIMEOUT_IDENT_MASK;
+
+	dispatch_assert(ke->data > 0);
+	dispatch_assert(ke->ident == (tidx | DISPATCH_KEVENT_TIMEOUT_IDENT_MASK));
+	dispatch_assert(tidx < DISPATCH_TIMER_COUNT);
+
+	_dispatch_timers_heap_dirty(dth, tidx);
+	dth[tidx].dth_needs_program = true;
+	dth[tidx].dth_armed = false;
 }
 
 #pragma mark -
@@ -1312,7 +1419,7 @@ _dispatch_source_proc_create(dispatch_source_type_t dst DISPATCH_UNUSED,
 {
 	dispatch_unote_t du = _dispatch_unote_create_with_handle(dst, handle, mask);
 	if (du._du && (mask & DISPATCH_PROC_EXIT_STATUS)) {
-		du._du->du_data_action = DISPATCH_UNOTE_ACTION_DATA_OR_STATUS_SET;
+		du._du->du_has_extended_status = true;
 	}
 	return du;
 }
@@ -1330,7 +1437,9 @@ const dispatch_source_type_s _dispatch_source_type_proc = {
 			|NOTE_REAP
 #endif
 			,
+	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
+	.dst_strict     = false,
 
 	.dst_create     = _dispatch_source_proc_create,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
@@ -1349,7 +1458,9 @@ const dispatch_source_type_s _dispatch_source_type_vnode = {
 			|NOTE_NONE
 #endif
 			,
+	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
+	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_with_fd,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
@@ -1377,7 +1488,9 @@ const dispatch_source_type_s _dispatch_source_type_vfs = {
 			|VQ_DESIRED_DISK
 #endif
 			,
+	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
+	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_without_handle,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
@@ -1401,7 +1514,9 @@ const dispatch_source_type_s _dispatch_source_type_sock = {
 			|NOTE_NOTIFY_ACK
 #endif
 		,
+	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
+	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_with_fd,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
@@ -1414,7 +1529,10 @@ const dispatch_source_type_s _dispatch_source_type_nw_channel = {
 	.dst_filter     = EVFILT_NW_CHANNEL,
 	.dst_flags      = DISPATCH_EV_DIRECT|EV_CLEAR|EV_VANISHED,
 	.dst_mask       = NOTE_FLOW_ADV_UPDATE,
+	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
+	.dst_strict     = false,
+
 	.dst_create     = _dispatch_unote_create_with_fd,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
 };
@@ -1477,7 +1595,7 @@ _dispatch_memorypressure_init(void)
 {
 	dispatch_source_t ds = dispatch_source_create(
 			DISPATCH_SOURCE_TYPE_MEMORYPRESSURE, 0,
-			DISPATCH_MEMORYPRESSURE_SOURCE_MASK, &_dispatch_mgr_q);
+			DISPATCH_MEMORYPRESSURE_SOURCE_MASK, _dispatch_mgr_q._as_dq);
 	dispatch_set_context(ds, ds);
 	dispatch_source_set_event_handler_f(ds, _dispatch_memorypressure_handler);
 	dispatch_activate(ds);
@@ -1529,7 +1647,9 @@ const dispatch_source_type_s _dispatch_source_type_memorypressure = {
 			|NOTE_MEMORYSTATUS_LOW_SWAP|NOTE_MEMORYSTATUS_PROC_LIMIT_WARN
 			|NOTE_MEMORYSTATUS_PROC_LIMIT_CRITICAL
 			|NOTE_MEMORYSTATUS_MSL_STATUS,
+	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
+	.dst_strict     = false,
 
 #if TARGET_OS_SIMULATOR
 	.dst_create     = _dispatch_source_memorypressure_create,
@@ -1558,7 +1678,9 @@ const dispatch_source_type_s _dispatch_source_type_vm = {
 	.dst_filter     = EVFILT_MEMORYSTATUS,
 	.dst_flags      = EV_UDATA_SPECIFIC|EV_DISPATCH,
 	.dst_mask       = NOTE_VM_PRESSURE,
+	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
+	.dst_strict     = false,
 
 	.dst_create     = _dispatch_source_vm_create,
 	// redirected to _dispatch_source_type_memorypressure
@@ -1575,19 +1697,21 @@ const dispatch_source_type_s _dispatch_source_type_vm = {
 
 static void _dispatch_mach_host_notify_update(void *context);
 
-static mach_port_t _dispatch_mach_notify_port;
-static dispatch_source_t _dispatch_mach_notify_source;
+DISPATCH_STATIC_GLOBAL(dispatch_once_t _dispatch_mach_notify_port_pred);
+DISPATCH_STATIC_GLOBAL(dispatch_once_t _dispatch_mach_calendar_pred);
+DISPATCH_STATIC_GLOBAL(mach_port_t _dispatch_mach_notify_port);
 
 static void
 _dispatch_timers_calendar_change(void)
 {
-	uint32_t qos;
+	dispatch_timer_heap_t dth = _dispatch_timers_heap;
+	uint32_t qos, tidx;
 
 	// calendar change may have gone past the wallclock deadline
-	_dispatch_timers_expired = true;
 	for (qos = 0; qos < DISPATCH_TIMER_QOS_COUNT; qos++) {
-		_dispatch_timers_processing_mask |=
-				1 << DISPATCH_TIMER_INDEX(DISPATCH_CLOCK_WALL, qos);
+		tidx = DISPATCH_TIMER_INDEX(DISPATCH_CLOCK_WALL, qos);
+		_dispatch_timers_heap_dirty(dth, tidx);
+		dth[tidx].dth_needs_program = true;
 	}
 }
 
@@ -1609,7 +1733,10 @@ _dispatch_mach_msg_get_audit_trailer(mach_msg_header_t *hdr)
 
 DISPATCH_NOINLINE
 static void
-_dispatch_mach_notify_source_invoke(mach_msg_header_t *hdr)
+_dispatch_mach_notification_merge_msg(dispatch_unote_t du, uint32_t flags,
+		mach_msg_header_t *hdr, mach_msg_size_t msgsz DISPATCH_UNUSED,
+		pthread_priority_t msg_pp DISPATCH_UNUSED,
+		pthread_priority_t ovr_pp DISPATCH_UNUSED)
 {
 	mig_reply_error_t reply;
 	mach_msg_audit_trailer_t *tlr = NULL;
@@ -1621,16 +1748,17 @@ _dispatch_mach_notify_source_invoke(mach_msg_header_t *hdr)
 	if (!tlr) {
 		DISPATCH_INTERNAL_CRASH(0, "message received without expected trailer");
 	}
-	if (hdr->msgh_id <= MACH_NOTIFY_LAST
-			&& dispatch_assume_zero(tlr->msgh_audit.val[
+	if (hdr->msgh_id <= MACH_NOTIFY_LAST &&
+			dispatch_assume_zero(tlr->msgh_audit.val[
 			DISPATCH_MACH_AUDIT_TOKEN_PID])) {
 		mach_msg_destroy(hdr);
-		return;
+		goto out;
 	}
+
 	boolean_t success = libdispatch_internal_protocol_server(hdr, &reply.Head);
 	if (!success && reply.RetCode == MIG_BAD_ID &&
 			(hdr->msgh_id == HOST_CALENDAR_SET_REPLYID ||
-			 hdr->msgh_id == HOST_CALENDAR_CHANGED_REPLYID)) {
+			hdr->msgh_id == HOST_CALENDAR_CHANGED_REPLYID)) {
 		_dispatch_debug("calendar-change notification");
 		_dispatch_timers_calendar_change();
 		_dispatch_mach_host_notify_update(NULL);
@@ -1643,39 +1771,38 @@ _dispatch_mach_notify_source_invoke(mach_msg_header_t *hdr)
 	if (!success || (reply.RetCode && reply.RetCode != MIG_NO_REPLY)) {
 		mach_msg_destroy(hdr);
 	}
+
+out:
+	if (flags & DISPATCH_EV_MSG_NEEDS_FREE) {
+		free(hdr);
+	}
+	return _dispatch_unote_resume(du);
 }
 
 DISPATCH_NOINLINE
 static void
 _dispatch_mach_notify_port_init(void *context DISPATCH_UNUSED)
 {
-	kern_return_t kr;
-#if HAVE_MACH_PORT_CONSTRUCT
 	mach_port_options_t opts = { .flags = MPO_CONTEXT_AS_GUARD | MPO_STRICT };
-#if DISPATCH_SIZEOF_PTR == 8
-	const mach_port_context_t guard = 0xfeed09071f1ca7edull;
-#else
-	const mach_port_context_t guard = 0xff1ca7edull;
-#endif
+	mach_port_context_t guard = (uintptr_t)&_dispatch_mach_notify_port;
+	kern_return_t kr;
+
 	kr = mach_port_construct(mach_task_self(), &opts, guard,
 			&_dispatch_mach_notify_port);
-#else
-	kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE,
-			&_dispatch_mach_notify_port);
-#endif
-	DISPATCH_VERIFY_MIG(kr);
 	if (unlikely(kr)) {
 		DISPATCH_CLIENT_CRASH(kr,
 				"mach_port_construct() failed: cannot create receive right");
 	}
 
-	static const struct dispatch_continuation_s dc = {
-		.dc_func = (void*)_dispatch_mach_notify_source_invoke,
-	};
-	_dispatch_mach_notify_source = _dispatch_source_create_mach_msg_direct_recv(
-			_dispatch_mach_notify_port, &dc);
-	dispatch_assert(_dispatch_mach_notify_source);
-	dispatch_activate(_dispatch_mach_notify_source);
+	dispatch_unote_t du = dux_create(&_dispatch_mach_type_notification,
+			_dispatch_mach_notify_port, 0);
+
+	// make sure _dispatch_kevent_mach_msg_recv can call
+	// _dispatch_retain_unote_owner
+	du._du->du_owner_wref = _dispatch_ptr2wref(&_dispatch_mgr_q);
+
+	dispatch_assume(_dispatch_unote_register(du, DISPATCH_WLH_ANON,
+			DISPATCH_PRIORITY_FLAG_MANAGER));
 }
 
 static void
@@ -1711,26 +1838,19 @@ DISPATCH_ALWAYS_INLINE
 static inline mach_port_t
 _dispatch_get_mach_notify_port(void)
 {
-	static dispatch_once_t pred;
-	dispatch_once_f(&pred, NULL, _dispatch_mach_notify_port_init);
+	dispatch_once_f(&_dispatch_mach_notify_port_pred, NULL,
+			_dispatch_mach_notify_port_init);
 	return _dispatch_mach_notify_port;
 }
 
 static void
 _dispatch_mach_host_notify_update(void *context DISPATCH_UNUSED)
 {
-	static int notify_type = HOST_NOTIFY_CALENDAR_SET;
 	kern_return_t kr;
 	_dispatch_debug("registering for calendar-change notification");
-retry:
+
 	kr = host_request_notification(_dispatch_get_mach_host_port(),
-			notify_type, _dispatch_get_mach_notify_port());
-	// Fallback when missing support for newer _SET variant, fires strictly more
-	if (kr == KERN_INVALID_ARGUMENT &&
-			notify_type != HOST_NOTIFY_CALENDAR_CHANGE) {
-		notify_type = HOST_NOTIFY_CALENDAR_CHANGE;
-		goto retry;
-	}
+			HOST_NOTIFY_CALENDAR_SET, _dispatch_get_mach_notify_port());
 	DISPATCH_VERIFY_MIG(kr);
 	(void)dispatch_assume_zero(kr);
 }
@@ -1739,8 +1859,8 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_mach_host_calendar_change_register(void)
 {
-	static dispatch_once_t pred;
-	dispatch_once_f(&pred, NULL, _dispatch_mach_host_notify_update);
+	dispatch_once_f(&_dispatch_mach_calendar_pred, NULL,
+			_dispatch_mach_host_notify_update);
 }
 
 static kern_return_t
@@ -1848,6 +1968,7 @@ _dispatch_mach_notify_merge(mach_port_t name, uint32_t data, bool final)
 {
 	dispatch_unote_linkage_t dul, dul_next;
 	dispatch_muxnote_t dmn;
+	uint32_t flags = EV_ENABLE;
 
 	_dispatch_debug_machport(name);
 	dmn = _dispatch_mach_muxnote_find(name, DISPATCH_EVFILT_MACH_NOTIFICATION);
@@ -1856,21 +1977,29 @@ _dispatch_mach_notify_merge(mach_port_t name, uint32_t data, bool final)
 	}
 
 	dmn->dmn_kev.data &= ~_DISPATCH_MACH_SP_FLAGS;
-	if (!final) {
-		// Re-register for notification before delivery
-		final = !_dispatch_kevent_mach_notify_resume(dmn, data, 0);
+	if (final || !_dispatch_kevent_mach_notify_resume(dmn, data, 0)) {
+		flags = EV_ONESHOT;
+		dmn->dmn_kev.flags |= EV_DELETE;
 	}
+	os_atomic_store(&DISPATCH_MACH_NOTIFICATION_ARMED(dmn), 0, relaxed);
 
-	uint32_t flags = final ? EV_ONESHOT : EV_ENABLE;
-	DISPATCH_MACH_NOTIFICATION_ARMED(&dmn->dmn_kev) = 0;
-	TAILQ_FOREACH_SAFE(dul, &dmn->dmn_unotes_head, du_link, dul_next) {
-		dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
-		os_atomic_store2o(du._dmsr, dmsr_notification_armed, false, relaxed);
-		dux_merge_evt(du._du, flags, (data & du._du->du_fflags), 0, 0);
-		if (!dul_next || DISPATCH_MACH_NOTIFICATION_ARMED(&dmn->dmn_kev)) {
-			// current merge is last in list (dmn might have been freed)
-			// or it re-armed the notification
+	LIST_FOREACH_SAFE(dul, &dmn->dmn_unotes_head, du_link, dul_next) {
+		if (os_atomic_load(&DISPATCH_MACH_NOTIFICATION_ARMED(dmn), relaxed)) {
+			dispatch_assert(!final);
 			break;
+		}
+		dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
+		uint32_t fflags = (data & du._du->du_fflags);
+		os_atomic_store2o(du._du, dmsr_notification_armed, 0, relaxed);
+		if (final || fflags) {
+			// consumed by dux_merge_evt()
+			_dispatch_retain_unote_owner(du);
+			if (final) _dispatch_unote_unregister_muxed(du);
+			if (fflags && dux_type(du._du)->dst_action ==
+					DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS) {
+				os_atomic_or2o(du._dr, ds_pending_data, fflags, relaxed);
+			}
+			dux_merge_evt(du._du, flags, fflags, 0);
 		}
 	}
 }
@@ -1921,22 +2050,20 @@ _dispatch_mach_notification_set_armed(dispatch_mach_send_refs_t dmsr)
 {
 	dispatch_muxnote_t dmn = _dispatch_unote_get_linkage(dmsr)->du_muxnote;
 	dispatch_unote_linkage_t dul;
-	dispatch_unote_t du;
-
-	if (!_dispatch_unote_registered(dmsr)) {
-		return;
-	}
-
-	DISPATCH_MACH_NOTIFICATION_ARMED(&dmn->dmn_kev) = true;
-	TAILQ_FOREACH(dul, &dmn->dmn_unotes_head, du_link) {
-		du = _dispatch_unote_linkage_get_unote(dul);
-		os_atomic_store2o(du._dmsr, dmsr_notification_armed, true, relaxed);
+	if (dmn) {
+		os_atomic_store(&DISPATCH_MACH_NOTIFICATION_ARMED(dmn), 1, relaxed);
+		LIST_FOREACH(dul, &dmn->dmn_unotes_head, du_link) {
+			dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
+			os_atomic_store2o(du._du, dmsr_notification_armed, 1, relaxed);
+		}
+		_dispatch_debug("machport[0x%08x]: send-possible notification armed",
+				(mach_port_name_t)dmn->dmn_kev.ident);
 	}
 }
 
 static dispatch_unote_t
 _dispatch_source_mach_send_create(dispatch_source_type_t dst,
-	uintptr_t handle, unsigned long mask)
+		uintptr_t handle, unsigned long mask)
 {
 	if (!mask) {
 		// Preserve legacy behavior that (mask == 0) => DISPATCH_MACH_SEND_DEAD
@@ -1963,7 +2090,9 @@ const dispatch_source_type_s _dispatch_source_type_mach_send = {
 	.dst_filter     = DISPATCH_EVFILT_MACH_NOTIFICATION,
 	.dst_flags      = EV_CLEAR,
 	.dst_mask       = DISPATCH_MACH_SEND_DEAD|DISPATCH_MACH_SEND_POSSIBLE,
+	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
+	.dst_strict     = false,
 
 	.dst_create     = _dispatch_source_mach_send_create,
 	.dst_update_mux = _dispatch_mach_send_update,
@@ -1979,7 +2108,7 @@ _dispatch_mach_send_create(dispatch_source_type_t dst,
 			_dispatch_unote_create_without_handle(dst, handle, mask);
 	if (du._dmsr) {
 		du._dmsr->dmsr_disconnect_cnt = DISPATCH_MACH_NEVER_CONNECTED;
-		TAILQ_INIT(&du._dmsr->dmsr_replies);
+		LIST_INIT(&du._dmsr->dmsr_replies);
 	}
 	return du;
 }
@@ -1989,11 +2118,13 @@ const dispatch_source_type_s _dispatch_mach_type_send = {
 	.dst_filter     = DISPATCH_EVFILT_MACH_NOTIFICATION,
 	.dst_flags      = EV_CLEAR,
 	.dst_mask       = DISPATCH_MACH_SEND_DEAD|DISPATCH_MACH_SEND_POSSIBLE,
+	.dst_action     = DISPATCH_UNOTE_ACTION_PASS_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_mach_send_refs_s),
+	.dst_strict     = false,
 
 	.dst_create     = _dispatch_mach_send_create,
 	.dst_update_mux = _dispatch_mach_send_update,
-	.dst_merge_evt  = _dispatch_mach_merge_notification,
+	.dst_merge_evt  = _dispatch_mach_notification_merge_evt,
 };
 
 #endif // HAVE_MACH
@@ -2002,31 +2133,25 @@ const dispatch_source_type_s _dispatch_mach_type_send = {
 
 static void
 _dispatch_kevent_mach_msg_recv(dispatch_unote_t du, uint32_t flags,
-		mach_msg_header_t *hdr)
+		mach_msg_header_t *hdr, pthread_priority_t msg_pp,
+		pthread_priority_t ovr_pp)
 {
-	mach_msg_size_t siz = hdr->msgh_size + DISPATCH_MACH_TRAILER_SIZE;
 	mach_port_t name = hdr->msgh_local_port;
+	mach_msg_size_t siz;
 
-	if (!dispatch_assume(hdr->msgh_size <= UINT_MAX -
-			DISPATCH_MACH_TRAILER_SIZE)) {
-		_dispatch_bug_client("_dispatch_kevent_mach_msg_recv: "
-				"received overlarge message");
-	} else if (!dispatch_assume(name)) {
-		_dispatch_bug_client("_dispatch_kevent_mach_msg_recv: "
-				"received message with MACH_PORT_NULL port");
-	} else {
-		_dispatch_debug_machport(name);
-		if (likely(du._du)) {
-			return dux_merge_msg(du._du, flags, hdr, siz);
-		}
-		_dispatch_bug_client("_dispatch_kevent_mach_msg_recv: "
-				"received message with no listeners");
+	if (os_add_overflow(hdr->msgh_size, DISPATCH_MACH_TRAILER_SIZE, &siz)) {
+		DISPATCH_CLIENT_CRASH(hdr->msgh_size, "Overlarge message received");
+	}
+	if (os_unlikely(name == MACH_PORT_NULL)) {
+		DISPATCH_CLIENT_CRASH(hdr->msgh_id, "Received message with "
+				"MACH_PORT_NULL msgh_local_port");
 	}
 
-	mach_msg_destroy(hdr);
-	if (flags & DISPATCH_EV_MSG_NEEDS_FREE) {
-		free(hdr);
-	}
+	_dispatch_debug_machport(name);
+	// consumed by dux_merge_evt()
+	_dispatch_retain_unote_owner(du);
+	_dispatch_kevent_merge_ev_flags(du, flags);
+	return dux_merge_msg(du._du, flags, hdr, siz, msg_pp, ovr_pp);
 }
 
 DISPATCH_NOINLINE
@@ -2034,53 +2159,50 @@ static void
 _dispatch_kevent_mach_msg_drain(dispatch_kevent_t ke)
 {
 	mach_msg_header_t *hdr = _dispatch_kevent_mach_msg_buf(ke);
+	dispatch_unote_t du = _dispatch_kevent_get_unote(ke);
+	pthread_priority_t msg_pp = (pthread_priority_t)(ke->ext[2] >> 32);
+	pthread_priority_t ovr_pp = (pthread_priority_t)ke->qos;
+	uint32_t flags = ke->flags;
 	mach_msg_size_t siz;
 	mach_msg_return_t kr = (mach_msg_return_t)ke->fflags;
-	uint32_t flags = ke->flags;
-	dispatch_unote_t du = _dispatch_kevent_get_unote(ke);
 
 	if (unlikely(!hdr)) {
 		DISPATCH_INTERNAL_CRASH(kr, "EVFILT_MACHPORT with no message");
 	}
 	if (likely(!kr)) {
-		_dispatch_kevent_mach_msg_recv(du, flags, hdr);
+		return _dispatch_kevent_mach_msg_recv(du, flags, hdr, msg_pp, ovr_pp);
+	}
+	if (kr != MACH_RCV_TOO_LARGE) {
 		goto out;
-	} else if (kr != MACH_RCV_TOO_LARGE) {
-		goto out;
-	} else if (!ke->data) {
+	}
+
+	if (!ke->data) {
 		DISPATCH_INTERNAL_CRASH(0, "MACH_RCV_LARGE_IDENTITY with no identity");
 	}
 	if (unlikely(ke->ext[1] > (UINT_MAX - DISPATCH_MACH_TRAILER_SIZE))) {
 		DISPATCH_INTERNAL_CRASH(ke->ext[1],
 				"EVFILT_MACHPORT with overlarge message");
 	}
-	siz = _dispatch_kevent_mach_msg_size(ke) + DISPATCH_MACH_TRAILER_SIZE;
-	hdr = malloc(siz);
-	if (dispatch_assume(hdr)) {
-		flags |= DISPATCH_EV_MSG_NEEDS_FREE;
-	} else {
-		// Kernel will discard message too large to fit
-		hdr = NULL;
-		siz = 0;
-	}
-	mach_port_t name = (mach_port_name_t)ke->data;
 	const mach_msg_option_t options = ((DISPATCH_MACH_RCV_OPTIONS |
 			MACH_RCV_TIMEOUT) & ~MACH_RCV_LARGE);
-	kr = mach_msg(hdr, options, 0, siz, name, MACH_MSG_TIMEOUT_NONE,
-			MACH_PORT_NULL);
+	siz = _dispatch_kevent_mach_msg_size(ke) + DISPATCH_MACH_TRAILER_SIZE;
+	hdr = malloc(siz); // mach_msg will return TOO_LARGE if hdr/siz is NULL/0
+	kr = mach_msg(hdr, options, 0, dispatch_assume(hdr) ? siz : 0,
+			(mach_port_name_t)ke->data, MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL);
 	if (likely(!kr)) {
-		_dispatch_kevent_mach_msg_recv(du, flags, hdr);
-		goto out;
-	} else if (kr == MACH_RCV_TOO_LARGE) {
+		flags |= DISPATCH_EV_MSG_NEEDS_FREE;
+		return _dispatch_kevent_mach_msg_recv(du, flags, hdr, msg_pp, ovr_pp);
+	}
+
+	if (kr == MACH_RCV_TOO_LARGE) {
 		_dispatch_log("BUG in libdispatch client: "
 				"_dispatch_kevent_mach_msg_drain: dropped message too "
 				"large to fit in memory: id = 0x%x, size = %u",
 				hdr->msgh_id, _dispatch_kevent_mach_msg_size(ke));
 		kr = MACH_MSG_SUCCESS;
 	}
-	if (flags & DISPATCH_EV_MSG_NEEDS_FREE) {
-		free(hdr);
-	}
+	free(hdr);
+
 out:
 	if (unlikely(kr)) {
 		_dispatch_bug_mach_client("_dispatch_kevent_mach_msg_drain: "
@@ -2093,7 +2215,9 @@ const dispatch_source_type_s _dispatch_source_type_mach_recv = {
 	.dst_filter     = EVFILT_MACHPORT,
 	.dst_flags      = EV_UDATA_SPECIFIC|EV_DISPATCH|EV_VANISHED,
 	.dst_fflags     = 0,
+	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
+	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_with_handle,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
@@ -2103,66 +2227,51 @@ const dispatch_source_type_s _dispatch_source_type_mach_recv = {
 };
 
 static void
-_dispatch_source_mach_recv_direct_merge_msg(dispatch_unote_t du, uint32_t flags,
-		mach_msg_header_t *msg, mach_msg_size_t msgsz DISPATCH_UNUSED)
+_dispatch_mach_notification_event(dispatch_unote_t du, uint32_t flags DISPATCH_UNUSED,
+		uintptr_t data DISPATCH_UNUSED, pthread_priority_t pp DISPATCH_UNUSED)
 {
-	dispatch_continuation_t dc = du._dr->ds_handler[DS_EVENT_HANDLER];
-	dispatch_source_t ds = _dispatch_source_from_refs(du._dr);
-	dispatch_queue_t cq = _dispatch_queue_get_current();
-
-	// see firehose_client_push_notify_async
-	_dispatch_queue_set_current(ds->_as_dq);
-	dc->dc_func(msg);
-	_dispatch_queue_set_current(cq);
-	if (flags & DISPATCH_EV_MSG_NEEDS_FREE) {
-		free(msg);
-	}
-	if ((ds->dq_atomic_flags & DSF_CANCELED) ||
-			(flags & (EV_ONESHOT | EV_DELETE))) {
-		return _dispatch_source_merge_evt(du, flags, 0, 0, 0);
-	}
-	if (_dispatch_unote_needs_rearm(du)) {
-		return _dispatch_unote_resume(du);
-	}
+	DISPATCH_CLIENT_CRASH(du._du->du_ident, "Unexpected non message event");
 }
 
+const dispatch_source_type_s _dispatch_mach_type_notification = {
+	.dst_kind       = "mach_notification",
+	.dst_filter     = EVFILT_MACHPORT,
+	.dst_flags      = EV_UDATA_SPECIFIC|EV_DISPATCH|EV_VANISHED,
+	.dst_fflags     = DISPATCH_MACH_RCV_OPTIONS,
+	.dst_action     = DISPATCH_UNOTE_ACTION_PASS_FFLAGS,
+	.dst_size       = sizeof(struct dispatch_unote_class_s),
+	.dst_strict     = false,
+
+	.dst_create     = _dispatch_unote_create_with_handle,
+	.dst_merge_evt  = _dispatch_mach_notification_event,
+	.dst_merge_msg  = _dispatch_mach_notification_merge_msg,
+
+	.dst_per_trigger_qos = true,
+};
+
 static void
-_dispatch_mach_recv_direct_merge(dispatch_unote_t du,
-		uint32_t flags, uintptr_t data,
-		uintptr_t status DISPATCH_UNUSED,
-		pthread_priority_t pp)
+_dispatch_mach_recv_direct_merge_evt(dispatch_unote_t du, uint32_t flags,
+		uintptr_t data, pthread_priority_t pp)
 {
 	if (flags & EV_VANISHED) {
 		DISPATCH_CLIENT_CRASH(du._du->du_ident,
 				"Unexpected EV_VANISHED (do not destroy random mach ports)");
 	}
-	return _dispatch_source_merge_evt(du, flags, data, 0, pp);
+	return _dispatch_source_merge_evt(du, flags, data, pp);
 }
-
-const dispatch_source_type_s _dispatch_source_type_mach_recv_direct = {
-	.dst_kind       = "direct mach_recv",
-	.dst_filter     = EVFILT_MACHPORT,
-	.dst_flags      = EV_UDATA_SPECIFIC|EV_DISPATCH|EV_VANISHED,
-	.dst_fflags     = DISPATCH_MACH_RCV_OPTIONS,
-	.dst_size       = sizeof(struct dispatch_source_refs_s),
-
-	.dst_create     = _dispatch_unote_create_with_handle,
-	.dst_merge_evt  = _dispatch_mach_recv_direct_merge,
-	.dst_merge_msg  = _dispatch_source_mach_recv_direct_merge_msg,
-
-	.dst_per_trigger_qos = true,
-};
 
 const dispatch_source_type_s _dispatch_mach_type_recv = {
 	.dst_kind       = "mach_recv (channel)",
 	.dst_filter     = EVFILT_MACHPORT,
 	.dst_flags      = EV_UDATA_SPECIFIC|EV_DISPATCH|EV_VANISHED,
 	.dst_fflags     = DISPATCH_MACH_RCV_OPTIONS,
+	.dst_action     = DISPATCH_UNOTE_ACTION_PASS_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_mach_recv_refs_s),
+	.dst_strict     = false,
 
-	 // without handle because the mach code will set the ident after connect
+	// without handle because the mach code will set the ident after connect
 	.dst_create     = _dispatch_unote_create_without_handle,
-	.dst_merge_evt  = _dispatch_mach_recv_direct_merge,
+	.dst_merge_evt  = _dispatch_mach_recv_direct_merge_evt,
 	.dst_merge_msg  = _dispatch_mach_merge_msg,
 
 	.dst_per_trigger_qos = true,
@@ -2172,7 +2281,6 @@ DISPATCH_NORETURN
 static void
 _dispatch_mach_reply_merge_evt(dispatch_unote_t du,
 		uint32_t flags DISPATCH_UNUSED, uintptr_t data DISPATCH_UNUSED,
-		uintptr_t status DISPATCH_UNUSED,
 		pthread_priority_t pp DISPATCH_UNUSED)
 {
 	DISPATCH_INTERNAL_CRASH(du._du->du_ident, "Unexpected event");
@@ -2183,7 +2291,9 @@ const dispatch_source_type_s _dispatch_mach_type_reply = {
 	.dst_filter     = EVFILT_MACHPORT,
 	.dst_flags      = EV_UDATA_SPECIFIC|EV_DISPATCH|EV_ONESHOT|EV_VANISHED,
 	.dst_fflags     = DISPATCH_MACH_RCV_OPTIONS,
+	.dst_action     = DISPATCH_UNOTE_ACTION_PASS_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_mach_reply_refs_s),
+	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_with_handle,
 	.dst_merge_evt  = _dispatch_mach_reply_merge_evt,
@@ -2197,10 +2307,12 @@ const dispatch_source_type_s _dispatch_xpc_type_sigterm = {
 	.dst_filter     = EVFILT_SIGNAL,
 	.dst_flags      = DISPATCH_EV_DIRECT|EV_CLEAR|EV_ONESHOT,
 	.dst_fflags     = 0,
+	.dst_action     = DISPATCH_UNOTE_ACTION_PASS_DATA,
 	.dst_size       = sizeof(struct dispatch_xpc_term_refs_s),
+	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_with_handle,
-	.dst_merge_evt  = _dispatch_xpc_sigterm_merge,
+	.dst_merge_evt  = _dispatch_xpc_sigterm_merge_evt,
 };
 
 #endif // HAVE_MACH

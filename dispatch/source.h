@@ -548,6 +548,7 @@ dispatch_source_testcancel(dispatch_source_t source);
  *
  *  DISPATCH_SOURCE_TYPE_DATA_ADD:        n/a
  *  DISPATCH_SOURCE_TYPE_DATA_OR:         n/a
+ *  DISPATCH_SOURCE_TYPE_DATA_REPLACE:    n/a
  *  DISPATCH_SOURCE_TYPE_MACH_SEND:       mach port (mach_port_t)
  *  DISPATCH_SOURCE_TYPE_MACH_RECV:       mach port (mach_port_t)
  *  DISPATCH_SOURCE_TYPE_MEMORYPRESSURE   n/a
@@ -579,6 +580,7 @@ dispatch_source_get_handle(dispatch_source_t source);
  *
  *  DISPATCH_SOURCE_TYPE_DATA_ADD:        n/a
  *  DISPATCH_SOURCE_TYPE_DATA_OR:         n/a
+ *  DISPATCH_SOURCE_TYPE_DATA_REPLACE:    n/a
  *  DISPATCH_SOURCE_TYPE_MACH_SEND:       dispatch_source_mach_send_flags_t
  *  DISPATCH_SOURCE_TYPE_MACH_RECV:       n/a
  *  DISPATCH_SOURCE_TYPE_MEMORYPRESSURE   dispatch_source_memorypressure_flags_t
@@ -615,6 +617,7 @@ dispatch_source_get_mask(dispatch_source_t source);
  *
  *  DISPATCH_SOURCE_TYPE_DATA_ADD:        application defined data
  *  DISPATCH_SOURCE_TYPE_DATA_OR:         application defined data
+ *  DISPATCH_SOURCE_TYPE_DATA_REPLACE:    application defined data
  *  DISPATCH_SOURCE_TYPE_MACH_SEND:       dispatch_source_mach_send_flags_t
  *  DISPATCH_SOURCE_TYPE_MACH_RECV:       n/a
  *  DISPATCH_SOURCE_TYPE_MEMORYPRESSURE   dispatch_source_memorypressure_flags_t
@@ -637,9 +640,9 @@ dispatch_source_get_data(dispatch_source_t source);
  * @function dispatch_source_merge_data
  *
  * @abstract
- * Merges data into a dispatch source of type DISPATCH_SOURCE_TYPE_DATA_ADD or
- * DISPATCH_SOURCE_TYPE_DATA_OR and submits its event handler block to its
- * target queue.
+ * Merges data into a dispatch source of type DISPATCH_SOURCE_TYPE_DATA_ADD,
+ * DISPATCH_SOURCE_TYPE_DATA_OR or DISPATCH_SOURCE_TYPE_DATA_REPLACE,
+ * and submits its event handler block to its target queue.
  *
  * @param source
  * The result of passing NULL in this parameter is undefined.
@@ -684,8 +687,9 @@ dispatch_source_merge_data(dispatch_source_t source, unsigned long value);
  *
  * The 'start' argument also determines which clock will be used for the timer:
  * If 'start' is DISPATCH_TIME_NOW or was created with dispatch_time(3), the
- * timer is based on mach_absolute_time(). If 'start' was created with
- * dispatch_walltime(3), the timer is based on gettimeofday(3).
+ * timer is based on up time (which is obtained from mach_absolute_time() on
+ * Apple platforms). If 'start' was created with dispatch_walltime(3), the
+ * timer is based on gettimeofday(3).
  *
  * Calling this function has no effect if the timer source has already been
  * canceled.

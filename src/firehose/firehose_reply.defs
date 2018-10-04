@@ -32,7 +32,7 @@ skip; // firehose_register
 
 simpleroutine push_reply(
 RequestPort	req_port		: mach_port_move_send_once_t;
-in			rtc				: kern_return_t;
+in			ReturnCode		: kern_return_t;
 in			push_reply		: firehose_push_reply_t;
 in			quarantined		: boolean_t
 );
@@ -42,4 +42,11 @@ RequestPort	comm_port		: mach_port_t;
 in			push_reply		: firehose_push_reply_t;
 in			quarantined		: boolean_t;
 WaitTime	timeout			: natural_t
+);
+
+simpleroutine get_logging_prefs_reply(
+RequestPort	req_port		: mach_port_move_send_once_t;
+// no ReturnCode for complex messages
+in			mem_port		: mach_port_t;
+in			mem_size		: mach_vm_size_t
 );

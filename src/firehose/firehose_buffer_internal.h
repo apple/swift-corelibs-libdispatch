@@ -31,28 +31,42 @@
 
 // firehose buffer is CHUNK_COUNT * CHUNK_SIZE big == 256k
 #define FIREHOSE_BUFFER_CHUNK_COUNT					64ul
-#ifdef KERNEL
-#define FIREHOSE_BUFFER_CHUNK_PREALLOCATED_COUNT	15
-#else
+#ifndef KERNEL
 #define FIREHOSE_BUFFER_CHUNK_PREALLOCATED_COUNT	4
 #define FIREHOSE_BUFFER_MADVISE_CHUNK_COUNT			4
 #endif
 
+#define FIREHOSE_RING_POS_GEN_INC		((uint16_t)(FIREHOSE_BUFFER_CHUNK_COUNT))
+#define FIREHOSE_RING_POS_IDX_MASK		((uint16_t)(FIREHOSE_RING_POS_GEN_INC - 1))
+#define FIREHOSE_RING_POS_GEN_MASK		((uint16_t)~FIREHOSE_RING_POS_IDX_MASK)
+
+#if __has_feature(c_static_assert)
+_Static_assert(FIREHOSE_RING_POS_IDX_MASK < 0xff,
+		"firehose chunk ref fits in its type with space for PRISTINE");
+#endif
+
+typedef uint8_t firehose_chunk_ref_t;
+
 static const unsigned long firehose_stream_uses_io_bank =
 	(1UL << firehose_stream_persist) |
-	(1UL << firehose_stream_special);
+	(1UL << firehose_stream_special) |
+	(1UL << firehose_stream_signpost);
 
 typedef union {
 #define FIREHOSE_BANK_SHIFT(bank)			(16 * (bank))
 #define FIREHOSE_BANK_INC(bank)				(1ULL << FIREHOSE_BANK_SHIFT(bank))
-#define FIREHOSE_BANK_UNAVAIL_BIT			((uint16_t)0x8000)
-#define FIREHOSE_BANK_UNAVAIL_MASK(bank)	(FIREHOSE_BANK_INC(bank) << 15)
 	uint64_t fbs_atomic_state;
 	struct {
-		uint16_t fbs_mem_bank;
-		uint16_t fbs_io_bank;
-		uint16_t fbs_max_ref;
-		uint16_t fbs_unused;
+		union {
+			struct {
+				uint16_t fbs_mem_bank;
+				uint16_t fbs_io_bank;
+			};
+			uint16_t fbs_banks[2];
+		};
+		firehose_chunk_ref_t fbs_max_ref;
+		uint8_t fbs_unused1;
+		uint16_t fbs_unused2;
 	};
 } firehose_bank_state_u;
 
@@ -89,15 +103,34 @@ typedef union {
 	uint64_t fss_atomic_state;
 	dispatch_gate_s fss_gate;
 	struct {
+#define FIREHOSE_GATE_RELIABLE_WAITERS_BIT 		0x00000001UL
+#define FIREHOSE_GATE_UNRELIABLE_WAITERS_BIT 	0x00000002UL
+#define FIREHOSE_GATE_WAITERS_MASK 				0x00000003UL
 		uint32_t fss_allocator;
-#define FIREHOSE_STREAM_STATE_PRISTINE		0xffff
-		uint16_t fss_current;
+#define FIREHOSE_STREAM_STATE_PRISTINE		0xff
+		firehose_chunk_ref_t fss_current;
+		uint8_t fss_loss : FIREHOSE_LOSS_COUNT_WIDTH;
+		uint8_t fss_timestamped : 1;
+		uint8_t fss_waiting_for_logd : 1;
+
+		/*
+		 * We use a generation counter to prevent a theoretical ABA problem: a
+		 * thread could try to acquire a tracepoint in a chunk, fail to do so,
+		 * mark it as to be pushed, enqueue it, and then be preempted.  It
+		 * sleeps for a long time, and then tries to acquire the allocator bit
+		 * and uninstall the chunk. Succeeds in doing so, but because the chunk
+		 * actually happened to have cycled all the way back to being installed.
+		 * That thread would effectively hide that unflushed chunk and leak it.
+		 * Having a generation counter prevents the uninstallation of the chunk
+		 * to spuriously succeed when it was a re-incarnation of it.
+		 */
 		uint16_t fss_generation;
 	};
 } firehose_stream_state_u;
 
 typedef struct firehose_buffer_stream_s {
 	firehose_stream_state_u fbs_state;
+	uint64_t fbs_loss_start; // protected by fss_gate
 } OS_ALIGNED(128) *firehose_buffer_stream_t;
 
 typedef union {
@@ -110,9 +143,11 @@ typedef union {
 	};
 } firehose_ring_tail_u;
 
-#define FIREHOSE_RING_POS_GEN_INC		((uint16_t)(FIREHOSE_BUFFER_CHUNK_COUNT))
-#define FIREHOSE_RING_POS_IDX_MASK		((uint16_t)(FIREHOSE_RING_POS_GEN_INC - 1))
-#define FIREHOSE_RING_POS_GEN_MASK		((uint16_t)~FIREHOSE_RING_POS_IDX_MASK)
+OS_ENUM(firehose_buffer_pushport, uint8_t,
+	FIREHOSE_BUFFER_PUSHPORT_MEM,
+	FIREHOSE_BUFFER_PUSHPORT_IO,
+	FIREHOSE_BUFFER_NPUSHPORTS,
+);
 
 /*
  * Rings are circular buffers with CHUNK_COUNT entries, with 3 important markers
@@ -163,13 +198,11 @@ typedef struct firehose_buffer_header_s {
 	uint64_t						fbh_uniquepid;
 	pid_t							fbh_pid;
 	mach_port_t						fbh_logd_port;
-	mach_port_t volatile			fbh_sendp;
+	mach_port_t volatile			fbh_sendp[FIREHOSE_BUFFER_NPUSHPORTS];
 	mach_port_t						fbh_recvp;
 
 	// past that point fields may be aligned differently between 32 and 64bits
 #ifndef KERNEL
-	dispatch_once_t					fbh_notifs_pred OS_ALIGNED(64);
-	dispatch_source_t				fbh_notifs_source;
 	dispatch_unfair_lock_s			fbh_logd_lock;
 #define FBH_QUARANTINE_NONE		0
 #define FBH_QUARANTINE_PENDING	1
@@ -187,13 +220,14 @@ union firehose_buffer_u {
 
 // used to let the compiler pack these values in 1 or 2 registers
 typedef struct firehose_tracepoint_query_s {
+	uint64_t stamp;
 	uint16_t pubsize;
 	uint16_t privsize;
 	firehose_stream_t stream;
 	bool	 is_bank_ok;
-	bool     for_io;
-	bool     quarantined;
-	uint64_t stamp;
+	bool	 for_io : 1;
+	bool	 quarantined : 1;
+	bool	 reliable : 1;
 } *firehose_tracepoint_query_t;
 
 #ifndef FIREHOSE_SERVER
@@ -206,11 +240,14 @@ firehose_tracepoint_t
 firehose_buffer_tracepoint_reserve_slow(firehose_buffer_t fb,
 		firehose_tracepoint_query_t ask, uint8_t **privptr);
 
+void *
+firehose_buffer_get_logging_prefs(firehose_buffer_t fb, size_t *size);
+
 void
 firehose_buffer_update_limits(firehose_buffer_t fb);
 
 void
-firehose_buffer_ring_enqueue(firehose_buffer_t fb, uint16_t ref);
+firehose_buffer_ring_enqueue(firehose_buffer_t fb, firehose_chunk_ref_t ref);
 
 void
 firehose_buffer_force_connect(firehose_buffer_t fb);

@@ -129,9 +129,21 @@ libdispatch for /usr/lib/system on OS X El Capitan:
 Typical configuration line for FreeBSD 8.x and 9.x to build libdispatch with
 clang and blocks support:
 
-	sh autogen.sh
-	./configure CC=clang --with-blocks-runtime=/usr/local/lib
-	make check
+    ```
+    cmake -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DWITH_BLOCKS_RUNTIME=/usr/local/lib <path-to-source>
+    ninja
+    ninja test
+    ```
+
+### Building for android
+
+Note that this assumes that you are building on Linux.  It requires that you
+have the android NDK available.  It has been tested against API Level 21.
+
+    ```
+    cmake -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_SYSTEM_NAME=Android -DCMAKE_SYSTEM_VERSION=21 -DCMAKE_ANDROID_NDK=<path to android NDK> <path-to-source>
+    ninja
+    ```
 
 ### Building and installing for Linux
 
@@ -140,7 +152,7 @@ on Ubuntu; currently supported versions are 14.04, 15.10 and 16.04.
 
 1. The first thing to do is install required packages:
 
-    `sudo apt-get install autoconf libtool pkg-config clang systemtap-sdt-dev libbsd-dev linux-libc-dev`
+    `sudo apt-get install cmake ninja-build clang systemtap-sdt-dev libbsd-dev linux-libc-dev`
 
     Note: compiling libdispatch requires clang 3.8 or better and
 the gold linker. If the default clang on your Ubuntu version is
@@ -148,11 +160,11 @@ too old, see http://apt.llvm.org/ to install a newer version.
 On older Ubuntu releases, you may need to install binutils-gold
 to get the gold linker.
 
-2. Build (as in the general instructions above)
+2. Build
 
     ```
-    sh autogen.sh
-    ./configure
-    make
-    make install
+    cmake -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ <path-to-source>
+    ninja
+    ninja install
     ```
+

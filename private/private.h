@@ -28,7 +28,12 @@
 #define __DISPATCH_PRIVATE__
 
 #ifdef __APPLE__
+#include <Availability.h>
+#include <os/availability.h>
 #include <TargetConditionals.h>
+#include <os/base.h>
+#elif defined(__linux__)
+#include <os/linux_base.h>
 #endif
 
 #if TARGET_OS_MAC
@@ -38,9 +43,6 @@
 #endif
 #if HAVE_UNISTD_H
 #include <unistd.h>
-#endif
-#if HAVE_SYS_CDEFS_H
-#include <sys/cdefs.h>
 #endif
 #include <pthread.h>
 #if TARGET_OS_MAC
@@ -56,6 +58,7 @@
 
 #include <dispatch/benchmark.h>
 #include <dispatch/queue_private.h>
+#include <dispatch/workloop_private.h>
 #include <dispatch/source_private.h>
 #if DISPATCH_MACH_SPI
 #include <dispatch/mach_private.h>
@@ -63,13 +66,13 @@
 #include <dispatch/data_private.h>
 #include <dispatch/io_private.h>
 #include <dispatch/layout_private.h>
+#include <dispatch/time_private.h>
 
 #undef __DISPATCH_INDIRECT__
-
 #endif /* !__DISPATCH_BUILDING_DISPATCH__ */
 
 // <rdar://problem/9627726> Check that public and private dispatch headers match
-#if DISPATCH_API_VERSION != 20170124 // Keep in sync with <dispatch/dispatch.h>
+#if DISPATCH_API_VERSION != 20180109 // Keep in sync with <dispatch/dispatch.h>
 #error "Dispatch header mismatch between /usr/include and /usr/local/include"
 #endif
 
@@ -208,7 +211,7 @@ _dispatch_main_queue_callback_4CF(void *_Null_unspecified msg);
 API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
-dispatch_queue_t
+dispatch_queue_serial_t
 _dispatch_runloop_root_queue_create_4CF(const char *_Nullable label,
 		unsigned long flags);
 
@@ -218,15 +221,10 @@ DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 mach_port_t
 _dispatch_runloop_root_queue_get_port_4CF(dispatch_queue_t queue);
 
-#ifdef __BLOCKS__
 API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
-DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
-DISPATCH_NOTHROW
-dispatch_queue_t
-_dispatch_network_root_queue_create_4NW(const char *_Nullable label,
-		const pthread_attr_t *_Nullable attrs,
-		dispatch_block_t _Nullable configure);
-#endif
+DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+bool
+_dispatch_source_will_reenable_kevent_4NW(dispatch_source_t source);
 #endif
 
 API_AVAILABLE(macos(10.9), ios(7.0))

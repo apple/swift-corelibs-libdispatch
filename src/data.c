@@ -118,8 +118,7 @@ _dispatch_data_alloc(size_t n, size_t extra)
 	data = _dispatch_object_alloc(DISPATCH_DATA_CLASS, size);
 	data->num_records = n;
 #if !DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
-	data->do_targetq = dispatch_get_global_queue(
-			DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+	data->do_targetq = _dispatch_get_default_queue(false);
 	data->do_next = DISPATCH_OBJECT_LISTLESS;
 #endif
 	return data;
@@ -143,8 +142,7 @@ _dispatch_data_destroy_buffer(const void* buffer, size_t size,
 #endif
 	} else {
 		if (!queue) {
-			queue = dispatch_get_global_queue(
-					DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+			queue = _dispatch_get_default_queue(false);
 		}
 		dispatch_async_f(queue, destructor, _dispatch_call_block_and_release);
 	}
@@ -200,7 +198,7 @@ dispatch_data_create(const void* buffer, size_t size, dispatch_queue_t queue,
 		// The default destructor was provided, indicating the data should be
 		// copied.
 		data_buf = malloc(size);
-		if (slowpath(!data_buf)) {
+		if (unlikely(!data_buf)) {
 			return DISPATCH_OUT_OF_MEMORY;
 		}
 		buffer = memcpy(data_buf, buffer, size);
@@ -242,7 +240,7 @@ dispatch_data_create_alloc(size_t size, void** buffer_ptr)
 	dispatch_data_t data = dispatch_data_empty;
 	void *buffer = NULL;
 
-	if (slowpath(!size)) {
+	if (unlikely(!size)) {
 		goto out;
 	}
 	data = _dispatch_data_alloc(0, size);
@@ -271,17 +269,16 @@ _dispatch_data_dispose(dispatch_data_t dd, DISPATCH_UNUSED bool *allow_free)
 	}
 }
 
+#if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 void
 _dispatch_data_set_target_queue(dispatch_data_t dd, dispatch_queue_t tq)
 {
-#if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
-	_dispatch_retain(tq);
-	tq = os_atomic_xchg2o(dd, do_targetq, tq, release);
-	if (tq) _dispatch_release(tq);
-#else
+	if (tq == DISPATCH_TARGET_QUEUE_DEFAULT) {
+		tq = _dispatch_get_default_queue(false);
+	}
 	_dispatch_object_set_target_queue_inline(dd, tq);
-#endif
 }
+#endif // DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 
 size_t
 _dispatch_data_debug(dispatch_data_t dd, char* buf, size_t bufsiz)
@@ -405,7 +402,7 @@ dispatch_data_create_subrange(dispatch_data_t dd, size_t offset,
 	}
 
 	// Crashing here indicates memory corruption of passed in data object
-	if (slowpath(i >= dd_num_records)) {
+	if (unlikely(i >= dd_num_records)) {
 		DISPATCH_INTERNAL_CRASH(i,
 				"dispatch_data_create_subrange out of bounds");
 	}
@@ -435,7 +432,7 @@ dispatch_data_create_subrange(dispatch_data_t dd, size_t offset,
 			last_length -= record_length;
 
 			// Crashing here indicates memory corruption of passed in data object
-			if (slowpath(i + count >= dd_num_records)) {
+			if (unlikely(i + count >= dd_num_records)) {
 				DISPATCH_INTERNAL_CRASH(i + count,
 						"dispatch_data_create_subrange out of bounds");
 			}
@@ -502,7 +499,7 @@ dispatch_data_create_map(dispatch_data_t dd, const void **buffer_ptr,
 	}
 
 	buffer = _dispatch_data_flatten(dd);
-	if (fastpath(buffer)) {
+	if (likely(buffer)) {
 		data = dispatch_data_create(buffer, size, NULL,
 				DISPATCH_DATA_DESTRUCTOR_FREE);
 	} else {
@@ -525,7 +522,7 @@ _dispatch_data_get_flattened_bytes(dispatch_data_t dd)
 	const void *buffer;
 	size_t offset = 0;
 
-	if (slowpath(!dd->size)) {
+	if (unlikely(!dd->size)) {
 		return NULL;
 	}
 
@@ -535,9 +532,9 @@ _dispatch_data_get_flattened_bytes(dispatch_data_t dd)
 	}
 
 	void *flatbuf = _dispatch_data_flatten(dd);
-	if (fastpath(flatbuf)) {
+	if (likely(flatbuf)) {
 		// we need a release so that readers see the content of the buffer
-		if (slowpath(!os_atomic_cmpxchgv2o(dd, buf, NULL, flatbuf,
+		if (unlikely(!os_atomic_cmpxchgv2o(dd, buf, NULL, flatbuf,
 				&buffer, release))) {
 			free(flatbuf);
 		} else {

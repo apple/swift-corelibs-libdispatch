@@ -318,6 +318,7 @@ public struct DispatchData : RandomAccessCollection {
 }
 
 public struct DispatchDataIterator : IteratorProtocol, Sequence {
+        public typealias Element = UInt8
 
 	/// Create an iterator over the given DispatchData
 	public init(_data: DispatchData) {

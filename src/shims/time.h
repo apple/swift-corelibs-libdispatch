@@ -41,9 +41,10 @@ sleep(unsigned int seconds)
 #endif
 
 typedef enum {
+	DISPATCH_CLOCK_UPTIME,
+	DISPATCH_CLOCK_MONOTONIC,
 	DISPATCH_CLOCK_WALL,
-	DISPATCH_CLOCK_MACH,
-#define DISPATCH_CLOCK_COUNT  (DISPATCH_CLOCK_MACH + 1)
+#define DISPATCH_CLOCK_COUNT  (DISPATCH_CLOCK_WALL + 1)
 } dispatch_clock_t;
 
 void _dispatch_time_init(void);
@@ -122,13 +123,34 @@ _dispatch_get_nanoseconds(void)
 }
 
 static inline uint64_t
-_dispatch_absolute_time(void)
+_dispatch_uptime(void)
 {
 #if HAVE_MACH_ABSOLUTE_TIME
 	return mach_absolute_time();
-#elif HAVE_DECL_CLOCK_UPTIME && !defined(__linux__)
+#elif defined(__linux__)
+	struct timespec ts;
+	dispatch_assume_zero(clock_gettime(CLOCK_MONOTONIC, &ts));
+	return _dispatch_timespec_to_nano(ts);
+#elif HAVE_DECL_CLOCK_UPTIME
 	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_UPTIME, &ts));
+	return _dispatch_timespec_to_nano(ts);
+#elif TARGET_OS_WIN32
+	LARGE_INTEGER now;
+	return QueryPerformanceCounter(&now) ? now.QuadPart : 0;
+#else
+#error platform needs to implement _dispatch_uptime()
+#endif
+}
+
+static inline uint64_t
+_dispatch_monotonic_time(void)
+{
+#if HAVE_MACH_ABSOLUTE_TIME
+	return mach_continuous_time();
+#elif defined(__linux__)
+	struct timespec ts;
+	dispatch_assume_zero(clock_gettime(CLOCK_BOOTTIME, &ts));
 	return _dispatch_timespec_to_nano(ts);
 #elif HAVE_DECL_CLOCK_MONOTONIC
 	struct timespec ts;
@@ -138,7 +160,7 @@ _dispatch_absolute_time(void)
 	LARGE_INTEGER now;
 	return QueryPerformanceCounter(&now) ? now.QuadPart : 0;
 #else
-#error platform needs to implement _dispatch_absolute_time()
+#error platform needs to implement _dispatch_monotonic_time()
 #endif
 }
 
@@ -148,16 +170,16 @@ _dispatch_approximate_time(void)
 {
 #if HAVE_MACH_APPROXIMATE_TIME
 	return mach_approximate_time();
-#elif HAVE_DECL_CLOCK_UPTIME_FAST && !defined(__linux__)
+#elif defined(__linux__)
+	struct timespec ts;
+	dispatch_assume_zero(clock_gettime(CLOCK_MONOTONIC_COARSE, &ts));
+	return _dispatch_timespec_to_nano(ts);
+#elif HAVE_DECL_CLOCK_UPTIME_FAST
 	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_UPTIME_FAST, &ts));
 	return _dispatch_timespec_to_nano(ts);
-#elif defined(__linux__)
-	struct timespec ts;
-	dispatch_assume_zero(clock_gettime(CLOCK_REALTIME_COARSE, &ts));
-	return _dispatch_timespec_to_nano(ts);
 #else
-	return _dispatch_absolute_time();
+	return _dispatch_uptime();
 #endif
 }
 
@@ -166,8 +188,10 @@ static inline uint64_t
 _dispatch_time_now(dispatch_clock_t clock)
 {
 	switch (clock) {
-	case DISPATCH_CLOCK_MACH:
-		return _dispatch_absolute_time();
+	case DISPATCH_CLOCK_UPTIME:
+		return _dispatch_uptime();
+	case DISPATCH_CLOCK_MONOTONIC:
+		return _dispatch_monotonic_time();
 	case DISPATCH_CLOCK_WALL:
 		return _dispatch_get_nanoseconds();
 	}
@@ -186,7 +210,75 @@ _dispatch_time_now_cached(dispatch_clock_t clock,
 	if (likely(cache->nows[clock])) {
 		return cache->nows[clock];
 	}
-	return cache->nows[clock] = _dispatch_time_now(clock);
+#if TARGET_OS_MAC
+	struct timespec ts;
+	mach_get_times(&cache->nows[DISPATCH_CLOCK_UPTIME],
+			&cache->nows[DISPATCH_CLOCK_MONOTONIC], &ts);
+	cache->nows[DISPATCH_CLOCK_WALL] = _dispatch_timespec_to_nano(ts);
+#else
+	cache->nows[clock] = _dispatch_time_now(clock);
+#endif
+	return cache->nows[clock];
 }
 
+// Encoding of dispatch_time_t:
+// 1. Wall time has the top two bits set; negate to get the actual value.
+// 2. Absolute time has the top two bits clear and is the actual value.
+// 3. Continuous time has bit 63 set and bit 62 clear. Clear bit 63 to get the
+// actual value.
+// 4. "Forever" and "now" are encoded as ~0ULL and 0ULL respectively.
+//
+// The consequence of all this is that we can't have an actual time value that
+// is >= 0x4000000000000000. Larger values always get silently converted to
+// DISPATCH_TIME_FOREVER because the APIs that return time values have no way to
+// indicate a range error.
+#define DISPATCH_UP_OR_MONOTONIC_TIME_MASK	(1ULL << 63)
+#define DISPATCH_WALLTIME_MASK	(1ULL << 62)
+#define DISPATCH_TIME_MAX_VALUE (DISPATCH_WALLTIME_MASK - 1)
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_time_to_clock_and_value(dispatch_time_t time,
+		dispatch_clock_t *clock, uint64_t *value)
+{
+	uint64_t actual_value;
+	if ((int64_t)time < 0) {
+		// Wall time or mach continuous time
+		if (time & DISPATCH_WALLTIME_MASK) {
+			// Wall time (value 11 in bits 63, 62)
+			*clock = DISPATCH_CLOCK_WALL;
+			actual_value = time == DISPATCH_WALLTIME_NOW ?
+					_dispatch_get_nanoseconds() : (uint64_t)-time;
+		} else {
+			// Continuous time (value 10 in bits 63, 62).
+			*clock = DISPATCH_CLOCK_MONOTONIC;
+			actual_value = time & ~DISPATCH_UP_OR_MONOTONIC_TIME_MASK;
+		}
+	} else {
+		*clock = DISPATCH_CLOCK_UPTIME;
+		actual_value = time;
+	}
+
+	// Range-check the value before returning.
+	*value = actual_value > DISPATCH_TIME_MAX_VALUE ? DISPATCH_TIME_FOREVER
+			: actual_value;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline dispatch_time_t
+_dispatch_clock_and_value_to_time(dispatch_clock_t clock, uint64_t value)
+{
+	if (value >= DISPATCH_TIME_MAX_VALUE) {
+		return DISPATCH_TIME_FOREVER;
+	}
+	switch (clock) {
+	case DISPATCH_CLOCK_WALL:
+		return -value;
+	case DISPATCH_CLOCK_UPTIME:
+		return value;
+	case DISPATCH_CLOCK_MONOTONIC:
+		return value | DISPATCH_UP_OR_MONOTONIC_TIME_MASK;
+	}
+	__builtin_unreachable();
+}
 #endif // __DISPATCH_SHIMS_TIME__

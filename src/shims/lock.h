@@ -153,6 +153,14 @@ _dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
 #endif
 #endif // HAVE_FUTEX
 
+#if defined(__x86_64__) || defined(__i386__) || defined(__s390x__)
+#define DISPATCH_ONCE_USE_QUIESCENT_COUNTER 0
+#elif __APPLE__
+#define DISPATCH_ONCE_USE_QUIESCENT_COUNTER 1
+#else
+#define DISPATCH_ONCE_USE_QUIESCENT_COUNTER 0
+#endif
+
 #pragma mark - semaphores
 
 #if USE_MACH_SEM
@@ -218,8 +226,8 @@ _dispatch_sema4_dispose(_dispatch_sema4_t *sema, int policy)
 #pragma mark - compare and wait
 
 DISPATCH_NOT_TAIL_CALLED
-void _dispatch_wait_on_address(uint32_t volatile *address, uint32_t value,
-		dispatch_lock_options_t flags);
+int _dispatch_wait_on_address(uint32_t volatile *address, uint32_t value,
+		dispatch_time_t timeout, dispatch_lock_options_t flags);
 void _dispatch_wake_by_address(uint32_t volatile *address);
 
 #pragma mark - thread event
@@ -292,7 +300,7 @@ _dispatch_thread_event_wait(dispatch_thread_event_t dte)
 #if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
 	if (os_atomic_dec(&dte->dte_value, acquire) == 0) {
 		// 1 -> 0 is always a valid transition, so we can return
-		// for any other value, go to the slowpath which checks it's not corrupt
+		// for any other value, take the slow path which checks it's not corrupt
 		return;
 	}
 #else
@@ -334,7 +342,7 @@ _dispatch_unfair_lock_lock(dispatch_unfair_lock_t l)
 			DLOCK_OWNER_NULL, value_self, acquire))) {
 		return;
 	}
-	return _dispatch_unfair_lock_lock_slow(l, DLOCK_LOCK_NONE);
+	return _dispatch_unfair_lock_lock_slow(l, DLOCK_LOCK_DATA_CONTENTION);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -406,16 +414,10 @@ _dispatch_unfair_lock_unlock(dispatch_unfair_lock_t l)
 
 #pragma mark - gate lock
 
-#if HAVE_UL_UNFAIR_LOCK || HAVE_FUTEX
-#define DISPATCH_GATE_USE_FOR_DISPATCH_ONCE 1
-#else
-#define DISPATCH_GATE_USE_FOR_DISPATCH_ONCE 0
-#endif
-
 #define DLOCK_GATE_UNLOCKED	((dispatch_lock)0)
 
-#define DLOCK_ONCE_UNLOCKED	((dispatch_once_t)0)
-#define DLOCK_ONCE_DONE		(~(dispatch_once_t)0)
+#define DLOCK_ONCE_UNLOCKED	((uintptr_t)0)
+#define DLOCK_ONCE_DONE		(~(uintptr_t)0)
 
 typedef struct dispatch_gate_s {
 	dispatch_lock dgl_lock;
@@ -424,13 +426,210 @@ typedef struct dispatch_gate_s {
 typedef struct dispatch_once_gate_s {
 	union {
 		dispatch_gate_s dgo_gate;
-		dispatch_once_t dgo_once;
+		uintptr_t dgo_once;
 	};
 } dispatch_once_gate_s, *dispatch_once_gate_t;
 
-DISPATCH_NOT_TAIL_CALLED
-void _dispatch_gate_wait_slow(dispatch_gate_t l, dispatch_lock value,
-		uint32_t flags);
+#if DISPATCH_ONCE_USE_QUIESCENT_COUNTER
+#define DISPATCH_ONCE_MAKE_GEN(gen)  (((gen) << 2) + DLOCK_FAILED_TRYLOCK_BIT)
+#define DISPATCH_ONCE_IS_GEN(gen)    (((gen) & 3) == DLOCK_FAILED_TRYLOCK_BIT)
+
+/*
+ * the _COMM_PAGE_CPU_QUIESCENT_COUNTER value is incremented every time
+ * all CPUs have performed a context switch.
+ *
+ * A counter update algorithm is:
+ *
+ *     // atomic_or acq_rel is marked as ======== below
+ *     if (atomic_or(&mask, acq_rel) == full_mask) {
+ *
+ *         tmp = atomic_load(&generation, relaxed);
+ *         atomic_store(&generation, gen + 1, relaxed);
+ *
+ *         // atomic_store release is marked as -------- below
+ *         atomic_store(&mask, 0, release);
+ *     }
+ *
+ * This enforces boxes delimited by the acq_rel/release barriers to only be able
+ * to observe two possible values for the counter which have been marked below.
+ *
+ * Lemma 1
+ * ~~~~~~~
+ *
+ * Between two acq_rel barriers, a thread can only observe two possible values
+ * of the generation counter G maintained by the kernel.
+ *
+ * The Figure below, adds the happens-before-relationships and assertions:
+ *
+ * |     Thread A     |     Thread B     |     Thread C     |
+ * |                  |                  |                  |
+ * |==================|                  |                  |
+ * |      G = N       |                  |                  |
+ * |------------------|--------.         |                  |
+ * |                  |        |         |                  |
+ * |                  |        v         |                  |
+ * |                  |==================|                  |
+ * |                  |  assert(G >= N)  |                  |
+ * |                  |                  |                  |
+ * |                  |                  |                  |
+ * |                  |                  |                  |
+ * |                  |  assert(G < N+2) |                  |
+ * |                  |==================|--------.         |
+ * |                  |                  |        |         |
+ * |                  |                  |        v         |
+ * |                  |                  |==================|
+ * |                  |                  |      G = N + 2   |
+ * |                  |                  |------------------|
+ * |                  |                  |                  |
+ *
+ *
+ * This allows us to name the area delimited by two consecutive acq_rel
+ * barriers { N, N+1 } after the two possible values of G they can observe,
+ * which we'll use from now on.
+ *
+ *
+ * Lemma 2
+ * ~~~~~~~
+ *
+ * Any operation that a thread does while observing G in { N-2, N-1 } will be
+ * visible to a thread that can observe G in { N, N + 1 }.
+ *
+ * Any operation that a thread does while observing G in { N, N + 1 } cannot
+ * possibly be visible to a thread observing G in { N-2, N-1 }
+ *
+ * This is a corollary of Lemma 1: the only possibility is for the update
+ * of G to N to have happened between two acq_rel barriers of the considered
+ * threads.
+ *
+ * Below is a figure of why instantiated with N = 2
+ *
+ * |     Thread A     |     Thread B     |     Thread C     |
+ * |                  |                  |                  |
+ * |   G ∈ { 0, 1 }   |                  |                  |
+ * |                  |                  |                  |
+ * |                  |                  |                  |
+ * |   store(X, 1)    |                  |                  |
+ * |   assert(!Z)     |                  |                  |
+ * |                  |                  |                  |
+ * |==================|--------.         |                  |
+ * |   G ∈ { 1, 2 }   |        |         |                  |
+ * |                  |        v         |                  |
+ * |                  |==================|--------.         |
+ * |                  |      G = 2       |        |         |
+ * |                  |------------------|        |         |
+ * |                  |                  |        |         |
+ * |                  |                  |        v         |
+ * |                  |                  |==================|
+ * |                  |                  |   G ∈ { 2, 3 }   |
+ * |                  |                  |                  |
+ * |                  |                  |                  |
+ * |                  |                  |   store(Z, 1)    |
+ * |                  |                  |   assert(X)      |
+ * |                  |                  |                  |
+ * |                  |                  |                  |
+ *
+ *
+ * Theorem
+ * ~~~~~~~
+ *
+ * The optimal number of increments to observe for the dispatch once algorithm
+ * to be safe is 4.
+ *
+ * Proof (correctness):
+ *
+ *  Consider a dispatch once initializer thread in its { N, N+1 } "zone".
+ *
+ *  Per Lemma 2, any observer thread in its { N+2, N+3 } zone will see the
+ *  effect of the dispatch once initialization.
+ *
+ *  Per Lemma 2, when the DONE transition happens in a thread zone { N+3, N+4 },
+ *  then threads can observe this transiton in their { N+2, N+3 } zone at the
+ *  earliest.
+ *
+ *  Hence for an initializer bracket of { N, N+1 }, the first safe bracket for
+ *  the DONE transition is { N+3, N+4 }.
+ *
+ *
+ * Proof (optimal):
+ *
+ *  The following ordering is possible if waiting only for three periods:
+ *
+ * |     Thread A     |     Thread B     |     Thread C     |
+ * |                  |                  |                  |
+ * |                  |                  |                  |
+ * |                  |                  |==================|
+ * |                  |                  |   G ∈ { 1, 2 }   |
+ * |                  |                  |                  |
+ * |                  |                  |                  |
+ * |                  |                  |  R(once == -1) <-+--.
+ * |                  |                  |                  |  |
+ * |           -------+------------------+---------.        |  |
+ * |                  |                  |         |        |  |
+ * |  W(global, 42)   |                  |         |        |  |
+ * |  WRel(once, G:0) |                  |         |        |  |
+ * |                  |                  |         |        |  |
+ * |                  |                  |         v        |  |
+ * |                  |                  |   R(global == 0) |  |
+ * |                  |                  |                  |  |
+ * |                  |                  |                  |  |
+ * |==================|                  |                  |  |
+ * |   G ∈ { 1, 2 }   |                  |                  |  |
+ * |                  |==================|                  |  |
+ * |                  |      G = 2       |                  |  |
+ * |                  |------------------|                  |  |
+ * |                  |                  |                  |  |
+ * |==================|                  |                  |  |
+ * |   G ∈ { 2, 3 }   |                  |                  |  |
+ * |                  |                  |                  |  |
+ * |                  |                  |                  |  |
+ * |   W(once, -1) ---+------------------+------------------+--'
+ * |                  |                  |                  |
+ * |                  |                  |==================|
+ * |                  |                  |   G ∈ { 2, 3 }   |
+ * |                  |                  |                  |
+ *
+ */
+#define DISPATCH_ONCE_GEN_SAFE_DELTA  (4 << 2)
+
+DISPATCH_ALWAYS_INLINE
+static inline uintptr_t
+_dispatch_once_generation(void)
+{
+	uintptr_t value;
+	value = *(volatile uintptr_t *)_COMM_PAGE_CPU_QUIESCENT_COUNTER;
+	return (uintptr_t)DISPATCH_ONCE_MAKE_GEN(value);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline uintptr_t
+_dispatch_once_mark_quiescing(dispatch_once_gate_t dgo)
+{
+	return os_atomic_xchg(&dgo->dgo_once, _dispatch_once_generation(), release);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_once_mark_done_if_quiesced(dispatch_once_gate_t dgo, uintptr_t gen)
+{
+	if (_dispatch_once_generation() - gen >= DISPATCH_ONCE_GEN_SAFE_DELTA) {
+		/*
+		 * See explanation above, when the quiescing counter approach is taken
+		 * then this store needs only to be relaxed as it is used as a witness
+		 * that the required barriers have happened.
+		 */
+		os_atomic_store(&dgo->dgo_once, DLOCK_ONCE_DONE, relaxed);
+	}
+}
+#else
+DISPATCH_ALWAYS_INLINE
+static inline uintptr_t
+_dispatch_once_mark_done(dispatch_once_gate_t dgo)
+{
+	return os_atomic_xchg(&dgo->dgo_once, DLOCK_ONCE_DONE, release);
+}
+#endif // DISPATCH_ONCE_USE_QUIESCENT_COUNTER
+
+void _dispatch_once_wait(dispatch_once_gate_t l);
 void _dispatch_gate_broadcast_slow(dispatch_gate_t l, dispatch_lock tid_cur);
 
 DISPATCH_ALWAYS_INLINE
@@ -440,9 +639,6 @@ _dispatch_gate_tryenter(dispatch_gate_t l)
 	return os_atomic_cmpxchg(&l->dgl_lock, DLOCK_GATE_UNLOCKED,
 			_dispatch_lock_value_for_self(), acquire);
 }
-
-#define _dispatch_gate_wait(l, flags) \
-	_dispatch_gate_wait_slow(l, DLOCK_GATE_UNLOCKED, flags)
 
 DISPATCH_ALWAYS_INLINE
 static inline void
@@ -459,18 +655,7 @@ static inline bool
 _dispatch_once_gate_tryenter(dispatch_once_gate_t l)
 {
 	return os_atomic_cmpxchg(&l->dgo_once, DLOCK_ONCE_UNLOCKED,
-			(dispatch_once_t)_dispatch_lock_value_for_self(), acquire);
-}
-
-#define _dispatch_once_gate_wait(l) \
-	_dispatch_gate_wait_slow(&(l)->dgo_gate, (dispatch_lock)DLOCK_ONCE_DONE, \
-			DLOCK_LOCK_NONE)
-
-DISPATCH_ALWAYS_INLINE
-static inline dispatch_once_t
-_dispatch_once_xchg_done(dispatch_once_t *pred)
-{
-	return os_atomic_xchg(pred, DLOCK_ONCE_DONE, release);
+			(uintptr_t)_dispatch_lock_value_for_self(), relaxed);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -478,9 +663,22 @@ static inline void
 _dispatch_once_gate_broadcast(dispatch_once_gate_t l)
 {
 	dispatch_lock value_self = _dispatch_lock_value_for_self();
-	dispatch_once_t cur = _dispatch_once_xchg_done(&l->dgo_once);
-	if (likely(cur == (dispatch_once_t)value_self)) return;
-	_dispatch_gate_broadcast_slow(&l->dgo_gate, (dispatch_lock)cur);
+	uintptr_t v;
+#if DISPATCH_ONCE_USE_QUIESCENT_COUNTER
+	v = _dispatch_once_mark_quiescing(l);
+#else
+	v = _dispatch_once_mark_done(l);
+#endif
+	if (likely((dispatch_lock)v == value_self)) return;
+	_dispatch_gate_broadcast_slow(&l->dgo_gate, (dispatch_lock)v);
 }
+
+#if TARGET_OS_MAC
+
+DISPATCH_NOT_TAIL_CALLED
+void _dispatch_firehose_gate_wait(dispatch_gate_t l, uint32_t owner,
+		uint32_t flags);
+
+#endif // TARGET_OS_MAC
 
 #endif // __DISPATCH_SHIMS_LOCK__

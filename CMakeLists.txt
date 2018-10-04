@@ -25,11 +25,40 @@ include(GNUInstallDirs)
 set(WITH_BLOCKS_RUNTIME "" CACHE PATH "Path to blocks runtime")
 
 include(DispatchAppleOptions)
+include(DispatchSanitization)
+
+include(DispatchCompilerWarnings)
+dispatch_common_warnings()
 
 option(ENABLE_DISPATCH_INIT_CONSTRUCTOR "enable libdispatch_init as a constructor" ON)
 set(USE_LIBDISPATCH_INIT_CONSTRUCTOR ${ENABLE_DISPATCH_INIT_CONSTRUCTOR})
 
-# TODO(compnerd) swift options
+option(ENABLE_SWIFT "enable libdispatch swift overlay" OFF)
+if(ENABLE_SWIFT)
+  if(NOT CMAKE_SWIFT_COMPILER)
+    message(FATAL_ERROR "CMAKE_SWIFT_COMPILER must be defined to enable swift")
+  endif()
+
+  get_filename_component(SWIFT_TOOLCHAIN ${CMAKE_SWIFT_COMPILER} DIRECTORY)
+  get_filename_component(SWIFT_TOOLCHAIN ${SWIFT_TOOLCHAIN} DIRECTORY)
+
+  string(TOLOWER ${CMAKE_SYSTEM_NAME} SWIFT_OS)
+  set(SWIFT_RUNTIME_LIBDIR ${SWIFT_TOOLCHAIN}/lib/swift/${SWIFT_OS}/${CMAKE_SYSTEM_PROCESSOR})
+
+  add_library(swiftCore
+              SHARED IMPORTED GLOBAL)
+  set_target_properties(swiftCore
+                        PROPERTIES
+                          IMPORTED_LOCATION
+                            ${SWIFT_RUNTIME_LIBDIR}/${CMAKE_SHARED_LIBRARY_PREFIX}swiftCore${CMAKE_SHARED_LIBRARY_SUFFIX})
+
+  add_library(swiftSwiftOnoneSupport
+              SHARED IMPORTED GLOBAL)
+  set_target_properties(swiftSwiftOnoneSupport
+                        PROPERTIES
+                          IMPORTED_LOCATION
+                           ${SWIFT_RUNTIME_LIBDIR}/${CMAKE_SHARED_LIBRARY_PREFIX}swiftSwiftOnoneSupport${CMAKE_SHARED_LIBRARY_SUFFIX})
+endif()
 
 option(BUILD_SHARED_LIBS "build shared libraries" ON)
 
@@ -59,8 +88,7 @@ if(ENABLE_INTERNAL_PTHREAD_WORKQUEUES)
   set(HAVE_PTHREAD_WORKQUEUES 0)
 else()
   check_include_files(pthread/workqueue_private.h HAVE_PTHREAD_WORKQUEUE_PRIVATE_H)
-  check_include_files(pthread_workqueue.h HAVE_PTHREAD_WORKQUEUE_H)
-  if(HAVE_PTHREAD_WORKQUEUE_PRIVATE_H AND HAVE_PTHREAD_WORKQUEUE_H)
+  if(HAVE_PTHREAD_WORKQUEUE_PRIVATE_H)
     set(HAVE_PTHREAD_WORKQUEUES 1)
     set(DISPATCH_USE_INTERNAL_WORKQUEUE 0)
   else()
@@ -111,7 +139,6 @@ check_function_exists(mach_port_construct HAVE_MACH_PORT_CONSTRUCT)
 check_function_exists(malloc_create_zone HAVE_MALLOC_CREATE_ZONE)
 check_function_exists(pthread_key_init_np HAVE_PTHREAD_KEY_INIT_NP)
 check_function_exists(pthread_main_np HAVE_PTHREAD_MAIN_NP)
-check_function_exists(pthread_workqueue_setdispatch_np HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP)
 check_function_exists(strlcpy HAVE_STRLCPY)
 check_function_exists(sysconf HAVE_SYSCONF)
 
@@ -152,7 +179,6 @@ check_include_files("stdint.h" HAVE_STDINT_H)
 check_include_files("stdlib.h" HAVE_STDLIB_H)
 check_include_files("string.h" HAVE_STRING_H)
 check_include_files("strings.h" HAVE_STRINGS_H)
-check_include_files("sys/cdefs.h" HAVE_SYS_CDEFS_H)
 check_include_files("sys/guarded.h" HAVE_SYS_GUARDED_H)
 check_include_files("sys/stat.h" HAVE_SYS_STAT_H)
 check_include_files("sys/types.h" HAVE_SYS_TYPES_H)
@@ -198,21 +224,19 @@ if(leaks_EXECUTABLE)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
-  add_custom_command(OUTPUT
-                       "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
-                       "${CMAKE_SOURCE_DIR}/private/module.modulemap"
-                     COMMAND
-                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
-                     COMMAND
-                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
+  add_custom_target(module-map-symlinks
+                    ALL
+                    COMMAND
+                      ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/dispatch/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                    COMMAND
+                      ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/private/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
 else()
-  add_custom_command(OUTPUT
-                       "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
-                       "${CMAKE_SOURCE_DIR}/private/module.modulemap"
-                     COMMAND
-                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
-                     COMMAND
-                       ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
+  add_custom_target(module-map-symlinks
+                    ALL
+                    COMMAND
+                      ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/dispatch/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
+                    COMMAND
+                      ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/private/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
 endif()
 configure_file("${CMAKE_SOURCE_DIR}/cmake/config.h.in"
                "${CMAKE_BINARY_DIR}/config/config_ac.h")

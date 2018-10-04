@@ -67,7 +67,7 @@
 #define _os_atomic_c11_op(p, v, m, o, op) \
 		({ _os_atomic_basetypeof(p) _v = (v), _r = \
 		atomic_fetch_##o##_explicit(_os_atomic_c11_atomic(p), _v, \
-		memory_order_##m); (typeof(*(p)))(_r op _v); })
+		memory_order_##m); (typeof(_r))(_r op _v); })
 #define _os_atomic_c11_op_orig(p, v, m, o, op) \
 		atomic_fetch_##o##_explicit(_os_atomic_c11_atomic(p), v, \
 		memory_order_##m)

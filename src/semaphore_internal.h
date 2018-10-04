@@ -29,38 +29,71 @@
 
 struct dispatch_queue_s;
 
-#define DISPATCH_SEMAPHORE_HEADER(cls, ns) \
-	DISPATCH_OBJECT_HEADER(cls); \
-	long volatile ns##_value; \
-	_dispatch_sema4_t ns##_sema
-
-struct dispatch_semaphore_header_s {
-	DISPATCH_SEMAPHORE_HEADER(semaphore, dsema);
-};
-
-DISPATCH_CLASS_DECL(semaphore);
+DISPATCH_CLASS_DECL(semaphore, OBJECT);
 struct dispatch_semaphore_s {
-	DISPATCH_SEMAPHORE_HEADER(semaphore, dsema);
+	DISPATCH_OBJECT_HEADER(semaphore);
+	long volatile dsema_value;
 	long dsema_orig;
+	_dispatch_sema4_t dsema_sema;
 };
 
-DISPATCH_CLASS_DECL(group);
+/*
+ * Dispatch Group State:
+ *
+ * Generation (32 - 63):
+ *   32 bit counter that is incremented each time the group value reaaches
+ *   0 after a dispatch_group_leave. This 32bit word is used to block waiters
+ *   (threads in dispatch_group_wait) in _dispatch_wait_on_address() until the
+ *   generation changes.
+ *
+ * Value (2 - 31):
+ *   30 bit value counter of the number of times the group was entered.
+ *   dispatch_group_enter counts downward on 32bits, and dispatch_group_leave
+ *   upward on 64bits, which causes the generation to bump each time the value
+ *   reaches 0 again due to carry propagation.
+ *
+ * Has Notifs (1):
+ *   This bit is set when the list of notifications on the group becomes non
+ *   empty. It is also used as a lock as the thread that successfuly clears this
+ *   bit is the thread responsible for firing the notifications.
+ *
+ * Has Waiters (0):
+ *   This bit is set when there are waiters (threads in dispatch_group_wait)
+ *   that need to be woken up the next time the value reaches 0. Waiters take
+ *   a snapshot of the generation before waiting and will wait for the
+ *   generation to change before they return.
+ */
+#define DISPATCH_GROUP_GEN_MASK         0xffffffff00000000ULL
+#define DISPATCH_GROUP_VALUE_MASK       0x00000000fffffffcULL
+#define DISPATCH_GROUP_VALUE_INTERVAL   0x0000000000000004ULL
+#define DISPATCH_GROUP_VALUE_1          DISPATCH_GROUP_VALUE_MASK
+#define DISPATCH_GROUP_VALUE_MAX        DISPATCH_GROUP_VALUE_INTERVAL
+#define DISPATCH_GROUP_HAS_NOTIFS       0x0000000000000002ULL
+#define DISPATCH_GROUP_HAS_WAITERS      0x0000000000000001ULL
+DISPATCH_CLASS_DECL(group, OBJECT);
 struct dispatch_group_s {
-	DISPATCH_SEMAPHORE_HEADER(group, dg);
-	int volatile dg_waiters;
+	DISPATCH_OBJECT_HEADER(group);
+	DISPATCH_UNION_LE(uint64_t volatile dg_state,
+			uint32_t dg_bits,
+			uint32_t dg_gen
+	) DISPATCH_ATOMIC64_ALIGN;
 	struct dispatch_continuation_s *volatile dg_notify_head;
 	struct dispatch_continuation_s *volatile dg_notify_tail;
 };
 
-typedef union {
-	struct dispatch_semaphore_header_s *_dsema_hdr;
-	struct dispatch_semaphore_s *_dsema;
-	struct dispatch_group_s *_dg;
-#if USE_OBJC
-	dispatch_semaphore_t _objc_dsema;
-	dispatch_group_t _objc_dg;
-#endif
-} dispatch_semaphore_class_t DISPATCH_TRANSPARENT_UNION;
+DISPATCH_ALWAYS_INLINE
+static inline uint32_t
+_dg_state_value(uint64_t dg_state)
+{
+	return (uint32_t)(-((uint32_t)dg_state & DISPATCH_GROUP_VALUE_MASK)) >> 2;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline uint32_t
+_dg_state_gen(uint64_t dg_state)
+{
+	return (uint32_t)(dg_state >> 32);
+}
 
 dispatch_group_t _dispatch_group_create_and_enter(void);
 void _dispatch_group_dispose(dispatch_object_t dou, bool *allow_free);

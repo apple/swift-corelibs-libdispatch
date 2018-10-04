@@ -31,7 +31,7 @@
 #include <dispatch/dispatch.h>
 #endif
 
-#define OS_FIREHOSE_SPI_VERSION 20170222
+#define OS_FIREHOSE_SPI_VERSION 20180226
 
 /*!
  * @group Firehose SPI
@@ -40,7 +40,8 @@
  */
 
 #define FIREHOSE_BUFFER_LIBTRACE_HEADER_SIZE	2048ul
-#define FIREHOSE_BUFFER_KERNEL_CHUNK_COUNT		16
+#define FIREHOSE_BUFFER_KERNEL_MIN_CHUNK_COUNT	16
+#define FIREHOSE_BUFFER_KERNEL_MAX_CHUNK_COUNT	64
 
 typedef struct firehose_buffer_range_s {
 	uint16_t fbr_offset; // offset from the start of the buffer
@@ -56,6 +57,14 @@ extern void __firehose_buffer_push_to_logd(firehose_buffer_t fb, bool for_io);
 extern void __firehose_critical_region_enter(void);
 extern void __firehose_critical_region_leave(void);
 extern void __firehose_allocate(vm_offset_t *addr, vm_size_t size);
+extern uint8_t __firehose_buffer_kernel_chunk_count;
+extern uint8_t __firehose_num_kernel_io_pages;
+
+#define FIREHOSE_BUFFER_KERNEL_DEFAULT_CHUNK_COUNT FIREHOSE_BUFFER_KERNEL_MIN_CHUNK_COUNT
+#define FIREHOSE_BUFFER_KERNEL_DEFAULT_IO_PAGES    8
+
+#define FIREHOSE_BUFFER_KERNEL_CHUNK_COUNT __firehose_buffer_kernel_chunk_count
+#define FIREHOSE_BUFFER_CHUNK_PREALLOCATED_COUNT (__firehose_buffer_kernel_chunk_count - 1) // the first chunk is the header
 
 // exported for the kernel
 firehose_tracepoint_t
@@ -71,6 +80,9 @@ __firehose_buffer_create(size_t *size);
 
 void
 __firehose_merge_updates(firehose_push_reply_t update);
+
+int
+__firehose_kernel_configuration_valid(uint8_t chunk_count, uint8_t io_pages);
 
 #else
 
