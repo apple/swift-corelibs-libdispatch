@@ -115,7 +115,8 @@ if(ENABLE_SWIFT)
   target_sources(dispatch
                  PRIVATE
                    swift/DispatchStubs.cc
-                   ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o)
+                   ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o
+                   ${SWIFT_RUNTIME_LIBDIR}/swiftrt.o)
   if(CMAKE_BUILD_TYPE MATCHES Debug)
     target_link_libraries(dispatch
                           PRIVATE
