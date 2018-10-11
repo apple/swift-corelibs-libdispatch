@@ -1124,8 +1124,6 @@ _dispatch_qos_class_valid(dispatch_qos_class_t qos_class, int relative_priority)
 	case QOS_CLASS_USER_INTERACTIVE:
 	case QOS_CLASS_UNSPECIFIED:
 		break;
-	default:
-		return false;
 	}
 	if (relative_priority > 0 || relative_priority < QOS_MIN_RELATIVE_PRIORITY){
 		return false;
