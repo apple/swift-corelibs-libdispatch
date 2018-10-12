@@ -148,6 +148,7 @@ function(add_swift_target target)
                          ${documentation})
   else()
     add_library(${target}-static STATIC ${objs})
+    add_dependencies(${target}-static ${AST_DEPENDS})
     get_filename_component(ast_output_bn ${AST_OUTPUT} NAME)
     get_filename_component(ast_output_dn ${AST_OUTPUT} DIRECTORY)
     set_target_properties(${target}-static
