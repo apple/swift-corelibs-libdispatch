@@ -72,25 +72,60 @@ target_sources(dispatch
                PRIVATE
                  block.cpp)
 if(HAVE_OBJC)
+  # TODO(compnerd) split DispatchStubs.cc into a separate component for the ObjC
+  # registration and a separate component for the swift compiler's emission of a
+  # call to the ObjC autorelease elision entry point.
   target_sources(dispatch
                  PRIVATE
                    data.m
-                   object.m)
+                   object.m
+                   swift/DispatchStubs.cc)
 endif()
 if(ENABLE_SWIFT)
   set(swift_optimization_flags)
   if(NOT CMAKE_BUILD_TYPE MATCHES Debug)
     set(swift_optimization_flags -O)
   endif()
+
+  # NOTE(compnerd) Today regardless of whether or not ObjC interop is enabled,
+  # swift will use an autoreleased return value convention for certain CF
+  # functions (including some that are used/related to dispatch). This means
+  # that the swift compiler in callers to such functions will call the function,
+  # and then pass the result of the function to
+  # objc_retainAutoreleasedReturnValue. In a context where we have ObjC interop
+  # disabled, we do not have access to the objc runtime so an implementation of
+  # objc_retainAutoreleasedReturnValue is not available. To work around this, we
+  # provide a shim for objc_retainAutoreleasedReturnValue in DispatchStubs.cc
+  # that just calls retain on the object. Once we fix the swift compiler to
+  # switch to a different model for handling these arguments with objc-interop
+  # disabled these shims can be eliminated.
+  add_library(DispatchStubs
+              STATIC
+                swift/DispatchStubs.cc)
+  target_include_directories(DispatchStubs
+                             PRIVATE
+                               ${PROJECT_SOURCE_DIR})
+  set_target_properties(DispatchStubs
+                        PROPERTIES
+                          POSITION_INDEPENDENT_CODE YES)
+
   add_swift_library(swiftDispatch
+                    CFLAGS
+                      -fblocks
+                      -fmodule-map-file=${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
+                    DEPENDS
+                      ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
+                      DispatchStubs
+                    LINK_FLAGS
+                      -lDispatchStubs
+                      -L $<TARGET_LINKER_FILE_DIR:dispatch>
+                      -ldispatch
                     MODULE_NAME
                       Dispatch
                     MODULE_LINK_NAME
-                      dispatch
+                      swiftDispatch
                     MODULE_PATH
                       ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
-                    OUTPUT
-                      ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o
                     SOURCES
                       swift/Block.swift
                       swift/Data.swift
@@ -101,32 +136,12 @@ if(ENABLE_SWIFT)
                       swift/Source.swift
                       swift/Time.swift
                       swift/Wrapper.swift
-                    TARGET
-                      ${CMAKE_C_COMPILER_TARGET}
-                    CFLAGS
-                      -fblocks
-                      -fmodule-map-file=${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
                     SWIFT_FLAGS
                       -I ${PROJECT_SOURCE_DIR}
                       -I/usr/include
                       ${swift_optimization_flags}
-                    DEPENDS
-                      ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap)
-
-  get_filename_component(swift_toolchain ${CMAKE_SWIFT_COMPILER} DIRECTORY)
-  get_filename_component(swift_toolchain ${swift_toolchain} DIRECTORY)
-  set(swift_runtime_libdir ${swift_toolchain}/lib/${swift_dir}/${swift_os}/${swift_arch})
-
-  target_sources(dispatch
-                 PRIVATE
-                   swift/DispatchStubs.cc
-                   ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o
-                   ${swift_runtime_libdir}/swiftrt.o)
-  if(CMAKE_BUILD_TYPE MATCHES Debug)
-    target_link_libraries(dispatch
-                          PRIVATE
-                            swiftSwiftOnoneSupport)
-  endif()
+                    TARGET
+                      ${CMAKE_C_COMPILER_TARGET})
 endif()
 if(ENABLE_DTRACE)
   dtrace_usdt_probe(${CMAKE_CURRENT_SOURCE_DIR}/provider.d
@@ -231,8 +246,6 @@ add_custom_command(TARGET dispatch POST_BUILD
                    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:dispatch> .libs
                    COMMENT "Copying libdispatch to .libs")
 
-get_swift_host_arch(SWIFT_HOST_ARCH)
-
 install(TARGETS
           dispatch
         DESTINATION
@@ -242,6 +255,18 @@ if(ENABLE_SWIFT)
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftdoc
           DESTINATION
-            "${INSTALL_TARGET_DIR}/${SWIFT_HOST_ARCH}")
+            ${INSTALL_TARGET_DIR}/${swift_arch})
+
+  if(BUILD_SHARED_LIBS)
+    set(library_kind SHARED)
+  else()
+    set(library_kind STATIC)
+  endif()
+  set(swiftDispatch_OUTPUT_FILE
+      ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_${library_kind}_LIBRARY_PREFIX}swiftDispatch${CMAKE_${library_kind}_LIBRARY_SUFFIX})
+  install(FILES
+            ${swiftDispatch_OUTPUT_FILE}
+          DESTINATION
+            ${INSTALL_TARGET_DIR})
 endif()
 
