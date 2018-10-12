@@ -2,7 +2,7 @@
 include(CMakeParseArguments)
 
 function(add_swift_target target)
-  set(options LIBRARY)
+  set(options LIBRARY;SHARED;STATIC)
   set(single_value_options MODULE_NAME;MODULE_LINK_NAME;MODULE_PATH;MODULE_CACHE_PATH;OUTPUT;TARGET)
   set(multiple_value_options CFLAGS;DEPENDS;LINK_FLAGS;SOURCES;SWIFT_FLAGS)
 
@@ -40,9 +40,28 @@ function(add_swift_target target)
       list(APPEND link_flags ${flag})
     endforeach()
   endif()
+  if(AST_LIBRARY)
+    if(AST_STATIC AND AST_SHARED)
+      message(SEND_ERROR "add_swift_target asked to create library as STATIC and SHARED")
+    elseif(AST_STATIC OR NOT BUILD_SHARED_LIBS)
+      set(library_kind STATIC)
+    elseif(AST_SHARED OR BUILD_SHARED_LIBS)
+      set(library_kind SHARED)
+    endif()
+  else()
+    if(AST_STATIC OR AST_SHARED)
+      message(SEND_ERROR "add_swift_target asked to create executable as STATIC or SHARED")
+    endif()
+  endif()
   if(NOT AST_OUTPUT)
     if(AST_LIBRARY)
-      set(AST_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${target}.dir/${CMAKE_SHARED_LIBRARY_PREFIX}${target}${CMAKE_SHARED_LIBRARY_SUFFIX})
+      if(AST_SHARED OR BUILD_SHARED_LIBS)
+        set(AST_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${target}.dir/${CMAKE_SHARED_LIBRARY_PREFIX}${target}${CMAKE_SHARED_LIBRARY_SUFFIX})
+      else()
+        # NOTE(compnerd) this is a hack for the computation of the
+        # basename/dirname below for the static path.
+        set(AST_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${target}.dir/${target})
+      endif()
     else()
       set(AST_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${target}.dir/${target}${CMAKE_EXECUTABLE_SUFFIX})
     endif()
@@ -107,20 +126,37 @@ function(add_swift_target target)
   if(AST_LIBRARY)
     set(emit_library -emit-library)
   endif()
-  add_custom_command(OUTPUT
-                       ${AST_OUTPUT}
-                     DEPENDS
-                       ${objs}
-                     COMMAND
-                       ${CMAKE_SWIFT_COMPILER} ${emit_library} ${link_flags} -o ${AST_OUTPUT} ${objs}
-                     COMMAND
-                       ${CMAKE_COMMAND} -E copy ${AST_OUTPUT} ${CMAKE_CURRENT_BINARY_DIR})
-  add_custom_target(${target}
-                    ALL
-                    DEPENDS
-                       ${AST_OUTPUT}
-                       ${module}
-                       ${documentation})
+  if(library_kind STREQUAL SHARED)
+    add_custom_command(OUTPUT
+                         ${AST_OUTPUT}
+                       DEPENDS
+                         ${objs}
+                       COMMAND
+                         ${CMAKE_SWIFT_COMPILER} ${emit_library} ${link_flags} -o ${AST_OUTPUT} ${objs}
+                       COMMAND
+                         ${CMAKE_COMMAND} -E copy ${AST_OUTPUT} ${CMAKE_CURRENT_BINARY_DIR})
+    add_custom_target(${target}
+                      ALL
+                      DEPENDS
+                         ${AST_OUTPUT}
+                         ${module}
+                         ${documentation})
+  else()
+    add_library(${target}-static STATIC ${objs})
+    get_filename_component(ast_output_bn ${AST_OUTPUT} NAME)
+    get_filename_component(ast_output_dn ${AST_OUTPUT} DIRECTORY)
+    set_target_properties(${target}-static
+                          PROPERTIES
+                            LINKER_LANGUAGE C
+                            OUTPUT_DIRECTORY ${ast_output_dn}
+                            OUTPUT_NAME ${ast_output_bn})
+    add_custom_target(${target}
+                      ALL
+                      DEPENDS
+                         ${target}-static
+                         ${module}
+                         ${documentation})
+  endif()
 endfunction()
 
 function(add_swift_library library)
