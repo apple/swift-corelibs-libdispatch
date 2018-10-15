@@ -438,7 +438,7 @@ dispatch_async_enforce_qos_class_f(dispatch_queue_t queue,
  * "detached" before the thread exits or the application will crash.
  */
 DISPATCH_EXPORT
-void _dispatch_install_thread_detach_callback(dispatch_function_t cb);
+void _dispatch_install_thread_detach_callback(void (*cb)(void));
 #endif
 
 __END_DECLS
