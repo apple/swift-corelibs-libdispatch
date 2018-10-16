@@ -240,7 +240,7 @@ test_io_stop(void) // rdar://problem/8250057
 static void
 test_io_read_write(void)
 {
-	const char *path_in = "/usr/bin/vi";
+	char *path_in = dispatch_test_get_large_file();
 	char path_out[] = "/tmp/dispatchtest_io.XXXXXX";
 
 	int in = open(path_in, O_RDONLY);
@@ -248,6 +248,8 @@ test_io_read_write(void)
 		test_errno("open", errno, 0);
 		test_stop();
 	}
+	dispatch_test_release_large_file(path_in);
+	free(path_in);
 	struct stat sb;
 	if (fstat(in, &sb)) {
 		test_errno("fstat", errno, 0);

@@ -58,16 +58,14 @@ int
 main(int argc, char** argv)
 {
 	struct hostent *he;
-	int sockfd, clientfd;
+	int sockfd = -1, clientfd = -1;
+	int read_fd = -1, fd = -1;
 	struct sockaddr_in addr1, addr2, server;
 	socklen_t addr2len;
 	socklen_t addr1len;
 	pid_t clientid;
 
-	const char *path = "/usr/bin/vi";
-	int read_fd, fd;
-
-	if (argc == 2) {
+	if (argc == 3) {
 		// Client
 		dispatch_test_start(NULL);
 
@@ -94,11 +92,19 @@ main(int argc, char** argv)
 
 		// Read from the socket and compare the contents are what we expect
 
+		const char *path = argv[2];
 		fd = open(path, O_RDONLY);
 		if (fd == -1) {
 			test_errno("client-open", errno, 0);
 			test_stop();
 		}
+
+		// The reference file path given to us by the server was produced by
+		// dispatch_test_get_large_file(). It may point to a temporary file, and
+		// we are responsible for cleaning it up because we are the last to
+		// access it.
+		dispatch_test_release_large_file(path);
+
 #ifdef F_NOCACHE
 		if (fcntl(fd, F_NOCACHE, 1)) {
 			test_errno("client-fcntl F_NOCACHE", errno, 0);
@@ -213,31 +219,37 @@ main(int argc, char** argv)
 		char port_str[10] = {};
 		snprintf(port_str, 10, " %d", addr1.sin_port);
 
-		char *arguments [3] = {};
+		// The client must read from the same test file as the server. It will
+		// unlink the file as soon as it can, so the server must open it before
+		// starting the client process.
+		char *path = dispatch_test_get_large_file();
+		read_fd = open(path, O_RDONLY);
+		if (read_fd == -1) {
+			test_errno("open", errno, 0);
+			goto stop_test;
+		}
+
+		char *arguments [4] = {};
 		arguments[0] = exec_filename;
 		arguments[1] = port_str;
-		arguments[2] = NULL;
+		arguments[2] = path;
+		arguments[3] = NULL;
 
 		int error;
 		if ((error = posix_spawnp(&clientid, exec_filename, NULL, NULL,
 				arguments, environ)) != 0) {
 			test_errno("Server-posix_spawnp()", error, 0);
-			test_stop();
+			goto stop_test;
 		}
 
 		addr2len = sizeof(struct sockaddr_in);
 		clientfd = accept(sockfd, (struct sockaddr *)&addr2, &addr2len);
 		if(clientfd == -1) {
 			test_errno("Server-accept()", errno, 0);
-			test_stop();
+			goto stop_test;
 		}
 
 		fprintf(stderr, "Server accepted connection. Server now writing\n");
-		read_fd = open(path, O_RDONLY);
-		if (read_fd == -1) {
-			test_errno("open", errno, 0);
-			goto stop_test;
-		}
 #ifdef F_NOCACHE
 		if (fcntl(read_fd, F_NOCACHE, 1)) {
 			test_errno("fcntl F_NOCACHE", errno, 0);
@@ -295,9 +307,14 @@ main(int argc, char** argv)
 		dispatch_release(g);
 		fprintf(stderr, "Shutting down server\n");
 		close(sockfd);
+		free(path);
 		test_stop();
 
 stop_test:
+		if (path != NULL) {
+			dispatch_test_release_large_file(path);
+			free(path);
+		}
 		close(read_fd);
 		close(clientfd);
 		close(sockfd);

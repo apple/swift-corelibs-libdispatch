@@ -39,6 +39,9 @@ void dispatch_test_start(const char* desc);
 
 bool dispatch_test_check_evfilt_read_for_fd(int fd);
 
+char *dispatch_test_get_large_file(void);
+void dispatch_test_release_large_file(const char *path);
+
 void _dispatch_test_current(const char* file, long line, const char* desc, dispatch_queue_t expected);
 #define dispatch_test_current(a,b) _dispatch_test_current(__SOURCE_FILE__, __LINE__, a, b)
 
