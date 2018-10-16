@@ -132,6 +132,9 @@
 /* Define if you have the Objective-C runtime */
 #cmakedefine HAVE_OBJC
 
+/* Define to 1 if you have the `posix_fadvise' function. */
+#cmakedefine HAVE_POSIX_FADVISE
+
 /* Define to 1 if you have the `pthread_key_init_np' function. */
 #cmakedefine HAVE_PTHREAD_KEY_INIT_NP
 
