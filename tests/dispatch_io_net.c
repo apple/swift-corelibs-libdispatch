@@ -218,12 +218,28 @@ main(int argc, char** argv)
 		arguments[1] = port_str;
 		arguments[2] = NULL;
 
+#ifdef HAVE_POSIX_SPAWNP
 		int error;
 		if ((error = posix_spawnp(&clientid, exec_filename, NULL, NULL,
 				arguments, environ)) != 0) {
 			test_errno("Server-posix_spawnp()", error, 0);
 			test_stop();
 		}
+#elif defined(__unix__)
+		clientid = fork();
+		if (clientid == -1) {
+			test_errno("Server-fork()", errno, 0);
+			test_stop();
+		} else if (clientid == 0) {
+			// Child process
+			if (execve(exec_filename, arguments, environ) == -1) {
+				perror(exec_filename);
+				_Exit(EXIT_FAILURE);
+			}
+		}
+#else
+#error "dispatch_io_net not implemented on this platform"
+#endif
 
 		addr2len = sizeof(struct sockaddr_in);
 		clientfd = accept(sockfd, (struct sockaddr *)&addr2, &addr2len);

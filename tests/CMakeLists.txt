@@ -27,7 +27,10 @@ target_include_directories(bsdtests
                            PRIVATE
                              ${CMAKE_CURRENT_BINARY_DIR}
                              ${CMAKE_CURRENT_SOURCE_DIR}
-                             ${PROJECT_SOURCE_DIR})
+                             ${PROJECT_SOURCE_DIR}
+                           PUBLIC
+                             # bsdtests.h needs config_ac.h
+                             ${PROJECT_BINARY_DIR})
 if(BSD_OVERLAY_FOUND)
   target_compile_options(bsdtests
                          PRIVATE

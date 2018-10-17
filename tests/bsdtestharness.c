@@ -60,14 +60,13 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
+#ifdef HAVE_POSIX_SPAWNP
+	short spawnflags = 0;
 #ifdef __APPLE__
-	short spawnflags = POSIX_SPAWN_START_SUSPENDED;
+	spawnflags |= POSIX_SPAWN_START_SUSPENDED;
 #if TARGET_OS_EMBEDDED
 	spawnflags |= POSIX_SPAWN_SETEXEC;
 #endif
-#else
-#define POSIX_SPAWN_SETEXEC 0      /* ignore... */
-	short spawnflags = 0;
 #endif
 
 	posix_spawnattr_t attr;
@@ -75,6 +74,7 @@ main(int argc, char *argv[])
 	assert(res == 0);
 	res = posix_spawnattr_setflags(&attr, spawnflags);
 	assert(res == 0);
+#endif
 
 	uint64_t to = 0;
 	char *tos = getenv("BSDTEST_TIMEOUT");
@@ -104,9 +104,12 @@ main(int argc, char *argv[])
 	struct timeval tv_start;
 	gettimeofday(&tv_start, NULL);
 
+#ifdef HAVE_POSIX_SPAWNP
+#ifdef __APPLE__
 	if (spawnflags & POSIX_SPAWN_SETEXEC) {
 		pid = fork();
 	}
+#endif
 	if (!pid) {
 		res = posix_spawnp(&pid, newargv[0], NULL, &attr, newargv, environ);
 		if (res) {
@@ -115,6 +118,22 @@ main(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 		}
 	}
+#elif defined(__unix__)
+	(void)res;
+	pid = fork();
+	if (pid == -1) {
+		perror("fork");
+		exit(EXIT_FAILURE);
+	} else if (pid == 0) {
+		// Child process
+		if (execve(newargv[0], newargv, environ) == -1) {
+			perror(newargv[0]);
+			_Exit(EXIT_FAILURE);
+		}
+	}
+#else
+#error "bsdtestharness not implemented on this platform"
+#endif
 
 	//fprintf(stderr, "pid = %d\n", pid);
 	assert(pid > 0);
