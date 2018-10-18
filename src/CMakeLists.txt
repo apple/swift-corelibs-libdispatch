@@ -138,7 +138,6 @@ if(ENABLE_SWIFT)
                       swift/Wrapper.swift
                     SWIFT_FLAGS
                       -I ${PROJECT_SOURCE_DIR}
-                      -I/usr/include
                       ${swift_optimization_flags}
                     TARGET
                       ${CMAKE_C_COMPILER_TARGET})
