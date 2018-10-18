@@ -44,38 +44,32 @@ dispatch_common_warnings()
 option(ENABLE_DISPATCH_INIT_CONSTRUCTOR "enable libdispatch_init as a constructor" ON)
 set(USE_LIBDISPATCH_INIT_CONSTRUCTOR ${ENABLE_DISPATCH_INIT_CONSTRUCTOR})
 
+# NOTE(abdulras) this is the CMake supported way to control whether we generate
+# shared or static libraries.  This impacts the behaviour of `add_library` in
+# what type of library it generates.
+option(BUILD_SHARED_LIBS "build shared libraries" ON)
+
 option(ENABLE_SWIFT "enable libdispatch swift overlay" OFF)
 if(ENABLE_SWIFT)
   if(NOT CMAKE_SWIFT_COMPILER)
     message(FATAL_ERROR "CMAKE_SWIFT_COMPILER must be defined to enable swift")
   endif()
 
-  get_filename_component(SWIFT_TOOLCHAIN ${CMAKE_SWIFT_COMPILER} DIRECTORY)
-  get_filename_component(SWIFT_TOOLCHAIN ${SWIFT_TOOLCHAIN} DIRECTORY)
+  find_package(Swift REQUIRED CONFIG)
 
-  string(TOLOWER ${CMAKE_SYSTEM_NAME} SWIFT_OS)
-  get_swift_host_arch(SWIFT_HOST_ARCH)
+  string(TOLOWER ${CMAKE_SYSTEM_NAME} swift_os)
+  get_swift_host_arch(swift_arch)
 
-  set(SWIFT_RUNTIME_LIBDIR ${SWIFT_TOOLCHAIN}/${SWIFT_LIBDIR}/swift/${SWIFT_OS}/${SWIFT_HOST_ARCH})
+  if(BUILD_SHARED_LIBS)
+    set(swift_dir swift)
+  else()
+    set(swift_dir swift_static)
+  endif()
 
-  add_library(swiftCore
-              SHARED IMPORTED GLOBAL)
-  set_target_properties(swiftCore
-                        PROPERTIES
-                          IMPORTED_LOCATION
-                            ${SWIFT_RUNTIME_LIBDIR}/${CMAKE_SHARED_LIBRARY_PREFIX}swiftCore${CMAKE_SHARED_LIBRARY_SUFFIX})
-
-  add_library(swiftSwiftOnoneSupport
-              SHARED IMPORTED GLOBAL)
-  set_target_properties(swiftSwiftOnoneSupport
-                        PROPERTIES
-                          IMPORTED_LOCATION
-                           ${SWIFT_RUNTIME_LIBDIR}/${CMAKE_SHARED_LIBRARY_PREFIX}swiftSwiftOnoneSupport${CMAKE_SHARED_LIBRARY_SUFFIX})
-
-  set(INSTALL_TARGET_DIR "${INSTALL_LIBDIR}/swift/${SWIFT_OS}" CACHE PATH "Path where the libraries will be installed")
-  set(INSTALL_DISPATCH_HEADERS_DIR "${INSTALL_LIBDIR}/swift/dispatch" CACHE PATH "Path where the headers will be installed for libdispatch")
-  set(INSTALL_BLOCK_HEADERS_DIR "${INSTALL_LIBDIR}/swift/Block" CACHE PATH "Path where the headers will be installed for the blocks runtime")
-  set(INSTALL_OS_HEADERS_DIR "${INSTALL_LIBDIR}/swift/os" CACHE PATH "Path where the os/ headers will be installed")
+  set(INSTALL_TARGET_DIR "${INSTALL_LIBDIR}/${swift_dir}/${swift_os}" CACHE PATH "Path where the libraries will be installed")
+  set(INSTALL_DISPATCH_HEADERS_DIR "${INSTALL_LIBDIR}/${swift_dir}/dispatch" CACHE PATH "Path where the headers will be installed for libdispatch")
+  set(INSTALL_BLOCK_HEADERS_DIR "${INSTALL_LIBDIR}/${swift_dir}/Block" CACHE PATH "Path where the headers will be installed for the blocks runtime")
+  set(INSTALL_OS_HEADERS_DIR "${INSTALL_LIBDIR}/${swift_dir}/os" CACHE PATH "Path where the os/ headers will be installed")
 endif()
 
 if(NOT ENABLE_SWIFT)
@@ -86,11 +80,6 @@ if(NOT ENABLE_SWIFT)
 endif()
 
 option(ENABLE_DTRACE "enable dtrace support" "")
-
-# NOTE(abdulras) this is the CMake supported way to control whether we generate
-# shared or static libraries.  This impacts the behaviour of `add_library` in
-# what type of library it generates.
-option(BUILD_SHARED_LIBS "build shared libraries" ON)
 
 option(ENABLE_TESTING "build libdispatch tests" ON)
 
