@@ -108,7 +108,6 @@ if(ENABLE_SWIFT)
                       -fmodule-map-file=${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
                     SWIFT_FLAGS
                       -I ${PROJECT_SOURCE_DIR}
-                      -I/usr/include
                       ${swift_optimization_flags}
                     DEPENDS
                       ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap)
