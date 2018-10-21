@@ -30,7 +30,7 @@ static void _dispatch_timer_unote_unregister(dispatch_timer_source_refs_t dt);
 DISPATCH_NOINLINE
 static dispatch_unote_t
 _dispatch_unote_create(dispatch_source_type_t dst,
-		uintptr_t handle, unsigned long mask)
+		uintptr_t handle, uintptr_t mask)
 {
 	dispatch_unote_linkage_t dul;
 	dispatch_unote_class_t du;
@@ -63,7 +63,7 @@ _dispatch_unote_create(dispatch_source_type_t dst,
 DISPATCH_NOINLINE
 dispatch_unote_t
 _dispatch_unote_create_with_handle(dispatch_source_type_t dst,
-		uintptr_t handle, unsigned long mask)
+		uintptr_t handle, uintptr_t mask)
 {
 	if (!handle) {
 		return DISPATCH_UNOTE_NULL;
@@ -74,7 +74,7 @@ _dispatch_unote_create_with_handle(dispatch_source_type_t dst,
 DISPATCH_NOINLINE
 dispatch_unote_t
 _dispatch_unote_create_with_fd(dispatch_source_type_t dst,
-		uintptr_t handle, unsigned long mask)
+		uintptr_t handle, uintptr_t mask)
 {
 #if !TARGET_OS_MAC // <rdar://problem/27756657>
 	if (handle > INT_MAX) {
@@ -87,7 +87,7 @@ _dispatch_unote_create_with_fd(dispatch_source_type_t dst,
 DISPATCH_NOINLINE
 dispatch_unote_t
 _dispatch_unote_create_without_handle(dispatch_source_type_t dst,
-		uintptr_t handle, unsigned long mask)
+		uintptr_t handle, uintptr_t mask)
 {
 	if (handle) {
 		return DISPATCH_UNOTE_NULL;
@@ -206,7 +206,7 @@ _dispatch_unote_unregister(dispatch_unote_t du, uint32_t flags)
 
 static dispatch_unote_t
 _dispatch_source_data_create(dispatch_source_type_t dst, uintptr_t handle,
-		unsigned long mask)
+		uintptr_t mask)
 {
 	if (handle || mask) {
 		return DISPATCH_UNOTE_NULL;
@@ -294,7 +294,7 @@ const dispatch_source_type_s _dispatch_source_type_write = {
 
 static dispatch_unote_t
 _dispatch_source_signal_create(dispatch_source_type_t dst, uintptr_t handle,
-		unsigned long mask)
+		uintptr_t mask)
 {
 	if (handle >= NSIG) {
 		return DISPATCH_UNOTE_NULL;
@@ -927,13 +927,13 @@ _dispatch_timer_unote_unregister(dispatch_timer_source_refs_t dt)
 
 static dispatch_unote_t
 _dispatch_source_timer_create(dispatch_source_type_t dst,
-		uintptr_t handle, unsigned long mask)
+		uintptr_t handle, uintptr_t mask)
 {
 	dispatch_timer_source_refs_t dt;
 
 	// normalize flags
 	if (mask & DISPATCH_TIMER_STRICT) {
-		mask &= ~(unsigned long)DISPATCH_TIMER_BACKGROUND;
+		mask &= ~(uintptr_t)DISPATCH_TIMER_BACKGROUND;
 	}
 	if (mask & ~dst->dst_mask) {
 		return DISPATCH_UNOTE_NULL;

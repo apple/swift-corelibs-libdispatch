@@ -355,7 +355,7 @@ typedef struct dispatch_source_type_s {
 	uint32_t   dst_size;
 
 	dispatch_unote_t (*dst_create)(dispatch_source_type_t dst,
-			uintptr_t handle, unsigned long mask);
+			uintptr_t handle, uintptr_t mask);
 #if DISPATCH_EVENT_BACKEND_KEVENT
 	bool (*dst_update_mux)(struct dispatch_muxnote_s *dmn);
 #endif
@@ -614,11 +614,11 @@ _dispatch_timer_unote_compute_missed(dispatch_timer_source_refs_t dt,
 extern struct dispatch_timer_heap_s _dispatch_timers_heap[DISPATCH_TIMER_COUNT];
 
 dispatch_unote_t _dispatch_unote_create_with_handle(dispatch_source_type_t dst,
-		uintptr_t handle, unsigned long mask);
+		uintptr_t handle, uintptr_t mask);
 dispatch_unote_t _dispatch_unote_create_with_fd(dispatch_source_type_t dst,
-		uintptr_t handle, unsigned long mask);
+		uintptr_t handle, uintptr_t mask);
 dispatch_unote_t _dispatch_unote_create_without_handle(
-		dispatch_source_type_t dst, uintptr_t handle, unsigned long mask);
+		dispatch_source_type_t dst, uintptr_t handle, uintptr_t mask);
 void _dispatch_unote_dispose(dispatch_unote_t du);
 
 /*

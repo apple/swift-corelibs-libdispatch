@@ -561,7 +561,7 @@ dispatch_block_cancel(dispatch_block_t db)
 	(void)os_atomic_or2o(dbpd, dbpd_atomic_flags, DBF_CANCELED, relaxed);
 }
 
-long
+intptr_t
 dispatch_block_testcancel(dispatch_block_t db)
 {
 	dispatch_block_private_data_t dbpd = _dispatch_block_get_data(db);
@@ -572,7 +572,7 @@ dispatch_block_testcancel(dispatch_block_t db)
 	return (bool)(dbpd->dbpd_atomic_flags & DBF_CANCELED);
 }
 
-long
+intptr_t
 dispatch_block_wait(dispatch_block_t db, dispatch_time_t timeout)
 {
 	dispatch_block_private_data_t dbpd = _dispatch_block_get_data(db);
@@ -618,7 +618,7 @@ dispatch_block_wait(dispatch_block_t db, dispatch_time_t timeout)
 				"run more than once and waited for");
 	}
 
-	long ret = dispatch_group_wait(dbpd->dbpd_group, timeout);
+	intptr_t ret = dispatch_group_wait(dbpd->dbpd_group, timeout);
 
 	if (boost_th) {
 		_dispatch_thread_override_end(boost_th, dbpd);

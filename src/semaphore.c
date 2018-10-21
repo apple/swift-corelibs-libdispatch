@@ -27,7 +27,7 @@ long _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema);
 #pragma mark dispatch_semaphore_t
 
 dispatch_semaphore_t
-dispatch_semaphore_create(long value)
+dispatch_semaphore_create(intptr_t value)
 {
 	dispatch_semaphore_t dsema;
 
@@ -81,7 +81,7 @@ _dispatch_semaphore_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 }
 
 DISPATCH_NOINLINE
-long
+intptr_t
 _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 {
 	_dispatch_sema4_create(&dsema->dsema_sema, _DSEMA4_POLICY_FIFO);
@@ -89,7 +89,7 @@ _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 	return 1;
 }
 
-long
+intptr_t
 dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 {
 	long value = os_atomic_inc2o(dsema, dsema_value, release);
@@ -104,7 +104,7 @@ dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 }
 
 DISPATCH_NOINLINE
-static long
+static intptr_t
 _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 		dispatch_time_t timeout)
 {
@@ -135,7 +135,7 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 	return 0;
 }
 
-long
+intptr_t
 dispatch_semaphore_wait(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 {
 	long value = os_atomic_dec2o(dsema, dsema_value, acquire);
@@ -206,7 +206,7 @@ _dispatch_group_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 }
 
 DISPATCH_NOINLINE
-static long
+static intptr_t
 _dispatch_group_wait_slow(dispatch_group_t dg, uint32_t gen,
 		dispatch_time_t timeout)
 {
@@ -221,7 +221,7 @@ _dispatch_group_wait_slow(dispatch_group_t dg, uint32_t gen,
 	}
 }
 
-long
+intptr_t
 dispatch_group_wait(dispatch_group_t dg, dispatch_time_t timeout)
 {
 	uint64_t old_state, new_state;
