@@ -511,9 +511,9 @@ struct dispatch_queue_s _dispatch_mgr_q = {
 };
 
 dispatch_queue_t
-dispatch_get_global_queue(long priority, unsigned long flags)
+dispatch_get_global_queue(intptr_t priority, uintptr_t flags)
 {
-	if (flags & ~(unsigned long)DISPATCH_QUEUE_OVERCOMMIT) {
+	if (flags & ~(uintptr_t)DISPATCH_QUEUE_OVERCOMMIT) {
 		return DISPATCH_BAD_INPUT;
 	}
 	dispatch_qos_t qos = _dispatch_qos_from_queue_priority(priority);
@@ -3267,7 +3267,7 @@ dispatch_block_cancel(dispatch_block_t db)
 	(void)os_atomic_or2o(dbpd, dbpd_atomic_flags, DBF_CANCELED, relaxed);
 }
 
-long
+intptr_t
 dispatch_block_testcancel(dispatch_block_t db)
 {
 	dispatch_block_private_data_t dbpd = _dispatch_block_get_data(db);
@@ -3278,7 +3278,7 @@ dispatch_block_testcancel(dispatch_block_t db)
 	return (bool)(dbpd->dbpd_atomic_flags & DBF_CANCELED);
 }
 
-long
+intptr_t
 dispatch_block_wait(dispatch_block_t db, dispatch_time_t timeout)
 {
 	dispatch_block_private_data_t dbpd = _dispatch_block_get_data(db);
@@ -3324,7 +3324,7 @@ dispatch_block_wait(dispatch_block_t db, dispatch_time_t timeout)
 				"run more than once and waited for");
 	}
 
-	long ret = dispatch_group_wait(_dbpd_group(dbpd), timeout);
+	intptr_t ret = dispatch_group_wait(_dbpd_group(dbpd), timeout);
 
 	if (boost_th) {
 		_dispatch_thread_override_end(boost_th, dbpd);

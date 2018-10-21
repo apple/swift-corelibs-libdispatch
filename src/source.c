@@ -37,7 +37,7 @@ static inline unsigned long _dispatch_source_timer_data(
 
 dispatch_source_t
 dispatch_source_create(dispatch_source_type_t dst, uintptr_t handle,
-		unsigned long mask, dispatch_queue_t dq)
+		uintptr_t mask, dispatch_queue_t dq)
 {
 	dispatch_source_refs_t dr;
 	dispatch_source_t ds;
@@ -93,13 +93,13 @@ _dispatch_source_xref_dispose(dispatch_source_t ds)
 	dx_wakeup(ds, 0, DISPATCH_WAKEUP_MAKE_DIRTY);
 }
 
-long
+intptr_t
 dispatch_source_testcancel(dispatch_source_t ds)
 {
 	return (bool)(ds->dq_atomic_flags & DSF_CANCELED);
 }
 
-unsigned long
+uintptr_t
 dispatch_source_get_mask(dispatch_source_t ds)
 {
 	dispatch_source_refs_t dr = ds->ds_refs;
@@ -131,7 +131,7 @@ dispatch_source_get_handle(dispatch_source_t ds)
 	return dr->du_ident;
 }
 
-unsigned long
+uintptr_t
 dispatch_source_get_data(dispatch_source_t ds)
 {
 #if DISPATCH_USE_MEMORYSTATUS
@@ -146,7 +146,7 @@ dispatch_source_get_data(dispatch_source_t ds)
 #endif
 #endif // DISPATCH_USE_MEMORYSTATUS
 	uint64_t value = os_atomic_load2o(ds, ds_data, relaxed);
-	return (unsigned long)(
+	return (uintptr_t)(
 		ds->ds_refs->du_data_action == DISPATCH_UNOTE_ACTION_DATA_OR_STATUS_SET
 		? DISPATCH_SOURCE_GET_DATA(value) : value);
 }
@@ -187,7 +187,7 @@ dispatch_source_get_extended_data(dispatch_source_t ds,
 DISPATCH_NOINLINE
 void
 _dispatch_source_merge_data(dispatch_source_t ds, pthread_priority_t pp,
-		unsigned long val)
+		uintptr_t val)
 {
 	dispatch_queue_flags_t dqf = _dispatch_queue_atomic_flags(ds->_as_dq);
 	int filter = ds->ds_refs->du_filter;
@@ -214,7 +214,7 @@ _dispatch_source_merge_data(dispatch_source_t ds, pthread_priority_t pp,
 }
 
 void
-dispatch_source_merge_data(dispatch_source_t ds, unsigned long val)
+dispatch_source_merge_data(dispatch_source_t ds, uintptr_t val)
 {
 	_dispatch_source_merge_data(ds, 0, val);
 }
