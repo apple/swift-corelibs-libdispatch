@@ -97,6 +97,7 @@ function(add_swift_target target)
                          ${doc}
                        DEPENDS
                          ${source}
+                         ${AST_DEPENDS}
                        COMMAND
                          ${CMAKE_SWIFT_COMPILER} -frontend ${flags} -emit-module-path ${mod} -emit-module-doc-path ${doc} -o ${obj} -c ${all_sources})
 
@@ -119,6 +120,7 @@ function(add_swift_target target)
                        DEPENDS
                          ${mods}
                          ${docs}
+                         ${AST_DEPENDS}
                        COMMAND
                          ${CMAKE_SWIFT_COMPILER} -frontend ${flags} -sil-merge-partial-modules -emit-module ${mods} -o ${module} -emit-module-doc-path ${documentation})
   endif()
@@ -131,6 +133,7 @@ function(add_swift_target target)
                          ${AST_OUTPUT}
                        DEPENDS
                          ${objs}
+                         ${AST_DEPENDS}
                        COMMAND
                          ${CMAKE_SWIFT_COMPILER} ${emit_library} ${link_flags} -o ${AST_OUTPUT} ${objs}
                        COMMAND
