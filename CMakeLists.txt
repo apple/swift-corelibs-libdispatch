@@ -309,27 +309,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
                        "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
                        "${PROJECT_SOURCE_DIR}/private/module.modulemap"
                      COMMAND
-                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/dispatch/darwin/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                       ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/dispatch/darwin/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
                      COMMAND
-                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/private/darwin/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
-elseif(CMAKE_SYSTEM_NAME STREQUAL Windows)
-  add_custom_command(OUTPUT
-                       "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
-                       "${PROJECT_SOURCE_DIR}/private/module.modulemap"
-                     COMMAND
-                       ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
-                     COMMAND
-                       ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/private/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
+                       ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/private/darwin/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
 else()
   add_custom_command(OUTPUT
                        "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
                        "${PROJECT_SOURCE_DIR}/private/module.modulemap"
                      COMMAND
-                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                       ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
                      COMMAND
-                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/private/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
+                       ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/private/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
 endif()
-add_custom_target(module-map-symlinks
+add_custom_target(module-maps ALL
                   DEPENDS
                      "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
                      "${PROJECT_SOURCE_DIR}/private/module.modulemap")
