@@ -109,6 +109,12 @@ if(ENABLE_SWIFT)
                         PROPERTIES
                           POSITION_INDEPENDENT_CODE YES)
 
+  if(USE_LLD_LINKER)
+    set(use_ld_flag -use-ld=lld)
+  elseif(USE_GOLD_LINKER)
+    set(use_ld_flag -use-ld=gold)
+  endif()
+
   add_swift_library(swiftDispatch
                     CFLAGS
                       -fblocks
@@ -117,6 +123,7 @@ if(ENABLE_SWIFT)
                       ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
                       DispatchStubs
                     LINK_FLAGS
+                      ${use_ld_flag}
                       -lDispatchStubs
                       -L $<TARGET_LINKER_FILE_DIR:dispatch>
                       -ldispatch
