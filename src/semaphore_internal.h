@@ -31,7 +31,7 @@ struct dispatch_queue_s;
 
 #define DISPATCH_SEMAPHORE_HEADER(cls, ns) \
 	DISPATCH_OBJECT_HEADER(cls); \
-	long volatile ns##_value; \
+	intptr_t volatile ns##_value; \
 	_dispatch_sema4_t ns##_sema
 
 struct dispatch_semaphore_header_s {
@@ -41,7 +41,7 @@ struct dispatch_semaphore_header_s {
 DISPATCH_CLASS_DECL(semaphore);
 struct dispatch_semaphore_s {
 	DISPATCH_SEMAPHORE_HEADER(semaphore, dsema);
-	long dsema_orig;
+	intptr_t dsema_orig;
 };
 
 DISPATCH_CLASS_DECL(group);

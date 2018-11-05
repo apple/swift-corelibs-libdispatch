@@ -21,13 +21,13 @@
 #include "internal.h"
 
 DISPATCH_WEAK // rdar://problem/8503746
-long _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema);
+intptr_t _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema);
 
 #pragma mark -
 #pragma mark dispatch_semaphore_class_t
 
 static void
-_dispatch_semaphore_class_init(long value, dispatch_semaphore_class_t dsemau)
+_dispatch_semaphore_class_init(intptr_t value, dispatch_semaphore_class_t dsemau)
 {
 	struct dispatch_semaphore_header_s *dsema = dsemau._dsema_hdr;
 
@@ -41,7 +41,7 @@ _dispatch_semaphore_class_init(long value, dispatch_semaphore_class_t dsemau)
 #pragma mark dispatch_semaphore_t
 
 dispatch_semaphore_t
-dispatch_semaphore_create(long value)
+dispatch_semaphore_create(intptr_t value)
 {
 	dispatch_semaphore_t dsema;
 
@@ -92,7 +92,7 @@ _dispatch_semaphore_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 }
 
 DISPATCH_NOINLINE
-long
+intptr_t
 _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 {
 	_dispatch_sema4_create(&dsema->dsema_sema, _DSEMA4_POLICY_FIFO);
@@ -100,7 +100,7 @@ _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 	return 1;
 }
 
-long
+intptr_t
 dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 {
 	long value = os_atomic_inc2o(dsema, dsema_value, release);
@@ -115,7 +115,7 @@ dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 }
 
 DISPATCH_NOINLINE
-static long
+static intptr_t
 _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 		dispatch_time_t timeout)
 {
@@ -146,7 +146,7 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 	return 0;
 }
 
-long
+intptr_t
 dispatch_semaphore_wait(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 {
 	long value = os_atomic_dec2o(dsema, dsema_value, acquire);
@@ -198,7 +198,7 @@ dispatch_group_enter(dispatch_group_t dg)
 }
 
 DISPATCH_NOINLINE
-static long
+static intptr_t
 _dispatch_group_wake(dispatch_group_t dg, bool needs_release)
 {
 	dispatch_continuation_t next, head, tail = NULL;
@@ -277,7 +277,7 @@ _dispatch_group_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 }
 
 DISPATCH_NOINLINE
-static long
+static intptr_t
 _dispatch_group_wait_slow(dispatch_group_t dg, dispatch_time_t timeout)
 {
 	long value;
@@ -325,7 +325,7 @@ _dispatch_group_wait_slow(dispatch_group_t dg, dispatch_time_t timeout)
 	return 0;
 }
 
-long
+intptr_t
 dispatch_group_wait(dispatch_group_t dg, dispatch_time_t timeout)
 {
 	if (dg->dg_value == 0) {

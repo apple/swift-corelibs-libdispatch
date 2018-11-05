@@ -115,7 +115,7 @@ size_t _dispatch_source_debug(dispatch_source_t ds, char* buf, size_t bufsiz);
 
 DISPATCH_EXPORT // for firehose server
 void _dispatch_source_merge_data(dispatch_source_t ds, pthread_priority_t pp,
-		unsigned long val);
+		uintptr_t val);
 
 void _dispatch_mgr_queue_push(dispatch_queue_t dq, dispatch_object_t dou,
 		dispatch_qos_t qos);

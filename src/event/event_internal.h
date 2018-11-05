@@ -241,7 +241,7 @@ typedef struct dispatch_source_type_s {
 #endif
 
 	dispatch_unote_t (*dst_create)(dispatch_source_type_t dst,
-			uintptr_t handle, unsigned long mask);
+			uintptr_t handle, uintptr_t mask);
 #if DISPATCH_EVENT_BACKEND_KEVENT
 	bool (*dst_update_mux)(struct dispatch_muxnote_s *dmn);
 #endif
@@ -406,11 +406,11 @@ extern uint32_t _dispatch_timers_will_wake;
 #endif
 
 dispatch_unote_t _dispatch_unote_create_with_handle(dispatch_source_type_t dst,
-		uintptr_t handle, unsigned long mask);
+		uintptr_t handle, uintptr_t mask);
 dispatch_unote_t _dispatch_unote_create_with_fd(dispatch_source_type_t dst,
-		uintptr_t handle, unsigned long mask);
+		uintptr_t handle, uintptr_t mask);
 dispatch_unote_t _dispatch_unote_create_without_handle(
-		dispatch_source_type_t dst, uintptr_t handle, unsigned long mask);
+		dispatch_source_type_t dst, uintptr_t handle, uintptr_t mask);
 
 bool _dispatch_unote_register(dispatch_unote_t du, dispatch_wlh_t wlh,
 		dispatch_priority_t pri);

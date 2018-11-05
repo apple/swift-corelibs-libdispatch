@@ -402,7 +402,7 @@ dispatch_resume(dispatch_object_t object);
  */
 DISPATCH_UNAVAILABLE
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
-long
+intptr_t
 dispatch_wait(void *object, dispatch_time_t timeout);
 #if __has_extension(c_generic_selections)
 #define dispatch_wait(object, timeout) \
@@ -500,7 +500,7 @@ dispatch_cancel(void *object);
 DISPATCH_UNAVAILABLE
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
 DISPATCH_NOTHROW
-long
+intptr_t
 dispatch_testcancel(void *object);
 #if __has_extension(c_generic_selections)
 #define dispatch_testcancel(object) \

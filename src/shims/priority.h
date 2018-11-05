@@ -142,7 +142,7 @@ _dispatch_qos_to_qos_class(dispatch_qos_t qos)
 
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_qos_t
-_dispatch_qos_from_queue_priority(long priority)
+_dispatch_qos_from_queue_priority(intptr_t priority)
 {
 	switch (priority) {
 	case DISPATCH_QUEUE_PRIORITY_BACKGROUND:      return DISPATCH_QOS_BACKGROUND;
