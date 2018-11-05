@@ -236,15 +236,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
 endif()
 dispatch_set_linker(dispatch)
 
-# Temporary staging; the various swift projects that depend on libdispatch
-# all expect libdispatch.so to be in src/.libs/libdispatch.so
-# So for now, make a copy so we don't have to do a coordinated commit across
-# all the swift projects to change this assumption.
-add_custom_command(TARGET dispatch POST_BUILD
-                   COMMAND ${CMAKE_COMMAND} -E make_directory .libs
-                   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:dispatch> .libs
-                   COMMENT "Copying libdispatch to .libs")
-
 install(TARGETS
           dispatch
         DESTINATION
