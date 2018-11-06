@@ -125,6 +125,8 @@ if(ENABLE_SWIFT)
                     LINK_FLAGS
                       ${use_ld_flag}
                       -lDispatchStubs
+                      -L $<TARGET_LINKER_FILE_DIR:BlocksRuntime>
+                      -lBlocksRuntime
                       -L $<TARGET_LINKER_FILE_DIR:dispatch>
                       -ldispatch
                     MODULE_NAME
