@@ -47,7 +47,7 @@ test_fin(void *cxt)
 int
 main(void)
 {
-	const char *path = "/usr/bin/vi";
+	char *path = dispatch_test_get_large_file();
 	struct stat sb;
 
 	dispatch_test_start("Dispatch Source Read");
@@ -57,6 +57,8 @@ main(void)
 		perror(path);
 		exit(EXIT_FAILURE);
 	}
+	dispatch_test_release_large_file(path);
+	free(path);
 	if (fstat(infd, &sb) == -1) {
 		perror(path);
 		exit(EXIT_FAILURE);

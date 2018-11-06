@@ -86,7 +86,7 @@ stage1(int stage)
 void
 stage2(void)
 {
-	const char *path = "/usr/bin/vi";
+	char *path = dispatch_test_get_large_file();
 	struct stat sb;
 
 	int fd = open(path, O_RDONLY);
@@ -95,6 +95,8 @@ stage2(void)
 		perror(path);
 		exit(EXIT_FAILURE);
 	}
+	dispatch_test_release_large_file(path);
+	free(path);
 
 	if (!dispatch_test_check_evfilt_read_for_fd(fd)) {
 		test_skip("EVFILT_READ kevent not firing for test file");

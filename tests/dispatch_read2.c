@@ -122,12 +122,14 @@ dispatch_read2(dispatch_fd_t fd,
 static void
 test_read(void)
 {
-	const char *path = "/usr/bin/vi";
+	char *path = dispatch_test_get_large_file();
 	int fd = open(path, O_RDONLY);
 	if (fd == -1) {
 		test_errno("open", errno, 0);
 		test_stop();
 	}
+	dispatch_test_release_large_file(path);
+	free(path);
 #ifdef F_NOCACHE
 	if (fcntl(fd, F_NOCACHE, 1)) {
 		test_errno("fcntl F_NOCACHE", errno, 0);
