@@ -21,6 +21,14 @@
 #ifndef __BSD_TEST_H__
 #define __BSD_TEST_H__
 
+#if defined(HAVE_CONFIG_H)
+#if __has_include(<config/config_ac.h>)
+#include <config/config_ac.h>
+#else
+#include <config/config.h>
+#endif
+#endif
+
 
 #if !HAVE_PRINTFLIKE
 #ifndef __printflike
