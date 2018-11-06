@@ -20,11 +20,6 @@
 
 #include "internal.h"
 
-#if defined(__FreeBSD__)
-#include <fcntl.h>
-#define F_RDADVISE F_RDAHEAD
-#endif
-
 #ifndef DISPATCH_IO_DEBUG
 #define DISPATCH_IO_DEBUG DISPATCH_DEBUG
 #endif
@@ -2235,9 +2230,8 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 	(void)chunk_size;
 #else
 	if (_dispatch_io_get_error(op, NULL, true)) return;
-#if defined(__linux__) || defined(__FreeBSD__)
-	// linux does not support fcntl (F_RDAVISE)
-	// define necessary datastructure and use readahead
+#if !defined(F_RDADVISE)
+	// Compatibility struct whose values may be passed to posix_fadvise()
 	struct radvisory {
 		off_t ra_offset;
 		int   ra_count;
@@ -2262,13 +2256,7 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 	}
 	advise.ra_offset = op->advise_offset;
 	op->advise_offset += advise.ra_count;
-#if defined(__linux__)
-	_dispatch_io_syscall_switch(err,
-			readahead(op->fd_entry->fd, advise.ra_offset, (size_t)advise.ra_count),
-		case EINVAL: break; // fd does refer to a non-supported filetype
-		default: (void)dispatch_assume_zero(err); break;
-	);
-#else
+#if defined(F_RDADVISE)
 	_dispatch_io_syscall_switch(err,
 		fcntl(op->fd_entry->fd, F_RDADVISE, &advise),
 		case EFBIG: break; // advised past the end of the file rdar://10415691
@@ -2276,6 +2264,17 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 		// TODO: set disk status on error
 		default: (void)dispatch_assume_zero(err); break;
 	);
+#elif defined(HAVE_POSIX_FADVISE)
+	err = posix_fadvise(op->fd_entry->fd, advise.ra_offset,
+			(off_t)advise.ra_count, POSIX_FADV_WILLNEED);
+	switch (err) {
+		case 0: break;
+		case EINVAL: break; // unsupported advice or file type
+		case ESPIPE: break; // fd refers to a pipe or FIFO
+		default: (void)dispatch_assume_zero(err); break;
+	}
+#else
+#error "_dispatch_operation_advise not implemented on this platform"
 #endif
 #endif
 }
