@@ -249,8 +249,10 @@ dispatch_set_linker(dispatch)
 
 install(TARGETS
           dispatch
-        DESTINATION
-          "${INSTALL_TARGET_DIR}")
+        ARCHIVE DESTINATION ${INSTALL_TARGET_DIR}
+        LIBRARY DESTINATION ${INSTALL_TARGET_DIR}
+        RUNTIME DESTINATION bin)
+
 if(ENABLE_SWIFT)
   install(FILES
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
