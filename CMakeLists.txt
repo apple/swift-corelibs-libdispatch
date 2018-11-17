@@ -166,8 +166,9 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL Darwin)
   endif()
   install(TARGETS
             BlocksRuntime
-          DESTINATION
-            ${INSTALL_TARGET_DIR})
+          ARCHIVE DESTINATION ${INSTALL_TARGET_DIR}
+          LIBRARY DESTINATION ${INSTALL_TARGET_DIR}
+          RUNTIME DESTINATION bin)
 endif()
 
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)
