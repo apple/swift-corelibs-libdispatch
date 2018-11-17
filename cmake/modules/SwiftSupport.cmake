@@ -70,6 +70,11 @@ function(add_swift_target target)
       set(AST_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${target}.dir/${target}${CMAKE_EXECUTABLE_SUFFIX})
     endif()
   endif()
+  if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+    if(AST_SHARED OR BUILD_SHARED_LIBS)
+      set(IMPORT_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/${target}.dir/${CMAKE_IMPORT_LIBRARY_PREFIX}${target}${CMAKE_IMPORT_LIBRARY_SUFFIX})
+    endif()
+  endif()
 
   set(sources)
   foreach(source ${AST_SOURCES})
@@ -182,6 +187,15 @@ function(add_swift_target target)
                        POST_BUILD
                        COMMAND
                          ${CMAKE_COMMAND} -E copy ${AST_OUTPUT} ${CMAKE_CURRENT_BINARY_DIR})
+    if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+      if(AST_SHARED OR BUILD_SHARED_LIBS)
+        add_custom_command(TARGET
+                             ${target}
+                           POST_BUILD
+                           COMMAND
+                             ${CMAKE_COMMAND} -E copy ${IMPORT_LIBRARY} ${CMAKE_CURRENT_BINARY_DIR})
+      endif()
+    endif()
   endif()
 endfunction()
 
