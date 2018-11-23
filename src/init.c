@@ -709,7 +709,7 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 			char path[MAX_PATH + 1] = {0};
 			DWORD dwLength = GetTempPathA(MAX_PATH, path);
 			dispatch_assert(dwLength <= MAX_PATH + 1);
-			snprintf(&path[dwLength], MAX_PATH - dwLength, "libdispatch.%d.log",
+			snprintf(&path[dwLength], MAX_PATH - dwLength, "libdispatch.%lu.log",
 					GetCurrentProcessId());
 			dispatch_logfile = _open(path, O_WRONLY | O_APPEND | O_CREAT, 0666);
 #else

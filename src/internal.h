@@ -295,6 +295,7 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #include <io.h>
 #include <crtdbg.h>
 #endif
+#include <inttypes.h>
 
 #if defined(__GNUC__) || defined(__clang__)
 #define DISPATCH_NOINLINE __attribute__((__noinline__))

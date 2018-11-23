@@ -2568,11 +2568,11 @@ static size_t
 _dispatch_io_debug_attr(dispatch_io_t channel, char* buf, size_t bufsiz)
 {
 	dispatch_queue_t target = channel->do_targetq;
-	return dsnprintf(buf, bufsiz, "type = %s, fd = 0x%x, %sfd_entry = %p, "
+	return dsnprintf(buf, bufsiz, "type = %s, fd = 0x%" PRIxPTR ", %sfd_entry = %p, "
 			"queue = %p, target = %s[%p], barrier_queue = %p, barrier_group = "
 			"%p, err = 0x%x, low = 0x%zx, high = 0x%zx, interval%s = %llu ",
 			channel->params.type == DISPATCH_IO_STREAM ? "stream" : "random",
-			channel->fd_actual, channel->atomic_flags & DIO_STOPPED ?
+			(intptr_t)channel->fd_actual, channel->atomic_flags & DIO_STOPPED ?
 			"stopped, " : channel->atomic_flags & DIO_CLOSED ? "closed, " : "",
 			channel->fd_entry, channel->queue, target && target->dq_label ?
 			target->dq_label : "", target, channel->barrier_queue,
@@ -2601,13 +2601,13 @@ _dispatch_operation_debug_attr(dispatch_operation_t op, char* buf,
 {
 	dispatch_queue_t target = op->do_targetq;
 	dispatch_queue_t oqtarget = op->op_q ? op->op_q->do_targetq : NULL;
-	return dsnprintf(buf, bufsiz, "type = %s %s, fd = 0x%x, fd_entry = %p, "
+	return dsnprintf(buf, bufsiz, "type = %s %s, fd = 0x%" PRIxPTR ", fd_entry = %p, "
 			"channel = %p, queue = %p -> %s[%p], target = %s[%p], "
 			"offset = %lld, length = %zu, done = %zu, undelivered = %zu, "
 			"flags = %u, err = 0x%x, low = 0x%zx, high = 0x%zx, "
 			"interval%s = %llu ", op->params.type == DISPATCH_IO_STREAM ?
 			"stream" : "random", op->direction == DOP_DIR_READ ? "read" :
-			"write", op->fd_entry ? op->fd_entry->fd : -1, op->fd_entry,
+			"write", (intptr_t)(op->fd_entry ? op->fd_entry->fd : -1), op->fd_entry,
 			op->channel, op->op_q, oqtarget && oqtarget->dq_label ?
 			oqtarget->dq_label : "", oqtarget, target && target->dq_label ?
 			target->dq_label : "", target, (long long)op->offset, op->length,
