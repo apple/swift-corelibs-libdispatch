@@ -289,6 +289,7 @@ upcast(dispatch_object_t dou)
 #include <sys/mman.h>
 #include <netinet/in.h>
 #endif
+#include <inttypes.h>
 
 #ifdef __BLOCKS__
 #if __has_include(<Block_private.h>)

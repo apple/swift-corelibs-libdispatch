@@ -76,7 +76,7 @@ _dispatch_semaphore_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 			dsema->dsema_sema);
 #endif
 	offset += dsnprintf(&buf[offset], bufsiz - offset,
-			"value = %ld, orig = %ld }", dsema->dsema_value, dsema->dsema_orig);
+			"value = %" PRId64 ", orig = %" PRId64 " }", dsema->dsema_value, dsema->dsema_orig);
 	return offset;
 }
 
@@ -198,7 +198,7 @@ _dispatch_group_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 			_dispatch_object_class_name(dg), dg);
 	offset += _dispatch_object_debug_attr(dg, &buf[offset], bufsiz - offset);
 	offset += dsnprintf(&buf[offset], bufsiz - offset,
-			"count = %d, gen = %d, waiters = %d, notifs = %d }",
+			"count = %"PRIu32", gen = %"PRIu32", waiters = %d, notifs = %d }",
 			_dg_state_value(dg_state), _dg_state_gen(dg_state),
 			(bool)(dg_state & DISPATCH_GROUP_HAS_WAITERS),
 			(bool)(dg_state & DISPATCH_GROUP_HAS_NOTIFS));

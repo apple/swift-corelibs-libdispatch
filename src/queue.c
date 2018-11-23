@@ -7452,7 +7452,9 @@ _dispatch_sig_thread(void *ctxt DISPATCH_UNUSED)
 {
 	// never returns, so burn bridges behind us
 	_dispatch_clear_stack(0);
-#if !defined(_WIN32)
+#if defined(_WIN32)
+	for (;;) SuspendThread(GetCurrentThread());
+#else
 	_dispatch_sigsuspend();
 #endif
 }
