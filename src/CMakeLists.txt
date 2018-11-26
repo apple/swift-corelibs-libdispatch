@@ -174,7 +174,9 @@ if(WIN32)
                              PRIVATE
                                _CRT_NONSTDC_NO_WARNINGS)
 endif()
-if(NOT "${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+  target_compile_options(dispatch PRIVATE /EHs-c-)
+else()
   target_compile_options(dispatch PRIVATE -fno-exceptions)
 endif()
 if(DISPATCH_ENABLE_ASSERTS)
@@ -247,8 +249,10 @@ dispatch_set_linker(dispatch)
 
 install(TARGETS
           dispatch
-        DESTINATION
-          "${INSTALL_TARGET_DIR}")
+        ARCHIVE DESTINATION ${INSTALL_TARGET_DIR}
+        LIBRARY DESTINATION ${INSTALL_TARGET_DIR}
+        RUNTIME DESTINATION bin)
+
 if(ENABLE_SWIFT)
   install(FILES
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
@@ -267,5 +271,13 @@ if(ENABLE_SWIFT)
             ${swiftDispatch_OUTPUT_FILE}
           DESTINATION
             ${INSTALL_TARGET_DIR})
+  if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+    if(BUILD_SHARED_LIBS)
+      install(FILES
+                ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_IMPORT_LIBRARY_PREFIX}swiftDispatch${CMAKE_IMPORT_LIBRARY_SUFFIX}
+              DESTINATION
+                ${INSTALL_TARGET_DIR})
+    endif()
+  endif()
 endif()
 
