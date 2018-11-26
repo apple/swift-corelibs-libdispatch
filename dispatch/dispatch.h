@@ -42,6 +42,9 @@
 #include <unistd.h>
 #endif
 #include <fcntl.h>
+#if defined(_WIN32)
+#include <time.h>
+#endif
 
 #if (defined(__linux__) || defined(__FreeBSD__)) && defined(__has_feature)
 #if __has_feature(modules)
