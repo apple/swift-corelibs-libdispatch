@@ -120,7 +120,7 @@ if(ENABLE_SWIFT)
                       -fblocks
                       -fmodule-map-file=${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
                     DEPENDS
-                      ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
+                      module-maps
                       DispatchStubs
                     LINK_FLAGS
                       ${use_ld_flag}

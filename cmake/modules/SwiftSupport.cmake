@@ -62,9 +62,7 @@ function(add_swift_target target)
       if(AST_SHARED OR BUILD_SHARED_LIBS)
         set(AST_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${target}.dir/${CMAKE_SHARED_LIBRARY_PREFIX}${target}${CMAKE_SHARED_LIBRARY_SUFFIX})
       else()
-        # NOTE(compnerd) this is a hack for the computation of the
-        # basename/dirname below for the static path.
-        set(AST_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${target}.dir/${target})
+        set(AST_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${target}.dir/${CMAKE_STATIC_LIBRARY_PREFIX}${target}${CMAKE_STATIC_LIBRARY_SUFFIX})
       endif()
     else()
       set(AST_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${target}.dir/${target}${CMAKE_EXECUTABLE_SUFFIX})
@@ -155,10 +153,13 @@ function(add_swift_target target)
     add_library(${target}-static STATIC ${objs})
     add_dependencies(${target}-static ${AST_DEPENDS})
     get_filename_component(ast_output_bn ${AST_OUTPUT} NAME)
+    string(REGEX REPLACE "^${CMAKE_STATIC_LIBRARY_PREFIX}" "" ast_output_bn ${ast_output_bn})
+    string(REGEX REPLACE "${CMAKE_STATIC_LIBRARY_SUFFIX}$" "" ast_output_bn ${ast_output_bn})
     get_filename_component(ast_output_dn ${AST_OUTPUT} DIRECTORY)
     set_target_properties(${target}-static
                           PROPERTIES
                             LINKER_LANGUAGE C
+                            ARCHIVE_OUTPUT_DIRECTORY ${ast_output_dn}
                             OUTPUT_DIRECTORY ${ast_output_dn}
                             OUTPUT_NAME ${ast_output_bn})
     add_custom_target(${target}
