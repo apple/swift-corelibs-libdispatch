@@ -41,8 +41,9 @@ public class DispatchWorkItem {
 
 	public init(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], block: @escaping @convention(block) () -> ()) {
 		let f = UInt(flags.rawValue)
+		let bf = dispatch_block_flags_t(numericCast(f))
 		_block =  dispatch_block_create_with_qos_class(
-			dispatch_block_flags_t(numericCast(f)),
+			bf,
 			qos.qosClass.rawValue.rawValue, Int32(qos.relativePriority), block)
 	}
 
@@ -50,8 +51,9 @@ public class DispatchWorkItem {
 	// dispatch_block_t, as we know the lifetime of the block in question.
 	internal init(flags: DispatchWorkItemFlags = [], noescapeBlock: () -> ()) {
 		let f = UInt(flags.rawValue)
+		let bf = dispatch_block_flags_t(numericCast(f))
 		_block = _swift_dispatch_block_create_noescape(
-			dispatch_block_flags_t(numericCast(f)),
+			bf,
 			noescapeBlock)
 	}
 
