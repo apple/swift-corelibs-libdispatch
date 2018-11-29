@@ -53,24 +53,150 @@ DISPATCH_ASSUME_NONNULL_BEGIN
  * @typedef dispatch_queue_t
  *
  * @abstract
- * Dispatch queues invoke blocks submitted to them serially in FIFO order. A
- * queue will only invoke one block at a time, but independent queues may each
- * invoke their blocks concurrently with respect to each other.
+ * Dispatch queues invoke workitems submitted to them.
  *
  * @discussion
- * Dispatch queues are lightweight objects to which blocks may be submitted.
- * The system manages a pool of threads which process dispatch queues and
- * invoke blocks submitted to them.
+ * Dispatch queues come in many flavors, the most common one being the dispatch
+ * serial queue (See dispatch_queue_serial_t).
+ *
+ * The system manages a pool of threads which process dispatch queues and invoke
+ * workitems submitted to them.
  *
  * Conceptually a dispatch queue may have its own thread of execution, and
  * interaction between queues is highly asynchronous.
  *
  * Dispatch queues are reference counted via calls to dispatch_retain() and
- * dispatch_release(). Pending blocks submitted to a queue also hold a
+ * dispatch_release(). Pending workitems submitted to a queue also hold a
  * reference to the queue until they have finished. Once all references to a
  * queue have been released, the queue will be deallocated by the system.
  */
 DISPATCH_DECL(dispatch_queue);
+
+/*!
+ * @typedef dispatch_queue_global_t
+ *
+ * @abstract
+ * Dispatch global concurrent queues are an abstraction around the system thread
+ * pool which invokes workitems that are submitted to dispatch queues.
+ *
+ * @discussion
+ * Dispatch global concurrent queues provide buckets of priorities on top of the
+ * thread pool the system manages. The system will decide how many threads
+ * to allocate to this pool depending on demand and system load. In particular,
+ * the system tries to maintain a good level of concurrency for this resource,
+ * and will create new threads when too many existing worker threads block in
+ * system calls.
+ *
+ * The global concurrent queues are a shared resource and as such it is the
+ * responsiblity of every user of this resource to not submit an unbounded
+ * amount of work to this pool, especially work that may block, as this can
+ * cause the system to spawn very large numbers of threads (aka. thread
+ * explosion).
+ *
+ * Work items submitted to the global concurrent queues have no ordering
+ * guarantee with respect to the order of submission, and workitems submitted
+ * to these queues may be invoked concurrently.
+ *
+ * Dispatch global concurrent queues are well-known global objects that are
+ * returned by dispatch_get_global_queue(). These objects cannot be modified.
+ * Calls to dispatch_suspend(), dispatch_resume(), dispatch_set_context(), etc.,
+ * will have no effect when used with queues of this type.
+ */
+#if defined(__DISPATCH_BUILDING_DISPATCH__) && !defined(__OBJC__)
+typedef struct dispatch_queue_global_s *dispatch_queue_global_t;
+#else
+DISPATCH_DECL_SUBCLASS(dispatch_queue_global, dispatch_queue);
+#endif
+
+/*!
+ * @typedef dispatch_queue_serial_t
+ *
+ * @abstract
+ * Dispatch serial queues invoke workitems submitted to them serially in FIFO
+ * order.
+ *
+ * @discussion
+ * Dispatch serial queues are lightweight objects to which workitems may be
+ * submitted to be invoked in FIFO order. A serial queue will only invoke one
+ * workitem at a time, but independent serial queues may each invoke their work
+ * items concurrently with respect to each other.
+ *
+ * Serial queues can target each other (See dispatch_set_target_queue()). The
+ * serial queue at the bottom of a queue hierarchy provides an exclusion
+ * context: at most one workitem submitted to any of the queues in such
+ * a hiearchy will run at any given time.
+ *
+ * Such hierarchies provide a natural construct to organize an application
+ * subsystem around.
+ *
+ * Serial queues are created by passing a dispatch queue attribute derived from
+ * DISPATCH_QUEUE_SERIAL to dispatch_queue_create_with_target().
+ */
+#if defined(__DISPATCH_BUILDING_DISPATCH__) && !defined(__OBJC__)
+typedef struct dispatch_lane_s *dispatch_queue_serial_t;
+#else
+DISPATCH_DECL_SUBCLASS(dispatch_queue_serial, dispatch_queue);
+#endif
+
+/*!
+ * @typedef dispatch_queue_main_t
+ *
+ * @abstract
+ * The type of the default queue that is bound to the main thread.
+ *
+ * @discussion
+ * The main queue is a serial queue (See dispatch_queue_serial_t) which is bound
+ * to the main thread of an application.
+ *
+ * In order to invoke workitems submitted to the main queue, the application
+ * must call dispatch_main(), NSApplicationMain(), or use a CFRunLoop on the
+ * main thread.
+ *
+ * The main queue is a well known global object that is made automatically on
+ * behalf of the main thread during process initialization and is returned by
+ * dispatch_get_main_queue(). This object cannot be modified.  Calls to
+ * dispatch_suspend(), dispatch_resume(), dispatch_set_context(), etc., will
+ * have no effect when used on the main queue.
+ */
+#if defined(__DISPATCH_BUILDING_DISPATCH__) && !defined(__OBJC__)
+typedef struct dispatch_queue_static_s *dispatch_queue_main_t;
+#else
+DISPATCH_DECL_SUBCLASS(dispatch_queue_main, dispatch_queue_serial);
+#endif
+
+/*!
+ * @typedef dispatch_queue_concurrent_t
+ *
+ * @abstract
+ * Dispatch concurrent queues invoke workitems submitted to them concurrently,
+ * and admit a notion of barrier workitems.
+ *
+ * @discussion
+ * Dispatch concurrent queues are lightweight objects to which regular and
+ * barrier workitems may be submited. Barrier workitems are invoked in
+ * exclusion of any other kind of workitem in FIFO order.
+ *
+ * Regular workitems can be invoked concurrently for the same concurrent queue,
+ * in any order. However, regular workitems will not be invoked before any
+ * barrier workitem submited ahead of them has been invoked.
+ *
+ * In other words, if a serial queue is equivalent to a mutex in the Dispatch
+ * world, a concurrent queue is equivalent to a reader-writer lock, where
+ * regular items are readers and barriers are writers.
+ *
+ * Concurrent queues are created by passing a dispatch queue attribute derived
+ * from DISPATCH_QUEUE_CONCURRENT to dispatch_queue_create_with_target().
+ *
+ * Caveat:
+ * Dispatch concurrent queues at this time do not implement priority inversion
+ * avoidance when lower priority regular workitems (readers) are being invoked
+ * and are preventing a higher priority barrier (writer) from being invoked.
+ */
+#if defined(__DISPATCH_BUILDING_DISPATCH__) && !defined(__OBJC__)
+typedef struct dispatch_lane_s *dispatch_queue_concurrent_t;
+#else
+DISPATCH_DECL_SUBCLASS(dispatch_queue_concurrent, dispatch_queue);
+#endif
 
 __BEGIN_DECLS
 
@@ -137,8 +263,7 @@ API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_async_f(dispatch_queue_t queue,
-	void *_Nullable context,
-	dispatch_function_t work);
+		void *_Nullable context, dispatch_function_t work);
 
 /*!
  * @function dispatch_sync
@@ -147,8 +272,12 @@ dispatch_async_f(dispatch_queue_t queue,
  * Submits a block for synchronous execution on a dispatch queue.
  *
  * @discussion
- * Submits a block to a dispatch queue like dispatch_async(), however
- * dispatch_sync() will not return until the block has finished.
+ * Submits a workitem to a dispatch queue like dispatch_async(), however
+ * dispatch_sync() will not return until the workitem has finished.
+ *
+ * Work items submitted to a queue with dispatch_sync() do not observe certain
+ * queue attributes of that queue when invoked (such as autorelease frequency
+ * and QOS class).
  *
  * Calls to dispatch_sync() targeting the current queue will result
  * in dead-lock. Use of dispatch_sync() is also subject to the same
@@ -159,8 +288,10 @@ dispatch_async_f(dispatch_queue_t queue,
  * calls to this function are synchronous, the dispatch_sync() "borrows" the
  * reference of the caller.
  *
- * As an optimization, dispatch_sync() invokes the block on the current
- * thread when possible.
+ * As an optimization, dispatch_sync() invokes the workitem on the thread which
+ * submitted the workitem, except when the passed queue is the main queue or
+ * a queue targetting it (See dispatch_queue_main_t,
+ * dispatch_set_target_queue()).
  *
  * @param queue
  * The target dispatch queue to which the block is submitted.
@@ -203,18 +334,19 @@ API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_sync_f(dispatch_queue_t queue,
-	void *_Nullable context,
-	dispatch_function_t work);
+		void *_Nullable context, dispatch_function_t work);
 
 
-#if !defined(__APPLE__) || TARGET_OS_WATCH || TARGET_OS_TV || \
+#if defined(__APPLE__) && \
 		(defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && \
-		__IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_7_0) || \
+		__IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_7_0) || \
 		(defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && \
-		__MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_9)
-#define DISPATCH_APPLY_AUTO_AVAILABLE 1
-#else
+		__MAC_OS_X_VERSION_MIN_REQUIRED < __MAC_10_9)
 #define DISPATCH_APPLY_AUTO_AVAILABLE 0
+#define DISPATCH_APPLY_QUEUE_ARG_NULLABILITY _Nonnull
+#else
+#define DISPATCH_APPLY_AUTO_AVAILABLE 1
+#define DISPATCH_APPLY_QUEUE_ARG_NULLABILITY _Nullable
 #endif
 
 /*!
@@ -270,7 +402,8 @@ dispatch_sync_f(dispatch_queue_t queue,
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
-dispatch_apply(size_t iterations, dispatch_queue_t queue,
+dispatch_apply(size_t iterations,
+		dispatch_queue_t DISPATCH_APPLY_QUEUE_ARG_NULLABILITY queue,
 		DISPATCH_NOESCAPE void (^block)(size_t));
 #endif
 
@@ -304,9 +437,9 @@ dispatch_apply(size_t iterations, dispatch_queue_t queue,
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL4 DISPATCH_NOTHROW
 void
-dispatch_apply_f(size_t iterations, dispatch_queue_t queue,
-	void *_Nullable context,
-	void (*work)(void *_Nullable, size_t));
+dispatch_apply_f(size_t iterations,
+		dispatch_queue_t DISPATCH_APPLY_QUEUE_ARG_NULLABILITY queue,
+		void *_Nullable context, void (*work)(void *_Nullable, size_t));
 
 /*!
  * @function dispatch_get_current_queue
@@ -343,7 +476,12 @@ dispatch_queue_t
 dispatch_get_current_queue(void);
 
 API_AVAILABLE(macos(10.6), ios(4.0))
-DISPATCH_EXPORT struct dispatch_queue_s _dispatch_main_q;
+DISPATCH_EXPORT
+#if defined(__DISPATCH_BUILDING_DISPATCH__) && !defined(__OBJC__)
+struct dispatch_queue_static_s _dispatch_main_q;
+#else
+struct dispatch_queue_s _dispatch_main_q;
+#endif
 
 /*!
  * @function dispatch_get_main_queue
@@ -356,15 +494,24 @@ DISPATCH_EXPORT struct dispatch_queue_s _dispatch_main_q;
  * call dispatch_main(), NSApplicationMain(), or use a CFRunLoop on the main
  * thread.
  *
+ * The main queue is meant to be used in application context to interact with
+ * the main thread and the main runloop.
+ *
+ * Because the main queue doesn't behave entirely like a regular serial queue,
+ * it may have unwanted side-effects when used in processes that are not UI apps
+ * (daemons). For such processes, the main queue should be avoided.
+ *
+ * @see dispatch_queue_main_t
+ *
  * @result
  * Returns the main queue. This queue is created automatically on behalf of
  * the main thread before main() is called.
  */
 DISPATCH_INLINE DISPATCH_ALWAYS_INLINE DISPATCH_CONST DISPATCH_NOTHROW
-dispatch_queue_t
+dispatch_queue_main_t
 dispatch_get_main_queue(void)
 {
-	return DISPATCH_GLOBAL_OBJECT(dispatch_queue_t, _dispatch_main_q);
+	return DISPATCH_GLOBAL_OBJECT(dispatch_queue_main_t, _dispatch_main_q);
 }
 
 /*!
@@ -420,9 +567,7 @@ typedef unsigned int dispatch_qos_class_t;
  * class.
  *
  * @discussion
- * The well-known global concurrent queues may not be modified. Calls to
- * dispatch_suspend(), dispatch_resume(), dispatch_set_context(), etc., will
- * have no effect when used with queues returned by this function.
+ * See dispatch_queue_global_t.
  *
  * @param identifier
  * A quality of service class defined in qos_class_t or a priority defined in
@@ -453,7 +598,7 @@ typedef unsigned int dispatch_qos_class_t;
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_CONST DISPATCH_WARN_RESULT DISPATCH_NOTHROW
-dispatch_queue_t
+dispatch_queue_global_t
 dispatch_get_global_queue(long identifier, unsigned long flags);
 
 /*!
@@ -467,7 +612,11 @@ DISPATCH_DECL(dispatch_queue_attr);
 /*!
  * @const DISPATCH_QUEUE_SERIAL
  *
- * @discussion A dispatch queue that invokes blocks serially in FIFO order.
+ * @discussion
+ * An attribute that can be used to create a dispatch queue that invokes blocks
+ * serially in FIFO order.
+ *
+ * See dispatch_queue_serial_t.
  */
 #define DISPATCH_QUEUE_SERIAL NULL
 
@@ -475,8 +624,10 @@ DISPATCH_DECL(dispatch_queue_attr);
  * @const DISPATCH_QUEUE_SERIAL_INACTIVE
  *
  * @discussion
- * A dispatch queue that invokes blocks serially in FIFO order, and that is
- * created initially inactive. See dispatch_queue_attr_make_initially_inactive().
+ * An attribute that can be used to create a dispatch queue that invokes blocks
+ * serially in FIFO order, and that is initially inactive.
+ *
+ * See dispatch_queue_attr_make_initially_inactive().
  */
 #define DISPATCH_QUEUE_SERIAL_INACTIVE \
 		dispatch_queue_attr_make_initially_inactive(DISPATCH_QUEUE_SERIAL)
@@ -484,8 +635,12 @@ DISPATCH_DECL(dispatch_queue_attr);
 /*!
  * @const DISPATCH_QUEUE_CONCURRENT
  *
- * @discussion A dispatch queue that may invoke blocks concurrently and supports
- * barrier blocks submitted with the dispatch barrier API.
+ * @discussion
+ * An attribute that can be used to create a dispatch queue that may invoke
+ * blocks concurrently and supports barrier blocks submitted with the dispatch
+ * barrier API.
+ *
+ * See dispatch_queue_concurrent_t.
  */
 #define DISPATCH_QUEUE_CONCURRENT \
 		DISPATCH_GLOBAL_OBJECT(dispatch_queue_attr_t, \
@@ -498,9 +653,11 @@ struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent;
  * @const DISPATCH_QUEUE_CONCURRENT_INACTIVE
  *
  * @discussion
- * A dispatch queue that may invoke blocks concurrently and supports barrier
- * blocks submitted with the dispatch barrier API, and that is created initially
- * inactive. See dispatch_queue_attr_make_initially_inactive().
+ * An attribute that can be used to create a dispatch queue that may invoke
+ * blocks concurrently and supports barrier blocks submitted with the dispatch
+ * barrier API, and that is initially inactive.
+ *
+ * See dispatch_queue_attr_make_initially_inactive().
  */
 #define DISPATCH_QUEUE_CONCURRENT_INACTIVE \
 		dispatch_queue_attr_make_initially_inactive(DISPATCH_QUEUE_CONCURRENT)
@@ -668,6 +825,10 @@ dispatch_queue_attr_make_with_autorelease_frequency(
  *	queue = dispatch_queue_create("com.example.myqueue", attr);
  * </code>
  *
+ * The QOS class and relative priority set this way on a queue have no effect on
+ * blocks that are submitted synchronously to a queue (via dispatch_sync(),
+ * dispatch_barrier_sync()).
+ *
  * @param attr
  * A queue attribute value to be combined with the QOS class, or NULL.
  *
@@ -725,9 +886,9 @@ dispatch_queue_attr_make_with_qos_class(dispatch_queue_attr_t _Nullable attr,
  * reader-writer schemes.
  *
  * When a dispatch queue is no longer needed, it should be released with
- * dispatch_release(). Note that any pending blocks submitted to a queue will
- * hold a reference to that queue. Therefore a queue will not be deallocated
- * until all pending blocks have finished.
+ * dispatch_release(). Note that any pending blocks submitted asynchronously to
+ * a queue will hold a reference to that queue. Therefore a queue will not be
+ * deallocated until all pending blocks have finished.
  *
  * When using a dispatch queue attribute @a attr specifying a QoS class (derived
  * from the result of dispatch_queue_attr_make_with_qos_class()), passing the
@@ -763,8 +924,8 @@ DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
 dispatch_queue_create_with_target(const char *_Nullable label,
-	dispatch_queue_attr_t _Nullable attr, dispatch_queue_t _Nullable target)
-	DISPATCH_ALIAS_V2(dispatch_queue_create_with_target);
+		dispatch_queue_attr_t _Nullable attr, dispatch_queue_t _Nullable target)
+		DISPATCH_ALIAS_V2(dispatch_queue_create_with_target);
 
 /*!
  * @function dispatch_queue_create
@@ -783,9 +944,9 @@ dispatch_queue_create_with_target(const char *_Nullable label,
  * reader-writer schemes.
  *
  * When a dispatch queue is no longer needed, it should be released with
- * dispatch_release(). Note that any pending blocks submitted to a queue will
- * hold a reference to that queue. Therefore a queue will not be deallocated
- * until all pending blocks have finished.
+ * dispatch_release(). Note that any pending blocks submitted asynchronously to
+ * a queue will hold a reference to that queue. Therefore a queue will not be
+ * deallocated until all pending blocks have finished.
  *
  * Passing the result of the dispatch_queue_attr_make_with_qos_class() function
  * to the attr parameter of this function allows a quality of service class and
@@ -993,9 +1154,8 @@ dispatch_main(void);
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
-dispatch_after(dispatch_time_t when,
-	dispatch_queue_t queue,
-	dispatch_block_t block);
+dispatch_after(dispatch_time_t when, dispatch_queue_t queue,
+		dispatch_block_t block);
 #endif
 
 /*!
@@ -1026,10 +1186,8 @@ dispatch_after(dispatch_time_t when,
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NONNULL4 DISPATCH_NOTHROW
 void
-dispatch_after_f(dispatch_time_t when,
-	dispatch_queue_t queue,
-	void *_Nullable context,
-	dispatch_function_t work);
+dispatch_after_f(dispatch_time_t when, dispatch_queue_t queue,
+		void *_Nullable context, dispatch_function_t work);
 
 /*!
  * @functiongroup Dispatch Barrier API
@@ -1108,8 +1266,7 @@ API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_barrier_async_f(dispatch_queue_t queue,
-	void *_Nullable context,
-	dispatch_function_t work);
+		void *_Nullable context, dispatch_function_t work);
 
 /*!
  * @function dispatch_barrier_sync
@@ -1168,8 +1325,7 @@ API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_barrier_sync_f(dispatch_queue_t queue,
-	void *_Nullable context,
-	dispatch_function_t work);
+		void *_Nullable context, dispatch_function_t work);
 
 /*!
  * @functiongroup Dispatch queue-specific contexts
@@ -1211,7 +1367,7 @@ API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_queue_set_specific(dispatch_queue_t queue, const void *key,
-	void *_Nullable context, dispatch_function_t _Nullable destructor);
+		void *_Nullable context, dispatch_function_t _Nullable destructor);
 
 /*!
  * @function dispatch_queue_get_specific
@@ -1321,7 +1477,7 @@ API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1
 void
 dispatch_assert_queue(dispatch_queue_t queue)
-	DISPATCH_ALIAS_V2(dispatch_assert_queue);
+		DISPATCH_ALIAS_V2(dispatch_assert_queue);
 
 /*!
  * @function dispatch_assert_queue_barrier
@@ -1370,7 +1526,7 @@ API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1
 void
 dispatch_assert_queue_not(dispatch_queue_t queue)
-	DISPATCH_ALIAS_V2(dispatch_assert_queue_not);
+		DISPATCH_ALIAS_V2(dispatch_assert_queue_not);
 
 #ifdef NDEBUG
 #define dispatch_assert_queue_debug(q) ((void)(0 && (q)))

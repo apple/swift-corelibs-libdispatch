@@ -53,12 +53,12 @@ _dispatch_benchmark_init(void *context)
 	dispatch_assert_zero(kr);
 #endif
 
-	start = _dispatch_absolute_time();
+	start = _dispatch_uptime();
 	do {
 		i++;
 		f(c);
 	} while (i < cnt);
-	delta = _dispatch_absolute_time() - start;
+	delta = _dispatch_uptime() - start;
 
 	lcost = delta;
 #if HAVE_MACH_ABSOLUTE_TIME
@@ -102,16 +102,16 @@ dispatch_benchmark_f(size_t count, register void *ctxt,
 
 	dispatch_once_f(&pred, &bdata, _dispatch_benchmark_init);
 
-	if (slowpath(count == 0)) {
+	if (unlikely(count == 0)) {
 		return 0;
 	}
 
-	start = _dispatch_absolute_time();
+	start = _dispatch_uptime();
 	do {
 		i++;
 		func(ctxt);
 	} while (i < count);
-	delta = _dispatch_absolute_time() - start;
+	delta = _dispatch_uptime() - start;
 
 	conversion = delta;
 #if HAVE_MACH_ABSOLUTE_TIME

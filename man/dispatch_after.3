@@ -31,6 +31,12 @@ parameter is a value created by
 .Fn dispatch_time
 or
 .Fn dispatch_walltime .
+Submission of the block may be delayed by the system in order to improve power consumption and system performance.
+The system applies a leeway (see
+.Xr dispatch_source_set_timer 3 )
+that is equal to one tenth of the interval between
+.Fa when
+and the time at which the function is called, with the leeway capped to at least one millisecond and at most one minute.
 .Pp
 For a more detailed description about submitting blocks to queues, see
 .Xr dispatch_async 3 .

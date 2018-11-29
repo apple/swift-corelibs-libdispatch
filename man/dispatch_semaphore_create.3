@@ -36,7 +36,8 @@ parameter is creatable with the
 .Xr dispatch_time 3
 or
 .Xr dispatch_walltime 3
-functions.
+functions. If the timeout is reached without a signal being received, the semaphore
+is re-incremented before the function returns.
 .Pp
 The
 .Fn dispatch_semaphore_signal

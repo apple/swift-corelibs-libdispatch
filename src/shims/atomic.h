@@ -71,7 +71,7 @@
 #define _os_atomic_c11_op(p, v, m, o, op) \
 		({ _os_atomic_basetypeof(p) _v = (v), _r = \
 		atomic_fetch_##o##_explicit(_os_atomic_c11_atomic(p), _v, \
-		memory_order_##m); (__typeof__(*(p)))(_r op _v); })
+		memory_order_##m); (__typeof__(_r))(_r op _v); })
 #define _os_atomic_c11_op_orig(p, v, m, o, op) \
 		atomic_fetch_##o##_explicit(_os_atomic_c11_atomic(p), v, \
 		memory_order_##m)
@@ -161,7 +161,7 @@
 		do { \
 			__VA_ARGS__; \
 			_result = os_atomic_cmpxchgvw(_p, ov, nv, &ov, m); \
-		} while (os_unlikely(!_result)); \
+		} while (unlikely(!_result)); \
 		_result; \
 	})
 #define os_atomic_rmw_loop2o(p, f, ov, nv, m, ...) \

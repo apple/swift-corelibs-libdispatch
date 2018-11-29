@@ -66,6 +66,10 @@ struct timespec;
  */
 typedef uint64_t dispatch_time_t;
 
+enum {
+	DISPATCH_WALLTIME_NOW DISPATCH_ENUM_API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))	= ~1ull,
+};
+
 #define DISPATCH_TIME_NOW (0ull)
 #define DISPATCH_TIME_FOREVER (~0ull)
 
@@ -73,15 +77,19 @@ typedef uint64_t dispatch_time_t;
  * @function dispatch_time
  *
  * @abstract
- * Create dispatch_time_t relative to the default clock or modify an existing
- * dispatch_time_t.
+ * Create a dispatch_time_t relative to the current value of the default or
+ * wall time clock, or modify an existing dispatch_time_t.
  *
  * @discussion
- * On Mac OS X the default clock is based on mach_absolute_time().
+ * On Apple platforms, the default clock is based on mach_absolute_time().
  *
  * @param when
- * An optional dispatch_time_t to add nanoseconds to. If zero is passed, then
- * dispatch_time() will use the result of mach_absolute_time().
+ * An optional dispatch_time_t to add nanoseconds to. If DISPATCH_TIME_NOW is
+ * passed, then dispatch_time() will use the default clock (which is based on
+ * mach_absolute_time() on Apple platforms). If DISPATCH_WALLTIME_NOW is used,
+ * dispatch_time() will use the value returned by gettimeofday(3).
+ * dispatch_time(DISPATCH_WALLTIME_NOW, delta) is equivalent to
+ * dispatch_walltime(NULL, delta).
  *
  * @param delta
  * Nanoseconds to add.
@@ -106,6 +114,8 @@ dispatch_time(dispatch_time_t when, int64_t delta);
  * @param when
  * A struct timespec to add time to. If NULL is passed, then
  * dispatch_walltime() will use the result of gettimeofday(3).
+ * dispatch_walltime(NULL, delta) returns the same value as
+ * dispatch_time(DISPATCH_WALLTIME_NOW, delta).
  *
  * @param delta
  * Nanoseconds to add.

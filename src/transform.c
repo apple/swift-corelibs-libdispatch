@@ -359,7 +359,9 @@ _dispatch_transform_to_utf16(dispatch_data_t data, int32_t byteOrder)
 			if (os_mul_overflow(size - i, sizeof(uint16_t), &next)) {
 				return (bool)false;
 			}
-			if (wch >= 0xd800 && wch < 0xdfff) {
+			if (wch == 0xfeff && offset + i == 3) {
+				// skip the BOM if any, as we already inserted one ourselves
+			} else if (wch >= 0xd800 && wch < 0xdfff) {
 				// Illegal range (surrogate pair)
 				return (bool)false;
 			} else if (wch >= 0x10000) {
@@ -563,6 +565,26 @@ static dispatch_data_t
 _dispatch_transform_to_utf16be(dispatch_data_t data)
 {
 	return _dispatch_transform_to_utf16(data, OSBigEndian);
+}
+
+static dispatch_data_t
+_dispatch_transform_to_utf8_without_bom(dispatch_data_t data)
+{
+	static uint8_t const utf8_bom[] = { 0xef, 0xbb, 0xbf };
+	const void *p;
+	dispatch_data_t subrange = _dispatch_data_subrange_map(data, &p, 0, 3);
+	bool has_bom = false;
+
+	if (subrange) {
+		has_bom = (memcmp(p, utf8_bom, sizeof(utf8_bom)) == 0);
+		dispatch_release(subrange);
+	}
+	if (has_bom) {
+		return dispatch_data_create_subrange(data, 3,
+				dispatch_data_get_size(data) - 3);
+	}
+	dispatch_retain(data);
+	return data;
 }
 
 #pragma mark -
@@ -1096,7 +1118,7 @@ const struct dispatch_data_format_type_s _dispatch_data_format_type_utf8 = {
 	.output_mask = (_DISPATCH_DATA_FORMAT_UTF8 | _DISPATCH_DATA_FORMAT_UTF16BE |
 			_DISPATCH_DATA_FORMAT_UTF16LE),
 	.decode = NULL,
-	.encode = NULL,
+	.encode = _dispatch_transform_to_utf8_without_bom,
 };
 
 const struct dispatch_data_format_type_s _dispatch_data_format_type_utf_any = {

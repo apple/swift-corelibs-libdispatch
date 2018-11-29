@@ -29,37 +29,34 @@
 
 #if !defined(_WIN32)
 #include <pthread.h>
-#endif
-#if defined(_WIN32)
+#else // defined(_WIN32)
 #include "shims/generic_win_stubs.h"
 #include "shims/generic_sys_queue.h"
-#endif
+#endif // defined(_WIN32)
 
 #ifdef __ANDROID__
 #include "shims/android_stubs.h"
-#endif
+#endif // __ANDROID__
 
 #if !HAVE_MACH
 #include "shims/mach.h"
 #endif
-
-#include "shims/hw_config.h"
-#include "shims/priority.h"
-
-#if HAVE_PTHREAD_WORKQUEUES
-#if __has_include(<pthread/workqueue_private.h>)
-#include <pthread/workqueue_private.h>
-#else
-#include <pthread_workqueue.h>
-#endif
-#ifndef WORKQ_FEATURE_MAINTENANCE
-#define WORKQ_FEATURE_MAINTENANCE 0x10
-#endif
-#endif // HAVE_PTHREAD_WORKQUEUES
+#include "shims/target.h"
 
 #if DISPATCH_USE_INTERNAL_WORKQUEUE
 #include "event/workqueue_internal.h"
+#elif HAVE_PTHREAD_WORKQUEUES
+#include <pthread/workqueue_private.h>
+#else
+#error Unsupported configuration
 #endif
+
+#ifndef DISPATCH_WORKQ_MAX_PTHREAD_COUNT
+#define DISPATCH_WORKQ_MAX_PTHREAD_COUNT 255
+#endif
+
+#include "shims/hw_config.h"
+#include "shims/priority.h"
 
 #if HAVE_PTHREAD_NP_H
 #include <pthread_np.h>
