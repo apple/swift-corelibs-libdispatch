@@ -54,6 +54,11 @@ add_library(dispatch
               shims/time.h
               shims/tsd.h
               shims/yield.h)
+
+set_target_properties(dispatch
+                      PROPERTIES
+                        POSITION_INDEPENDENT_CODE YES)
+
 if(WIN32)
   target_sources(dispatch
                  PRIVATE
