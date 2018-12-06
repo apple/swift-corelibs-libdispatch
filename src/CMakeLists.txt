@@ -54,11 +54,6 @@ add_library(dispatch
               shims/time.h
               shims/tsd.h
               shims/yield.h)
-
-set_target_properties(dispatch
-                      PROPERTIES
-                        POSITION_INDEPENDENT_CODE YES)
-
 if(WIN32)
   target_sources(dispatch
                  PRIVATE
@@ -150,11 +145,26 @@ if(ENABLE_SWIFT)
                       swift/Source.swift
                       swift/Time.swift
                       swift/Wrapper.swift
+                    TARGET
+                      ${CMAKE_C_COMPILER_TARGET}
+                    CFLAGS
+                      -fblocks
+                      -fmodule-map-file=${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
                     SWIFT_FLAGS
                       -I ${PROJECT_SOURCE_DIR}
+                      -I/usr/include
                       ${swift_optimization_flags}
-                    TARGET
-                      ${CMAKE_C_COMPILER_TARGET})
+                    DEPENDS
+                      ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap)
+  target_sources(dispatch
+                 PRIVATE
+                   swift/DispatchStubs.cc
+                   ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o)
+  if(CMAKE_BUILD_TYPE MATCHES Debug)
+    target_link_libraries(dispatch
+                          PRIVATE
+                            swiftSwiftOnoneSupport)
+  endif()
 endif()
 if(ENABLE_DTRACE)
   dtrace_usdt_probe(${CMAKE_CURRENT_SOURCE_DIR}/provider.d
@@ -179,9 +189,7 @@ if(WIN32)
                              PRIVATE
                                _CRT_NONSTDC_NO_WARNINGS)
 endif()
-if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
-  target_compile_options(dispatch PRIVATE /EHs-c-)
-else()
+if(NOT "${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
   target_compile_options(dispatch PRIVATE -fno-exceptions)
 endif()
 if(DISPATCH_ENABLE_ASSERTS)
@@ -252,37 +260,26 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
 endif()
 dispatch_set_linker(dispatch)
 
+# Temporary staging; the various swift projects that depend on libdispatch
+# all expect libdispatch.so to be in src/.libs/libdispatch.so
+# So for now, make a copy so we don't have to do a coordinated commit across
+# all the swift projects to change this assumption.
+add_custom_command(TARGET dispatch POST_BUILD
+                   COMMAND ${CMAKE_COMMAND} -E make_directory .libs
+                   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:dispatch> .libs
+                   COMMENT "Copying libdispatch to .libs")
+
+get_swift_host_arch(SWIFT_HOST_ARCH)
+
 install(TARGETS
           dispatch
-        ARCHIVE DESTINATION ${INSTALL_TARGET_DIR}
-        LIBRARY DESTINATION ${INSTALL_TARGET_DIR}
-        RUNTIME DESTINATION bin)
-
+        DESTINATION
+          "${INSTALL_TARGET_DIR}")
 if(ENABLE_SWIFT)
   install(FILES
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftdoc
           DESTINATION
-            ${INSTALL_TARGET_DIR}/${swift_arch})
-
-  if(BUILD_SHARED_LIBS)
-    set(library_kind SHARED)
-  else()
-    set(library_kind STATIC)
-  endif()
-  set(swiftDispatch_OUTPUT_FILE
-      ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_${library_kind}_LIBRARY_PREFIX}swiftDispatch${CMAKE_${library_kind}_LIBRARY_SUFFIX})
-  install(FILES
-            ${swiftDispatch_OUTPUT_FILE}
-          DESTINATION
-            ${INSTALL_TARGET_DIR})
-  if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-    if(BUILD_SHARED_LIBS)
-      install(FILES
-                ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_IMPORT_LIBRARY_PREFIX}swiftDispatch${CMAKE_IMPORT_LIBRARY_SUFFIX}
-              DESTINATION
-                ${INSTALL_TARGET_DIR})
-    endif()
-  endif()
+            "${INSTALL_TARGET_DIR}/${SWIFT_HOST_ARCH}")
 endif()
 

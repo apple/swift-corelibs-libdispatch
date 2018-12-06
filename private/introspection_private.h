@@ -134,7 +134,6 @@ typedef struct dispatch_object_s *dispatch_object_t;
  * @field source_size
  * Size of dispatch_introspection_source_s structure.
  */
-
 API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT const struct dispatch_introspection_versions_s {
 	unsigned long introspection_version;
@@ -389,7 +388,8 @@ typedef struct dispatch_introspection_source_s {
 	unsigned long enqueued:1,
 			handler_is_block:1,
 			timer:1,
-			after:1;
+			after:1,
+			is_xpc:1;
 } dispatch_introspection_source_s;
 typedef dispatch_introspection_source_s *dispatch_introspection_source_t;
 
@@ -425,12 +425,12 @@ typedef dispatch_introspection_queue_thread_s
  * Types of items enqueued on a dispatch queue.
  */
 enum dispatch_introspection_queue_item_type {
-  dispatch_introspection_queue_item_type_none = 0x0,
-  dispatch_introspection_queue_item_type_block = 0x11,
-  dispatch_introspection_queue_item_type_function = 0x12,
-  dispatch_introspection_queue_item_type_object = 0x100,
-  dispatch_introspection_queue_item_type_queue = 0x101,
-  dispatch_introspection_queue_item_type_source = 0102,
+	dispatch_introspection_queue_item_type_none = 0x0,
+	dispatch_introspection_queue_item_type_block = 0x11,
+	dispatch_introspection_queue_item_type_function = 0x12,
+	dispatch_introspection_queue_item_type_object = 0x100,
+	dispatch_introspection_queue_item_type_queue = 0x101,
+	dispatch_introspection_queue_item_type_source = 0x42,
 };
 
 /*!
@@ -532,19 +532,92 @@ typedef void (*dispatch_introspection_hook_queue_item_complete_t)(
 		dispatch_continuation_t object);
 
 /*!
+ * @enum dispatch_introspection_runtime_event
+ *
+ * @abstract
+ * Types for major events the dispatch runtime goes through as sent by
+ * the runtime_event hook.
+ *
+ * @const dispatch_introspection_runtime_event_worker_event_delivery
+ * A worker thread was unparked to deliver some kernel events.
+ * There may be an unpark event if the thread will pick up a queue to drain.
+ * There always is a worker_park event when the thread is returned to the pool.
+ * `ptr` is the queue for which events are being delivered, or NULL (for generic
+ * events).
+ * `value` is the number of events delivered.
+ *
+ * @const dispatch_introspection_runtime_event_worker_unpark
+ * A worker thread junst unparked (sent from the context of the thread).
+ * `ptr` is the queue for which the thread unparked.
+ * `value` is 0.
+ *
+ * @const dispatch_introspection_runtime_event_worker_request
+ * `ptr` is set to the queue on behalf of which the thread request is made.
+ * `value` is the number of threads requested.
+ *
+ * @const dispatch_introspection_runtime_event_worker_park
+ * A worker thread is about to park (sent from the context of the thread).
+ * `ptr` and `value` are 0.
+ *
+ * @const dispatch_introspection_runtime_event_sync_wait
+ * A caller of dispatch_sync or dispatch_async_and_wait hit contention.
+ * `ptr` is the queue that caused the initial contention.
+ * `value` is 0.
+ *
+ * @const dispatch_introspection_runtime_event_async_sync_handoff
+ * @const dispatch_introspection_runtime_event_sync_sync_handoff
+ * @const dispatch_introspection_runtime_event_sync_async_handoff
+ *
+ * A queue is being handed off from a thread to another due to respectively:
+ * - async/sync contention
+ * - sync/sync contention
+ * - sync/async contention
+ *
+ * `ptr` is set to dispatch_queue_t which is handed off to the next thread.
+ * `value` is 0.
+ */
+#ifndef __DISPATCH_BUILDING_DISPATCH__
+enum dispatch_introspection_runtime_event {
+	dispatch_introspection_runtime_event_worker_event_delivery = 1,
+	dispatch_introspection_runtime_event_worker_unpark = 2,
+	dispatch_introspection_runtime_event_worker_request = 3,
+	dispatch_introspection_runtime_event_worker_park = 4,
+
+	dispatch_introspection_runtime_event_sync_wait = 10,
+	dispatch_introspection_runtime_event_async_sync_handoff = 11,
+	dispatch_introspection_runtime_event_sync_sync_handoff = 12,
+	dispatch_introspection_runtime_event_sync_async_handoff = 13,
+};
+#endif
+
+/*!
+ * @typedef dispatch_introspection_hook_runtime_event_t
+ *
+ * @abstract
+ * A function pointer called for various runtime events.
+ *
+ * @discussion
+ * The actual payloads are discussed in the documentation of the
+ * dispatch_introspection_runtime_event enum.
+ */
+typedef void (*dispatch_introspection_hook_runtime_event_t)(
+		enum dispatch_introspection_runtime_event event,
+		void *ptr, unsigned long long value);
+
+/*!
  * @typedef dispatch_introspection_hooks_s
  *
  * @abstract
  * A structure of function pointer hooks into libdispatch.
  */
-
 typedef struct dispatch_introspection_hooks_s {
 	dispatch_introspection_hook_queue_create_t queue_create;
 	dispatch_introspection_hook_queue_dispose_t queue_dispose;
 	dispatch_introspection_hook_queue_item_enqueue_t queue_item_enqueue;
 	dispatch_introspection_hook_queue_item_dequeue_t queue_item_dequeue;
 	dispatch_introspection_hook_queue_item_complete_t queue_item_complete;
-	void *_reserved[5];
+	dispatch_introspection_hook_runtime_event_t runtime_event;
+	void *_reserved[4];
 } dispatch_introspection_hooks_s;
 typedef dispatch_introspection_hooks_s *dispatch_introspection_hooks_t;
 
@@ -715,7 +788,6 @@ dispatch_introspection_queue_item_get_info(dispatch_queue_t queue,
  * The structure is copied on input and filled with the previously installed
  * hooks on output.
  */
-
 API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT void
 dispatch_introspection_hooks_install(dispatch_introspection_hooks_t hooks);
@@ -740,7 +812,6 @@ dispatch_introspection_hooks_install(dispatch_introspection_hooks_t hooks);
  * As a convenience, the 'enable' pointer may itself be NULL to indicate that
  * all hook callouts should be enabled.
  */
-
 extern void
 dispatch_introspection_hook_callouts_enable(
 		dispatch_introspection_hooks_t enable);
@@ -751,7 +822,6 @@ dispatch_introspection_hook_callouts_enable(
  * @abstract
  * Callout to queue creation hook that a debugger can break on.
  */
-
 extern void
 dispatch_introspection_hook_callout_queue_create(
 		dispatch_introspection_queue_t queue_info);
@@ -762,7 +832,6 @@ dispatch_introspection_hook_callout_queue_create(
  * @abstract
  * Callout to queue destruction hook that a debugger can break on.
  */
-
 extern void
 dispatch_introspection_hook_callout_queue_dispose(
 		dispatch_introspection_queue_t queue_info);
@@ -773,7 +842,6 @@ dispatch_introspection_hook_callout_queue_dispose(
  * @abstract
  * Callout to queue enqueue hook that a debugger can break on.
  */
-
 extern void
 dispatch_introspection_hook_callout_queue_item_enqueue(
 		dispatch_queue_t queue, dispatch_introspection_queue_item_t item);
@@ -784,7 +852,6 @@ dispatch_introspection_hook_callout_queue_item_enqueue(
  * @abstract
  * Callout to queue dequeue hook that a debugger can break on.
  */
-
 extern void
 dispatch_introspection_hook_callout_queue_item_dequeue(
 		dispatch_queue_t queue, dispatch_introspection_queue_item_t item);
@@ -795,7 +862,6 @@ dispatch_introspection_hook_callout_queue_item_dequeue(
  * @abstract
  * Callout to queue item complete hook that a debugger can break on.
  */
-
 extern void
 dispatch_introspection_hook_callout_queue_item_complete(
 		dispatch_continuation_t object);

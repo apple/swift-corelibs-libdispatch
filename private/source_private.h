@@ -56,6 +56,19 @@ __BEGIN_DECLS
  *
  * The handle is the interval value in milliseconds or frames.
  * The mask specifies which flags from dispatch_source_timer_flags_t to apply.
+ *
+ * Starting with macOS 10.14, iOS 12, dispatch_source_set_timer()
+ * can be used on such sources, and its arguments are used as follow:
+ * - start:
+ *   must be DISPATCH_TIME_NOW or DISPATCH_TIME_FOREVER.
+ *   DISPATCH_TIME_NOW will enable the timer, and align its phase, and
+ *   DISPATCH_TIME_FOREVER will disable the timer as usual.*
+ * - interval:
+ *   its unit is in milliseconds by default, or frames if the source
+ *   was created with the DISPATCH_INTERVAL_UI_ANIMATION flag.
+ * - leeway:
+ *   per-thousands of the interval (valid values range from 0 to 1000).
+ *   If ~0ull is passed, the default leeway for the interval is used instead.
  */
 #define DISPATCH_SOURCE_TYPE_INTERVAL (&_dispatch_source_type_interval)
 API_AVAILABLE(macos(10.9), ios(7.0))
@@ -107,7 +120,7 @@ DISPATCH_SOURCE_TYPE_DECL(sock);
  * @discussion A dispatch source that monitors events on a network channel.
  */
 #define DISPATCH_SOURCE_TYPE_NW_CHANNEL (&_dispatch_source_type_nw_channel)
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) DISPATCH_LINUX_UNAVAILABLE()
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0)) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(nw_channel);
 
 __END_DECLS
@@ -223,6 +236,9 @@ enum {
  *
  * @constant DISPATCH_VFS_DESIREDDISK
  * Filesystem has exceeded the DESIREDDISK level
+ *
+ * @constant DISPATCH_VFS_FREE_SPACE_CHANGE
+ * Filesystem free space changed.
  */
 enum {
 	DISPATCH_VFS_NOTRESP = 0x0001,
@@ -238,7 +254,43 @@ enum {
 	DISPATCH_VFS_QUOTA = 0x1000,
 	DISPATCH_VFS_NEARLOWDISK = 0x2000,
 	DISPATCH_VFS_DESIREDDISK = 0x4000,
+	DISPATCH_VFS_FREE_SPACE_CHANGE = 0x8000,
 };
+
+/*!
+ * @enum dispatch_clockid_t
+ *
+ * @discussion
+ * These values can be used with DISPATCH_SOURCE_TYPE_TIMER as a "handle"
+ * to anchor the timer to a given clock which allows for various optimizations.
+ *
+ * Note that using an explicit clock will make the dispatch source "strict"
+ * like dispatch_source_set_mandatory_cancel_handler() does.
+ *
+ * @constant DISPATCH_CLOCKID_UPTIME
+ * A monotonic clock that doesn't tick while the machine is asleep.
+ * Equivalent to the CLOCK_UPTIME clock ID on BSD systems.
+ *
+ * @constant DISPATCH_CLOCKID_MONOTONIC
+ * A monotonic clock that ticks while the machine sleeps.
+ * Equivalent to POSIX CLOCK_MONOTONIC.
+ * (Note that on Linux, CLOCK_MONOTONIC isn't conformant and doesn't tick while
+ * sleeping, hence on Linux this is the same clock as CLOCK_BOOTTIME).
+ *
+ * @constant DISPATCH_CLOCKID_WALLTIME
+ * A clock equivalent to the wall clock time, as returned by gettimeofday().
+ * Equivalent to POSIX CLOCK_REALTIME.
+ *
+ * @constant DISPATCH_CLOCKID_REALTIME
+ * An alias for DISPATCH_CLOCKID_WALLTIME to match the POSIX clock of the
+ * same name.
+ */
+DISPATCH_ENUM(dispatch_clockid, uintptr_t,
+	DISPATCH_CLOCKID_UPTIME DISPATCH_ENUM_API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0)) = 1,
+	DISPATCH_CLOCKID_MONOTONIC DISPATCH_ENUM_API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0)) = 2,
+	DISPATCH_CLOCKID_WALLTIME DISPATCH_ENUM_API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0)) = 3,
+	DISPATCH_CLOCKID_REALTIME DISPATCH_ENUM_API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0)) = 3,
+);
 
 /*!
  * @enum dispatch_source_timer_flags_t
@@ -293,7 +345,7 @@ enum {
 enum {
 	DISPATCH_PROC_REAP DISPATCH_ENUM_API_DEPRECATED("unsupported flag",
 			macos(10.6,10.9), ios(4.0,7.0)) = 0x10000000,
-	DISPATCH_PROC_EXIT_STATUS DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(2.0)) = 0x04000000,
+	DISPATCH_PROC_EXIT_STATUS DISPATCH_ENUM_API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(2.0)) = 0x04000000,
 };
 
 /*!
@@ -356,8 +408,8 @@ enum {
 	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_WARN DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 0x10,
 
 	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_CRITICAL DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 0x20,
-	
-	DISPATCH_MEMORYPRESSURE_MSL_STATUS DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 0xf0000000,
+
+	DISPATCH_MEMORYPRESSURE_MSL_STATUS DISPATCH_ENUM_API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0)) = 0xf0000000,
 };
 
 /*!
@@ -425,7 +477,7 @@ __BEGIN_DECLS
  * The result of passing NULL in this parameter is undefined.
  */
 #ifdef __BLOCKS__
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_source_set_mandatory_cancel_handler(dispatch_source_t source,
@@ -452,7 +504,7 @@ dispatch_source_set_mandatory_cancel_handler(dispatch_source_t source,
  * context of the dispatch source at the time the handler call is made.
  * The result of passing NULL in this parameter is undefined.
  */
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_source_set_mandatory_cancel_handler_f(dispatch_source_t source,
@@ -583,7 +635,7 @@ typedef struct dispatch_source_extended_data_s {
  * the value of the size argument. If this is less than the value of the size
  * argument, the remaining space in data will have been populated with zeroes.
  */
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
 DISPATCH_NOTHROW
 size_t

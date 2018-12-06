@@ -24,14 +24,6 @@
 #undef dispatch_once_f
 
 
-typedef struct _dispatch_once_waiter_s {
-	volatile struct _dispatch_once_waiter_s *volatile dow_next;
-	dispatch_thread_event_s dow_event;
-	mach_port_t dow_thread;
-} *_dispatch_once_waiter_t;
-
-#define DISPATCH_ONCE_DONE ((_dispatch_once_waiter_t)~0l)
-
 #ifdef __BLOCKS__
 void
 dispatch_once(dispatch_once_t *val, dispatch_block_t block)
@@ -46,70 +38,34 @@ dispatch_once(dispatch_once_t *val, dispatch_block_t block)
 #define DISPATCH_ONCE_SLOW_INLINE DISPATCH_NOINLINE
 #endif // DISPATCH_ONCE_INLINE_FASTPATH
 
-DISPATCH_ONCE_SLOW_INLINE
+DISPATCH_NOINLINE
 static void
-dispatch_once_f_slow(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
+_dispatch_once_callout(dispatch_once_gate_t l, void *ctxt,
+		dispatch_function_t func)
 {
-#if DISPATCH_GATE_USE_FOR_DISPATCH_ONCE
-	dispatch_once_gate_t l = (dispatch_once_gate_t)val;
-
-	if (_dispatch_once_gate_tryenter(l)) {
-		_dispatch_client_callout(ctxt, func);
-		_dispatch_once_gate_broadcast(l);
-	} else {
-		_dispatch_once_gate_wait(l);
-	}
-#else
-	_dispatch_once_waiter_t volatile *vval = (_dispatch_once_waiter_t*)val;
-	struct _dispatch_once_waiter_s dow = { };
-	_dispatch_once_waiter_t tail = &dow, next, tmp;
-	dispatch_thread_event_t event;
-
-	if (os_atomic_cmpxchg(vval, NULL, tail, acquire)) {
-		dow.dow_thread = _dispatch_tid_self();
-		_dispatch_client_callout(ctxt, func);
-
-		next = (_dispatch_once_waiter_t)_dispatch_once_xchg_done(val);
-		while (next != tail) {
-			tmp = (_dispatch_once_waiter_t)_dispatch_wait_until(next->dow_next);
-			event = &next->dow_event;
-			next = tmp;
-			_dispatch_thread_event_signal(event);
-		}
-	} else {
-		_dispatch_thread_event_init(&dow.dow_event);
-		next = *vval;
-		for (;;) {
-			if (next == DISPATCH_ONCE_DONE) {
-				break;
-			}
-			if (os_atomic_cmpxchgv(vval, next, tail, &next, release)) {
-				dow.dow_thread = next->dow_thread;
-				dow.dow_next = next;
-				if (dow.dow_thread) {
-					pthread_priority_t pp = _dispatch_get_priority();
-					_dispatch_thread_override_start(dow.dow_thread, pp, val);
-				}
-				_dispatch_thread_event_wait(&dow.dow_event);
-				if (dow.dow_thread) {
-					_dispatch_thread_override_end(dow.dow_thread, val);
-				}
-				break;
-			}
-		}
-		_dispatch_thread_event_destroy(&dow.dow_event);
-	}
-#endif
+	_dispatch_client_callout(ctxt, func);
+	_dispatch_once_gate_broadcast(l);
 }
 
 DISPATCH_NOINLINE
 void
 dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 {
-#if !DISPATCH_ONCE_INLINE_FASTPATH
-	if (likely(os_atomic_load(val, acquire) == DLOCK_ONCE_DONE)) {
+	dispatch_once_gate_t l = (dispatch_once_gate_t)val;
+
+#if !DISPATCH_ONCE_INLINE_FASTPATH || DISPATCH_ONCE_USE_QUIESCENT_COUNTER
+	uintptr_t v = os_atomic_load(&l->dgo_once, acquire);
+	if (likely(v == DLOCK_ONCE_DONE)) {
 		return;
 	}
-#endif // !DISPATCH_ONCE_INLINE_FASTPATH
-	return dispatch_once_f_slow(val, ctxt, func);
+#if DISPATCH_ONCE_USE_QUIESCENT_COUNTER
+	if (likely(DISPATCH_ONCE_IS_GEN(v))) {
+		return _dispatch_once_mark_done_if_quiesced(l, v);
+	}
+#endif
+#endif
+	if (_dispatch_once_gate_tryenter(l)) {
+		return _dispatch_once_callout(l, ctxt, func);
+	}
+	return _dispatch_once_wait(l);
 }

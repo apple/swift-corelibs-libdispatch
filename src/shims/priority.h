@@ -36,8 +36,8 @@
 #ifndef _PTHREAD_PRIORITY_SCHED_PRI_FLAG
 #define _PTHREAD_PRIORITY_SCHED_PRI_FLAG 0x20000000
 #endif
-#ifndef _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG
-#define _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG 0x04000000
+#ifndef _PTHREAD_PRIORITY_FALLBACK_FLAG
+#define _PTHREAD_PRIORITY_FALLBACK_FLAG 0x04000000
 #endif
 #ifndef _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG
 #define _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG 0x02000000
@@ -63,7 +63,7 @@ typedef unsigned long pthread_priority_t;
 #define _PTHREAD_PRIORITY_PRIORITY_MASK 0x000000ff
 #define _PTHREAD_PRIORITY_OVERCOMMIT_FLAG 0x80000000
 #define _PTHREAD_PRIORITY_SCHED_PRI_FLAG 0x20000000
-#define _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG 0x04000000
+#define _PTHREAD_PRIORITY_FALLBACK_FLAG 0x04000000
 #define _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG 0x02000000
 #define _PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG 0x01000000
 #define _PTHREAD_PRIORITY_ENFORCE_FLAG  0x10000000
@@ -72,41 +72,64 @@ typedef unsigned long pthread_priority_t;
 
 typedef uint32_t dispatch_qos_t;
 typedef uint32_t dispatch_priority_t;
-typedef uint32_t dispatch_priority_t;
-typedef uint16_t dispatch_priority_requested_t;
 
-#define DISPATCH_QOS_UNSPECIFIED            ((dispatch_qos_t)0)
-#define DISPATCH_QOS_MAINTENANCE            ((dispatch_qos_t)1)
-#define DISPATCH_QOS_BACKGROUND             ((dispatch_qos_t)2)
-#define DISPATCH_QOS_UTILITY                ((dispatch_qos_t)3)
-#define DISPATCH_QOS_DEFAULT                ((dispatch_qos_t)4)
-#define DISPATCH_QOS_USER_INITIATED         ((dispatch_qos_t)5)
-#define DISPATCH_QOS_USER_INTERACTIVE       ((dispatch_qos_t)6)
-#define DISPATCH_QOS_MAX                    DISPATCH_QOS_USER_INTERACTIVE
-#define DISPATCH_QOS_SATURATED              ((dispatch_qos_t)15)
+#define DISPATCH_QOS_UNSPECIFIED        ((dispatch_qos_t)0)
+#define DISPATCH_QOS_MAINTENANCE        ((dispatch_qos_t)1)
+#define DISPATCH_QOS_BACKGROUND         ((dispatch_qos_t)2)
+#define DISPATCH_QOS_UTILITY            ((dispatch_qos_t)3)
+#define DISPATCH_QOS_DEFAULT            ((dispatch_qos_t)4)
+#define DISPATCH_QOS_USER_INITIATED     ((dispatch_qos_t)5)
+#define DISPATCH_QOS_USER_INTERACTIVE   ((dispatch_qos_t)6)
+#define DISPATCH_QOS_MIN                DISPATCH_QOS_MAINTENANCE
+#define DISPATCH_QOS_MAX                DISPATCH_QOS_USER_INTERACTIVE
+#define DISPATCH_QOS_SATURATED          ((dispatch_qos_t)15)
+
+#define DISPATCH_QOS_NBUCKETS           (DISPATCH_QOS_MAX - DISPATCH_QOS_MIN + 1)
+#define DISPATCH_QOS_BUCKET(qos)        ((qos) - DISPATCH_QOS_MIN)
 
 #define DISPATCH_PRIORITY_RELPRI_MASK        ((dispatch_priority_t)0x000000ff)
 #define DISPATCH_PRIORITY_RELPRI_SHIFT       0
-#define DISPATCH_PRIORITY_QOS_MASK           ((dispatch_priority_t)0x0000ff00)
+#define DISPATCH_PRIORITY_QOS_MASK           ((dispatch_priority_t)0x00000f00)
 #define DISPATCH_PRIORITY_QOS_SHIFT          8
-#define DISPATCH_PRIORITY_REQUESTED_MASK     ((dispatch_priority_t)0x0000ffff)
-#define DISPATCH_PRIORITY_OVERRIDE_MASK      ((dispatch_priority_t)0x00ff0000)
+#define DISPATCH_PRIORITY_REQUESTED_MASK     ((dispatch_priority_t)0x00000fff)
+#define DISPATCH_PRIORITY_FALLBACK_QOS_MASK  ((dispatch_priority_t)0x0000f000)
+#define DISPATCH_PRIORITY_FALLBACK_QOS_SHIFT 12
+#define DISPATCH_PRIORITY_OVERRIDE_MASK      ((dispatch_priority_t)0x000f0000)
 #define DISPATCH_PRIORITY_OVERRIDE_SHIFT     16
 #define DISPATCH_PRIORITY_FLAGS_MASK         ((dispatch_priority_t)0xff000000)
 
-#define DISPATCH_PRIORITY_SATURATED_OVERRIDE ((dispatch_priority_t)0x000f0000)
+#define DISPATCH_PRIORITY_SATURATED_OVERRIDE DISPATCH_PRIORITY_OVERRIDE_MASK
 
 #define DISPATCH_PRIORITY_FLAG_OVERCOMMIT    ((dispatch_priority_t)0x80000000) // _PTHREAD_PRIORITY_OVERCOMMIT_FLAG
-#define DISPATCH_PRIORITY_FLAG_DEFAULTQUEUE  ((dispatch_priority_t)0x04000000) // _PTHREAD_PRIORITY_DEFAULTQUEUE_FLAG
+#define DISPATCH_PRIORITY_FLAG_FALLBACK      ((dispatch_priority_t)0x04000000) // _PTHREAD_PRIORITY_FALLBACK_FLAG
 #define DISPATCH_PRIORITY_FLAG_MANAGER       ((dispatch_priority_t)0x02000000) // _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG
 #define DISPATCH_PRIORITY_PTHREAD_PRIORITY_FLAGS_MASK \
-		(DISPATCH_PRIORITY_FLAG_OVERCOMMIT | DISPATCH_PRIORITY_FLAG_DEFAULTQUEUE | \
+		(DISPATCH_PRIORITY_FLAG_OVERCOMMIT | DISPATCH_PRIORITY_FLAG_FALLBACK | \
 		DISPATCH_PRIORITY_FLAG_MANAGER)
 
 // not passed to pthread
-#define DISPATCH_PRIORITY_FLAG_INHERIT       ((dispatch_priority_t)0x40000000) // _PTHREAD_PRIORITY_INHERIT_FLAG
+#define DISPATCH_PRIORITY_FLAG_FLOOR         ((dispatch_priority_t)0x40000000) // _PTHREAD_PRIORITY_INHERIT_FLAG
 #define DISPATCH_PRIORITY_FLAG_ENFORCE       ((dispatch_priority_t)0x10000000) // _PTHREAD_PRIORITY_ENFORCE_FLAG
-#define DISPATCH_PRIORITY_FLAG_ROOTQUEUE     ((dispatch_priority_t)0x20000000) // _PTHREAD_PRIORITY_ROOTQUEUE_FLAG
+#define DISPATCH_PRIORITY_FLAG_INHERITED     ((dispatch_priority_t)0x20000000)
+
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_qos_class_valid(qos_class_t cls, int relpri)
+{
+	switch ((unsigned int)cls) {
+	case QOS_CLASS_MAINTENANCE:
+	case QOS_CLASS_BACKGROUND:
+	case QOS_CLASS_UTILITY:
+	case QOS_CLASS_DEFAULT:
+	case QOS_CLASS_USER_INITIATED:
+	case QOS_CLASS_USER_INTERACTIVE:
+	case QOS_CLASS_UNSPECIFIED:
+		break;
+	default:
+		return false;
+	}
+	return QOS_MIN_RELATIVE_PRIORITY <= relpri && relpri <= 0;
+}
 
 #pragma mark dispatch_qos
 
@@ -164,6 +187,16 @@ _dispatch_qos_from_pp(pthread_priority_t pp)
 }
 
 DISPATCH_ALWAYS_INLINE
+static inline dispatch_qos_t
+_dispatch_qos_from_pp_unsafe(pthread_priority_t pp)
+{
+	// this assumes we know there is a QOS and pp has been masked off properly
+	pp >>= _PTHREAD_PRIORITY_QOS_CLASS_SHIFT;
+	DISPATCH_COMPILER_CAN_ASSUME(pp);
+	return (dispatch_qos_t)__builtin_ffs((int)pp);
+}
+
+DISPATCH_ALWAYS_INLINE
 static inline pthread_priority_t
 _dispatch_qos_to_pp(dispatch_qos_t qos)
 {
@@ -186,15 +219,16 @@ _dispatch_qos_is_background(dispatch_qos_t qos)
 	(qos ? ((((qos) << DISPATCH_PRIORITY_QOS_SHIFT) & DISPATCH_PRIORITY_QOS_MASK) | \
 	 ((dispatch_priority_t)(relpri - 1) & DISPATCH_PRIORITY_RELPRI_MASK)) : 0)
 
-DISPATCH_ALWAYS_INLINE
-static inline dispatch_priority_t
-_dispatch_priority_with_override_qos(dispatch_priority_t pri,
-		dispatch_qos_t oqos)
-{
-	pri &= ~DISPATCH_PRIORITY_OVERRIDE_MASK;
-	pri |= oqos << DISPATCH_PRIORITY_OVERRIDE_SHIFT;
-	return pri;
-}
+#define _dispatch_priority_make_override(qos) \
+	(((qos) << DISPATCH_PRIORITY_OVERRIDE_SHIFT) & \
+	 DISPATCH_PRIORITY_OVERRIDE_MASK)
+
+#define _dispatch_priority_make_floor(qos) \
+	(qos ? (_dispatch_priority_make(qos) | DISPATCH_PRIORITY_FLAG_FLOOR) : 0)
+
+#define _dispatch_priority_make_fallback(qos) \
+	(qos ? ((((qos) << DISPATCH_PRIORITY_FALLBACK_QOS_SHIFT) & \
+	 DISPATCH_PRIORITY_FALLBACK_QOS_MASK) | DISPATCH_PRIORITY_FLAG_FALLBACK) : 0)
 
 DISPATCH_ALWAYS_INLINE
 static inline int
@@ -216,10 +250,28 @@ _dispatch_priority_qos(dispatch_priority_t dbp)
 
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_qos_t
+_dispatch_priority_fallback_qos(dispatch_priority_t dbp)
+{
+	dbp &= DISPATCH_PRIORITY_FALLBACK_QOS_MASK;
+	return dbp >> DISPATCH_PRIORITY_FALLBACK_QOS_SHIFT;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline dispatch_qos_t
 _dispatch_priority_override_qos(dispatch_priority_t dbp)
 {
 	dbp &= DISPATCH_PRIORITY_OVERRIDE_MASK;
 	return dbp >> DISPATCH_PRIORITY_OVERRIDE_SHIFT;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_queue_priority_manually_selected(dispatch_priority_t pri)
+{
+	return !(pri & DISPATCH_PRIORITY_FLAG_INHERITED) &&
+			(pri & (DISPATCH_PRIORITY_FLAG_FALLBACK |
+			DISPATCH_PRIORITY_FLAG_FLOOR |
+			DISPATCH_PRIORITY_REQUESTED_MASK));
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -244,26 +296,40 @@ _dispatch_priority_from_pp_impl(pthread_priority_t pp, bool keep_flags)
 #define _dispatch_priority_from_pp_strip_flags(pp) \
 		_dispatch_priority_from_pp_impl(pp, false)
 
+#define DISPATCH_PRIORITY_TO_PP_STRIP_FLAGS     0x1
+#define DISPATCH_PRIORITY_TO_PP_PREFER_FALLBACK 0x2
+
 DISPATCH_ALWAYS_INLINE
 static inline pthread_priority_t
-_dispatch_priority_to_pp_impl(dispatch_priority_t dbp, bool keep_flags)
+_dispatch_priority_to_pp_strip_flags(dispatch_priority_t dbp)
 {
-	pthread_priority_t pp;
-	if (keep_flags) {
-		pp = dbp & (DISPATCH_PRIORITY_PTHREAD_PRIORITY_FLAGS_MASK |
-				DISPATCH_PRIORITY_RELPRI_MASK);
-	} else {
-		pp = dbp & DISPATCH_PRIORITY_RELPRI_MASK;
-	}
+	pthread_priority_t pp = dbp & DISPATCH_PRIORITY_RELPRI_MASK;
 	dispatch_qos_t qos = _dispatch_priority_qos(dbp);
 	if (qos) {
 		pp |= (1ul << ((qos - 1) + _PTHREAD_PRIORITY_QOS_CLASS_SHIFT));
 	}
 	return pp;
 }
-#define _dispatch_priority_to_pp(pp) \
-		_dispatch_priority_to_pp_impl(pp, true)
-#define _dispatch_priority_to_pp_strip_flags(pp) \
-		_dispatch_priority_to_pp_impl(pp, false)
+
+DISPATCH_ALWAYS_INLINE
+static inline pthread_priority_t
+_dispatch_priority_to_pp_prefer_fallback(dispatch_priority_t dbp)
+{
+	pthread_priority_t pp;
+	dispatch_qos_t qos;
+
+	if (dbp & DISPATCH_PRIORITY_FLAG_FALLBACK) {
+		pp = dbp & DISPATCH_PRIORITY_PTHREAD_PRIORITY_FLAGS_MASK;
+		pp |= _PTHREAD_PRIORITY_PRIORITY_MASK;
+		qos = _dispatch_priority_fallback_qos(dbp);
+	} else {
+		pp = dbp & (DISPATCH_PRIORITY_PTHREAD_PRIORITY_FLAGS_MASK |
+				DISPATCH_PRIORITY_RELPRI_MASK);
+		qos = _dispatch_priority_qos(dbp);
+		if (unlikely(!qos)) return pp;
+	}
+
+	return pp | (1ul << ((qos - 1) + _PTHREAD_PRIORITY_QOS_CLASS_SHIFT));
+}
 
 #endif // __DISPATCH_SHIMS_PRIORITY__

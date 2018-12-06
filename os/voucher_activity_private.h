@@ -154,7 +154,7 @@ voucher_get_activity_id_and_creator(voucher_t voucher, uint64_t *creator_pid,
  * @result
  * A new voucher with an activity identifier.
  */
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.12.4), ios(10.3), tvos(10.2), watchos(3.2))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t
 voucher_activity_create_with_data(firehose_tracepoint_id_t *trace_id,
@@ -162,7 +162,7 @@ voucher_activity_create_with_data(firehose_tracepoint_id_t *trace_id,
 		const void *pubdata, size_t publen);
 
 API_DEPRECATED_WITH_REPLACEMENT("voucher_activity_create_with_data",
-		macos(10.12,10.12), ios(10.0,10.0), tvos(10.0,10.0), watchos(3.0,3.0))
+		macos(10.12,10.12.4), ios(10.0,10.3), tvos(10.0,10.2), watchos(3.0,3.2))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t
 voucher_activity_create_with_location(firehose_tracepoint_id_t *trace_id,
@@ -183,7 +183,7 @@ voucher_activity_create_with_location(firehose_tracepoint_id_t *trace_id,
  * The bottom-most 8 bits of the flags will be used to generate the ID.
  * See firehose_activity_flags_t.
  */
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 OS_VOUCHER_EXPORT OS_NOTHROW
 firehose_activity_id_t
 voucher_activity_id_allocate(firehose_activity_flags_t flags);
@@ -264,22 +264,21 @@ voucher_activity_trace(firehose_stream_t stream,
  * Length of data to read from the iovec after the public data for the private
  * data.
  */
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.12.4), ios(10.3), tvos(10.2), watchos(3.2))
 OS_VOUCHER_EXPORT OS_NOTHROW OS_NONNULL4
 firehose_tracepoint_id_t
 voucher_activity_trace_v(firehose_stream_t stream,
 		firehose_tracepoint_id_t trace_id, uint64_t timestamp,
 		const struct iovec *iov, size_t publen, size_t privlen);
 
+#define VOUCHER_ACTIVITY_TRACE_FLAG_UNRELIABLE 0x01
 
-API_DEPRECATED_WITH_REPLACEMENT("voucher_activity_trace_v",
-		macos(10.12,10.12), ios(10.0,10.0), tvos(10.0,10.0), watchos(3.0,3.0))
-OS_VOUCHER_EXPORT OS_NOTHROW OS_NONNULL4 OS_NONNULL6
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+OS_VOUCHER_EXPORT OS_NOTHROW OS_NONNULL4
 firehose_tracepoint_id_t
-voucher_activity_trace_with_private_strings(firehose_stream_t stream,
+voucher_activity_trace_v_2(firehose_stream_t stream,
 		firehose_tracepoint_id_t trace_id, uint64_t timestamp,
-		const void *pubdata, size_t publen,
-		const void *privdata, size_t privlen);
+		const struct iovec *iov, size_t publen, size_t privlen, uint32_t flags);
 
 typedef const struct voucher_activity_hooks_s {
 #define VOUCHER_ACTIVITY_HOOKS_VERSION     5
@@ -320,8 +319,40 @@ voucher_activity_initialize_4libtrace(voucher_activity_hooks_t hooks);
  */
 API_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL_ALL
-void*
+void *
 voucher_activity_get_metadata_buffer(size_t *length);
+
+/*!
+ * @function voucher_activity_get_logging_preferences
+ *
+ * @abstract
+ * Return address and length of vm_map()ed configuration data for the logging
+ * subsystem.
+ *
+ * @discussion
+ * The data must be deallocated with vm_deallocate().
+ *
+ * @param length
+ * Pointer to size_t variable, filled with length of preferences buffer.
+ *
+ * @result
+ * Address of preferences buffer, returns NULL on error.
+ */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(3.0))
+OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL_ALL
+void *
+voucher_activity_get_logging_preferences(size_t *length);
+
+/*!
+ * @function voucher_activity_should_send_strings
+ *
+ * @abstract
+ * Returns whether the client should send the strings or not.
+ */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(4.0))
+OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW
+bool
+voucher_activity_should_send_strings(void);
 
 /*!
  * @function voucher_get_activity_id_4dyld

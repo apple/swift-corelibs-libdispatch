@@ -1,24 +1,23 @@
 
 include(CMakeParseArguments)
 
-function(add_swift_target target)
-  set(options LIBRARY;SHARED;STATIC)
+function(add_swift_library library)
+  set(options)
   set(single_value_options MODULE_NAME;MODULE_LINK_NAME;MODULE_PATH;MODULE_CACHE_PATH;OUTPUT;TARGET)
-  set(multiple_value_options CFLAGS;DEPENDS;LINK_FLAGS;RESOURCES;SOURCES;SWIFT_FLAGS)
+  set(multiple_value_options SOURCES;SWIFT_FLAGS;CFLAGS;DEPENDS)
+
+  cmake_parse_arguments(ASL "${options}" "${single_value_options}" "${multiple_value_options}" ${ARGN})
 
   cmake_parse_arguments(AST "${options}" "${single_value_options}" "${multiple_value_options}" ${ARGN})
 
   set(compile_flags ${CMAKE_SWIFT_FLAGS})
   set(link_flags)
 
-  if(AST_TARGET)
-    list(APPEND compile_flags -target;${AST_TARGET})
-    list(APPEND link_flags -target;${AST_TARGET})
+  if(ASL_TARGET)
+    list(APPEND FLAGS -target;${ASL_TARGET})
   endif()
-  if(AST_MODULE_NAME)
-    list(APPEND compile_flags -module-name;${AST_MODULE_NAME})
-  else()
-    list(APPEND compile_flags -module-name;${target})
+  if(ASL_MODULE_NAME)
+    list(APPEND flags -module-name;${ASL_MODULE_NAME})
   endif()
   if(AST_MODULE_LINK_NAME)
     list(APPEND compile_flags -module-link-name;${AST_MODULE_LINK_NAME})
@@ -84,128 +83,25 @@ function(add_swift_target target)
     endif()
   endforeach()
 
-  set(objs)
-  set(mods)
-  set(docs)
-  set(i 0)
-  foreach(source ${sources})
-    get_filename_component(name ${source} NAME)
+  get_filename_component(module_directory ${ASL_MODULE_PATH} DIRECTORY)
 
-    set(obj ${CMAKE_CURRENT_BINARY_DIR}/${target}.dir/${name}${CMAKE_C_OUTPUT_EXTENSION})
-    set(mod ${CMAKE_CURRENT_BINARY_DIR}/${target}.dir/${name}.swiftmodule)
-    set(doc ${CMAKE_CURRENT_BINARY_DIR}/${target}.dir/${name}.swiftdoc)
-
-    set(all_sources ${sources})
-    list(INSERT all_sources ${i} -primary-file)
-
-    add_custom_command(OUTPUT
-                         ${obj}
-                         ${mod}
-                         ${doc}
-                       DEPENDS
-                         ${source}
-                         ${AST_DEPENDS}
-                       COMMAND
-                         ${CMAKE_SWIFT_COMPILER} -frontend ${compile_flags} -emit-module-path ${mod} -emit-module-doc-path ${doc} -o ${obj} -c ${all_sources})
-
-    list(APPEND objs ${obj})
-    list(APPEND mods ${mod})
-    list(APPEND docs ${doc})
-
-    math(EXPR i "${i}+1")
-  endforeach()
-
-  if(AST_LIBRARY)
-    get_filename_component(module_directory ${AST_MODULE_PATH} DIRECTORY)
-
-    set(module ${AST_MODULE_PATH})
-    set(documentation ${module_directory}/${AST_MODULE_NAME}.swiftdoc)
-
-    add_custom_command(OUTPUT
-                         ${module}
-                         ${documentation}
-                       DEPENDS
-                         ${mods}
-                         ${docs}
-                         ${AST_DEPENDS}
-                       COMMAND
-                         ${CMAKE_SWIFT_COMPILER} -frontend ${compile_flags} -sil-merge-partial-modules -emit-module ${mods} -o ${module} -emit-module-doc-path ${documentation})
-  endif()
-
-  if(AST_LIBRARY)
-    set(emit_library -emit-library)
-  endif()
-  if(NOT AST_LIBRARY OR library_kind STREQUAL SHARED)
-    add_custom_command(OUTPUT
-                         ${AST_OUTPUT}
-                       DEPENDS
-                         ${objs}
-                         ${AST_DEPENDS}
-                       COMMAND
-                         ${CMAKE_SWIFT_COMPILER} ${emit_library} ${link_flags} -o ${AST_OUTPUT} ${objs})
-    add_custom_target(${target}
-                      ALL
-                      DEPENDS
-                         ${AST_OUTPUT}
-                         ${module}
-                         ${documentation})
-  else()
-    add_library(${target}-static STATIC ${objs})
-    add_dependencies(${target}-static ${AST_DEPENDS})
-    get_filename_component(ast_output_bn ${AST_OUTPUT} NAME)
-    string(REGEX REPLACE "^${CMAKE_STATIC_LIBRARY_PREFIX}" "" ast_output_bn ${ast_output_bn})
-    string(REGEX REPLACE "${CMAKE_STATIC_LIBRARY_SUFFIX}$" "" ast_output_bn ${ast_output_bn})
-    get_filename_component(ast_output_dn ${AST_OUTPUT} DIRECTORY)
-    set_target_properties(${target}-static
-                          PROPERTIES
-                            LINKER_LANGUAGE C
-                            ARCHIVE_OUTPUT_DIRECTORY ${ast_output_dn}
-                            OUTPUT_DIRECTORY ${ast_output_dn}
-                            OUTPUT_NAME ${ast_output_bn})
-    add_custom_target(${target}
-                      ALL
-                      DEPENDS
-                         ${target}-static
-                         ${module}
-                         ${documentation})
-  endif()
-
-  if(AST_RESOURCES)
-    add_custom_command(TARGET
-                         ${target}
-                       POST_BUILD
-                       COMMAND
-                         ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/${target}
-                       COMMAND
-                         ${CMAKE_COMMAND} -E copy ${AST_OUTPUT} ${CMAKE_CURRENT_BINARY_DIR}/${target}
-                       COMMAND
-                         ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/${target}/Resources
-                       COMMAND
-                         ${CMAKE_COMMAND} -E copy ${AST_RESOURCES} ${CMAKE_CURRENT_BINARY_DIR}/${target}/Resources)
-  else()
-    add_custom_command(TARGET
-                         ${target}
-                       POST_BUILD
-                       COMMAND
-                         ${CMAKE_COMMAND} -E copy ${AST_OUTPUT} ${CMAKE_CURRENT_BINARY_DIR})
-    if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-      if(AST_SHARED OR BUILD_SHARED_LIBS)
-        add_custom_command(TARGET
-                             ${target}
-                           POST_BUILD
-                           COMMAND
-                             ${CMAKE_COMMAND} -E copy ${IMPORT_LIBRARY} ${CMAKE_CURRENT_BINARY_DIR})
-      endif()
-    endif()
-  endif()
-endfunction()
-
-function(add_swift_library library)
-  add_swift_target(${library} LIBRARY ${ARGN})
-endfunction()
-
-function(add_swift_executable executable)
-  add_swift_target(${executable} ${ARGN})
+  add_custom_command(OUTPUT
+                       ${ASL_OUTPUT}
+                       ${ASL_MODULE_PATH}
+                       ${module_directory}/${ASL_MODULE_NAME}.swiftdoc
+                     DEPENDS
+                       ${ASL_SOURCES}
+                       ${CMAKE_SWIFT_COMPILER}
+                       ${ASL_DEPENDS}
+                     COMMAND
+                       ${CMAKE_COMMAND} -E make_directory ${module_directory}
+                     COMMAND
+                       ${CMAKE_SWIFT_COMPILER} ${flags} -c ${sources} -o ${ASL_OUTPUT})
+  add_custom_target(${library}
+                    DEPENDS
+                       ${ASL_OUTPUT}
+                       ${ASL_MODULE_PATH}
+                       ${module_directory}/${ASL_MODULE_NAME}.swiftdoc)
 endfunction()
 
 # Returns the current achitecture name in a variable
@@ -235,8 +131,6 @@ function(get_swift_host_arch result_var_name)
   elseif("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "IA64")
     set("${result_var_name}" "itanium" PARENT_SCOPE)
   elseif("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86")
-    set("${result_var_name}" "i686" PARENT_SCOPE)
-  elseif("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "i686")
     set("${result_var_name}" "i686" PARENT_SCOPE)
   else()
     message(FATAL_ERROR "Unrecognized architecture on host system: ${CMAKE_SYSTEM_PROCESSOR}")

@@ -44,9 +44,49 @@ dispatch_common_warnings()
 option(ENABLE_DISPATCH_INIT_CONSTRUCTOR "enable libdispatch_init as a constructor" ON)
 set(USE_LIBDISPATCH_INIT_CONSTRUCTOR ${ENABLE_DISPATCH_INIT_CONSTRUCTOR})
 
-# NOTE(abdulras) this is the CMake supported way to control whether we generate
-# shared or static libraries.  This impacts the behaviour of `add_library` in
-# what type of library it generates.
+option(ENABLE_SWIFT "enable libdispatch swift overlay" OFF)
+if(ENABLE_SWIFT)
+  if(NOT CMAKE_SWIFT_COMPILER)
+    message(FATAL_ERROR "CMAKE_SWIFT_COMPILER must be defined to enable swift")
+  endif()
+
+  get_filename_component(SWIFT_TOOLCHAIN ${CMAKE_SWIFT_COMPILER} DIRECTORY)
+  get_filename_component(SWIFT_TOOLCHAIN ${SWIFT_TOOLCHAIN} DIRECTORY)
+
+  string(TOLOWER ${CMAKE_SYSTEM_NAME} SWIFT_OS)
+  get_swift_host_arch(SWIFT_HOST_ARCH)
+
+  set(SWIFT_RUNTIME_LIBDIR ${SWIFT_TOOLCHAIN}/${SWIFT_LIBDIR}/swift/${SWIFT_OS}/${SWIFT_HOST_ARCH})
+
+  add_library(swiftCore
+              SHARED IMPORTED GLOBAL)
+  set_target_properties(swiftCore
+                        PROPERTIES
+                          IMPORTED_LOCATION
+                            ${SWIFT_RUNTIME_LIBDIR}/${CMAKE_SHARED_LIBRARY_PREFIX}swiftCore${CMAKE_SHARED_LIBRARY_SUFFIX})
+
+  add_library(swiftSwiftOnoneSupport
+              SHARED IMPORTED GLOBAL)
+  set_target_properties(swiftSwiftOnoneSupport
+                        PROPERTIES
+                          IMPORTED_LOCATION
+                           ${SWIFT_RUNTIME_LIBDIR}/${CMAKE_SHARED_LIBRARY_PREFIX}swiftSwiftOnoneSupport${CMAKE_SHARED_LIBRARY_SUFFIX})
+
+  set(INSTALL_TARGET_DIR "${INSTALL_LIBDIR}/swift/${SWIFT_OS}" CACHE PATH "Path where the libraries will be installed")
+  set(INSTALL_DISPATCH_HEADERS_DIR "${INSTALL_LIBDIR}/swift/dispatch" CACHE PATH "Path where the headers will be installed for libdispatch")
+  set(INSTALL_BLOCK_HEADERS_DIR "${INSTALL_LIBDIR}/swift/Block" CACHE PATH "Path where the headers will be installed for the blocks runtime")
+  set(INSTALL_OS_HEADERS_DIR "${INSTALL_LIBDIR}/swift/os" CACHE PATH "Path where the os/ headers will be installed")
+endif()
+
+if(NOT ENABLE_SWIFT)
+  set(INSTALL_TARGET_DIR "${INSTALL_LIBDIR}" CACHE PATH "Path where the libraries will be installed")
+  set(INSTALL_DISPATCH_HEADERS_DIR "include/dispatch" CACHE PATH "Path where the headers will be installed")
+  set(INSTALL_BLOCK_HEADERS_DIR "include" CACHE PATH "Path where the headers will be installed for the blocks runtime")
+  set(INSTALL_OS_HEADERS_DIR "include/os" CACHE PATH "Path where the headers will be installed")
+endif()
+
+option(ENABLE_DTRACE "enable dtrace support" "")
+
 option(BUILD_SHARED_LIBS "build shared libraries" ON)
 
 option(ENABLE_SWIFT "enable libdispatch swift overlay" OFF)
@@ -112,8 +152,7 @@ if(ENABLE_INTERNAL_PTHREAD_WORKQUEUES)
   set(HAVE_PTHREAD_WORKQUEUES 0)
 else()
   check_include_files(pthread/workqueue_private.h HAVE_PTHREAD_WORKQUEUE_PRIVATE_H)
-  check_include_files(pthread_workqueue.h HAVE_PTHREAD_WORKQUEUE_H)
-  if(HAVE_PTHREAD_WORKQUEUE_PRIVATE_H AND HAVE_PTHREAD_WORKQUEUE_H)
+  if(HAVE_PTHREAD_WORKQUEUE_PRIVATE_H)
     set(HAVE_PTHREAD_WORKQUEUES 1)
     set(DISPATCH_USE_INTERNAL_WORKQUEUE 0)
   else()
@@ -124,25 +163,14 @@ endif()
 
 option(INSTALL_PRIVATE_HEADERS "installs private headers in the same location as the public ones" OFF)
 
-if(NOT CMAKE_SYSTEM_NAME STREQUAL Darwin)
+find_package(BlocksRuntime QUIET)
+if(NOT BlocksRuntime_FOUND)
   set(BlocksRuntime_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/src/BlocksRuntime)
 
-  # NOTE(compnerd) use the `BUILD_SHARED_LIBS` variable to determine what type
-  # of library to build.  If it is true, we will generate shared libraries,
-  # otherwise we will generate static libraries.
   add_library(BlocksRuntime
-              ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/data.c
-              ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/runtime.c)
-  if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-    target_sources(BlocksRuntime
-                   PRIVATE
-                     ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/BlocksRuntime.def)
-    if(NOT BUILD_SHARED_LIBS)
-      target_compile_definitions(BlocksRuntime
-                                 PRIVATE
-                                   BlocksRuntime_STATIC)
-    endif()
-  endif()
+              STATIC
+                ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/data.c
+                ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/runtime.c)
   set_target_properties(BlocksRuntime
                         PROPERTIES
                           POSITION_INDEPENDENT_CODE TRUE)
@@ -164,11 +192,6 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL Darwin)
             DESTINATION
               "${INSTALL_BLOCK_HEADERS_DIR}")
   endif()
-  install(TARGETS
-            BlocksRuntime
-          ARCHIVE DESTINATION ${INSTALL_TARGET_DIR}
-          LIBRARY DESTINATION ${INSTALL_TARGET_DIR}
-          RUNTIME DESTINATION bin)
 endif()
 
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)
@@ -194,7 +217,6 @@ check_function_exists(posix_fadvise HAVE_POSIX_FADVISE)
 check_function_exists(posix_spawnp HAVE_POSIX_SPAWNP)
 check_function_exists(pthread_key_init_np HAVE_PTHREAD_KEY_INIT_NP)
 check_function_exists(pthread_main_np HAVE_PTHREAD_MAIN_NP)
-check_function_exists(pthread_workqueue_setdispatch_np HAVE_PTHREAD_WORKQUEUE_SETDISPATCH_NP)
 check_function_exists(strlcpy HAVE_STRLCPY)
 check_function_exists(sysconf HAVE_SYSCONF)
 check_function_exists(arc4random HAVE_ARC4RANDOM)
@@ -271,6 +293,7 @@ check_symbol_exists(VQ_NEARLOWDISK "sys/mount.h" HAVE_DECL_VQ_NEARLOWDISK)
 check_symbol_exists(VQ_QUOTA "sys/mount.h" HAVE_DECL_VQ_QUOTA)
 check_symbol_exists(VQ_UPDATE "sys/mount.h" HAVE_DECL_VQ_UPDATE)
 check_symbol_exists(VQ_VERYLOWDISK "sys/mount.h" HAVE_DECL_VQ_VERYLOWDISK)
+check_symbol_exists(VQ_FREE_SPACE_CHANGE "sys/mount.h" HAVE_DECL_VQ_FREE_SPACE_CHANGE)
 check_symbol_exists(strlcpy "string.h" HAVE_STRLCPY)
 check_symbol_exists(program_invocation_name "errno.h" HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME)
 if (HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME)
@@ -313,19 +336,27 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
                        "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
                        "${PROJECT_SOURCE_DIR}/private/module.modulemap"
                      COMMAND
-                       ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/dispatch/darwin/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/dispatch/darwin/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
                      COMMAND
-                       ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/private/darwin/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
+                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/private/darwin/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
+elseif(CMAKE_SYSTEM_NAME STREQUAL Windows)
+  add_custom_command(OUTPUT
+                       "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                       "${PROJECT_SOURCE_DIR}/private/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/private/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
 else()
   add_custom_command(OUTPUT
                        "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
                        "${PROJECT_SOURCE_DIR}/private/module.modulemap"
                      COMMAND
-                       ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
                      COMMAND
-                       ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/private/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
+                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/private/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
 endif()
-add_custom_target(module-maps ALL
+add_custom_target(module-map-symlinks
                   DEPENDS
                      "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
                      "${PROJECT_SOURCE_DIR}/private/module.modulemap")
