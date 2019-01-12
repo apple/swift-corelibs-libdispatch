@@ -63,7 +63,6 @@ if(WIN32)
   target_sources(dispatch
                  PRIVATE
                    shims/generic_sys_queue.h
-                   shims/generic_win_stubs.c
                    shims/generic_win_stubs.h
                    shims/getprogname.c)
 endif()

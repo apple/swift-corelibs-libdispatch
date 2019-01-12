@@ -184,7 +184,7 @@ void _dispatch_prohibit_transition_to_multithreaded(bool prohibit);
 #define DISPATCH_COCOA_COMPAT 0
 #endif
 
-#if DISPATCH_COCOA_COMPAT
+#if DISPATCH_COCOA_COMPAT || defined(_WIN32)
 
 #define DISPATCH_CF_SPI_VERSION 20160712
 
@@ -192,6 +192,8 @@ void _dispatch_prohibit_transition_to_multithreaded(bool prohibit);
 typedef mach_port_t dispatch_runloop_handle_t;
 #elif defined(__linux__) || defined(__FreeBSD__)
 typedef int dispatch_runloop_handle_t;
+#elif defined(_WIN32)
+typedef void *dispatch_runloop_handle_t;
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -220,12 +222,14 @@ dispatch_queue_serial_t
 _dispatch_runloop_root_queue_create_4CF(const char *_Nullable label,
 		unsigned long flags);
 
-#if TARGET_OS_MAC
+#if TARGET_OS_MAC || defined(_WIN32)
 API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
-mach_port_t
+dispatch_runloop_handle_t
 _dispatch_runloop_root_queue_get_port_4CF(dispatch_queue_t queue);
+#endif
 
+#if TARGET_OS_MAC
 API_AVAILABLE(macos(10.13.2), ios(11.2), tvos(11.2), watchos(4.2))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 bool
@@ -256,7 +260,7 @@ API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT
 void (*_Nullable _dispatch_end_NSAutoReleasePool)(void *);
 
-#endif /* DISPATCH_COCOA_COMPAT */
+#endif /* DISPATCH_COCOA_COMPAT || defined(_WIN32) */
 
 API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW

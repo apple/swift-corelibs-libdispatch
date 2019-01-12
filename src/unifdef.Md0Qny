@@ -234,10 +234,6 @@ const struct dispatch_continuation_vtable_s _dispatch_continuation_vtables[] = {
 	DC_VTABLE_ENTRY(MACH_IPC_HANDOFF,
 		.do_invoke = _dispatch_mach_ipc_handoff_invoke),
 #endif
-#if !defined(__OPEN_SOURCE__) && OS_VENTURE_ENABLE
-	DC_VTABLE_ENTRY(VENTURE_DRAIN,
-		.do_invoke = _os_venture_drain_continuation_invoke),
-#endif // !defined(__OPEN_SOURCE__) && OS_VENTURE_ENABLE
 };
 
 DISPATCH_NOINLINE
@@ -3550,6 +3546,603 @@ static bool
 _dispatch_queue_drain_should_narrow_slow(uint64_t now,
 		dispatch_invoke_context_t dic)
 {
+	if (dic->dic_next_narrow_check != DISPATCH_THREAD_IS_NARROWING) {
+		pthread_priority_t pp = _dispatch_get_priority();
+		dispatch_qos_t qos = _dispatch_qos_from_pp(pp);
+		if (unlikely(qos < DISPATCH_QOS_MIN || qos > DISPATCH_QOS_MAX)) {
+			DISPATCH_CLIENT_CRASH(pp, "Thread QoS corruption");
+		}
+		size_t idx = DISPATCH_QOS_BUCKET(qos);
+		os_atomic(uint64_t) *deadline = &_dispatch_narrowing_deadlines[idx];
+		uint64_t oldval, newval = now + _dispatch_narrow_check_interval();
+
+		dic->dic_next_narrow_check = newval;
+		os_atomic_rmw_loop(deadline, oldval, newval, relaxed, {
+			if (now < oldval) {
+				os_atomic_rmw_loop_give_up(return false);
+			}
+		});
+
+		if (!_pthread_workqueue_should_narrow(pp)) {
+			return false;
+		}
+		dic->dic_next_narrow_check = DISPATCH_THREAD_IS_NARROWING;
+	}
+	return true;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_queue_drain_should_narrow(dispatch_invoke_context_t dic)
+{
+	uint64_t next_check = dic->dic_next_narrow_check;
+	if (unlikely(next_check)) {
+		uint64_t now = _dispatch_approximate_time();
+		if (unlikely(next_check < now)) {
+			return _dispatch_queue_drain_should_narrow_slow(now, dic);
+		}
+	}
+	return false;
+}
+#else
+#define _dispatch_queue_drain_init_narrowing_check_deadline(rq, dic) ((void)0)
+#define _dispatch_queue_drain_should_narrow(dic)  false
+#endif
+
+/*
+ * Drain comes in 2 flavours (serial/concurrent) and 2 modes
+ * (redirecting or not).
+ *
+ * Serial
+ * ~~~~~~
+ * Serial drain is about serial queues (width == 1). It doesn't support
+ * the redirecting mode, which doesn't make sense, and treats all continuations
+ * as barriers. Bookkeeping is minimal in serial flavour, most of the loop
+ * is optimized away.
+ *
+ * Serial drain stops if the width of the queue grows to larger than 1.
+ * Going through a serial drain prevents any recursive drain from being
+ * redirecting.
+ *
+ * Concurrent
+ * ~~~~~~~~~~
+ * When in non-redirecting mode (meaning one of the target queues is serial),
+ * non-barriers and barriers alike run in the context of the drain thread.
+ * Slow non-barrier items are still all signaled so that they can make progress
+ * toward the dispatch_sync() that will serialize them all .
+ *
+ * In redirecting mode, non-barrier work items are redirected downward.
+ *
+ * Concurrent drain stops if the width of the queue becomes 1, so that the
+ * queue drain moves to the more efficient serial mode.
+ */
+DISPATCH_ALWAYS_INLINE
+static dispatch_queue_wakeup_target_t
+_dispatch_lane_drain(dispatch_lane_t dq, dispatch_invoke_context_t dic,
+		dispatch_invoke_flags_t flags, uint64_t *owned_ptr, bool serial_drain)
+{
+	dispatch_queue_t orig_tq = dq->do_targetq;
+	dispatch_thread_frame_s dtf;
+	struct dispatch_object_s *dc = NULL, *next_dc;
+	uint64_t dq_state, owned = *owned_ptr;
+
+	if (unlikely(!dq->dq_items_tail)) return NULL;
+
+	_dispatch_thread_frame_push(&dtf, dq);
+	if (serial_drain || _dq_state_is_in_barrier(owned)) {
+		// we really own `IN_BARRIER + dq->dq_width * WIDTH_INTERVAL`
+		// but width can change while draining barrier work items, so we only
+		// convert to `dq->dq_width * WIDTH_INTERVAL` when we drop `IN_BARRIER`
+		owned = DISPATCH_QUEUE_IN_BARRIER;
+	} else {
+		owned &= DISPATCH_QUEUE_WIDTH_MASK;
+	}
+
+	dc = _dispatch_queue_get_head(dq);
+	goto first_iteration;
+
+	for (;;) {
+		dispatch_assert(dic->dic_barrier_waiter == NULL);
+		dc = next_dc;
+		if (unlikely(!dc)) {
+			if (!dq->dq_items_tail) {
+				break;
+			}
+			dc = _dispatch_queue_get_head(dq);
+		}
+		if (unlikely(_dispatch_needs_to_return_to_kernel())) {
+			_dispatch_return_to_kernel();
+		}
+		if (unlikely(serial_drain != (dq->dq_width == 1))) {
+			break;
+		}
+		if (unlikely(_dispatch_queue_drain_should_narrow(dic))) {
+			break;
+		}
+		if (likely(flags & DISPATCH_INVOKE_WORKLOOP_DRAIN)) {
+			dispatch_workloop_t dwl = (dispatch_workloop_t)_dispatch_get_wlh();
+			if (unlikely(_dispatch_queue_max_qos(dwl) > dwl->dwl_drained_qos)) {
+				break;
+			}
+		}
+
+first_iteration:
+		dq_state = os_atomic_load(&dq->dq_state, relaxed);
+		if (unlikely(_dq_state_is_suspended(dq_state))) {
+			break;
+		}
+		if (unlikely(orig_tq != dq->do_targetq)) {
+			break;
+		}
+
+		if (serial_drain || _dispatch_object_is_barrier(dc)) {
+			if (!serial_drain && owned != DISPATCH_QUEUE_IN_BARRIER) {
+				if (!_dispatch_queue_try_upgrade_full_width(dq, owned)) {
+					goto out_with_no_width;
+				}
+				owned = DISPATCH_QUEUE_IN_BARRIER;
+			}
+			if (_dispatch_object_is_sync_waiter(dc) &&
+					!(flags & DISPATCH_INVOKE_THREAD_BOUND)) {
+				dic->dic_barrier_waiter = dc;
+				goto out_with_barrier_waiter;
+			}
+			next_dc = _dispatch_queue_pop_head(dq, dc);
+		} else {
+			if (owned == DISPATCH_QUEUE_IN_BARRIER) {
+				// we just ran barrier work items, we have to make their
+				// effect visible to other sync work items on other threads
+				// that may start coming in after this point, hence the
+				// release barrier
+				os_atomic_xor2o(dq, dq_state, owned, release);
+				owned = dq->dq_width * DISPATCH_QUEUE_WIDTH_INTERVAL;
+			} else if (unlikely(owned == 0)) {
+				if (_dispatch_object_is_waiter(dc)) {
+					// sync "readers" don't observe the limit
+					_dispatch_queue_reserve_sync_width(dq);
+				} else if (!_dispatch_queue_try_acquire_async(dq)) {
+					goto out_with_no_width;
+				}
+				owned = DISPATCH_QUEUE_WIDTH_INTERVAL;
+			}
+
+			next_dc = _dispatch_queue_pop_head(dq, dc);
+			if (_dispatch_object_is_waiter(dc)) {
+				owned -= DISPATCH_QUEUE_WIDTH_INTERVAL;
+				_dispatch_non_barrier_waiter_redirect_or_wake(dq, dc);
+				continue;
+			}
+
+			if (flags & DISPATCH_INVOKE_REDIRECTING_DRAIN) {
+				owned -= DISPATCH_QUEUE_WIDTH_INTERVAL;
+				// This is a re-redirect, overrides have already been applied by
+				// _dispatch_continuation_async*
+				// However we want to end up on the root queue matching `dc`
+				// qos, so pick up the current override of `dq` which includes
+				// dc's override (and maybe more)
+				_dispatch_continuation_redirect_push(dq, dc,
+						_dispatch_queue_max_qos(dq));
+				continue;
+			}
+		}
+
+		_dispatch_continuation_pop_inline(dc, dic, flags, dq);
+	}
+
+	if (owned == DISPATCH_QUEUE_IN_BARRIER) {
+		// if we're IN_BARRIER we really own the full width too
+		owned += dq->dq_width * DISPATCH_QUEUE_WIDTH_INTERVAL;
+	}
+	if (dc) {
+		owned = _dispatch_queue_adjust_owned(dq, owned, dc);
+	}
+	*owned_ptr &= DISPATCH_QUEUE_ENQUEUED | DISPATCH_QUEUE_ENQUEUED_ON_MGR;
+	*owned_ptr |= owned;
+	_dispatch_thread_frame_pop(&dtf);
+	return dc ? dq->do_targetq : NULL;
+
+out_with_no_width:
+	*owned_ptr &= DISPATCH_QUEUE_ENQUEUED | DISPATCH_QUEUE_ENQUEUED_ON_MGR;
+	_dispatch_thread_frame_pop(&dtf);
+	return DISPATCH_QUEUE_WAKEUP_WAIT_FOR_EVENT;
+
+out_with_barrier_waiter:
+	if (unlikely(flags & DISPATCH_INVOKE_DISALLOW_SYNC_WAITERS)) {
+		DISPATCH_INTERNAL_CRASH(0,
+				"Deferred continuation on source, mach channel or mgr");
+	}
+	_dispatch_thread_frame_pop(&dtf);
+	return dq->do_targetq;
+}
+
+DISPATCH_NOINLINE
+static dispatch_queue_wakeup_target_t
+_dispatch_lane_concurrent_drain(dispatch_lane_class_t dqu,
+		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags,
+		uint64_t *owned)
+{
+	return _dispatch_lane_drain(dqu._dl, dic, flags, owned, false);
+}
+
+DISPATCH_NOINLINE
+dispatch_queue_wakeup_target_t
+_dispatch_lane_serial_drain(dispatch_lane_class_t dqu,
+		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags,
+		uint64_t *owned)
+{
+	flags &= ~(dispatch_invoke_flags_t)DISPATCH_INVOKE_REDIRECTING_DRAIN;
+	return _dispatch_lane_drain(dqu._dl, dic, flags, owned, true);
+}
+
+void
+_dispatch_queue_invoke_finish(dispatch_queue_t dq,
+		dispatch_invoke_context_t dic, dispatch_queue_t tq, uint64_t owned)
+{
+	struct dispatch_object_s *dc = dic->dic_barrier_waiter;
+	dispatch_qos_t qos = dic->dic_barrier_waiter_bucket;
+	if (dc) {
+		dic->dic_barrier_waiter = NULL;
+		dic->dic_barrier_waiter_bucket = DISPATCH_QOS_UNSPECIFIED;
+		owned &= DISPATCH_QUEUE_ENQUEUED | DISPATCH_QUEUE_ENQUEUED_ON_MGR;
+#if DISPATCH_INTROSPECTION
+		dispatch_sync_context_t dsc = (dispatch_sync_context_t)dc;
+		dsc->dsc_from_async = true;
+#endif
+		if (qos) {
+			return _dispatch_workloop_drain_barrier_waiter(upcast(dq)._dwl,
+					dc, qos, DISPATCH_WAKEUP_CONSUME_2, owned);
+		}
+		return _dispatch_lane_drain_barrier_waiter(upcast(dq)._dl, dc,
+				DISPATCH_WAKEUP_CONSUME_2, owned);
+	}
+
+	uint64_t old_state, new_state, enqueued = DISPATCH_QUEUE_ENQUEUED;
+	if (tq == DISPATCH_QUEUE_WAKEUP_MGR) {
+		enqueued = DISPATCH_QUEUE_ENQUEUED_ON_MGR;
+	}
+	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, release, {
+		new_state  = old_state - owned;
+		new_state &= ~DISPATCH_QUEUE_DRAIN_UNLOCK_MASK;
+		new_state |= DISPATCH_QUEUE_DIRTY;
+		if (_dq_state_is_runnable(new_state) &&
+				!_dq_state_is_enqueued(new_state)) {
+			// drain was not interupted for suspension
+			// we will reenqueue right away, just put ENQUEUED back
+			new_state |= enqueued;
+		}
+	});
+	old_state -= owned;
+	if (_dq_state_received_override(old_state)) {
+		// Ensure that the root queue sees that this thread was overridden.
+		_dispatch_set_basepri_override_qos(_dq_state_max_qos(new_state));
+	}
+	if ((old_state ^ new_state) & enqueued) {
+		dispatch_assert(_dq_state_is_enqueued(new_state));
+		return _dispatch_queue_push_queue(tq, dq, new_state);
+	}
+	return _dispatch_release_2_tailcall(dq);
+}
+
+void
+_dispatch_lane_activate(dispatch_lane_class_t dq)
+{
+	dispatch_queue_t tq = dq._dl->do_targetq;
+	dispatch_priority_t pri = dq._dl->dq_priority;
+
+	// Normalize priority: keep the fallback only when higher than the floor
+	if (_dispatch_priority_fallback_qos(pri) <= _dispatch_priority_qos(pri) ||
+			(_dispatch_priority_qos(pri) &&
+			!(pri & DISPATCH_PRIORITY_FLAG_FLOOR))) {
+		pri &= ~DISPATCH_PRIORITY_FALLBACK_QOS_MASK;
+		pri &= ~DISPATCH_PRIORITY_FLAG_FALLBACK;
+		dq._dl->dq_priority = pri;
+	}
+	tq = _dispatch_queue_priority_inherit_from_target(dq, tq);
+	_dispatch_lane_inherit_wlh_from_target(dq._dl, tq);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline dispatch_queue_wakeup_target_t
+_dispatch_lane_invoke2(dispatch_lane_t dq, dispatch_invoke_context_t dic,
+		dispatch_invoke_flags_t flags, uint64_t *owned)
+{
+	dispatch_queue_t otq = dq->do_targetq;
+	dispatch_queue_t cq = _dispatch_queue_get_current();
+
+	if (unlikely(cq != otq)) {
+		return otq;
+	}
+	if (dq->dq_width == 1) {
+		return _dispatch_lane_serial_drain(dq, dic, flags, owned);
+	}
+	return _dispatch_lane_concurrent_drain(dq, dic, flags, owned);
+}
+
+DISPATCH_NOINLINE
+void
+_dispatch_lane_invoke(dispatch_lane_t dq, dispatch_invoke_context_t dic,
+		dispatch_invoke_flags_t flags)
+{
+	_dispatch_queue_class_invoke(dq, dic, flags, 0, _dispatch_lane_invoke2);
+}
+
+#pragma mark -
+#pragma mark dispatch_workloop_t
+
+#define _dispatch_wl(dwl, qos) os_mpsc(dwl, dwl, s[DISPATCH_QOS_BUCKET(qos)])
+#define _dispatch_workloop_looks_empty(dwl, qos) \
+		os_mpsc_looks_empty(_dispatch_wl(dwl, qos))
+#define _dispatch_workloop_get_head(dwl, qos) \
+		os_mpsc_get_head(_dispatch_wl(dwl, qos))
+#define _dispatch_workloop_pop_head(dwl, qos, dc) \
+		os_mpsc_pop_head(_dispatch_wl(dwl, qos), dc, do_next)
+#define _dispatch_workloop_push_update_tail(dwl, qos, dou) \
+		os_mpsc_push_update_tail(_dispatch_wl(dwl, qos), dou, do_next)
+#define _dispatch_workloop_push_update_prev(dwl, qos, prev, dou) \
+		os_mpsc_push_update_prev(_dispatch_wl(dwl, qos), prev, dou, do_next)
+
+dispatch_workloop_t
+dispatch_workloop_copy_current(void)
+{
+	dispatch_workloop_t dwl = _dispatch_wlh_to_workloop(_dispatch_get_wlh());
+	if (likely(dwl)) {
+		_os_object_retain_with_resurrect(dwl->_as_os_obj);
+		return dwl;
+	}
+	return NULL;
+}
+
+bool
+dispatch_workloop_is_current(dispatch_workloop_t dwl)
+{
+	return _dispatch_get_wlh() == (dispatch_wlh_t)dwl;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline uint64_t
+_dispatch_workloop_role_bits(void)
+{
+#if DISPATCH_USE_KEVENT_WORKLOOP
+	if (likely(_dispatch_kevent_workqueue_enabled)) {
+		return DISPATCH_QUEUE_ROLE_BASE_WLH;
+	}
+#endif
+	return DISPATCH_QUEUE_ROLE_BASE_ANON;
+}
+
+bool
+_dispatch_workloop_should_yield_4NW(void)
+{
+	dispatch_workloop_t dwl = _dispatch_wlh_to_workloop(_dispatch_get_wlh());
+	if (likely(dwl)) {
+		return _dispatch_queue_max_qos(dwl) > dwl->dwl_drained_qos;
+	}
+	return false;
+}
+
+DISPATCH_NOINLINE
+static dispatch_workloop_t
+_dispatch_workloop_create(const char *label, uint64_t dq_state)
+{
+	dispatch_queue_flags_t dqf = DQF_AUTORELEASE_ALWAYS;
+	dispatch_workloop_t dwl;
+
+	if (label) {
+		const char *tmp = _dispatch_strdup_if_mutable(label);
+		if (tmp != label) {
+			dqf |= DQF_LABEL_NEEDS_FREE;
+			label = tmp;
+		}
+	}
+
+	dq_state |= _dispatch_workloop_role_bits();
+
+	dwl = _dispatch_queue_alloc(workloop, dqf, 1, dq_state)._dwl;
+	dwl->dq_label = label;
+	dwl->do_targetq = _dispatch_get_default_queue(true);
+	if (!(dq_state & DISPATCH_QUEUE_INACTIVE)) {
+		dwl->dq_priority = DISPATCH_PRIORITY_FLAG_OVERCOMMIT |
+				_dispatch_priority_make_fallback(DISPATCH_QOS_DEFAULT);
+	}
+	_dispatch_object_debug(dwl, "%s", __func__);
+	return _dispatch_introspection_queue_create(dwl)._dwl;
+}
+
+dispatch_workloop_t
+dispatch_workloop_create(const char *label)
+{
+	return _dispatch_workloop_create(label, 0);
+}
+
+dispatch_workloop_t
+dispatch_workloop_create_inactive(const char *label)
+{
+	return _dispatch_workloop_create(label, DISPATCH_QUEUE_INACTIVE);
+}
+
+void
+dispatch_workloop_set_autorelease_frequency(dispatch_workloop_t dwl,
+		dispatch_autorelease_frequency_t frequency)
+{
+	if (frequency == DISPATCH_AUTORELEASE_FREQUENCY_WORK_ITEM) {
+		_dispatch_queue_atomic_flags_set_and_clear(dwl,
+				DQF_AUTORELEASE_ALWAYS, DQF_AUTORELEASE_NEVER);
+	} else {
+		_dispatch_queue_atomic_flags_set_and_clear(dwl,
+				DQF_AUTORELEASE_NEVER, DQF_AUTORELEASE_ALWAYS);
+	}
+	_dispatch_queue_setter_assert_inactive(dwl);
+}
+
+DISPATCH_ALWAYS_INLINE
+static void
+_dispatch_workloop_attributes_dispose(dispatch_workloop_t dwl)
+{
+	if (dwl->dwl_attr) {
+		free(dwl->dwl_attr);
+	}
+}
+
+DISPATCH_ALWAYS_INLINE
+static bool
+_dispatch_workloop_has_kernel_attributes(dispatch_workloop_t dwl)
+{
+	return dwl->dwl_attr && (dwl->dwl_attr->dwla_flags &
+			(DISPATCH_WORKLOOP_ATTR_HAS_SCHED |
+			 DISPATCH_WORKLOOP_ATTR_HAS_POLICY |
+			 DISPATCH_WORKLOOP_ATTR_HAS_CPUPERCENT));
+}
+
+void
+dispatch_workloop_set_scheduler_priority(dispatch_workloop_t dwl, int priority,
+		uint64_t flags)
+{
+	_dispatch_queue_setter_assert_inactive(dwl);
+	_dispatch_workloop_attributes_alloc_if_needed(dwl);
+
+	if (priority) {
+		dwl->dwl_attr->dwla_sched.sched_priority = priority;
+		dwl->dwl_attr->dwla_flags |= DISPATCH_WORKLOOP_ATTR_HAS_SCHED;
+	} else {
+		dwl->dwl_attr->dwla_sched.sched_priority = 0;
+		dwl->dwl_attr->dwla_flags &= ~DISPATCH_WORKLOOP_ATTR_HAS_SCHED;
+	}
+
+	if (flags & DISPATCH_WORKLOOP_FIXED_PRIORITY) {
+		dwl->dwl_attr->dwla_policy = POLICY_RR;
+		dwl->dwl_attr->dwla_flags |= DISPATCH_WORKLOOP_ATTR_HAS_POLICY;
+	} else {
+		dwl->dwl_attr->dwla_flags &= ~DISPATCH_WORKLOOP_ATTR_HAS_POLICY;
+	}
+}
+
+void
+dispatch_workloop_set_qos_class_floor(dispatch_workloop_t dwl,
+		qos_class_t cls, int relpri, uint64_t flags)
+{
+	_dispatch_queue_setter_assert_inactive(dwl);
+	_dispatch_workloop_attributes_alloc_if_needed(dwl);
+
+	dispatch_qos_t qos = _dispatch_qos_from_qos_class(cls);
+
+	if (qos) {
+		dwl->dwl_attr->dwla_pri = _dispatch_priority_make(qos, relpri);
+		dwl->dwl_attr->dwla_flags |= DISPATCH_WORKLOOP_ATTR_HAS_QOS_CLASS;
+	} else {
+		dwl->dwl_attr->dwla_pri = 0;
+		dwl->dwl_attr->dwla_flags &= ~DISPATCH_WORKLOOP_ATTR_HAS_QOS_CLASS;
+	}
+
+	if (flags & DISPATCH_WORKLOOP_FIXED_PRIORITY) {
+		dwl->dwl_attr->dwla_policy = POLICY_RR;
+		dwl->dwl_attr->dwla_flags |= DISPATCH_WORKLOOP_ATTR_HAS_POLICY;
+	} else {
+		dwl->dwl_attr->dwla_flags &= ~DISPATCH_WORKLOOP_ATTR_HAS_POLICY;
+	}
+}
+
+void
+dispatch_workloop_set_qos_class(dispatch_workloop_t dwl,
+		qos_class_t cls, uint64_t flags)
+{
+	dispatch_workloop_set_qos_class_floor(dwl, cls, 0, flags);
+}
+
+void
+dispatch_workloop_set_cpupercent(dispatch_workloop_t dwl, uint8_t percent,
+		uint32_t refillms)
+{
+	_dispatch_queue_setter_assert_inactive(dwl);
+	_dispatch_workloop_attributes_alloc_if_needed(dwl);
+
+	if ((dwl->dwl_attr->dwla_flags & (DISPATCH_WORKLOOP_ATTR_HAS_SCHED |
+			DISPATCH_WORKLOOP_ATTR_HAS_QOS_CLASS)) == 0) {
+		DISPATCH_CLIENT_CRASH(0, "workloop qos class or priority must be "
+				"set before cpupercent");
+	}
+
+	dwl->dwl_attr->dwla_cpupercent.percent = percent;
+	dwl->dwl_attr->dwla_cpupercent.refillms = refillms;
+	dwl->dwl_attr->dwla_flags |= DISPATCH_WORKLOOP_ATTR_HAS_CPUPERCENT;
+}
+
+#if DISPATCH_IOHID_SPI
+void
+_dispatch_workloop_set_observer_hooks_4IOHID(dispatch_workloop_t dwl,
+		dispatch_pthread_root_queue_observer_hooks_t observer_hooks)
+{
+	_dispatch_queue_setter_assert_inactive(dwl);
+	_dispatch_workloop_attributes_alloc_if_needed(dwl);
+
+	dwl->dwl_attr->dwla_observers = *observer_hooks;
+	dwl->dwl_attr->dwla_flags |= DISPATCH_WORKLOOP_ATTR_HAS_OBSERVERS;
+}
+#endif
+
+static void
+_dispatch_workloop_activate_simulator_fallback(dispatch_workloop_t dwl,
+		pthread_attr_t *attr)
+{
+	uint64_t old_state, new_state;
+	dispatch_queue_global_t dprq;
+
+	dprq = dispatch_pthread_root_queue_create(
+			"com.apple.libdispatch.workloop_fallback", 0, attr, NULL);
+
+	dwl->do_targetq = dprq->_as_dq;
+	_dispatch_retain(dprq);
+	dispatch_release(dprq);
+
+	os_atomic_rmw_loop2o(dwl, dq_state, old_state, new_state, relaxed, {
+		new_state = old_state & ~DISPATCH_QUEUE_ROLE_MASK;
+		new_state |= DISPATCH_QUEUE_ROLE_BASE_ANON;
+	});
+}
+
+static const struct dispatch_queue_global_s _dispatch_custom_workloop_root_queue = {
+	DISPATCH_GLOBAL_OBJECT_HEADER(queue_global),
+	.dq_state = DISPATCH_ROOT_QUEUE_STATE_INIT_VALUE,
+	.do_ctxt = NULL,
+	.dq_label = "com.apple.root.workloop-custom",
+	.dq_atomic_flags = DQF_WIDTH(DISPATCH_QUEUE_WIDTH_POOL),
+	.dq_priority = _dispatch_priority_make_fallback(DISPATCH_QOS_DEFAULT) |
+			DISPATCH_PRIORITY_SATURATED_OVERRIDE,
+	.dq_serialnum = DISPATCH_QUEUE_SERIAL_NUMBER_WLF,
+	.dgq_thread_pool_size = 1,
+};
+
+static void
+_dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
+{
+	dispatch_workloop_attr_t dwla = dwl->dwl_attr;
+	pthread_attr_t attr;
+
+	pthread_attr_init(&attr);
+	if (dwla->dwla_flags & DISPATCH_WORKLOOP_ATTR_HAS_QOS_CLASS) {
+		dwl->dq_priority |= dwla->dwla_pri | DISPATCH_PRIORITY_FLAG_FLOOR;
+	}
+	if (dwla->dwla_flags & DISPATCH_WORKLOOP_ATTR_HAS_SCHED) {
+		pthread_attr_setschedparam(&attr, &dwla->dwla_sched);
+		// _dispatch_async_and_wait_should_always_async detects when a queue
+		// targets a root queue that is not part of the root queues array in
+		// order to force async_and_wait to async. We want this path to always
+		// be taken on workloops that have a scheduler priority set.
+		dwl->do_targetq =
+				(dispatch_queue_t)_dispatch_custom_workloop_root_queue._as_dq;
+	}
+	if (dwla->dwla_flags & DISPATCH_WORKLOOP_ATTR_HAS_POLICY) {
+		pthread_attr_setschedpolicy(&attr, dwla->dwla_policy);
+	}
+	if (dwla->dwla_flags & DISPATCH_WORKLOOP_ATTR_HAS_CPUPERCENT) {
+		pthread_attr_setcpupercent_np(&attr, dwla->dwla_cpupercent.percent,
+				(unsigned long)dwla->dwla_cpupercent.refillms);
+	}
+	if (_dispatch_workloop_has_kernel_attributes(dwl)) {
+		int rv = _pthread_workloop_create((uint64_t)dwl, 0, &attr);
+		switch (rv) {
+		case 0:
+			dwla->dwla_flags |= DISPATCH_WORKLOOP_ATTR_NEEDS_DESTROY;
+			break;
 		case ENOTSUP:
 			/* simulator fallback */
 			_dispatch_workloop_activate_simulator_fallback(dwl, &attr);
