@@ -93,10 +93,14 @@ _dispatch_worker_thread_thunk(LPVOID lpParameter);
 #endif
 #endif
 
-#if DISPATCH_COCOA_COMPAT
+#if DISPATCH_COCOA_COMPAT || defined(_WIN32)
 static dispatch_once_t _dispatch_main_q_handle_pred;
+#endif
+#if DISPATCH_COCOA_COMPAT
 static void _dispatch_runloop_queue_poke(dispatch_queue_t dq,
 		dispatch_qos_t qos, dispatch_wakeup_flags_t flags);
+#endif
+#if DISPATCH_COCOA_COMPAT || defined(_WIN32)
 static void _dispatch_runloop_queue_handle_init(void *ctxt);
 static void _dispatch_runloop_queue_handle_dispose(dispatch_queue_t dq);
 #endif
@@ -4476,7 +4480,7 @@ _dispatch_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
 	return _dispatch_queue_class_wakeup(dq, qos, flags, target);
 }
 
-#if DISPATCH_COCOA_COMPAT
+#if DISPATCH_COCOA_COMPAT || defined(_WIN32)
 DISPATCH_ALWAYS_INLINE
 static inline bool
 _dispatch_runloop_handle_is_valid(dispatch_runloop_handle_t handle)
@@ -4485,6 +4489,8 @@ _dispatch_runloop_handle_is_valid(dispatch_runloop_handle_t handle)
 	return MACH_PORT_VALID(handle);
 #elif defined(__linux__)
 	return handle >= 0;
+#elif defined(_WIN32)
+	return handle != INVALID_HANDLE_VALUE;
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -4499,6 +4505,8 @@ _dispatch_runloop_queue_get_handle(dispatch_queue_t dq)
 #elif defined(__linux__)
 	// decode: 0 is a valid fd, so offset by 1 to distinguish from NULL
 	return ((dispatch_runloop_handle_t)(uintptr_t)dq->do_ctxt) - 1;
+#elif defined(_WIN32)
+	return ((dispatch_runloop_handle_t)(uintptr_t)dq->do_ctxt);
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -4513,6 +4521,8 @@ _dispatch_runloop_queue_set_handle(dispatch_queue_t dq, dispatch_runloop_handle_
 #elif defined(__linux__)
 	// encode: 0 is a valid fd, so offset by 1 to distinguish from NULL
 	dq->do_ctxt = (void *)(uintptr_t)(handle + 1);
+#elif defined(_WIN32)
+	dq->do_ctxt = (void *)(uintptr_t)handle;
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -4527,7 +4537,7 @@ _dispatch_runloop_queue_reset_max_qos(dispatch_queue_class_t dqu)
 	old_state = os_atomic_and_orig2o(dqu._dq, dq_state, ~clear_bits, relaxed);
 	return _dq_state_max_qos(old_state);
 }
-#endif // DISPATCH_COCOA_COMPAT
+#endif
 
 void
 _dispatch_runloop_queue_wakeup(dispatch_queue_t dq, dispatch_qos_t qos,
@@ -5112,7 +5122,7 @@ _dispatch_queue_serial_drain(dispatch_queue_t dq, dispatch_invoke_context_t dic,
 	return _dispatch_queue_drain(dq, dic, flags, owned, true);
 }
 
-#if DISPATCH_COCOA_COMPAT
+#if DISPATCH_COCOA_COMPAT || defined(_WIN32)
 DISPATCH_NOINLINE
 static void
 _dispatch_main_queue_update_priority_from_thread(void)
@@ -6178,7 +6188,7 @@ _dispatch_network_root_queue_create_4NW(const char *label,
 
 static bool _dispatch_program_is_probably_callback_driven;
 
-#if DISPATCH_COCOA_COMPAT
+#if DISPATCH_COCOA_COMPAT || defined(_WIN32)
 
 dispatch_queue_t
 _dispatch_runloop_root_queue_create_4CF(const char *label, unsigned long flags)
@@ -6242,7 +6252,7 @@ _dispatch_runloop_root_queue_wakeup_4CF(dispatch_queue_t dq)
 	_dispatch_runloop_queue_wakeup(dq, 0, false);
 }
 
-#if TARGET_OS_MAC
+#if TARGET_OS_MAC || defined(_WIN32)
 dispatch_runloop_handle_t
 _dispatch_runloop_root_queue_get_port_4CF(dispatch_queue_t dq)
 {
@@ -6305,6 +6315,8 @@ _dispatch_runloop_queue_handle_init(void *ctxt)
 		}
 	}
 	handle = fd;
+#elif defined(_WIN32)
+	handle = INVALID_HANDLE_VALUE;
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6332,6 +6344,8 @@ _dispatch_runloop_queue_handle_dispose(dispatch_queue_t dq)
 #elif defined(__linux__)
 	int rc = close(handle);
 	(void)dispatch_assume_zero(rc);
+#elif defined(_WIN32)
+	CloseHandle(handle);
 #else
 #error "runloop support not implemented on this platform"
 #endif
