@@ -38,10 +38,10 @@ public func _dispatchPreconditionTest(_ condition: DispatchPredicate) -> Bool {
 
 @_transparent
 @available(macOS 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
-public func dispatchPrecondition(condition: @autoclosure () -> DispatchPredicate) {
+public func dispatchPrecondition(condition: @autoclosure () -> DispatchPredicate, file: StaticString = #file, line: UInt = #line) {
 	// precondition is able to determine release-vs-debug asserts where the overlay
 	// cannot, so formulating this into a call that we can call with precondition()
-	precondition(_dispatchPreconditionTest(condition()), "dispatchPrecondition failure")
+	precondition(_dispatchPreconditionTest(condition()), "dispatchPrecondition failure", file: file, line: line)
 }
 
 /// qos_class_t
