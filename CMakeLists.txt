@@ -55,8 +55,6 @@ if(ENABLE_SWIFT)
     message(FATAL_ERROR "CMAKE_SWIFT_COMPILER must be defined to enable swift")
   endif()
 
-  find_package(Swift REQUIRED CONFIG)
-
   string(TOLOWER ${CMAKE_SYSTEM_NAME} swift_os)
   get_swift_host_arch(swift_arch)
 
