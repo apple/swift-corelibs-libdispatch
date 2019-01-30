@@ -20,33 +20,29 @@
 
 #include <dispatch/dispatch.h>
 #include <assert.h>
-#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+#include <spawn.h>
+#include <sys/resource.h>
+#include <sys/time.h>
+#include <sys/wait.h>
 #include <unistd.h>
+#elif defined(_WIN32)
+#include <generic_win_port.h>
+#include <Psapi.h>
+#include <Windows.h>
 #endif
 #include <signal.h>
 #ifdef __APPLE__
 #include <mach/clock_types.h>
 #include <mach-o/arch.h>
 #endif
-#include <sys/resource.h>
-#include <sys/time.h>
-#if defined(__linux__) || defined(__FreeBSD__)
-#include <sys/wait.h>
-#endif
 
 #include <bsdtests.h>
 
+#if !defined(_WIN32)
 extern char **environ;
-
-#ifdef __linux__
-// Linux lacks the DISPATCH_SOURCE_TYPE_PROC functionality
-// the real test harness needs.
-#define SIMPLE_TEST_HARNESS 1
-#else
-#define SIMPLE_TEST_HARNESS 0
 #endif
 
 int
@@ -131,6 +127,23 @@ main(int argc, char *argv[])
 			_Exit(EXIT_FAILURE);
 		}
 	}
+#elif defined(_WIN32)
+	(void)res;
+	WCHAR *cmdline = argv_to_command_line(newargv);
+	if (!cmdline) {
+		fprintf(stderr, "argv_to_command_line() failed\n");
+		exit(EXIT_FAILURE);
+	}
+	STARTUPINFOW si = {.cb = sizeof(si)};
+	PROCESS_INFORMATION pi;
+	BOOL created = CreateProcessW(NULL, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
+	DWORD error = GetLastError();
+	free(cmdline);
+	if (!created) {
+		print_winapi_error("CreateProcessW", error);
+		exit(EXIT_FAILURE);
+	}
+	pid = (pid_t)pi.dwProcessId;
 #else
 #error "bsdtestharness not implemented on this platform"
 #endif
@@ -138,18 +151,19 @@ main(int argc, char *argv[])
 	//fprintf(stderr, "pid = %d\n", pid);
 	assert(pid > 0);
 
-#if SIMPLE_TEST_HARNESS
+#if defined(__linux__)
 	int status;
 	struct rusage usage;
 	struct timeval tv_stop, tv_wall;
+
+	int res2 = wait4(pid, &status, 0, &usage);
+	(void)res2;
 
 	gettimeofday(&tv_stop, NULL);
 	tv_wall.tv_sec = tv_stop.tv_sec - tv_start.tv_sec;
 	tv_wall.tv_sec -= (tv_stop.tv_usec < tv_start.tv_usec);
 	tv_wall.tv_usec = labs(tv_stop.tv_usec - tv_start.tv_usec);
 
-	int res2 = wait4(pid, &status, 0, &usage);
-	(void)res2;
 	assert(res2 != -1);
 	test_long("Process exited", (WIFEXITED(status) && WEXITSTATUS(status) && WEXITSTATUS(status) != 0xff) || WIFSIGNALED(status), 0);
 	printf("[PERF]\twall time: %ld.%06ld\n", tv_wall.tv_sec, tv_wall.tv_usec);
@@ -161,6 +175,46 @@ main(int argc, char *argv[])
 	printf("[PERF]\tvoluntary context switches: %ld\n", usage.ru_nvcsw);
 	printf("[PERF]\tinvoluntary context switches: %ld\n", usage.ru_nivcsw);
 	exit((WIFEXITED(status) && WEXITSTATUS(status)) || WIFSIGNALED(status));
+#elif defined(_WIN32)
+	if (WaitForSingleObject(pi.hProcess, INFINITE) != WAIT_OBJECT_0) {
+		print_winapi_error("WaitForSingleObject", GetLastError());
+		exit(EXIT_FAILURE);
+	}
+
+	struct timeval tv_stop, tv_wall;
+	gettimeofday(&tv_stop, NULL);
+	tv_wall.tv_sec = tv_stop.tv_sec - tv_start.tv_sec;
+	tv_wall.tv_sec -= (tv_stop.tv_usec < tv_start.tv_usec);
+	tv_wall.tv_usec = labs(tv_stop.tv_usec - tv_start.tv_usec);
+
+	DWORD status;
+	if (!GetExitCodeProcess(pi.hProcess, &status)) {
+		print_winapi_error("GetExitCodeProcess", GetLastError());
+		exit(EXIT_FAILURE);
+	}
+
+	FILETIME create_time, exit_time, kernel_time, user_time;
+	if (!GetProcessTimes(pi.hProcess, &create_time, &exit_time, &kernel_time, &user_time)) {
+		print_winapi_error("GetProcessTimes", GetLastError());
+		exit(EXIT_FAILURE);
+	}
+	struct timeval utime, stime;
+	filetime_to_timeval(&utime, &user_time);
+	filetime_to_timeval(&stime, &kernel_time);
+
+	PROCESS_MEMORY_COUNTERS counters;
+	if (!GetProcessMemoryInfo(pi.hProcess, &counters, sizeof(counters))) {
+		print_winapi_error("GetProcessMemoryInfo", GetLastError());
+		exit(EXIT_FAILURE);
+	}
+
+	test_long("Process exited", status == 0 || status == 0xff, 1);
+	printf("[PERF]\twall time: %ld.%06ld\n", tv_wall.tv_sec, tv_wall.tv_usec);
+	printf("[PERF]\tuser time: %ld.%06ld\n", utime.tv_sec, utime.tv_usec);
+	printf("[PERF]\tsystem time: %ld.%06ld\n", stime.tv_sec, stime.tv_usec);
+	printf("[PERF]\tmax working set size: %zu\n", counters.PeakWorkingSetSize);
+	printf("[PERF]\tpage faults: %lu\n", counters.PageFaultCount);
+	exit(status ? EXIT_FAILURE : EXIT_SUCCESS);
 #else
 	dispatch_queue_t main_q = dispatch_get_main_queue();
 
@@ -219,7 +273,7 @@ main(int argc, char *argv[])
 	kill(pid, SIGCONT);
 
 	dispatch_main();
-#endif // SIMPLE_TEST_HARNESS
+#endif
 
 	return 0;
 }

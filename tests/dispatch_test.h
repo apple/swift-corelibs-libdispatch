@@ -18,12 +18,13 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
-#include <sys/cdefs.h>
 #include <stdbool.h>
 #include <dispatch/dispatch.h>
 
 #if defined(__linux__) || defined(__FreeBSD__)
 #include <generic_unix_port.h>
+#elif defined(_WIN32)
+#include <generic_win_port.h>
 #endif
 
 #define test_group_wait(g) do { \
@@ -33,7 +34,9 @@
 		test_stop(); \
 	} } while (0)
 
-__BEGIN_DECLS
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
 void dispatch_test_start(const char* desc);
 
@@ -50,4 +53,6 @@ int sysctlbyname(const char *name, void *oldp, size_t *oldlenp, void *newp,
 		size_t *newpl);
 #endif
 
-__END_DECLS
+#if defined(__cplusplus)
+} /* extern "C" */
+#endif
