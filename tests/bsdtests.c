@@ -29,14 +29,16 @@
 #include <unistd.h>
 #endif
 #include <errno.h>
-#include <sys/errno.h>
-#include <sys/wait.h>
 #include <string.h>
 #ifdef __APPLE__
 #include <crt_externs.h>
 #include <mach/mach_error.h>
-#endif
 #include <spawn.h>
+#include <sys/wait.h>
+#endif
+#if defined(_WIN32)
+#include <generic_win_port.h>
+#endif
 #include <inttypes.h>
 #include "bsdtests.h"
 
@@ -454,18 +456,11 @@ test_start(const char* desc)
 	usleep(100000);	// give 'gdb --waitfor=' a chance to find this proc
 }
 
-#if defined(__linux__) || defined(__FreeBSD__)
-static char** get_environment(void)
-{
-	extern char **environ; 
-	return environ;
-}
-#else
+#if defined(__APPLE__) && defined(__MACH__)
 static char** get_environment(void)
 {
 	return (* _NSGetEnviron());
 }
-#endif
 
 void
 test_leaks_pid(const char *name, pid_t pid)
@@ -517,15 +512,18 @@ test_leaks(const char *name)
 {
 	test_leaks_pid(name, getpid());
 }
+#endif
 
 void
 test_stop_after_delay(void *delay)
 {
 	if (delay != NULL) {
-		sleep((uint)(intptr_t)delay);
+		sleep((unsigned int)(intptr_t)delay);
 	}
 
+#if defined(__APPLE__) && defined(__MACH__)
 	test_leaks(NULL);
+#endif
 
 	fflush(stdout);
 	_exit(_test_exit_code);

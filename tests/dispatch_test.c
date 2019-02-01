@@ -29,12 +29,15 @@
 #include <stdio.h>
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
-#endif
 #if __has_include(<sys/event.h>)
 #define HAS_SYS_EVENT_H 1
 #include <sys/event.h>
 #else
 #include <sys/poll.h>
+#endif
+#elif defined(_WIN32)
+#include <io.h>
+#include <Windows.h>
 #endif
 #include <assert.h>
 
@@ -68,6 +71,20 @@ dispatch_test_check_evfilt_read_for_fd(int fd)
 	int r = kevent(kq, &ke, 1, &ke, 1, &t);
 	close(kq);
 	return r > 0;
+#elif defined(_WIN32)
+	HANDLE handle = (HANDLE)_get_osfhandle(fd);
+	// A zero-distance move retrieves the file pointer
+	LARGE_INTEGER currentPosition;
+	LARGE_INTEGER distance = {.QuadPart = 0};
+	if (!SetFilePointerEx(handle, distance, &currentPosition, FILE_CURRENT)) {
+		return false;
+	}
+	// If we are not at the end, assume the file is readable
+	LARGE_INTEGER fileSize;
+	if (GetFileSizeEx(handle, &fileSize) == 0) {
+		return false;
+	}
+	return currentPosition.QuadPart < fileSize.QuadPart;
 #else
 	struct pollfd pfd = {
 		.fd = fd,
@@ -141,6 +158,10 @@ dispatch_test_get_large_file(void)
 	close(temp_fd);
 	free(file_buf);
 	return path;
+#elif defined(_WIN32)
+	// TODO
+	fprintf(stderr, "dispatch_test_get_large_file() not implemented on Windows\n");
+	abort();
 #else
 #error "dispatch_test_get_large_file not implemented on this platform"
 #endif
@@ -154,6 +175,8 @@ dispatch_test_release_large_file(const char *path)
 	(void)path;
 #elif defined(__unix__)
 	unlink(path);
+#elif defined(_WIN32)
+	// TODO
 #else
 #error "dispatch_test_release_large_file not implemented on this platform"
 #endif

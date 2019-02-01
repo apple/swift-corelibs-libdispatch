@@ -63,18 +63,22 @@ __BASENAME__(const char *_str_)
 }
 #define __SOURCE_FILE__	__BASENAME__(__FILE__)
 
-__BEGIN_DECLS
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
 /**
  * test_start() provides the TEST token. Use this once per test "tool"
  */
 void test_start(const char* desc);
 
+#if defined(__APPLE__) && defined(__MACH__)
 /**
  * Explicitly runs the 'leaks' test without stopping the process.
  */
 void test_leaks_pid(const char *name, pid_t pid);
 void test_leaks(const char *name);
+#endif
 
 /**
  * test_stop() checks for leaks during the tests using leaks-wrapper. Use this at the end of each "tool"
@@ -179,6 +183,8 @@ void _test_skip(const char* file, long line, const char* desc);
 #define test_skip2(m) _test_skip("", 0, m)
 void test_skip_format(const char *format, ...) __printflike(1,2);
 
-__END_DECLS
+#if defined(__cplusplus)
+} /* extern "C" */
+#endif
 
 #endif /* __BSD_TEST_H__ */

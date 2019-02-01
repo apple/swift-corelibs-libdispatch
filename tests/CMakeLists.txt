@@ -1,7 +1,7 @@
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     execute_process(COMMAND
-                      "${CMAKE_COMMAND}" -E copy "${PROJECT_SOURCE_DIR}/private"
+                      "${CMAKE_COMMAND}" -E copy_directory "${PROJECT_SOURCE_DIR}/private"
                       "${CMAKE_CURRENT_BINARY_DIR}/dispatch")
     execute_process(COMMAND
                       "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_SOURCE_DIR}/leaks-wrapper.sh"
@@ -36,6 +36,15 @@ if(BSD_OVERLAY_FOUND)
                          PRIVATE
                            ${BSD_OVERLAY_CFLAGS})
 endif()
+if (WIN32)
+  target_sources(bsdtests
+                 PRIVATE
+                   generic_win_port.c)
+  target_compile_definitions(bsdtests
+                             PUBLIC
+                               _CRT_NONSTDC_NO_WARNINGS
+                               _CRT_SECURE_NO_WARNINGS)
+endif ()
 
 add_executable(bsdtestharness
                bsdtestharness.c)
@@ -91,11 +100,11 @@ function(add_unit_test name)
   endif()
   if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
     target_compile_options(${name} PRIVATE -Xclang -fblocks)
+    target_compile_options(${name} PRIVATE /W3 -Wno-deprecated-declarations)
   else()
     target_compile_options(${name} PRIVATE -fblocks)
+    target_compile_options(${name} PRIVATE -Wall -Wno-deprecated-declarations)
   endif()
-  # TODO(compnerd) make this portable
-  target_compile_options(${name} PRIVATE -Wall -Wno-deprecated-declarations)
   dispatch_set_linker(${name})
   target_link_libraries(${name}
                         PRIVATE
@@ -187,4 +196,4 @@ target_link_libraries(dispatch_group PRIVATE m)
 target_link_libraries(dispatch_timer_short PRIVATE m)
 
 # test-specific compile options
-target_compile_options(dispatch_c99 PRIVATE -std=c99)
+set_target_properties(dispatch_c99 PROPERTIES C_STANDARD 99)
