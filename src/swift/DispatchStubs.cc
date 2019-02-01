@@ -13,7 +13,11 @@
 #include <dispatch/dispatch.h>
 #include <stdio.h>
 
+#if defined(__ELF__) || defined(__MACH__) || defined(__WASM__)
 #define DISPATCH_RUNTIME_STDLIB_INTERFACE __attribute__((__visibility__("default")))
+#else
+#define DISPATCH_RUNTIME_STDLIB_INTERFACE __declspec(dllexport)
+#endif
 
 #if USE_OBJC
 @protocol OS_dispatch_source;
@@ -54,6 +58,7 @@ static void _dispatch_overlay_constructor() {
 #endif /* USE_OBJC */
 
 #if !USE_OBJC
+DISPATCH_RUNTIME_STDLIB_INTERFACE
 extern "C" void * objc_retainAutoreleasedReturnValue(void *obj);
 #endif
 
