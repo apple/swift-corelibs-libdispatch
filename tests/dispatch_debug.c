@@ -31,7 +31,11 @@
 int
 main(void)
 {
+#if defined(_WIN32)
+	_putenv_s("LIBDISPATCH_LOG", "stderr");
+#else
 	setenv("LIBDISPATCH_LOG", "stderr", 1); // rdar://problem/8493990
+#endif
 	dispatch_test_start("Dispatch Debug");
 
 	dispatch_queue_t main_q = dispatch_get_main_queue();

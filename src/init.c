@@ -733,15 +733,19 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 			dispatch_log_basetime = _dispatch_absolute_time();
 #endif
 #if defined(_WIN32)
-			FILE *pLogFile = _fdopen(dispatch_logfile, "w");
-
 			char szProgramName[MAX_PATH + 1] = {0};
 			GetModuleFileNameA(NULL, szProgramName, MAX_PATH);
 
-			fprintf(pLogFile, "=== log file opened for %s[%lu] at "
-					"%ld.%06u ===\n", szProgramName, GetCurrentProcessId(),
-					tv.tv_sec, (int)tv.tv_usec);
-			fclose(pLogFile);
+			char szMessage[512];
+			int len = snprintf(szMessage, sizeof(szMessage),
+					"=== log file opened for %s[%lu] at %ld.%06u ===",
+					szProgramName, GetCurrentProcessId(), tv.tv_sec,
+					(int)tv.tv_usec);
+			if (len > 0) {
+				len = MIN(len, sizeof(szMessage) - 1);
+				_write(dispatch_logfile, szMessage, len);
+				_write(dispatch_logfile, "\n", 1);
+			}
 #else
 			dprintf(dispatch_logfile, "=== log file opened for %s[%u] at "
 					"%ld.%06u ===\n", getprogname() ?: "", getpid(),
