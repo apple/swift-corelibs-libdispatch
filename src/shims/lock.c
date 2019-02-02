@@ -193,7 +193,10 @@ _dispatch_sema4_signal(_dispatch_sema4_t *sema, long count)
 void
 _dispatch_sema4_wait(_dispatch_sema4_t *sema)
 {
-	int ret = sem_wait(sema);
+	int ret = 0;
+	do {
+		ret = sem_wait(sema);
+	} while (ret == -1 && errno == EINTR);
 	DISPATCH_SEMAPHORE_VERIFY_RET(ret);
 }
 
