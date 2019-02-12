@@ -40,7 +40,7 @@ public class DispatchWorkItem {
 	internal var _block: _DispatchBlock
 
 	public init(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], block: @escaping @convention(block) () -> ()) {
-		let flags: dispatch_block_flags_t = numericCast(flags.rawValue)
+		let flags: dispatch_block_flags_t = dispatch_block_flags_t(numericCast(flags.rawValue))
 		_block =  dispatch_block_create_with_qos_class(flags,
 			qos.qosClass.rawValue.rawValue, Int32(qos.relativePriority), block)
 	}
@@ -48,7 +48,7 @@ public class DispatchWorkItem {
 	// Used by DispatchQueue.synchronously<T> to provide a path through
 	// dispatch_block_t, as we know the lifetime of the block in question.
 	internal init(flags: DispatchWorkItemFlags = [], noescapeBlock: () -> ()) {
-		let flags: dispatch_block_flags_t = numericCast(flags.rawValue)
+		let flags: dispatch_block_flags_t = dispatch_block_flags_t(numericCast(flags.rawValue))
 		_block = _swift_dispatch_block_create_noescape(flags, noescapeBlock)
 	}
 
