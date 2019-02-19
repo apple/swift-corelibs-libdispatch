@@ -515,8 +515,9 @@ is
 .Vt DISPATCH_TIME_NOW
 or was created with
 .Xr dispatch_time 3 ,
-the timer is based on
-.Fn mach_absolute_time .
+the timer is based on up time (which is obtained from
+.Fn mach_absolute_time
+on Apple platforms).
 If
 .Fa start
 was created with

@@ -26,7 +26,6 @@ typedef struct _dispatch_host_time_data_s {
 	bool ratio_1_to_1;
 } _dispatch_host_time_data_s;
 
-DISPATCH_CACHELINE_ALIGN
 static _dispatch_host_time_data_s _dispatch_host_time_data;
 
 uint64_t (*_dispatch_host_time_mach2nano)(uint64_t machtime);
@@ -96,39 +95,53 @@ dispatch_time(dispatch_time_t inval, int64_t delta)
 	if (inval == DISPATCH_TIME_FOREVER) {
 		return DISPATCH_TIME_FOREVER;
 	}
-	if ((int64_t)inval < 0) {
+
+	dispatch_clock_t clock;
+	uint64_t value;
+	_dispatch_time_to_clock_and_value(inval, &clock, &value);
+	if (value == DISPATCH_TIME_FOREVER) {
+		// Out-of-range for this clock.
+		return value;
+	}
+	if (clock == DISPATCH_CLOCK_WALL) {
 		// wall clock
+		offset = (uint64_t)delta;
 		if (delta >= 0) {
-			offset = (uint64_t)delta;
-			if ((int64_t)(inval -= offset) >= 0) {
+			if ((int64_t)(value += offset) <= 0) {
 				return DISPATCH_TIME_FOREVER; // overflow
 			}
-			return inval;
 		} else {
-			offset = (uint64_t)-delta;
-			if ((int64_t)(inval += offset) >= -1) {
-				// -1 is special == DISPATCH_TIME_FOREVER == forever
-				return (dispatch_time_t)-2ll; // underflow
+			if ((int64_t)(value += offset) < 1) {
+				// -1 is special == DISPATCH_TIME_FOREVER == forever, so
+				// return -2 (after conversion to dispatch_time_t) instead.
+				value = 2; // underflow.
 			}
-			return inval;
 		}
+		return _dispatch_clock_and_value_to_time(DISPATCH_CLOCK_WALL, value);
 	}
-	// mach clock
-	if (inval == 0) {
-		inval = _dispatch_absolute_time();
+
+	// up time or monotonic time. "value" has the clock type removed,
+	// so the test against DISPATCH_TIME_NOW is correct for either clock.
+	if (value == DISPATCH_TIME_NOW) {
+		if (clock == DISPATCH_CLOCK_UPTIME) {
+			value = _dispatch_uptime();
+		} else {
+			dispatch_assert(clock == DISPATCH_CLOCK_MONOTONIC);
+			value = _dispatch_monotonic_time();
+		}
 	}
 	if (delta >= 0) {
 		offset = _dispatch_time_nano2mach((uint64_t)delta);
-		if ((int64_t)(inval += offset) <= 0) {
+		if ((int64_t)(value += offset) <= 0) {
 			return DISPATCH_TIME_FOREVER; // overflow
 		}
-		return inval;
+		return _dispatch_clock_and_value_to_time(clock, value);
 	} else {
 		offset = _dispatch_time_nano2mach((uint64_t)-delta);
-		if ((int64_t)(inval -= offset) < 1) {
-			return 1; // underflow
+		if ((int64_t)(value -= offset) < 1) {
+			return _dispatch_clock_and_value_to_time(clock, 1); // underflow
 		}
-		return inval;
+		return _dispatch_clock_and_value_to_time(clock, value);
 	}
 }
 
@@ -156,16 +169,25 @@ _dispatch_timeout(dispatch_time_t when)
 	if (when == DISPATCH_TIME_FOREVER) {
 		return DISPATCH_TIME_FOREVER;
 	}
-	if (when == 0) {
+	if (when == DISPATCH_TIME_NOW) {
 		return 0;
 	}
-	if ((int64_t)when < 0) {
-		when = (dispatch_time_t)-(int64_t)when;
+
+	dispatch_clock_t clock;
+	uint64_t value;
+	_dispatch_time_to_clock_and_value(when, &clock, &value);
+	if (clock == DISPATCH_CLOCK_WALL) {
 		now = _dispatch_get_nanoseconds();
-		return now >= when ? 0 : when - now;
+		return now >= value ? 0 : value - now;
+	} else {
+		if (clock == DISPATCH_CLOCK_UPTIME) {
+			now = _dispatch_uptime();
+		} else {
+			dispatch_assert(clock == DISPATCH_CLOCK_MONOTONIC);
+			now = _dispatch_monotonic_time();
+		}
+		return now >= value ? 0 : _dispatch_time_mach2nano(value - now);
 	}
-	now = _dispatch_absolute_time();
-	return now >= when ? 0 : _dispatch_time_mach2nano(when - now);
 }
 
 uint64_t
@@ -178,5 +200,7 @@ _dispatch_time_nanoseconds_since_epoch(dispatch_time_t when)
 		// time in nanoseconds since the POSIX epoch already
 		return (uint64_t)-(int64_t)when;
 	}
+
+	// Up time or monotonic time.
 	return _dispatch_get_nanoseconds() + _dispatch_timeout(when);
 }

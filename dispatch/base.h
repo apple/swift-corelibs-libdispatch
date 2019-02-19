@@ -203,6 +203,12 @@
 #define DISPATCH_NOESCAPE
 #endif
 
+#if __has_attribute(cold)
+#define DISPATCH_COLD __attribute__((__cold__))
+#else
+#define DISPATCH_COLD
+#endif
+
 #if __has_feature(assume_nonnull)
 #define DISPATCH_ASSUME_NONNULL_BEGIN _Pragma("clang assume_nonnull begin")
 #define DISPATCH_ASSUME_NONNULL_END   _Pragma("clang assume_nonnull end")

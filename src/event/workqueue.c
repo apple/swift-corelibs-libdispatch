@@ -48,7 +48,7 @@
  */
 typedef struct dispatch_workq_monitor_s {
 	/* The dispatch_queue we are monitoring */
-	dispatch_queue_t dq;
+	dispatch_queue_global_t dq;
 
 	/* The observed number of runnable worker threads */
 	int32_t num_runnable;
@@ -67,7 +67,7 @@ typedef struct dispatch_workq_monitor_s {
 } dispatch_workq_monitor_s, *dispatch_workq_monitor_t;
 
 #if HAVE_DISPATCH_WORKQ_MONITORING
-static dispatch_workq_monitor_s _dispatch_workq_monitors[DISPATCH_QOS_MAX];
+static dispatch_workq_monitor_s _dispatch_workq_monitors[DISPATCH_QOS_NBUCKETS];
 #endif
 
 #pragma mark Implementation of the monitoring subsystem.
@@ -79,13 +79,15 @@ static void _dispatch_workq_init_once(void *context DISPATCH_UNUSED);
 static dispatch_once_t _dispatch_workq_init_once_pred;
 
 void
-_dispatch_workq_worker_register(dispatch_queue_t root_q, qos_class_t cls)
+_dispatch_workq_worker_register(dispatch_queue_global_t root_q)
 {
 	dispatch_once_f(&_dispatch_workq_init_once_pred, NULL, &_dispatch_workq_init_once);
 
 #if HAVE_DISPATCH_WORKQ_MONITORING
-	dispatch_qos_t qos = _dispatch_qos_from_qos_class(cls);
-	dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[qos-1];
+	dispatch_qos_t qos = _dispatch_priority_qos(root_q->dq_priority);
+	if (qos == 0) qos = DISPATCH_QOS_DEFAULT;
+	int bucket = DISPATCH_QOS_BUCKET(qos);
+	dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[bucket];
 	dispatch_assert(mon->dq == root_q);
 	dispatch_tid tid = _dispatch_tid_self();
 	_dispatch_unfair_lock_lock(&mon->registered_tid_lock);
@@ -100,11 +102,13 @@ _dispatch_workq_worker_register(dispatch_queue_t root_q, qos_class_t cls)
 }
 
 void
-_dispatch_workq_worker_unregister(dispatch_queue_t root_q, qos_class_t cls)
+_dispatch_workq_worker_unregister(dispatch_queue_global_t root_q)
 {
 #if HAVE_DISPATCH_WORKQ_MONITORING
-	dispatch_qos_t qos = _dispatch_qos_from_qos_class(cls);
-	dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[qos-1];
+	dispatch_qos_t qos = _dispatch_priority_qos(root_q->dq_priority);
+	if (qos == 0) qos = DISPATCH_QOS_DEFAULT;
+	int bucket = DISPATCH_QOS_BUCKET(qos);
+	dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[bucket];
 	dispatch_assert(mon->dq == root_q);
 	dispatch_tid tid = _dispatch_tid_self();
 	_dispatch_unfair_lock_lock(&mon->registered_tid_lock);
@@ -182,14 +186,18 @@ _dispatch_workq_count_runnable_workers(dispatch_workq_monitor_t mon)
 #error must define _dispatch_workq_count_runnable_workers
 #endif
 
+#define foreach_qos_bucket_reverse(name) \
+		for (name = DISPATCH_QOS_BUCKET(DISPATCH_QOS_MAX); \
+				name >= DISPATCH_QOS_BUCKET(DISPATCH_QOS_MAINTENANCE); name--)
+
 static void
 _dispatch_workq_monitor_pools(void *context DISPATCH_UNUSED)
 {
 	int global_soft_max = WORKQ_OVERSUBSCRIBE_FACTOR * (int)dispatch_hw_config(active_cpus);
-	int global_runnable = 0;
-	for (dispatch_qos_t i = DISPATCH_QOS_MAX; i > DISPATCH_QOS_UNSPECIFIED; i--) {
-		dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[i-1];
-		dispatch_queue_t dq = mon->dq;
+	int global_runnable = 0, i;
+	foreach_qos_bucket_reverse(i) {
+		dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[i];
+		dispatch_queue_global_t dq = mon->dq;
 
 		if (!_dispatch_queue_class_probe(dq)) {
 			_dispatch_debug("workq: %s is empty.", dq->dq_label);
@@ -234,9 +242,9 @@ static void
 _dispatch_workq_init_once(void *context DISPATCH_UNUSED)
 {
 #if HAVE_DISPATCH_WORKQ_MONITORING
-	int target_runnable = (int)dispatch_hw_config(active_cpus);
-	for (dispatch_qos_t i = DISPATCH_QOS_MAX; i > DISPATCH_QOS_UNSPECIFIED; i--) {
-		dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[i-1];
+	int i, target_runnable = (int)dispatch_hw_config(active_cpus);
+	foreach_qos_bucket_reverse(i) {
+		dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[i];
 		mon->dq = _dispatch_get_root_queue(i, false);
 		void *buf = _dispatch_calloc(WORKQ_MAX_TRACKED_TIDS, sizeof(dispatch_tid));
 		mon->registered_tids = buf;

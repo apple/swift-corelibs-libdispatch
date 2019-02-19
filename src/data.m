@@ -122,7 +122,7 @@
 	_dispatch_data_debug(self, buf, sizeof(buf));
 	NSString *format = [nsstring stringWithUTF8String:"<%s: %s>"];
 	if (!format) return nil;
-	return [nsstring stringWithFormat:format, class_getName([self class]), buf];
+	return [nsstring stringWithFormat:format, object_getClassName(self), buf];
 }
 
 - (NSUInteger)length {
@@ -131,8 +131,7 @@
 }
 
 - (const void *)bytes {
-	struct dispatch_data_s *dd = (void*)self;
-	return _dispatch_data_get_flattened_bytes(dd);
+	return dispatch_data_get_flattened_bytes_4libxpc(self);
 }
 
 - (BOOL)_isCompact {

@@ -9,6 +9,7 @@
 .Sh SYNOPSIS
 .Fd #include <dispatch/dispatch.h>
 .Vt static const dispatch_time_t DISPATCH_TIME_NOW = 0ull ;
+.Vt static const dispatch_time_t DISPATCH_WALLTIME_NOW = ~1ull ;
 .Vt static const dispatch_time_t DISPATCH_TIME_FOREVER = ~0ull ;
 .Ft dispatch_time_t
 .Fo dispatch_time
@@ -29,7 +30,8 @@ with dispatch functions that need timeouts or operate on a schedule.
 The
 .Fa dispatch_time_t
 type is a semi-opaque integer, with only the special values
-.Vt DISPATCH_TIME_NOW
+.Vt DISPATCH_TIME_NOW ,
+.Vt DISPATCH_WALLTIME_NOW
 and
 .Vt DISPATCH_TIME_FOREVER
 being externally defined. All other values are represented using an internal
@@ -43,13 +45,16 @@ function returns a milestone relative to an existing milestone after adding
 nanoseconds.
 If the
 .Fa base
-parameter maps internally to a wall clock, then the returned value is
-relative to the wall clock.
+parameter maps internally to a wall clock or is
+.Vt DISPATCH_WALLTIME_NOW ,
+then the returned value is relative to the wall clock.
 Otherwise, if
 .Fa base
 is
 .Vt DISPATCH_TIME_NOW ,
-then the current time of the default host clock is used.
+then the current time of the default host clock is used. On Apple platforms,
+the value of the default host clock is obtained from
+.Vt mach_absolute_time() .
 .Pp
 The
 .Fn dispatch_walltime
@@ -59,6 +64,9 @@ using the wall clock, as specified by the optional
 parameter. If
 .Fa base
 is NULL, then the current time of the wall clock is used.
+.Vt dispatch_walltime(NULL, offset)
+is equivalent to
+.Vt dispatch_time(DISPATCH_WALLTIME_NOW, offset) .
 .Sh EDGE CONDITIONS
 The
 .Fn dispatch_time
@@ -81,9 +89,14 @@ parameter is ignored.
 Underflow causes the smallest representable value to be
 returned for a given clock.
 .Sh EXAMPLES
-Create a milestone two seconds in the future:
+Create a milestone two seconds in the future, relative to the default clock:
 .Bd -literal -offset indent
 milestone = dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC);
+.Ed
+.Pp
+Create a milestone two seconds in the future, in wall clock time:
+.Bd -literal -offset indent
+milestone = dispatch_time(DISPATCH_WALLTIME_NOW, 2 * NSEC_PER_SEC);
 .Ed
 .Pp
 Create a milestone for use as an infinite timeout:

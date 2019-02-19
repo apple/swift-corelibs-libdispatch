@@ -22,6 +22,11 @@
 export MIGCC="$(xcrun -find cc)"
 export MIGCOM="$(xcrun -find migcom)"
 export PATH="${PLATFORM_DEVELOPER_BIN_DIR}:${DEVELOPER_BIN_DIR}:${PATH}"
+
+for p in ${HEADER_SEARCH_PATHS}; do
+	OTHER_MIGFLAGS="${OTHER_MIGFLAGS} -I${p}"
+done
+
 for a in ${ARCHS}; do
 	xcrun mig ${OTHER_MIGFLAGS} -arch $a -header "${SCRIPT_OUTPUT_FILE_0}" \
 			-sheader "${SCRIPT_OUTPUT_FILE_1}" -user /dev/null \
