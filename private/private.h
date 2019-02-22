@@ -227,7 +227,6 @@ API_AVAILABLE(macos(10.9), ios(7.0))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_runloop_handle_t
 _dispatch_runloop_root_queue_get_port_4CF(dispatch_queue_t queue);
-#endif
 
 #if TARGET_OS_MAC
 API_AVAILABLE(macos(10.13.2), ios(11.2), tvos(11.2), watchos(4.2))

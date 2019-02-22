@@ -431,6 +431,12 @@ _dispatch_queue_attr_to_info(dispatch_queue_attr_t dqa)
 
 	if (dqa < _dispatch_queue_attrs ||
 			dqa >= &_dispatch_queue_attrs[DISPATCH_QUEUE_ATTR_COUNT]) {
+#ifndef __APPLE__
+		if (memcmp(dqa, &_dispatch_queue_attrs[0],
+				sizeof(struct dispatch_queue_attr_s)) == 0) {
+			dqa = (dispatch_queue_attr_t)&_dispatch_queue_attrs[0];
+		} else
+#endif // __APPLE__
 		DISPATCH_CLIENT_CRASH(dqa->do_vtable, "Invalid queue attribute");
 	}
 
@@ -974,9 +980,11 @@ _dispatch_bug_kevent_client(const char *msg, const char *filter,
 			dc = du._dr->ds_handler[DS_EVENT_HANDLER];
 			if (dc) func = _dispatch_continuation_get_function_symbol(dc);
 			break;
+#if HAVE_MACH
 		case DISPATCH_MACH_CHANNEL_TYPE:
 			func = du._dmrr->dmrr_handler_func;
 			break;
+#endif // HAVE_MACH
 		}
 		filter = dux_type(du._du)->dst_kind;
 	}
@@ -984,18 +992,18 @@ _dispatch_bug_kevent_client(const char *msg, const char *filter,
 	if (operation && err) {
 		_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_kevent_client",
 				"BUG in libdispatch client: %s %s: \"%s\" - 0x%x "
-				"{ 0x%llx[%s], ident: %lld / 0x%llx, handler: %p }",
+				"{ 0x%"PRIx64"[%s], ident: %"PRId64" / 0x%"PRIx64", handler: %p }",
 				msg, operation, strerror(err), err,
 				udata, filter, ident, ident, func);
 	} else if (operation) {
 		_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_kevent_client",
 				"BUG in libdispatch client: %s %s"
-				"{ 0x%llx[%s], ident: %lld / 0x%llx, handler: %p }",
+				"{ 0x%"PRIx64"[%s], ident: %"PRId64" / 0x%"PRIx64", handler: %p }",
 				msg, operation, udata, filter, ident, ident, func);
 	} else {
 		_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_kevent_client",
 				"BUG in libdispatch: %s: \"%s\" - 0x%x"
-				"{ 0x%llx[%s], ident: %lld / 0x%llx, handler: %p }",
+				"{ 0x%"PRIx64"[%s], ident: %"PRId64" / 0x%"PRIx64", handler: %p }",
 				msg, strerror(err), err, udata, filter, ident, ident, func);
 	}
 }
@@ -1013,9 +1021,11 @@ _dispatch_bug_kevent_vanished(dispatch_unote_t du)
 		dc = du._dr->ds_handler[DS_EVENT_HANDLER];
 		if (dc) func = _dispatch_continuation_get_function_symbol(dc);
 		break;
+#if HAVE_MACH
 	case DISPATCH_MACH_CHANNEL_TYPE:
 		func = du._dmrr->dmrr_handler_func;
 		break;
+#endif // MACH
 	}
 	_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_kevent_vanished",
 			"BUG in libdispatch client: %s, monitored resource vanished before "

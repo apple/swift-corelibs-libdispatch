@@ -147,8 +147,8 @@ dispatch_source_get_handle(dispatch_source_t ds)
 uintptr_t
 dispatch_source_get_data(dispatch_source_t ds)
 {
-#if DISPATCH_USE_MEMORYSTATUS
 	dispatch_source_refs_t dr = ds->ds_refs;
+#if DISPATCH_USE_MEMORYSTATUS
 	if (dr->du_vmpressure_override) {
 		return NOTE_VM_PRESSURE;
 	}
@@ -418,6 +418,7 @@ dispatch_source_set_registration_handler_f(dispatch_source_t ds,
 #pragma mark -
 #pragma mark dispatch_source_invoke
 
+#if TARGET_OS_MAC
 bool
 _dispatch_source_will_reenable_kevent_4NW(dispatch_source_t ds)
 {
@@ -429,6 +430,7 @@ _dispatch_source_will_reenable_kevent_4NW(dispatch_source_t ds)
 	}
 	return _dispatch_unote_needs_rearm(ds->ds_refs);
 }
+#endif // TARGET_OS_MAC
 
 static void
 _dispatch_source_registration_callout(dispatch_source_t ds, dispatch_queue_t cq,

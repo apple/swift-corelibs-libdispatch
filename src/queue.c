@@ -204,10 +204,12 @@ _dispatch_set_priority_and_voucher_slow(pthread_priority_t priority,
 
 static void _dispatch_async_redirect_invoke(dispatch_continuation_t dc,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
+#if HAVE_PTHREAD_WORKQUEUE_QOS
 static void _dispatch_queue_override_invoke(dispatch_continuation_t dc,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 static void _dispatch_workloop_stealer_invoke(dispatch_continuation_t dc,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
+#endif // HAVE_PTHREAD_WORKQUEUE_QOS
 
 const struct dispatch_continuation_vtable_s _dispatch_continuation_vtables[] = {
 	DC_VTABLE_ENTRY(ASYNC_REDIRECT,
@@ -898,7 +900,6 @@ dispatch_async(dispatch_queue_t dq, dispatch_block_t work)
 	qos = _dispatch_continuation_init(dc, dq, work, 0, dc_flags);
 	_dispatch_continuation_async(dq, dc, qos, dc->dc_flags);
 }
-#endif
 
 #pragma mark -
 #pragma mark _dispatch_sync_invoke / _dispatch_sync_complete
@@ -3558,6 +3559,7 @@ _dispatch_queue_drain_should_narrow_slow(uint64_t now,
 			dispatch_assert_zero(rv);
 		}
 	}
+#endif // TARGET_OS_MAC
 	pthread_attr_destroy(&attr);
 }
 
@@ -3602,10 +3604,12 @@ _dispatch_workloop_dispose(dispatch_workloop_t dwl, bool *allow_free)
 		dwl->dwl_timer_heap = NULL;
 	}
 
+#if TARGET_OS_MAC
 	if (dwl->dwl_attr && (dwl->dwl_attr->dwla_flags &
 			DISPATCH_WORKLOOP_ATTR_NEEDS_DESTROY)) {
 		(void)dispatch_assume_zero(_pthread_workloop_destroy((uint64_t)dwl));
 	}
+#endif // TARGET_OS_MAC
 	_dispatch_workloop_attributes_dispose(dwl);
 	_dispatch_queue_dispose(dwl, allow_free);
 }
@@ -3660,11 +3664,13 @@ _dispatch_workloop_try_lower_max_qos(dispatch_workloop_t dwl,
 		new_state |= qos_bits;
 	});
 
+#if DISPATCH_USE_KEVENT_WORKQUEUE
 	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
 	if (likely(ddi)) {
 		ddi->ddi_wlh_needs_update = true;
 		_dispatch_return_to_kernel();
 	}
+#endif // DISPATCH_USE_KEVENT_WORKQUEUE
 	return true;
 }
 
@@ -5188,6 +5194,7 @@ _dispatch_queue_mgr_lock(struct dispatch_queue_static_s *dq)
 	});
 }
 
+#if DISPATCH_USE_KEVENT_WORKQUEUE
 DISPATCH_ALWAYS_INLINE
 static inline bool
 _dispatch_queue_mgr_unlock(struct dispatch_queue_static_s *dq)
@@ -5200,6 +5207,7 @@ _dispatch_queue_mgr_unlock(struct dispatch_queue_static_s *dq)
 	});
 	return _dq_state_is_dirty(old_state);
 }
+#endif // DISPATCH_USE_KEVENT_WORKQUEUE
 
 static void
 _dispatch_mgr_queue_drain(void)
@@ -5812,7 +5820,6 @@ out:
 	return head;
 }
 
-#if DISPATCH_USE_KEVENT_WORKQUEUE
 static void
 _dispatch_root_queue_drain_deferred_wlh(dispatch_deferred_items_t ddi
 		DISPATCH_PERF_MON_ARGS_PROTO)
@@ -7332,7 +7339,6 @@ libdispatch_tsd_init(void)
 #endif // defined(_WIN32)
 	__dispatch_tsd.tid = gettid();
 }
-#endif
 
 DISPATCH_NOTHROW
 void
@@ -7370,6 +7376,7 @@ _dispatch_fork_becomes_unsafe_slow(void)
 		DISPATCH_CLIENT_CRASH(0, "Transition to multithreaded is prohibited");
 	}
 }
+#endif // TARGET_OS_MAC
 
 DISPATCH_NOINLINE
 void

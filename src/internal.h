@@ -327,6 +327,7 @@ upcast(dispatch_object_t dou)
 #include <io.h>
 #include <crtdbg.h>
 #endif
+#include <inttypes.h>
 
 #if __has_include(<os/atomic_private.h>)
 #include <os/atomic_private.h>

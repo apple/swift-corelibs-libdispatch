@@ -1870,6 +1870,7 @@ _voucher_dispose(voucher_t voucher)
 	(void)voucher;
 }
 
+#if __has_include(<mach/mach.h>)
 voucher_t
 voucher_copy_with_persona_mach_voucher(mach_voucher_t persona_mach_voucher)
 {
@@ -1913,6 +1914,7 @@ voucher_get_current_persona_proximate_info(struct proc_persona_info *persona_inf
 	(void)persona_info;
 	return -1;
 }
+#endif // __has_include(<mach/mach.h>)
 
 void
 _voucher_activity_debug_channel_init(void)
