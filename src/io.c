@@ -2272,9 +2272,8 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 	}
 #else
 #error "_dispatch_operation_advise not implemented on this platform"
-#endif
-#endif
-#endif
+#endif // defined(F_RDADVISE)
+#endif // defined(_WIN32)
 }
 
 static int

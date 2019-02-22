@@ -158,7 +158,7 @@ _dispatch_group_create_with_count(uint32_t n)
 	dg->do_targetq = _dispatch_get_default_queue(false);
 	if (n) {
 		os_atomic_store2o(dg, dg_bits,
-				-n * DISPATCH_GROUP_VALUE_INTERVAL, relaxed);
+				(uint32_t)-n * DISPATCH_GROUP_VALUE_INTERVAL, relaxed);
 		os_atomic_store2o(dg, do_ref_cnt, 1, relaxed); // <rdar://22318411>
 	}
 	return dg;
@@ -198,7 +198,7 @@ _dispatch_group_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 			_dispatch_object_class_name(dg), dg);
 	offset += _dispatch_object_debug_attr(dg, &buf[offset], bufsiz - offset);
 	offset += dsnprintf(&buf[offset], bufsiz - offset,
-			"count = %" PRId64 ", gen = %d, waiters = %d, notifs = %d }",
+			"count = %u, gen = %d, waiters = %d, notifs = %d }",
 			_dg_state_value(dg_state), _dg_state_gen(dg_state),
 			(bool)(dg_state & DISPATCH_GROUP_HAS_WAITERS),
 			(bool)(dg_state & DISPATCH_GROUP_HAS_NOTIFS));

@@ -318,6 +318,7 @@ upcast(dispatch_object_t dou)
 #include <io.h>
 #include <crtdbg.h>
 #endif
+#include <inttypes.h>
 
 /* More #includes at EOF (dependent on the contents of internal.h) ... */
 

@@ -2049,7 +2049,7 @@ _dispatch_set_basepri(dispatch_priority_t dq_dbp)
 	_dispatch_thread_setspecific(dispatch_basepri_key, (void*)(uintptr_t)dbp);
 	return old_dbp;
 #else
-	(void)dbp;
+	(void)dq_dbp;
 	return 0;
 #endif
 }

@@ -145,9 +145,15 @@ void *_dispatch_wait_for_enqueuer(void **ptr);
 		DISPATCH_YIELD_THREAD_SWITCH_OPTION, (mach_msg_timeout_t)(n))
 #define _dispatch_preemption_yield_to(th, n) thread_switch(th, \
 		DISPATCH_YIELD_THREAD_SWITCH_OPTION, (mach_msg_timeout_t)(n))
-#else
-#define _dispatch_preemption_yield(n) pthread_yield_np()
-#define _dispatch_preemption_yield_to(th, n) pthread_yield_np()
+#elif HAVE_PTHREAD_YIELD_NP
+#define _dispatch_preemption_yield(n) { (void)n; pthread_yield_np(); }
+#define _dispatch_preemption_yield_to(th, n) { (void)n; pthread_yield_np(); }
+#elif defined(_WIN32)
+#define _dispatch_preemption_yield(n) { (void)n; sched_yield(); }
+#define _dispatch_preemption_yield_to(th, n) { (void)n; sched_yield(); }
+#else 
+#define _dispatch_preemption_yield(n) { (void)n; pthread_yield(); }
+#define _dispatch_preemption_yield_to(th, n) { (void)n; pthread_yield(); }
 #endif // HAVE_MACH
 
 #pragma mark -

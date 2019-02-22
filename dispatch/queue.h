@@ -598,7 +598,7 @@ typedef unsigned int dispatch_qos_class_t;
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_CONST DISPATCH_WARN_RESULT DISPATCH_NOTHROW
-dispatch_queue_t
+dispatch_queue_global_t
 dispatch_get_global_queue(intptr_t identifier, uintptr_t flags);
 
 /*!
