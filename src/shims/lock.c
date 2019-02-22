@@ -408,48 +408,69 @@ _dispatch_futex(uint32_t *uaddr, int op, uint32_t val,
 	return (int)syscall(SYS_futex, uaddr, op | opflags, val, timeout, uaddr2, val3);
 }
 
+// returns 0, ETIMEDOUT, EFAULT, EINTR, EWOULDBLOCK
+DISPATCH_ALWAYS_INLINE
+static inline int
+_futex_blocking_op(uint32_t *uaddr, int futex_op, uint32_t val,
+		const struct timespec *timeout, int flags)
+{
+	for (;;) {
+		int rc = _dispatch_futex(uaddr, futex_op, val, timeout, NULL, 0, flags);
+		if (!rc) {
+			return 0;
+		}
+		switch (errno) {
+		case EINTR:
+			/*
+			 * if we have a timeout, we need to return for the caller to
+			 * recompute the new deadline, else just go back to wait.
+			 */
+			if (timeout == 0) {
+				continue;
+			}
+			/* FALLTHROUGH */
+		case ETIMEDOUT:
+		case EFAULT:
+		case EWOULDBLOCK:
+			return errno;
+		default:
+			DISPATCH_INTERNAL_CRASH(errno, "_futex_op() failed");
+		}
+	}
+}
+
 static int
 _dispatch_futex_wait(uint32_t *uaddr, uint32_t val,
 		const struct timespec *timeout, int opflags)
 {
-	_dlock_syscall_switch(err,
-		_dispatch_futex(uaddr, FUTEX_WAIT, val, timeout, NULL, 0, opflags),
-		case 0: case EWOULDBLOCK: case ETIMEDOUT: return err;
-		default: DISPATCH_CLIENT_CRASH(err, "futex_wait() failed");
-	);
+	return _futex_blocking_op(uaddr, FUTEX_WAIT, val, timeout, opflags);
 }
 
 static void
 _dispatch_futex_wake(uint32_t *uaddr, int wake, int opflags)
 {
-	int rc;
-	_dlock_syscall_switch(err,
-		rc = _dispatch_futex(uaddr, FUTEX_WAKE, (uint32_t)wake, NULL, NULL, 0, opflags),
-		case 0: return;
-		default: DISPATCH_CLIENT_CRASH(err, "futex_wake() failed");
-	);
+	int rc = _dispatch_futex(uaddr, FUTEX_WAKE, (uint32_t)wake, NULL, NULL, 0,
+			opflags);
+	if (rc >= 0 || errno == ENOENT) return;
+	DISPATCH_INTERNAL_CRASH(errno, "_dlock_wake() failed");
 }
 
 static void
 _dispatch_futex_lock_pi(uint32_t *uaddr, struct timespec *timeout, int detect,
 	      int opflags)
 {
-	_dlock_syscall_switch(err,
-		_dispatch_futex(uaddr, FUTEX_LOCK_PI, (uint32_t)detect, timeout,
-				NULL, 0, opflags),
-		case 0: return;
-		default: DISPATCH_CLIENT_CRASH(errno, "futex_lock_pi() failed");
-	);
+	int err = _futex_blocking_op(uaddr, FUTEX_LOCK_PI, (uint32_t)detect,
+			timeout, opflags);
+	if (err == 0) return;
+	DISPATCH_CLIENT_CRASH(err, "futex_lock_pi() failed");
 }
 
 static void
 _dispatch_futex_unlock_pi(uint32_t *uaddr, int opflags)
 {
-	_dlock_syscall_switch(err,
-		_dispatch_futex(uaddr, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0, opflags),
-		case 0: return;
-		default: DISPATCH_CLIENT_CRASH(errno, "futex_unlock_pi() failed");
-	);
+	int rc = _dispatch_futex(uaddr, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0, opflags);
+	if (rc == 0) return;
+	DISPATCH_CLIENT_CRASH(errno, "futex_unlock_pi() failed");
 }
 
 #endif
@@ -478,10 +499,11 @@ _dispatch_wait_on_address(uint32_t volatile *_address, uint32_t value,
 			(nsecs = _dispatch_timeout(timeout)) != 0);
 	return rc;
 #elif HAVE_FUTEX
+	(void)flags;
 	if (nsecs != DISPATCH_TIME_FOREVER) {
 		struct timespec ts = {
-			.tv_sec = (__typeof__(ts.tv_sec))(nsec / NSEC_PER_SEC),
-			.tv_nsec = (__typeof__(ts.tv_nsec))(nsec % NSEC_PER_SEC),
+			.tv_sec = (__typeof__(ts.tv_sec))(nsecs / NSEC_PER_SEC),
+			.tv_nsec = (__typeof__(ts.tv_nsec))(nsecs % NSEC_PER_SEC),
 		};
 		return _dispatch_futex_wait(address, value, &ts, FUTEX_PRIVATE_FLAG);
 	}

@@ -3043,7 +3043,6 @@ _dispatch_mach_notification_set_armed(dispatch_mach_send_refs_t dmsr)
 				(mach_port_name_t)dmn->dmn_kev.ident);
 #endif
 	}
-#endif
 }
 
 static dispatch_unote_t

@@ -201,10 +201,12 @@ _dispatch_set_priority_and_voucher_slow(pthread_priority_t priority,
 
 static void _dispatch_async_redirect_invoke(dispatch_continuation_t dc,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
+#if HAVE_PTHREAD_WORKQUEUE_QOS
 static void _dispatch_queue_override_invoke(dispatch_continuation_t dc,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 static void _dispatch_workloop_stealer_invoke(dispatch_continuation_t dc,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
+#endif // HAVE_PTHREAD_WORKQUEUE_QOS
 
 const struct dispatch_continuation_vtable_s _dispatch_continuation_vtables[] = {
 	DC_VTABLE_ENTRY(ASYNC_REDIRECT,
@@ -558,7 +560,7 @@ dispatch_block_cancel(dispatch_block_t db)
 	(void)os_atomic_or2o(dbpd, dbpd_atomic_flags, DBF_CANCELED, relaxed);
 }
 
-uintptr_t
+intptr_t
 dispatch_block_testcancel(dispatch_block_t db)
 {
 	dispatch_block_private_data_t dbpd = _dispatch_block_get_data(db);
@@ -1417,7 +1419,6 @@ _dispatch_lane_class_barrier_complete(dispatch_lane_t dq, dispatch_qos_t qos,
 		return _dispatch_release_2_tailcall(dq);
 	}
 }
-#endif
 
 DISPATCH_NOINLINE
 static void
@@ -2400,7 +2401,6 @@ _dispatch_base_lane_is_wlh(dispatch_lane_t dq, dispatch_queue_t tq)
 #endif // DISPATCH_USE_KEVENT_WORKLOOP
 }
 
-#if DISPATCH_USE_KEVENT_WORKQUEUE
 static void
 _dispatch_lane_inherit_wlh_from_target(dispatch_lane_t dq, dispatch_queue_t tq)
 {
@@ -2444,7 +2444,6 @@ _dispatch_lane_inherit_wlh_from_target(dispatch_lane_t dq, dispatch_queue_t tq)
 		}
 	}
 }
-#endif // DISPATCH_USE_KEVENT_WORKQUEUE
 
 dispatch_priority_t
 _dispatch_queue_compute_priority_and_wlh(dispatch_queue_t dq,
@@ -2477,7 +2476,6 @@ _dispatch_queue_compute_priority_and_wlh(dispatch_queue_t dq,
 			if (wlh_out) *wlh_out = NULL;
 			return 0;
 		}
->>>>>>> darwin/libdispatch-1121
 
 		if (_dq_state_is_base_wlh(tq->dq_state)) {
 			wlh = (dispatch_wlh_t)tq;
@@ -3857,7 +3855,6 @@ _dispatch_workloop_role_bits(void)
 #endif
 	return DISPATCH_QUEUE_ROLE_BASE_ANON;
 }
-#endif
 
 bool
 _dispatch_workloop_should_yield_4NW(void)
@@ -3932,6 +3929,7 @@ _dispatch_workloop_attributes_dispose(dispatch_workloop_t dwl)
 	}
 }
 
+#if TARGET_OS_MAC
 DISPATCH_ALWAYS_INLINE
 static bool
 _dispatch_workloop_has_kernel_attributes(dispatch_workloop_t dwl)
@@ -3941,6 +3939,7 @@ _dispatch_workloop_has_kernel_attributes(dispatch_workloop_t dwl)
 			 DISPATCH_WORKLOOP_ATTR_HAS_POLICY |
 			 DISPATCH_WORKLOOP_ATTR_HAS_CPUPERCENT));
 }
+#endif // TARGET_OS_MAC
 
 void
 dispatch_workloop_set_scheduler_priority(dispatch_workloop_t dwl, int priority,
@@ -4015,6 +4014,7 @@ dispatch_workloop_set_cpupercent(dispatch_workloop_t dwl, uint8_t percent,
 	dwl->dwl_attr->dwla_flags |= DISPATCH_WORKLOOP_ATTR_HAS_CPUPERCENT;
 }
 
+#if TARGET_OS_MAC
 static void
 _dispatch_workloop_activate_simulator_fallback(dispatch_workloop_t dwl,
 		pthread_attr_t *attr)
@@ -4034,6 +4034,7 @@ _dispatch_workloop_activate_simulator_fallback(dispatch_workloop_t dwl,
 		new_state |= DISPATCH_QUEUE_ROLE_BASE_ANON;
 	});
 }
+#endif // TARGET_OS_MAC
 
 static const struct dispatch_queue_global_s _dispatch_custom_workloop_root_queue = {
 	DISPATCH_GLOBAL_OBJECT_HEADER(queue_global),
@@ -4069,10 +4070,13 @@ _dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
 	if (dwla->dwla_flags & DISPATCH_WORKLOOP_ATTR_HAS_POLICY) {
 		pthread_attr_setschedpolicy(&attr, dwla->dwla_policy);
 	}
+#if HAVE_PTHREAD_ATTR_SETCPUPERCENT_NP
 	if (dwla->dwla_flags & DISPATCH_WORKLOOP_ATTR_HAS_CPUPERCENT) {
 		pthread_attr_setcpupercent_np(&attr, dwla->dwla_cpupercent.percent,
 				(unsigned long)dwla->dwla_cpupercent.refillms);
 	}
+#endif // HAVE_PTHREAD_ATTR_SETCPUPERCENT_NP
+ #if TARGET_OS_MAC
 	if (_dispatch_workloop_has_kernel_attributes(dwl)) {
 		int rv = _pthread_workloop_create((uint64_t)dwl, 0, &attr);
 		switch (rv) {
@@ -4087,6 +4091,7 @@ _dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
 			dispatch_assert_zero(rv);
 		}
 	}
+#endif // TARGET_OS_MAC
 	pthread_attr_destroy(&attr);
 }
 
@@ -4131,10 +4136,12 @@ _dispatch_workloop_dispose(dispatch_workloop_t dwl, bool *allow_free)
 		dwl->dwl_timer_heap = NULL;
 	}
 
+#if TARGET_OS_MAC
 	if (dwl->dwl_attr && (dwl->dwl_attr->dwla_flags &
 			DISPATCH_WORKLOOP_ATTR_NEEDS_DESTROY)) {
 		(void)dispatch_assume_zero(_pthread_workloop_destroy((uint64_t)dwl));
 	}
+#endif // TARGET_OS_MAC
 	_dispatch_workloop_attributes_dispose(dwl);
 	_dispatch_queue_dispose(dwl, allow_free);
 }
@@ -4188,11 +4195,13 @@ _dispatch_workloop_try_lower_max_qos(dispatch_workloop_t dwl,
 		new_state |= qos_bits;
 	});
 
+#if DISPATCH_USE_KEVENT_WORKQUEUE
 	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
 	if (likely(ddi)) {
 		ddi->ddi_wlh_needs_update = true;
 		_dispatch_return_to_kernel();
 	}
+#endif // DISPATCH_USE_KEVENT_WORKQUEUE
 	return true;
 }
 
@@ -5311,6 +5320,7 @@ _dispatch_queue_mgr_lock(struct dispatch_queue_static_s *dq)
 	});
 }
 
+#if DISPATCH_USE_KEVENT_WORKQUEUE
 DISPATCH_ALWAYS_INLINE
 static inline bool
 _dispatch_queue_mgr_unlock(struct dispatch_queue_static_s *dq)
@@ -5323,6 +5333,7 @@ _dispatch_queue_mgr_unlock(struct dispatch_queue_static_s *dq)
 	});
 	return _dq_state_is_dirty(old_state);
 }
+#endif // DISPATCH_USE_KEVENT_WORKQUEUE
 
 static void
 _dispatch_mgr_queue_drain(void)

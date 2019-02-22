@@ -381,9 +381,9 @@ extern const dispatch_source_type_s _dispatch_mach_type_send;
 extern const dispatch_source_type_s _dispatch_mach_type_recv;
 extern const dispatch_source_type_s _dispatch_mach_type_reply;
 extern const dispatch_source_type_s _dispatch_xpc_type_sigterm;
-extern const dispatch_source_type_s _dispatch_source_type_timer_with_clock;
 #define DISPATCH_MACH_TYPE_WAITER ((const dispatch_source_type_s *)-2)
 #endif
+extern const dispatch_source_type_s _dispatch_source_type_timer_with_clock;
 
 #pragma mark -
 #pragma mark deferred items
