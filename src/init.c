@@ -443,7 +443,7 @@ _dispatch_queue_attr_to_info(dispatch_queue_attr_t dqa)
 	dqai.dqai_concurrent = !(idx % DISPATCH_QUEUE_ATTR_CONCURRENCY_COUNT);
 	idx /= DISPATCH_QUEUE_ATTR_CONCURRENCY_COUNT;
 
-	dqai.dqai_relpri = -(idx % DISPATCH_QUEUE_ATTR_PRIO_COUNT);
+	dqai.dqai_relpri = -(int)(idx % DISPATCH_QUEUE_ATTR_PRIO_COUNT);
 	idx /= DISPATCH_QUEUE_ATTR_PRIO_COUNT;
 
 	dqai.dqai_qos = idx % DISPATCH_QUEUE_ATTR_QOS_COUNT;
