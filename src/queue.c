@@ -571,7 +571,7 @@ dispatch_block_testcancel(dispatch_block_t db)
 	return (bool)(dbpd->dbpd_atomic_flags & DBF_CANCELED);
 }
 
-long
+intptr_t
 dispatch_block_wait(dispatch_block_t db, dispatch_time_t timeout)
 {
 	dispatch_block_private_data_t dbpd = _dispatch_block_get_data(db);

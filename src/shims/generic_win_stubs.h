@@ -34,4 +34,6 @@ typedef __typeof__(_Generic((__SIZE_TYPE__)0,                                  \
 #define WIN_PORT_ERROR() \
 		_RPTF1(_CRT_ASSERT, "WIN_PORT_ERROR in %s", __FUNCTION__)
 
+#define strcasecmp _stricmp
+
 #endif

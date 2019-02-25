@@ -49,7 +49,8 @@ _dispatch_unote_unregister(dispatch_unote_t du DISPATCH_UNUSED,
 #pragma mark timers
 
 void
-_dispatch_event_loop_timer_arm(uint32_t tidx DISPATCH_UNUSED,
+_dispatch_event_loop_timer_arm(dispatch_timer_heap_t dth DISPATCH_UNUSED,
+		uint32_t tidx DISPATCH_UNUSED,
 		dispatch_timer_delay_s range DISPATCH_UNUSED,
 		dispatch_clock_now_cache_t nows DISPATCH_UNUSED)
 {
@@ -57,7 +58,8 @@ _dispatch_event_loop_timer_arm(uint32_t tidx DISPATCH_UNUSED,
 }
 
 void
-_dispatch_event_loop_timer_delete(uint32_t tidx DISPATCH_UNUSED)
+_dispatch_event_loop_timer_delete(dispatch_timer_heap_t dth DISPATCH_UNUSED,
+		uint32_t tidx DISPATCH_UNUSED)
 {
 	WIN_PORT_ERROR();
 }
@@ -109,9 +111,9 @@ _dispatch_event_loop_assert_not_owned(dispatch_wlh_t wlh)
 #endif
 
 void
-_dispatch_event_loop_leave_immediate(dispatch_wlh_t wlh, uint64_t dq_state)
+_dispatch_event_loop_leave_immediate(uint64_t dq_state)
 {
-	(void)wlh; (void)dq_state;
+	(void)dq_state;
 }
 
 #endif // DISPATCH_EVENT_BACKEND_WINDOWS

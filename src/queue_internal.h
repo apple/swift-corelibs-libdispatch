@@ -470,7 +470,9 @@ typedef struct dispatch_workloop_attr_s *dispatch_workloop_attr_t;
 typedef struct dispatch_workloop_attr_s {
 	uint32_t dwla_flags;
 	dispatch_priority_t dwla_pri;
+#if defined(_POSIX_THREADS)
 	struct sched_param dwla_sched;
+#endif
 	int dwla_policy;
 	struct {
 		uint8_t percent;
@@ -1045,7 +1047,9 @@ typedef struct dispatch_continuation_s {
 	DISPATCH_CONTINUATION_HEADER(continuation);
 } *dispatch_continuation_t;
 
+#if 0
 dispatch_assert_aliases(dispatch_continuation_s, dispatch_object_s, do_next);
+#endif
 dispatch_assert_aliases(dispatch_continuation_s, dispatch_object_s, do_vtable);
 
 typedef struct dispatch_sync_context_s {

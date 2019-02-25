@@ -509,7 +509,7 @@ _dispatch_wait_on_address(uint32_t volatile *_address, uint32_t value,
 	}
 	return _dispatch_futex_wait(address, value, NULL, FUTEX_PRIVATE_FLAG);
 #elif defined(_WIN32)
-	WaitOnAddress(address, (PVOID)(uintptr_t)value, sizeof(value), INFINITE);
+	return WaitOnAddress(address, (PVOID)(uintptr_t)value, sizeof(value), INFINITE) == TRUE;
 #else
 #error _dispatch_wait_on_address unimplemented for this platform
 #endif
