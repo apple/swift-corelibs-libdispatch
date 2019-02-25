@@ -152,7 +152,7 @@ enum {
 #endif // DISPATCH_IO_DEBUG
 
 #define _dispatch_fd_debug(msg, fd, ...) \
-		_dispatch_io_log("fd[0x%x]: " msg, fd, ##__VA_ARGS__)
+		_dispatch_io_log("fd[0x%" PRIx64 "]: " msg, fd, ##__VA_ARGS__)
 #define _dispatch_op_debug(msg, op, ...) \
 		_dispatch_io_log("op[%p]: " msg, op, ##__VA_ARGS__)
 #define _dispatch_channel_debug(msg, channel, ...) \
@@ -1385,7 +1385,7 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 	// On fds lock queue
 	dispatch_fd_entry_t fd_entry = _dispatch_fd_entry_create(
 			_dispatch_io_fds_lockq);
-	_dispatch_fd_entry_debug("create: fd %d", fd_entry, fd);
+	_dispatch_fd_entry_debug("create: fd %" PRId64, fd_entry, fd);
 	fd_entry->fd = fd;
 	LIST_INSERT_HEAD(&_dispatch_io_fds[hash], fd_entry, fd_list);
 	fd_entry->barrier_queue = dispatch_queue_create(
@@ -1399,11 +1399,11 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 			int result = ioctlsocket((SOCKET)fd, (long)FIONBIO, &value);
 			(void)dispatch_assume_zero(result);
 			_dispatch_stream_init(fd_entry,
-				_dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false));
+				_dispatch_get_default_queue(false));
 		} else {
 			dispatch_suspend(fd_entry->barrier_queue);
-			dispatch_once_f(&_dispatch_io_devs_lockq_pred, NULL,
-					_dispatch_io_devs_lockq_init);
+			dispatch_once_f(&_dispatch_io_init_pred, NULL,
+					_dispatch_io_queues_init);
 			dispatch_async(_dispatch_io_devs_lockq, ^{
 				_dispatch_disk_init(fd_entry, 0);
 				dispatch_resume(fd_entry->barrier_queue);

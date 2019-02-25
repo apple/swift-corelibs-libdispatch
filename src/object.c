@@ -203,7 +203,9 @@ _dispatch_xref_dispose(dispatch_object_t dou)
 		break;
 #endif
 	case DISPATCH_QUEUE_RUNLOOP_TYPE:
+#if DISPATCH_COCOA_COMPAT
 		_dispatch_runloop_queue_xref_dispose(dou._dl);
+#endif
 		break;
 	}
 	return _dispatch_release_tailcall(dou._os_obj);

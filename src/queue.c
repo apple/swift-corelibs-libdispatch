@@ -571,7 +571,7 @@ dispatch_block_testcancel(dispatch_block_t db)
 	return (bool)(dbpd->dbpd_atomic_flags & DBF_CANCELED);
 }
 
-long
+intptr_t
 dispatch_block_wait(dispatch_block_t db, dispatch_time_t timeout)
 {
 	dispatch_block_private_data_t dbpd = _dispatch_block_get_data(db);
@@ -2536,7 +2536,7 @@ _dispatch_queue_setter_assert_inactive(dispatch_queue_class_t dq)
 {
 	uint64_t dq_state = os_atomic_load2o(dq._dq, dq_state, relaxed);
 	if (likely(dq_state & DISPATCH_QUEUE_INACTIVE)) return;
-#ifndef __LP64__
+#if DISPATCH_SIZEOF_PTR == 4
 	dq_state >>= 32;
 #endif
 	DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
@@ -2851,7 +2851,7 @@ _dispatch_lane_class_dispose(dispatch_lane_class_t dqu, bool *allow_free)
 			DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
 					"Release of a locked queue");
 		}
-#ifndef __LP64__
+#if DISPATCH_SIZEOF_PTR == 4
 		dq_state >>= 32;
 #endif
 		DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
@@ -3948,6 +3948,9 @@ dispatch_workloop_set_scheduler_priority(dispatch_workloop_t dwl, int priority,
 	_dispatch_queue_setter_assert_inactive(dwl);
 	_dispatch_workloop_attributes_alloc_if_needed(dwl);
 
+#if defined(_WIN32)
+	// TODO(compnerd) setup thread priorities
+#else
 	if (priority) {
 		dwl->dwl_attr->dwla_sched.sched_priority = priority;
 		dwl->dwl_attr->dwla_flags |= DISPATCH_WORKLOOP_ATTR_HAS_SCHED;
@@ -3962,6 +3965,7 @@ dispatch_workloop_set_scheduler_priority(dispatch_workloop_t dwl, int priority,
 	} else {
 		dwl->dwl_attr->dwla_flags &= ~DISPATCH_WORKLOOP_ATTR_HAS_POLICY;
 	}
+#endif
 }
 
 void
@@ -3971,6 +3975,9 @@ dispatch_workloop_set_qos_class_floor(dispatch_workloop_t dwl,
 	_dispatch_queue_setter_assert_inactive(dwl);
 	_dispatch_workloop_attributes_alloc_if_needed(dwl);
 
+#if defined(_WIN32)
+	// TODO(compnerd) honour QoS
+#else
 	dispatch_qos_t qos = _dispatch_qos_from_qos_class(cls);
 
 	if (qos) {
@@ -3987,6 +3994,7 @@ dispatch_workloop_set_qos_class_floor(dispatch_workloop_t dwl,
 	} else {
 		dwl->dwl_attr->dwla_flags &= ~DISPATCH_WORKLOOP_ATTR_HAS_POLICY;
 	}
+#endif
 }
 
 void
@@ -4036,6 +4044,7 @@ _dispatch_workloop_activate_simulator_fallback(dispatch_workloop_t dwl,
 }
 #endif // TARGET_OS_MAC
 
+#if !defined(_WIN32)
 static const struct dispatch_queue_global_s _dispatch_custom_workloop_root_queue = {
 	DISPATCH_GLOBAL_OBJECT_HEADER(queue_global),
 	.dq_state = DISPATCH_ROOT_QUEUE_STATE_INIT_VALUE,
@@ -4047,10 +4056,12 @@ static const struct dispatch_queue_global_s _dispatch_custom_workloop_root_queue
 	.dq_serialnum = DISPATCH_QUEUE_SERIAL_NUMBER_WLF,
 	.dgq_thread_pool_size = 1,
 };
+#endif
 
 static void
 _dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
 {
+#if !defined(_WIN32)
 	dispatch_workloop_attr_t dwla = dwl->dwl_attr;
 	pthread_attr_t attr;
 
@@ -4076,7 +4087,7 @@ _dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
 				(unsigned long)dwla->dwla_cpupercent.refillms);
 	}
 #endif // HAVE_PTHREAD_ATTR_SETCPUPERCENT_NP
- #if TARGET_OS_MAC
+#if TARGET_OS_MAC
 	if (_dispatch_workloop_has_kernel_attributes(dwl)) {
 		int rv = _pthread_workloop_create((uint64_t)dwl, 0, &attr);
 		switch (rv) {
@@ -4093,6 +4104,7 @@ _dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
 	}
 #endif // TARGET_OS_MAC
 	pthread_attr_destroy(&attr);
+#endif
 }
 
 void
@@ -4108,7 +4120,7 @@ _dispatch_workloop_dispose(dispatch_workloop_t dwl, bool *allow_free)
 			DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
 					"Release of a locked workloop");
 		}
-#ifndef __LP64__
+#if DISPATCH_SIZEOF_PTR == 4
 		dq_state >>= 32;
 #endif
 		DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
@@ -4499,7 +4511,7 @@ _dispatch_workloop_wakeup(dispatch_workloop_t dwl, dispatch_qos_t qos,
 	});
 
 	if (unlikely(_dq_state_is_suspended(old_state))) {
-#ifndef __LP64__
+#if DISPATCH_SIZEOF_PTR == 4
 		old_state >>= 32;
 #endif
 		DISPATCH_CLIENT_CRASH(old_state, "Waking up an inactive workloop");
@@ -5119,7 +5131,6 @@ _dispatch_mgr_sched_qos2prio(qos_class_t qos)
 static void
 _dispatch_mgr_sched_init(void *ctxt DISPATCH_UNUSED)
 {
-#if !defined(_WIN32)
 	struct sched_param param;
 #if DISPATCH_USE_MGR_THREAD && DISPATCH_USE_PTHREAD_ROOT_QUEUES
 	dispatch_pthread_root_queue_context_t pqc = _dispatch_mgr_root_queue.do_ctxt;
@@ -5142,10 +5153,6 @@ _dispatch_mgr_sched_init(void *ctxt DISPATCH_UNUSED)
 	}
 #endif
 	_dispatch_mgr_sched.default_prio = param.sched_priority;
-#else // defined(_WIN32)
-	_dispatch_mgr_sched.policy = 0;
-	_dispatch_mgr_sched.default_prio = THREAD_PRIORITY_NORMAL;
-#endif // defined(_WIN32)
 	_dispatch_mgr_sched.prio = _dispatch_mgr_sched.default_prio;
 }
 #endif // DISPATCH_USE_PTHREAD_ROOT_QUEUES || DISPATCH_USE_KEVENT_WORKQUEUE
@@ -5673,7 +5680,9 @@ static void
 _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 {
 	int remaining = n;
+#if !defined(_WIN32)
 	int r = ENOSYS;
+#endif
 
 	_dispatch_root_queues_init();
 	_dispatch_debug_root_queue(dq, __func__);
@@ -5771,9 +5780,11 @@ _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 			}
 			_dispatch_temporary_resource_shortage();
 		}
+#if DISPATCH_USE_PTHREAD_ROOT_QUEUES
 		if (_dispatch_mgr_sched.prio > _dispatch_mgr_sched.default_prio) {
 			(void)dispatch_assume_zero(SetThreadPriority((HANDLE)hThread, _dispatch_mgr_sched.prio) == TRUE);
 		}
+#endif
 		CloseHandle((HANDLE)hThread);
 	} while (--remaining);
 #endif // defined(_WIN32)
@@ -6451,7 +6462,7 @@ _dispatch_pthread_root_queue_dispose(dispatch_queue_global_t dq,
 
 DISPATCH_STATIC_GLOBAL(bool _dispatch_program_is_probably_callback_driven);
 
-#if DISPATCH_COCOA_COMPAT
+#if DISPATCH_COCOA_COMPAT || defined(_WIN32)
 DISPATCH_STATIC_GLOBAL(dispatch_once_t _dispatch_main_q_handle_pred);
 
 DISPATCH_ALWAYS_INLINE
@@ -6462,6 +6473,8 @@ _dispatch_runloop_handle_is_valid(dispatch_runloop_handle_t handle)
 	return MACH_PORT_VALID(handle);
 #elif defined(__linux__)
 	return handle >= 0;
+#elif defined(_WIN32)
+	return handle != NULL;
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6476,6 +6489,8 @@ _dispatch_runloop_queue_get_handle(dispatch_lane_t dq)
 #elif defined(__linux__)
 	// decode: 0 is a valid fd, so offset by 1 to distinguish from NULL
 	return ((dispatch_runloop_handle_t)(uintptr_t)dq->do_ctxt) - 1;
+#elif defined(_WIN32)
+	return ((dispatch_runloop_handle_t)(uintptr_t)dq->do_ctxt);
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6491,6 +6506,8 @@ _dispatch_runloop_queue_set_handle(dispatch_lane_t dq,
 #elif defined(__linux__)
 	// encode: 0 is a valid fd, so offset by 1 to distinguish from NULL
 	dq->do_ctxt = (void *)(uintptr_t)(handle + 1);
+#elif defined(_WIN32)
+	dq->do_ctxt = (void *)(uintptr_t)handle;
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6545,6 +6562,13 @@ _dispatch_runloop_queue_handle_init(void *ctxt)
 		}
 	}
 	handle = fd;
+#elif defined(_WIN32)
+	HANDLE hEvent = CreateEventW(NULL, /*bManualReset=*/TRUE,
+		/*bInitialState=*/FALSE, NULL);
+	if (hEvent == NULL) {
+		DISPATCH_CLIENT_CRASH(GetLastError(), "CreateEventW");
+	}
+	handle = hEvent;
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6571,6 +6595,9 @@ _dispatch_runloop_queue_handle_dispose(dispatch_lane_t dq)
 #elif defined(__linux__)
 	int rc = close(handle);
 	(void)dispatch_assume_zero(rc);
+#elif defined(_WIN32)
+	BOOL bResult = CloseHandle(handle);
+	(void)dispatch_assume_zero(!bResult);
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6603,6 +6630,9 @@ _dispatch_runloop_queue_class_poke(dispatch_lane_t dq)
 		result = eventfd_write(handle, 1);
 	} while (result == -1 && errno == EINTR);
 	(void)dispatch_assume_zero(result);
+#elif defined(_WIN32)
+	BOOL bResult = SetEvent(handle);
+	(void)dispatch_assert_zero(!bResult);
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6900,7 +6930,8 @@ _dispatch_runloop_root_queue_get_port_4CF(dispatch_queue_t dq)
 #endif // DISPATCH_COCOA_COMPAT
 #pragma mark -
 #pragma mark dispatch_main_queue
-#if DISPATCH_COCOA_COMPAT
+
+#if DISPATCH_COCOA_COMPAT || defined(_WIN32)
 
 dispatch_runloop_handle_t
 _dispatch_get_main_queue_handle_4CF(void)
@@ -6984,7 +7015,9 @@ _dispatch_sig_thread(void *ctxt DISPATCH_UNUSED)
 {
 	// never returns, so burn bridges behind us
 	_dispatch_clear_stack(0);
-#if !defined(_WIN32)
+#if defined(_WIN32)
+	Sleep(INFINITE);
+#else
 	_dispatch_sigsuspend();
 #endif
 }

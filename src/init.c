@@ -739,7 +739,7 @@ DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_main, lane,
 	.dq_push        = _dispatch_main_queue_push,
 );
 
-#if DISPATCH_COCOA_COMPAT
+#if DISPATCH_COCOA_COMPAT || defined(_WIN32)
 DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_runloop, lane,
 	.do_type        = DISPATCH_QUEUE_RUNLOOP_TYPE,
 	.do_dispose     = _dispatch_runloop_queue_dispose,

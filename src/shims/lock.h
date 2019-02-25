@@ -293,6 +293,9 @@ _dispatch_thread_event_init(dispatch_thread_event_t dte)
 	dte->dte_value = 0;
 #else
 	_dispatch_sema4_init(&dte->dte_sema, _DSEMA4_POLICY_FIFO);
+#if defined(_WIN32)
+	_dispatch_sema4_create(&dte->dte_sema, _DSEMA4_POLICY_FIFO);
+#endif
 #endif
 }
 

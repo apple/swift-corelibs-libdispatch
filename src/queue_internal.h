@@ -470,7 +470,9 @@ typedef struct dispatch_workloop_attr_s *dispatch_workloop_attr_t;
 typedef struct dispatch_workloop_attr_s {
 	uint32_t dwla_flags;
 	dispatch_priority_t dwla_pri;
+#if defined(_POSIX_THREADS)
 	struct sched_param dwla_sched;
+#endif
 	int dwla_policy;
 	struct {
 		uint8_t percent;
@@ -820,7 +822,7 @@ void _dispatch_main_queue_push(dispatch_queue_main_t dq, dispatch_object_t dou,
 		dispatch_qos_t qos);
 void _dispatch_main_queue_wakeup(dispatch_queue_main_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
-#if DISPATCH_COCOA_COMPAT
+#if DISPATCH_COCOA_COMPAT || defined(_WIN32)
 void _dispatch_runloop_queue_wakeup(dispatch_lane_t dq,
 		dispatch_qos_t qos, dispatch_wakeup_flags_t flags);
 void _dispatch_runloop_queue_xref_dispose(dispatch_lane_t dq);
@@ -952,7 +954,7 @@ dispatch_queue_attr_info_t _dispatch_queue_attr_to_info(dispatch_queue_attr_t);
 // If dc_flags is less than 0x1000, then the object is a continuation.
 // Otherwise, the object has a private layout and memory management rules. The
 // layout until after 'do_next' must align with normal objects.
-#if __LP64__
+#if DISPATCH_SIZEOF_PTR == 8
 #define DISPATCH_CONTINUATION_HEADER(x) \
 	union { \
 		const void *do_vtable; \
