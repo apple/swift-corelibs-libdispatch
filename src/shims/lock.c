@@ -318,7 +318,7 @@ _dispatch_sema4_timedwait(_dispatch_sema4_t *sema, dispatch_time_t timeout)
 	nsec = _dispatch_timeout(timeout);
 	msec = (DWORD)(nsec / (uint64_t)1000000);
 	resolution = _push_timer_resolution(msec);
-	wait_result = WaitForSingleObject(sema, msec);
+	wait_result = WaitForSingleObject(*sema, msec);
 	_pop_timer_resolution(resolution);
 	return wait_result == WAIT_TIMEOUT;
 }
