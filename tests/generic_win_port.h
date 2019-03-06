@@ -12,6 +12,14 @@ typedef long long ssize_t;
 typedef long ssize_t;
 #endif
 
+struct mach_timebase_info {
+	uint32_t numer;
+	uint32_t denom;
+};
+
+typedef struct mach_timebase_info *mach_timebase_info_t;
+typedef struct mach_timebase_info mach_timebase_info_data_t;
+
 static inline int32_t
 OSAtomicIncrement32(volatile int32_t *var)
 {
@@ -44,6 +52,18 @@ getpid(void);
 
 int
 gettimeofday(struct timeval *tp, void *tzp);
+
+uint64_t
+mach_absolute_time(void);
+
+static inline
+int
+mach_timebase_info(mach_timebase_info_t tbi)
+{
+	tbi->numer = 1;
+	tbi->denom = 1;
+	return 0;
+}
 
 void
 print_winapi_error(const char *function_name, DWORD error);

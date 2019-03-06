@@ -192,8 +192,10 @@ add_unit_test(dispatch_c99 NO_BSD_OVERLAY SOURCES dispatch_c99.c)
 add_unit_test(dispatch_plusplus SOURCES dispatch_plusplus.cpp)
 
 # test-specific link options
-target_link_libraries(dispatch_group PRIVATE m)
-target_link_libraries(dispatch_timer_short PRIVATE m)
+if(NOT WIN32)
+  target_link_libraries(dispatch_group PRIVATE m)
+  target_link_libraries(dispatch_timer_short PRIVATE m)
+endif()
 
 # test-specific compile options
 set_target_properties(dispatch_c99 PROPERTIES C_STANDARD 99)
