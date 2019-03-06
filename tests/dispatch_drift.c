@@ -22,8 +22,8 @@
 #include <mach/mach_time.h>
 #endif
 #include <dispatch/dispatch.h>
-#include <sys/time.h>
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+#include <sys/time.h>
 #include <unistd.h>
 #endif
 #include <stdio.h>
@@ -46,8 +46,13 @@ main(int argc __attribute__((unused)), char* argv[] __attribute__((unused)))
 	__block uint32_t count = 0;
 	__block double last_jitter = 0;
 	__block double drift_sum = 0;
+#if defined(_WIN32)
+	// 25 times a second (Windows timer resolution is poor)
+	uint64_t interval = 1000000000 / 25;
+#else
 	// 100 times a second
 	uint64_t interval = 1000000000 / 100;
+#endif
 	double interval_d = interval / 1000000000.0;
 	// for 25 seconds
 	unsigned int target = (unsigned int)(25.0 / interval_d);
