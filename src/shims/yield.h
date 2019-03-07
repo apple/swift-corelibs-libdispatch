@@ -84,14 +84,18 @@
 		((DISPATCH_CONTENTION_SPINS_MIN) + ((DISPATCH_CONTENTION_SPINS_MAX) - \
 		(DISPATCH_CONTENTION_SPINS_MIN)) / 2)
 #elif defined(_WIN32)
-#define _dispatch_contention_spins() ({                                        \
-		unsigned int _value;                                           \
-		rand_s(&_value);                                               \
-		(_value & DISPATCH_CONTENTION_SPINS_MAX) | DISPATCH_CONTENTION_SPINS_MIN; })
+// Use randomness to prevent threads from resonating at the same frequency and
+// permanently contending. Windows doesn't provide rand_r(), so use a simple
+// LCG. (msvcrt has rand_s(), but its security guarantees aren't optimal here.)
+#define _dispatch_contention_spins() ({ \
+		static os_atomic(unsigned int) _seed = 1; \
+		unsigned int _next = os_atomic_load(&_seed, relaxed); \
+		os_atomic_store(&_seed, _next * 1103515245 + 12345, relaxed); \
+		((_next >> 24) & (DISPATCH_CONTENTION_SPINS_MAX)) | \
+				(DISPATCH_CONTENTION_SPINS_MIN); })
 #else
-// Use randomness to prevent threads from resonating at the same
-// frequency and permanently contending. All threads sharing the same
-// seed value is safe with the FreeBSD rand_r implementation.
+// All threads sharing the same seed value is safe with the FreeBSD rand_r
+// implementation.
 #define _dispatch_contention_spins() ({ \
 		static unsigned int _seed; \
 		((unsigned int)rand_r(&_seed) & (DISPATCH_CONTENTION_SPINS_MAX)) | \
@@ -141,8 +145,13 @@
 #pragma mark _dispatch_contention_usleep
 
 #ifndef DISPATCH_CONTENTION_USLEEP_START
+#if defined(_WIN32)
+#define DISPATCH_CONTENTION_USLEEP_START 1000  // Must be >= 1ms for Sleep()
+#else
 #define DISPATCH_CONTENTION_USLEEP_START 500
 #endif
+#endif
+
 #ifndef DISPATCH_CONTENTION_USLEEP_MAX
 #define DISPATCH_CONTENTION_USLEEP_MAX 100000
 #endif
@@ -155,25 +164,10 @@
 #define _dispatch_contention_usleep(u) thread_switch(MACH_PORT_NULL, \
 		SWITCH_OPTION_WAIT, (((u)-1)/1000)+1)
 #endif
-#else
-#if defined(_WIN32)
-DISPATCH_INLINE void
-_dispatch_contention_usleep(uint64_t useconds) {
-	static BOOL bQPFExecuted = FALSE;
-	static LARGE_INTEGER liFreq;
-	LARGE_INTEGER liStart, liNow;
-
-	if (!bQPFExecuted)
-		bQPFExecuted = QueryPerformanceFrequency(&liFreq);
-
-	QueryPerformanceCounter(&liStart);
-	do {
-		QueryPerformanceCounter(&liNow);
-	} while ((liNow.QuadPart - liStart.QuadPart) / (float)liFreq.QuadPart * 1000 * 1000 < useconds);
-}
+#elif defined(_WIN32)
+#define _dispatch_contention_usleep(u) Sleep((u) / 1000)
 #else
 #define _dispatch_contention_usleep(u) usleep((u))
-#endif
 #endif // HAVE_MACH
 
 #endif // __DISPATCH_SHIMS_YIELD__
