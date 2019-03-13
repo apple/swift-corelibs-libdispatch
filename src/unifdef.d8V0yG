@@ -3994,7 +3994,6 @@ _dispatch_workloop_has_kernel_attributes(dispatch_workloop_t dwl)
 			 DISPATCH_WORKLOOP_ATTR_HAS_POLICY |
 			 DISPATCH_WORKLOOP_ATTR_HAS_CPUPERCENT));
 }
-#endif // TARGET_OS_MAC
 
 void
 dispatch_workloop_set_scheduler_priority(dispatch_workloop_t dwl, int priority,
@@ -4018,6 +4017,7 @@ dispatch_workloop_set_scheduler_priority(dispatch_workloop_t dwl, int priority,
 		dwl->dwl_attr->dwla_flags &= ~DISPATCH_WORKLOOP_ATTR_HAS_POLICY;
 	}
 }
+#endif // TARGET_OS_MAC
 
 void
 dispatch_workloop_set_qos_class_floor(dispatch_workloop_t dwl,
@@ -4036,12 +4036,16 @@ dispatch_workloop_set_qos_class_floor(dispatch_workloop_t dwl,
 		dwl->dwl_attr->dwla_flags &= ~DISPATCH_WORKLOOP_ATTR_HAS_QOS_CLASS;
 	}
 
+#if TARGET_OS_MAC
 	if (flags & DISPATCH_WORKLOOP_FIXED_PRIORITY) {
 		dwl->dwl_attr->dwla_policy = POLICY_RR;
 		dwl->dwl_attr->dwla_flags |= DISPATCH_WORKLOOP_ATTR_HAS_POLICY;
 	} else {
 		dwl->dwl_attr->dwla_flags &= ~DISPATCH_WORKLOOP_ATTR_HAS_POLICY;
 	}
+#else // TARGET_OS_MAC
+	(void)flags;
+#endif // TARGET_OS_MAC
 }
 
 void
@@ -4102,7 +4106,6 @@ _dispatch_workloop_activate_simulator_fallback(dispatch_workloop_t dwl,
 		new_state |= DISPATCH_QUEUE_ROLE_BASE_ANON;
 	});
 }
-#endif // TARGET_OS_MAC
 
 static const struct dispatch_queue_global_s _dispatch_custom_workloop_root_queue = {
 	DISPATCH_GLOBAL_OBJECT_HEADER(queue_global),
@@ -4115,6 +4118,7 @@ static const struct dispatch_queue_global_s _dispatch_custom_workloop_root_queue
 	.dq_serialnum = DISPATCH_QUEUE_SERIAL_NUMBER_WLF,
 	.dgq_thread_pool_size = 1,
 };
+#endif // TARGET_OS_MAC
 
 static void
 _dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
@@ -4126,6 +4130,7 @@ _dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
 	if (dwla->dwla_flags & DISPATCH_WORKLOOP_ATTR_HAS_QOS_CLASS) {
 		dwl->dq_priority |= dwla->dwla_pri | DISPATCH_PRIORITY_FLAG_FLOOR;
 	}
+#if TARGET_OS_MAC
 	if (dwla->dwla_flags & DISPATCH_WORKLOOP_ATTR_HAS_SCHED) {
 		pthread_attr_setschedparam(&attr, &dwla->dwla_sched);
 		// _dispatch_async_and_wait_should_always_async detects when a queue
@@ -4138,6 +4143,7 @@ _dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
 	if (dwla->dwla_flags & DISPATCH_WORKLOOP_ATTR_HAS_POLICY) {
 		pthread_attr_setschedpolicy(&attr, dwla->dwla_policy);
 	}
+#endif // TARGET_OS_MAC
 #if HAVE_PTHREAD_ATTR_SETCPUPERCENT_NP
 	if (dwla->dwla_flags & DISPATCH_WORKLOOP_ATTR_HAS_CPUPERCENT) {
 		pthread_attr_setcpupercent_np(&attr, dwla->dwla_cpupercent.percent,

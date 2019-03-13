@@ -467,7 +467,9 @@ typedef struct dispatch_workloop_attr_s *dispatch_workloop_attr_t;
 typedef struct dispatch_workloop_attr_s {
 	uint32_t dwla_flags;
 	dispatch_priority_t dwla_pri;
+#if TARGET_OS_MAC
 	struct sched_param dwla_sched;
+#endif // TARGET_OS_MAC
 	int dwla_policy;
 	struct {
 		uint8_t percent;
