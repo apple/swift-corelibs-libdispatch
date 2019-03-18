@@ -21,25 +21,30 @@
 #ifndef __FIREHOSE_INLINE_INTERNAL__
 #define __FIREHOSE_INLINE_INTERNAL__
 
+#ifndef _os_atomic_basetypeof
+#define _os_atomic_basetypeof(p) \
+		__typeof__(atomic_load_explicit(_os_atomic_c11_atomic(p), memory_order_relaxed))
+#endif
+
 #define firehose_atomic_maxv2o(p, f, v, o, m) \
 		os_atomic_rmw_loop2o(p, f, *(o), (v), m, { \
 			if (*(o) >= (v)) os_atomic_rmw_loop_give_up(break); \
 		})
 
 #define firehose_atomic_max2o(p, f, v, m)   ({ \
-		__typeof__((p)->f) _old; \
+		_os_atomic_basetypeof(&(p)->f) _old; \
 		firehose_atomic_maxv2o(p, f, v, &_old, m); \
 	})
 
 #ifndef KERNEL
 // caller must test for non zero first
 OS_ALWAYS_INLINE
-static inline uint16_t
+static inline firehose_chunk_ref_t
 firehose_bitmap_first_set(uint64_t bitmap)
 {
 	dispatch_assert(bitmap != 0);
 	// this builtin returns 0 if bitmap is 0, or (first bit set + 1)
-	return (uint16_t)__builtin_ffsll((long long)bitmap) - 1;
+	return (firehose_chunk_ref_t)__builtin_ffsll((long long)bitmap) - 1;
 }
 #endif
 
@@ -49,11 +54,13 @@ firehose_bitmap_first_set(uint64_t bitmap)
 
 OS_ALWAYS_INLINE
 static inline mach_port_t
-firehose_mach_port_allocate(uint32_t flags, void *ctx)
+firehose_mach_port_allocate(uint32_t flags, mach_port_msgcount_t qlimit,
+		void *ctx)
 {
 	mach_port_t port = MACH_PORT_NULL;
 	mach_port_options_t opts = {
-		.flags = flags,
+		.flags = flags | MPO_QLIMIT,
+		.mpl = { .mpl_qlimit = qlimit },
 	};
 	kern_return_t kr = mach_port_construct(mach_task_self(), &opts,
 			(mach_port_context_t)ctx, &port);
@@ -107,7 +114,8 @@ firehose_mig_server(dispatch_mig_callback_t demux, size_t maxmsgsz,
 		expects_reply = true;
 	}
 
-	if (!fastpath(demux(hdr, &msg_reply->Head))) {
+	msg_reply->Head = (mach_msg_header_t){ };
+	if (unlikely(!demux(hdr, &msg_reply->Head))) {
 		rc = MIG_BAD_ID;
 	} else if (msg_reply->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX) {
 		rc = KERN_SUCCESS;
@@ -117,14 +125,14 @@ firehose_mig_server(dispatch_mig_callback_t demux, size_t maxmsgsz,
 		rc = msg_reply->RetCode;
 	}
 
-	if (slowpath(rc == KERN_SUCCESS && expects_reply)) {
+	if (unlikely(rc == KERN_SUCCESS && expects_reply)) {
 		// if crashing here, some handler returned KERN_SUCCESS
 		// hoping for firehose_mig_server to perform the mach_msg()
 		// call to reply, and it doesn't know how to do that
 		DISPATCH_INTERNAL_CRASH(msg_reply->Head.msgh_id,
 				"firehose_mig_server doesn't handle replies");
 	}
-	if (slowpath(rc != KERN_SUCCESS && rc != MIG_NO_REPLY)) {
+	if (unlikely(rc != KERN_SUCCESS && rc != MIG_NO_REPLY)) {
 		// destroy the request - but not the reply port
 		hdr->msgh_remote_port = 0;
 		mach_msg_destroy(hdr);
@@ -144,35 +152,21 @@ firehose_buffer_chunk_for_address(void *addr)
 }
 
 OS_ALWAYS_INLINE
-static inline uint16_t
+static inline firehose_chunk_ref_t
 firehose_buffer_chunk_to_ref(firehose_buffer_t fb, firehose_chunk_t fbc)
 {
-	return (uint16_t)(fbc - fb->fb_chunks);
+	return (firehose_chunk_ref_t)(fbc - fb->fb_chunks);
 }
 
 OS_ALWAYS_INLINE
 static inline firehose_chunk_t
-firehose_buffer_ref_to_chunk(firehose_buffer_t fb, uint16_t ref)
+firehose_buffer_ref_to_chunk(firehose_buffer_t fb, firehose_chunk_ref_t ref)
 {
 	return fb->fb_chunks + ref;
 }
 
 #ifndef FIREHOSE_SERVER
 #if DISPATCH_PURE_C
-
-OS_ALWAYS_INLINE
-static inline uint8_t
-firehose_buffer_qos_bits_propagate(void)
-{
-#ifndef KERNEL
-	pthread_priority_t pp = _dispatch_priority_propagate();
-
-	pp &= _PTHREAD_PRIORITY_QOS_CLASS_MASK;
-	return (uint8_t)(pp >> _PTHREAD_PRIORITY_QOS_CLASS_SHIFT);
-#else
-	return 0;
-#endif
-}
 
 OS_ALWAYS_INLINE
 static inline void
@@ -182,7 +176,7 @@ firehose_buffer_stream_flush(firehose_buffer_t fb, firehose_stream_t stream)
 	firehose_stream_state_u old_state, new_state;
 	firehose_chunk_t fc;
 	uint64_t stamp = UINT64_MAX; // will cause the reservation to fail
-	uint16_t ref;
+	firehose_chunk_ref_t ref;
 	long result;
 
 	old_state.fss_atomic_state =
@@ -198,7 +192,7 @@ firehose_buffer_stream_flush(firehose_buffer_t fb, firehose_stream_t stream)
 
 	fc = firehose_buffer_ref_to_chunk(fb, old_state.fss_current);
 	result = firehose_chunk_tracepoint_try_reserve(fc, stamp, stream,
-			firehose_buffer_qos_bits_propagate(), 1, 0, NULL);
+			0, 1, 0, NULL);
 	if (likely(result < 0)) {
 		firehose_buffer_ring_enqueue(fb, old_state.fss_current);
 	}
@@ -247,6 +241,10 @@ firehose_buffer_stream_flush(firehose_buffer_t fb, firehose_stream_t stream)
  * @param privptr
  * The pointer to the private buffer, can be NULL
  *
+ * @param reliable
+ * Whether we should wait for logd or drop the tracepoint in the event that no
+ * chunk is available.
+ *
  * @result
  * The pointer to the tracepoint.
  */
@@ -254,17 +252,15 @@ OS_ALWAYS_INLINE
 static inline firehose_tracepoint_t
 firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 		firehose_stream_t stream, uint16_t pubsize,
-		uint16_t privsize, uint8_t **privptr)
+		uint16_t privsize, uint8_t **privptr, bool reliable)
 {
 	firehose_buffer_stream_t fbs = &fb->fb_header.fbh_stream[stream];
 	firehose_stream_state_u old_state, new_state;
 	firehose_chunk_t fc;
-#if KERNEL
-	bool failable = false;
-#endif
+	bool waited = false;
 	bool success;
 	long result;
-	uint16_t ref;
+	firehose_chunk_ref_t ref;
 
 	// cannot use os_atomic_rmw_loop2o, _page_try_reserve does a store
 	old_state.fss_atomic_state =
@@ -276,11 +272,10 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 		if (likely(ref && ref != FIREHOSE_STREAM_STATE_PRISTINE)) {
 			fc = firehose_buffer_ref_to_chunk(fb, ref);
 			result = firehose_chunk_tracepoint_try_reserve(fc, stamp, stream,
-					firehose_buffer_qos_bits_propagate(),
-					pubsize, privsize, privptr);
+					0, pubsize, privsize, privptr);
 			if (likely(result > 0)) {
 				uint64_t thread;
-#ifdef KERNEL
+#if KERNEL
 				thread = thread_tid(current_thread());
 #else
 				thread = _pthread_threadid_self_np_direct();
@@ -293,28 +288,70 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 			}
 			new_state.fss_current = 0;
 		}
-#if KERNEL
-		if (failable) {
-			return NULL;
-		}
+
+		if (!reliable && ((waited && old_state.fss_timestamped)
+#ifndef KERNEL
+				|| old_state.fss_waiting_for_logd
 #endif
+			)) {
+			new_state.fss_loss =
+					MIN(old_state.fss_loss + 1, FIREHOSE_LOSS_COUNT_MAX);
+
+			success = os_atomic_cmpxchgv2o(fbs, fbs_state.fss_atomic_state,
+					old_state.fss_atomic_state, new_state.fss_atomic_state,
+					&old_state.fss_atomic_state, relaxed);
+			if (success) {
+#ifndef KERNEL
+				_dispatch_trace_firehose_reserver_gave_up(stream, ref, waited,
+						old_state.fss_atomic_state, new_state.fss_atomic_state);
+#endif
+				return NULL;
+			} else {
+				continue;
+			}
+		}
 
 		if (unlikely(old_state.fss_allocator)) {
-			_dispatch_gate_wait(&fbs->fbs_state.fss_gate,
+#if KERNEL
+			_dispatch_firehose_gate_wait(&fbs->fbs_state.fss_gate,
 					DLOCK_LOCK_DATA_CONTENTION);
+			waited = true;
+
 			old_state.fss_atomic_state =
 					os_atomic_load2o(fbs, fbs_state.fss_atomic_state, relaxed);
-#if KERNEL
-			failable = true;
+#else
+			if (likely(reliable)) {
+				new_state.fss_allocator |= FIREHOSE_GATE_RELIABLE_WAITERS_BIT;
+			} else {
+				new_state.fss_allocator |= FIREHOSE_GATE_UNRELIABLE_WAITERS_BIT;
+			}
+
+			bool already_equal = (new_state.fss_atomic_state ==
+					old_state.fss_atomic_state);
+			success = already_equal || os_atomic_cmpxchgv2o(fbs,
+					fbs_state.fss_atomic_state, old_state.fss_atomic_state,
+					new_state.fss_atomic_state, &old_state.fss_atomic_state,
+					relaxed);
+			if (success) {
+				_dispatch_trace_firehose_reserver_wait(stream, ref, waited,
+						old_state.fss_atomic_state, new_state.fss_atomic_state,
+						reliable);
+				_dispatch_firehose_gate_wait(&fbs->fbs_state.fss_gate,
+						new_state.fss_allocator,
+						DLOCK_LOCK_DATA_CONTENTION);
+				waited = true;
+
+				old_state.fss_atomic_state = os_atomic_load2o(fbs,
+						fbs_state.fss_atomic_state, relaxed);
+			}
 #endif
 			continue;
 		}
 
-		// if the thread doing the allocation is a low priority one
-		// we may starve high priority ones.
-		// so disable preemption before we become an allocator
-		// the reenabling of the preemption is in
-		// firehose_buffer_stream_chunk_install
+		// if the thread doing the allocation is of low priority we may starve
+		// threads of higher priority, so disable pre-emption before becoming
+		// the allocator (it is re-enabled in
+		// firehose_buffer_stream_chunk_install())
 		__firehose_critical_region_enter();
 #if KERNEL
 		new_state.fss_allocator = (uint32_t)cpu_number();
@@ -331,6 +368,7 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 	}
 
 	struct firehose_tracepoint_query_s ask = {
+		.stamp = stamp,
 		.pubsize = pubsize,
 		.privsize = privsize,
 		.stream = stream,
@@ -338,8 +376,15 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 #ifndef KERNEL
 		.quarantined = fb->fb_header.fbh_quarantined,
 #endif
-		.stamp = stamp,
+		.reliable = reliable,
 	};
+
+#ifndef KERNEL
+	_dispatch_trace_firehose_allocator(((uint64_t *)&ask)[0],
+			((uint64_t *)&ask)[1], old_state.fss_atomic_state,
+			new_state.fss_atomic_state);
+#endif
+
 	return firehose_buffer_tracepoint_reserve_slow(fb, &ask, privptr);
 }
 
@@ -379,7 +424,81 @@ firehose_buffer_tracepoint_flush(firehose_buffer_t fb,
 	}
 }
 
+OS_ALWAYS_INLINE
+static inline bool
+firehose_buffer_bank_try_reserve_slot(firehose_buffer_t fb, bool for_io,
+		firehose_bank_state_u *state_in_out)
+{
+	bool success;
+	firehose_buffer_bank_t fbb = &fb->fb_header.fbh_bank;
+
+	firehose_bank_state_u old_state = *state_in_out, new_state;
+	do {
+		if (unlikely(!old_state.fbs_banks[for_io])) {
+			return false;
+		}
+		new_state = old_state;
+		new_state.fbs_banks[for_io]--;
+
+		success = os_atomic_cmpxchgvw(&fbb->fbb_state.fbs_atomic_state,
+				old_state.fbs_atomic_state, new_state.fbs_atomic_state,
+				&old_state.fbs_atomic_state, acquire);
+	} while (unlikely(!success));
+
+	*state_in_out = new_state;
+	return true;
+}
+
 #ifndef KERNEL
+OS_ALWAYS_INLINE
+static inline void
+firehose_buffer_stream_signal_waiting_for_logd(firehose_buffer_t fb,
+		firehose_stream_t stream)
+{
+	firehose_stream_state_u state, new_state;
+	firehose_buffer_stream_t fbs = &fb->fb_header.fbh_stream[stream];
+
+	state.fss_atomic_state =
+			os_atomic_load2o(fbs, fbs_state.fss_atomic_state, relaxed);
+	if (!state.fss_timestamped) {
+		fbs->fbs_loss_start = mach_continuous_time();
+
+		// release to publish the timestamp
+		os_atomic_rmw_loop2o(fbs, fbs_state.fss_atomic_state,
+				state.fss_atomic_state, new_state.fss_atomic_state,
+				release, {
+			new_state = (firehose_stream_state_u){
+				.fss_allocator = (state.fss_allocator &
+						~FIREHOSE_GATE_UNRELIABLE_WAITERS_BIT),
+				.fss_loss = state.fss_loss,
+				.fss_timestamped = true,
+				.fss_waiting_for_logd = true,
+				.fss_generation = state.fss_generation,
+			};
+		});
+	} else {
+		os_atomic_rmw_loop2o(fbs, fbs_state.fss_atomic_state,
+				state.fss_atomic_state, new_state.fss_atomic_state,
+				relaxed, {
+			new_state = (firehose_stream_state_u){
+				.fss_allocator = (state.fss_allocator &
+						~FIREHOSE_GATE_UNRELIABLE_WAITERS_BIT),
+				.fss_loss = state.fss_loss,
+				.fss_timestamped = true,
+				.fss_waiting_for_logd = true,
+				.fss_generation = state.fss_generation,
+			};
+		});
+	}
+
+	_dispatch_trace_firehose_wait_for_logd(stream, fbs->fbs_loss_start,
+			state.fss_atomic_state, new_state.fss_atomic_state);
+	if (unlikely(state.fss_allocator & FIREHOSE_GATE_UNRELIABLE_WAITERS_BIT)) {
+		_dispatch_gate_broadcast_slow(&fbs->fbs_state.fss_gate,
+				state.fss_gate.dgl_lock);
+	}
+}
+
 OS_ALWAYS_INLINE
 static inline void
 firehose_buffer_clear_bank_flags(firehose_buffer_t fb, unsigned long bits)
@@ -404,6 +523,15 @@ firehose_buffer_set_bank_flags(firehose_buffer_t fb, unsigned long bits)
 	if (orig_flags != (orig_flags | bits)) {
 		firehose_buffer_update_limits(fb);
 	}
+}
+
+OS_ALWAYS_INLINE
+static inline void
+firehose_buffer_bank_relinquish_slot(firehose_buffer_t fb, bool for_io)
+{
+	firehose_buffer_bank_t fbb = &fb->fb_header.fbh_bank;
+	os_atomic_add2o(fbb, fbb_state.fbs_atomic_state, FIREHOSE_BANK_INC(for_io),
+			relaxed);
 }
 #endif // !KERNEL
 

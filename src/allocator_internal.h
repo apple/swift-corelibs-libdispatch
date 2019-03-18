@@ -28,7 +28,7 @@
 #define __DISPATCH_ALLOCATOR_INTERNAL__
 
 #ifndef DISPATCH_ALLOCATOR
-#if TARGET_OS_MAC && (defined(__LP64__) || TARGET_OS_EMBEDDED)
+#if TARGET_OS_MAC && (defined(__LP64__) || TARGET_OS_IPHONE)
 #define DISPATCH_ALLOCATOR 1
 #endif
 #endif
@@ -72,7 +72,7 @@
 #define MAGAZINES_PER_HEAP (NUM_CPU)
 
 // Do you care about compaction or performance?
-#if TARGET_OS_EMBEDDED
+#if TARGET_OS_IPHONE
 #define PACK_FIRST_PAGE_WITH_CONTINUATIONS 1
 #else
 #define PACK_FIRST_PAGE_WITH_CONTINUATIONS 0
@@ -88,7 +88,7 @@
 #define DISPATCH_ALLOCATOR_PAGE_MASK PAGE_MAX_MASK
 
 
-#if TARGET_OS_EMBEDDED
+#if TARGET_OS_IPHONE
 #define PAGES_PER_MAGAZINE 64
 #else
 #define PAGES_PER_MAGAZINE 512
@@ -281,6 +281,16 @@ struct dispatch_magazine_s {
 #define DISPATCH_ALLOCATOR_SCRIBBLE ((uintptr_t)0xAFAFAFAFAFAFAFAF)
 #endif
 
+
+kern_return_t _dispatch_allocator_enumerate(task_t remote_task,
+			const struct dispatch_allocator_layout_s *remote_allocator_layout,
+			vm_address_t zone_address, memory_reader_t reader,
+			void (^recorder)(vm_address_t, void *, size_t , bool *stop));
+
 #endif // DISPATCH_ALLOCATOR
+
+#if DISPATCH_ALLOCATOR
+extern dispatch_heap_t _dispatch_main_heap;
+#endif
 
 #endif // __DISPATCH_ALLOCATOR_INTERNAL__

@@ -41,7 +41,7 @@
 //
 // If something goes wrong here, the symptom would be a NULL dereference
 // in alloc_continuation_from_heap or _magazine when derefing the magazine ptr.
-static dispatch_heap_t _dispatch_main_heap;
+DISPATCH_GLOBAL(dispatch_heap_t _dispatch_main_heap);
 
 DISPATCH_ALWAYS_INLINE
 static void
@@ -112,11 +112,11 @@ get_cont_and_indices_for_bitmap_and_index(bitmap_t *bitmap,
 	unsigned int bindex = mindex % BITMAPS_PER_SUPERMAP;
 	unsigned int sindex = mindex / BITMAPS_PER_SUPERMAP;
 	dispatch_assert(&m->maps[sindex][bindex] == bitmap);
-	if (fastpath(continuation_out)) {
+	if (likely(continuation_out)) {
 		*continuation_out = continuation_address(m, sindex, bindex, index);
 	}
-	if (fastpath(supermap_out)) *supermap_out = supermap_address(m, sindex);
-	if (fastpath(bitmap_index_out)) *bitmap_index_out = bindex;
+	if (likely(supermap_out)) *supermap_out = supermap_address(m, sindex);
+	if (likely(bitmap_index_out)) *bitmap_index_out = bindex;
 }
 
 DISPATCH_ALWAYS_INLINE_NDEBUG DISPATCH_CONST
@@ -144,14 +144,14 @@ get_maps_and_indices_for_continuation(dispatch_continuation_t c,
 	padded_continuation *p = (padded_continuation *)c;
 	struct dispatch_magazine_s *m = magazine_for_continuation(c);
 #if PACK_FIRST_PAGE_WITH_CONTINUATIONS
-	if (fastpath(continuation_is_in_first_page(c))) {
+	if (likely(continuation_is_in_first_page(c))) {
 		cindex = (unsigned int)(p - m->fp_conts);
 		index = cindex % CONTINUATIONS_PER_BITMAP;
 		mindex = cindex / CONTINUATIONS_PER_BITMAP;
-		if (fastpath(supermap_out)) *supermap_out = NULL;
-		if (fastpath(bitmap_index_out)) *bitmap_index_out = mindex;
-		if (fastpath(bitmap_out)) *bitmap_out = &m->fp_maps[mindex];
-		if (fastpath(index_out)) *index_out = index;
+		if (likely(supermap_out)) *supermap_out = NULL;
+		if (likely(bitmap_index_out)) *bitmap_index_out = mindex;
+		if (likely(bitmap_out)) *bitmap_out = &m->fp_maps[mindex];
+		if (likely(index_out)) *index_out = index;
 		return;
 	}
 #endif // PACK_FIRST_PAGE_WITH_CONTINUATIONS
@@ -159,10 +159,10 @@ get_maps_and_indices_for_continuation(dispatch_continuation_t c,
 	sindex = cindex / (BITMAPS_PER_SUPERMAP * CONTINUATIONS_PER_BITMAP);
 	mindex = (cindex / CONTINUATIONS_PER_BITMAP) % BITMAPS_PER_SUPERMAP;
 	index = cindex % CONTINUATIONS_PER_BITMAP;
-	if (fastpath(supermap_out)) *supermap_out = &m->supermaps[sindex];
-	if (fastpath(bitmap_index_out)) *bitmap_index_out = mindex;
-	if (fastpath(bitmap_out)) *bitmap_out = &m->maps[sindex][mindex];
-	if (fastpath(index_out)) *index_out = index;
+	if (likely(supermap_out)) *supermap_out = &m->supermaps[sindex];
+	if (likely(bitmap_index_out)) *bitmap_index_out = mindex;
+	if (likely(bitmap_out)) *bitmap_out = &m->maps[sindex][mindex];
+	if (likely(index_out)) *index_out = index;
 }
 
 // Base address of page, or NULL if this page shouldn't be madvise()d
@@ -170,17 +170,17 @@ DISPATCH_ALWAYS_INLINE_NDEBUG DISPATCH_CONST
 static void *
 madvisable_page_base_for_continuation(dispatch_continuation_t c)
 {
-	if (fastpath(continuation_is_in_first_page(c))) {
+	if (likely(continuation_is_in_first_page(c))) {
 		return NULL;
 	}
 	void *page_base = (void *)((uintptr_t)c &
 			~(uintptr_t)DISPATCH_ALLOCATOR_PAGE_MASK);
 #if DISPATCH_DEBUG
 	struct dispatch_magazine_s *m = magazine_for_continuation(c);
-	if (slowpath(page_base < (void *)&m->conts)) {
+	if (unlikely(page_base < (void *)&m->conts)) {
 		DISPATCH_INTERNAL_CRASH(page_base, "madvisable continuation too low");
 	}
-	if (slowpath(page_base > (void *)&m->conts[SUPERMAPS_PER_MAGAZINE-1]
+	if (unlikely(page_base > (void *)&m->conts[SUPERMAPS_PER_MAGAZINE-1]
 			[BITMAPS_PER_SUPERMAP-1][CONTINUATIONS_PER_BITMAP-1])) {
 		DISPATCH_INTERNAL_CRASH(page_base, "madvisable continuation too high");
 	}
@@ -254,7 +254,7 @@ bitmap_clear_bit(volatile bitmap_t *bitmap, unsigned int index,
 	bitmap_t b;
 
 	if (exclusively == CLEAR_EXCLUSIVELY) {
-		if (slowpath((*bitmap & mask) == 0)) {
+		if (unlikely((*bitmap & mask) == 0)) {
 			DISPATCH_CLIENT_CRASH(*bitmap,
 					"Corruption: failed to clear bit exclusively");
 		}
@@ -299,12 +299,12 @@ alloc_continuation_from_first_page(struct dispatch_magazine_s *magazine)
 	// TODO: unroll if this is hot?
 	for (i = 0; i < FULL_BITMAPS_IN_FIRST_PAGE; i++) {
 		index = bitmap_set_first_unset_bit(&magazine->fp_maps[i]);
-		if (fastpath(index != NO_BITS_WERE_UNSET)) goto found;
+		if (likely(index != NO_BITS_WERE_UNSET)) goto found;
 	}
 	if (REMAINDERED_CONTINUATIONS_IN_FIRST_PAGE) {
 		index = bitmap_set_first_unset_bit_upto_index(&magazine->fp_maps[i],
 				REMAINDERED_CONTINUATIONS_IN_FIRST_PAGE - 1);
-		if (fastpath(index != NO_BITS_WERE_UNSET)) goto found;
+		if (likely(index != NO_BITS_WERE_UNSET)) goto found;
 	}
 	return NULL;
 
@@ -348,7 +348,7 @@ _dispatch_alloc_try_create_heap(dispatch_heap_t *heap_ptr)
 	mach_vm_size_t vm_size = MAGAZINES_PER_HEAP * BYTES_PER_MAGAZINE;
 	mach_vm_offset_t vm_mask = ~MAGAZINE_MASK;
 	mach_vm_address_t vm_addr = vm_page_size;
-	while (slowpath(kr = mach_vm_map(mach_task_self(), &vm_addr, vm_size,
+	while (unlikely(kr = mach_vm_map(mach_task_self(), &vm_addr, vm_size,
 			vm_mask, VM_FLAGS_ANYWHERE | VM_MAKE_TAG(VM_MEMORY_LIBDISPATCH),
 			MEMORY_OBJECT_NULL, 0, FALSE, VM_PROT_DEFAULT, VM_PROT_ALL,
 			VM_INHERIT_DEFAULT))) {
@@ -443,7 +443,7 @@ _dispatch_alloc_continuation_from_heap(dispatch_heap_t heap)
 #if PACK_FIRST_PAGE_WITH_CONTINUATIONS
 	// First try the continuations in the first page for this CPU
 	cont = alloc_continuation_from_first_page(&(heap[cpu_number]));
-	if (fastpath(cont)) {
+	if (likely(cont)) {
 		return cont;
 	}
 #endif
@@ -460,11 +460,11 @@ _dispatch_alloc_continuation_from_heap_slow(void)
 	dispatch_continuation_t cont;
 
 	for (;;) {
-		if (!fastpath(*heap)) {
+		if (unlikely(!*heap)) {
 			_dispatch_alloc_try_create_heap(heap);
 		}
 		cont = _dispatch_alloc_continuation_from_heap(*heap);
-		if (fastpath(cont)) {
+		if (likely(cont)) {
 			return cont;
 		}
 		// If we have tuned our parameters right, 99.999% of apps should
@@ -489,16 +489,16 @@ _dispatch_alloc_continuation_alloc(void)
 {
 	dispatch_continuation_t cont;
 
-	if (fastpath(_dispatch_main_heap)) {
+	if (likely(_dispatch_main_heap)) {
 		// Start looking in the same page where we found a continuation
 		// last time.
 		bitmap_t *last = last_found_page();
-		if (fastpath(last)) {
+		if (likely(last)) {
 			unsigned int i;
 			for (i = 0; i < BITMAPS_PER_PAGE; i++) {
 				bitmap_t *cur = last + i;
 				unsigned int index = bitmap_set_first_unset_bit(cur);
-				if (fastpath(index != NO_BITS_WERE_UNSET)) {
+				if (likely(index != NO_BITS_WERE_UNSET)) {
 					bitmap_t *supermap;
 					unsigned int bindex;
 					get_cont_and_indices_for_bitmap_and_index(cur,
@@ -511,7 +511,7 @@ _dispatch_alloc_continuation_alloc(void)
 		}
 
 		cont = _dispatch_alloc_continuation_from_heap(_dispatch_main_heap);
-		if (fastpath(cont)) {
+		if (likely(cont)) {
 			return cont;
 		}
 	}
@@ -579,14 +579,15 @@ _dispatch_alloc_continuation_free(dispatch_continuation_t c)
 	bitmap_t *b, *s;
 	unsigned int b_idx, idx;
 
+	c->dc_flags = 0;
 	get_maps_and_indices_for_continuation(c, &s, &b_idx, &b, &idx);
 	bool bitmap_now_empty = bitmap_clear_bit(b, idx, CLEAR_EXCLUSIVELY);
-	if (slowpath(s)) {
+	if (unlikely(s)) {
 		(void)bitmap_clear_bit(s, b_idx, CLEAR_NONEXCLUSIVELY);
 	}
 	// We only try to madvise(2) pages outside of the first page.
 	// (Allocations in the first page do not have a supermap entry.)
-	if (slowpath(bitmap_now_empty) && slowpath(s)) {
+	if (unlikely(bitmap_now_empty && s)) {
 		return _dispatch_alloc_maybe_madvise_page(c);
 	}
 }
@@ -594,60 +595,90 @@ _dispatch_alloc_continuation_free(dispatch_continuation_t c)
 #pragma mark -
 #pragma mark dispatch_alloc_init
 
-#if DISPATCH_DEBUG
+#if DISPATCH_CONTINUATION_MALLOC || DISPATCH_DEBUG
 static void
 _dispatch_alloc_init(void)
 {
 	// Double-check our math. These are all compile time checks and don't
 	// generate code.
 
-	dispatch_assert(sizeof(bitmap_t) == BYTES_PER_BITMAP);
-	dispatch_assert(sizeof(bitmap_t) == BYTES_PER_SUPERMAP);
-	dispatch_assert(sizeof(struct dispatch_magazine_header_s) ==
+	dispatch_static_assert(sizeof(bitmap_t) == BYTES_PER_BITMAP);
+	dispatch_static_assert(sizeof(bitmap_t) == BYTES_PER_SUPERMAP);
+	dispatch_static_assert(sizeof(struct dispatch_magazine_header_s) ==
 			SIZEOF_HEADER);
 
-	dispatch_assert(sizeof(struct dispatch_continuation_s) <=
+	dispatch_static_assert(sizeof(struct dispatch_continuation_s) <=
 			DISPATCH_CONTINUATION_SIZE);
 
 	// Magazines should be the right size, so they pack neatly into an array of
 	// heaps.
-	dispatch_assert(sizeof(struct dispatch_magazine_s) == BYTES_PER_MAGAZINE);
+	dispatch_static_assert(sizeof(struct dispatch_magazine_s) ==
+			BYTES_PER_MAGAZINE);
 
 	// The header and maps sizes should match what we computed.
-	dispatch_assert(SIZEOF_HEADER ==
+	dispatch_static_assert(SIZEOF_HEADER ==
 			sizeof(((struct dispatch_magazine_s *)0x0)->header));
-	dispatch_assert(SIZEOF_MAPS ==
+	dispatch_static_assert(SIZEOF_MAPS ==
 			sizeof(((struct dispatch_magazine_s *)0x0)->maps));
 
 	// The main array of continuations should start at the second page,
 	// self-aligned.
-	dispatch_assert(offsetof(struct dispatch_magazine_s, conts) %
+	dispatch_static_assert(offsetof(struct dispatch_magazine_s, conts) %
 			(CONTINUATIONS_PER_BITMAP * DISPATCH_CONTINUATION_SIZE) == 0);
-	dispatch_assert(offsetof(struct dispatch_magazine_s, conts) ==
+	dispatch_static_assert(offsetof(struct dispatch_magazine_s, conts) ==
 			DISPATCH_ALLOCATOR_PAGE_SIZE);
 
 #if PACK_FIRST_PAGE_WITH_CONTINUATIONS
 	// The continuations in the first page should actually fit within the first
 	// page.
-	dispatch_assert(offsetof(struct dispatch_magazine_s, fp_conts) <
+	dispatch_static_assert(offsetof(struct dispatch_magazine_s, fp_conts) <
 			DISPATCH_ALLOCATOR_PAGE_SIZE);
-	dispatch_assert(offsetof(struct dispatch_magazine_s, fp_conts) %
+	dispatch_static_assert(offsetof(struct dispatch_magazine_s, fp_conts) %
 			DISPATCH_CONTINUATION_SIZE == 0);
-	dispatch_assert(offsetof(struct dispatch_magazine_s, fp_conts) +
+	dispatch_static_assert(offsetof(struct dispatch_magazine_s, fp_conts) +
 			sizeof(((struct dispatch_magazine_s *)0x0)->fp_conts) ==
-					DISPATCH_ALLOCATOR_PAGE_SIZE);
+			DISPATCH_ALLOCATOR_PAGE_SIZE);
 #endif // PACK_FIRST_PAGE_WITH_CONTINUATIONS
 	// Make sure our alignment will be correct: that is, that we are correctly
 	// aligning to both.
-	dispatch_assert(ROUND_UP_TO_BITMAP_ALIGNMENT(ROUND_UP_TO_BITMAP_ALIGNMENT_AND_CONTINUATION_SIZE(1)) ==
+	dispatch_static_assert(ROUND_UP_TO_BITMAP_ALIGNMENT(ROUND_UP_TO_BITMAP_ALIGNMENT_AND_CONTINUATION_SIZE(1)) ==
 			ROUND_UP_TO_BITMAP_ALIGNMENT_AND_CONTINUATION_SIZE(1));
-	dispatch_assert(ROUND_UP_TO_CONTINUATION_SIZE(ROUND_UP_TO_BITMAP_ALIGNMENT_AND_CONTINUATION_SIZE(1)) ==
+	dispatch_static_assert(ROUND_UP_TO_CONTINUATION_SIZE(ROUND_UP_TO_BITMAP_ALIGNMENT_AND_CONTINUATION_SIZE(1)) ==
 			ROUND_UP_TO_BITMAP_ALIGNMENT_AND_CONTINUATION_SIZE(1));
 }
-#elif (DISPATCH_ALLOCATOR && DISPATCH_CONTINUATION_MALLOC) \
-		|| (DISPATCH_CONTINUATION_MALLOC && DISPATCH_USE_MALLOCZONE)
-static inline void _dispatch_alloc_init(void) {}
-#endif
+#endif // DISPATCH_CONTINUATION_MALLOC || DISPATCH_DEBUG
+
+kern_return_t
+_dispatch_allocator_enumerate(task_t remote_task,
+		const struct dispatch_allocator_layout_s *remote_dal,
+		vm_address_t zone_address, memory_reader_t reader,
+		void (^recorder)(vm_address_t, void *, size_t, bool *stop))
+{
+	const size_t heap_size = remote_dal->dal_magazine_size;
+	const size_t dc_size = remote_dal->dal_allocation_size;
+	const size_t dc_flags_offset = remote_dal->dal_allocation_isa_offset;
+	bool stop = false;
+	void *heap;
+
+	while (zone_address) {
+		// FIXME: improve this by not faulting everything and driving it through
+		//        the bitmap.
+		kern_return_t kr = reader(remote_task, zone_address, heap_size, &heap);
+		size_t offs = remote_dal->dal_first_allocation_offset;
+		if (kr) return kr;
+		while (offs < heap_size) {
+			void *isa = *(void **)(heap + offs + dc_flags_offset);
+			if (isa && isa != remote_dal->dal_deferred_free_isa) {
+				recorder(zone_address + offs, heap + offs, dc_size, &stop);
+				if (stop) return KERN_SUCCESS;
+			}
+			offs += dc_size;
+		}
+		zone_address = (vm_address_t)((dispatch_heap_t)heap)->header.dh_next;
+	}
+
+	return KERN_SUCCESS;
+}
 
 #endif // DISPATCH_ALLOCATOR
 
@@ -677,8 +708,8 @@ static dispatch_continuation_t
 _dispatch_malloc_continuation_alloc(void)
 {
 	dispatch_continuation_t dc;
-	while (!(dc = fastpath(calloc(1,
-			ROUND_UP_TO_CACHELINE_SIZE(sizeof(*dc)))))) {
+	size_t alloc_size = ROUND_UP_TO_CACHELINE_SIZE(sizeof(*dc));
+	while (unlikely(!(dc = calloc(1, alloc_size)))) {
 		_dispatch_temporary_resource_shortage();
 	}
 	return dc;
@@ -696,12 +727,10 @@ _dispatch_malloc_continuation_free(dispatch_continuation_t c)
 
 #if DISPATCH_ALLOCATOR
 #if DISPATCH_CONTINUATION_MALLOC
-#if DISPATCH_USE_NANOZONE
-extern boolean_t malloc_engaged_nano(void);
-#else
+#if !DISPATCH_USE_NANOZONE
 #define malloc_engaged_nano() false
-#endif // DISPATCH_USE_NANOZONE
-static int _dispatch_use_dispatch_alloc;
+#endif // !DISPATCH_USE_NANOZONE
+DISPATCH_STATIC_GLOBAL(bool _dispatch_use_dispatch_alloc);
 #else
 #define _dispatch_use_dispatch_alloc 1
 #endif // DISPATCH_CONTINUATION_MALLOC
@@ -709,6 +738,9 @@ static int _dispatch_use_dispatch_alloc;
 
 #if (DISPATCH_ALLOCATOR && (DISPATCH_CONTINUATION_MALLOC || DISPATCH_DEBUG)) \
 		|| (DISPATCH_CONTINUATION_MALLOC && DISPATCH_USE_MALLOCZONE)
+
+DISPATCH_STATIC_GLOBAL(dispatch_once_t _dispatch_continuation_alloc_init_pred);
+
 static void
 _dispatch_continuation_alloc_init(void *ctxt DISPATCH_UNUSED)
 {
@@ -729,11 +761,11 @@ _dispatch_continuation_alloc_init(void *ctxt DISPATCH_UNUSED)
 #endif // DISPATCH_ALLOCATOR
 }
 
-static void
-_dispatch_continuation_alloc_once()
+static inline void
+_dispatch_continuation_alloc_once(void)
 {
-	static dispatch_once_t pred;
-	dispatch_once_f(&pred, NULL, _dispatch_continuation_alloc_init);
+	dispatch_once_f(&_dispatch_continuation_alloc_init_pred,
+			NULL, _dispatch_continuation_alloc_init);
 }
 #else
 static inline void _dispatch_continuation_alloc_once(void) {}

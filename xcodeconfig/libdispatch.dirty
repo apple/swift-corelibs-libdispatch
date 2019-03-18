@@ -90,3 +90,64 @@ _OBJC_METACLASS_$_OS_voucher
 #_OBJC_METACLASS_$_OS_voucher_recipe
 _OBJC_METACLASS_$_OS_dispatch_data
 _OBJC_METACLASS_$_OS_dispatch_data_empty
+
+# Other dirty symbols
+# large structs / hashes
+__dispatch_main_q
+__dispatch_mgr_q
+__dispatch_mgr_sched
+__dispatch_root_queues
+__dispatch_sources
+__dispatch_timers_heap
+__dispatch_trace_next_timer
+__voucher_hash
+
+# 64 bits
+__dispatch_narrow_check_interval_cache
+__dispatch_narrowing_deadlines
+__voucher_aid_next
+__voucher_unique_pid
+
+# pointer sized
+__dispatch_begin_NSAutoReleasePool
+__dispatch_continuation_alloc_init_pred
+__dispatch_end_NSAutoReleasePool
+__dispatch_is_daemon_pred
+__dispatch_kq_poll_pred
+__dispatch_logv_pred
+__dispatch_mach_calendar_pred
+__dispatch_mach_host_port_pred
+__dispatch_mach_notify_port_pred
+__dispatch_mach_xpc_hooks
+__dispatch_main_heap
+__dispatch_main_q_handle_pred
+__dispatch_mgr_sched_pred
+__dispatch_queue_serial_numbers
+__dispatch_root_queues_pred
+__dispatch_source_timer_telemetry_pred
+__firehose_task_buffer
+__firehose_task_buffer_pred
+__voucher_activity_debug_channel
+__voucher_libtrace_hooks
+__voucher_task_mach_voucher_pred
+
+# 32bits
+__dispatch_mach_host_port
+__dispatch_mach_notify_port
+__voucher_default_task_mach_voucher
+__voucher_hash_lock
+__voucher_task_mach_voucher
+
+# byte-sized
+__dispatch_is_daemon
+__dispatch_memory_warn
+__dispatch_mode
+__dispatch_program_is_probably_callback_driven
+__dispatch_unsafe_fork
+__dispatch_use_dispatch_alloc
+
+__dispatch_io_devs
+__dispatch_io_fds
+__dispatch_io_devs_lockq
+__dispatch_io_fds_lockq
+__dispatch_io_init_pred

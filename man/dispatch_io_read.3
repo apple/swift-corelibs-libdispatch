@@ -20,7 +20,7 @@
 .Fo dispatch_io_write
 .Fa "dispatch_io_t channel"
 .Fa "off_t offset"
-.Fa "dispatch_data_t dispatch"
+.Fa "dispatch_data_t data"
 .Fa "dispatch_queue_t queue"
 .Fa "void (^handler)(bool done, dispatch_data_t data, int error)"
 .Fc
@@ -132,7 +132,7 @@ flag set, the associated I/O operation is complete and that handler block will
 not be run again. If an unrecoverable error occurs while performing the I/O
 operation, the handler block will be submitted with the
 .Va done
-flag set and the appriate POSIX error code in the
+flag set and the appropriate POSIX error code in the
 .Va error
 parameter. An invocation of a handler block with the
 .Va done
