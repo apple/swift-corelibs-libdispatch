@@ -77,6 +77,8 @@ if(NOT ENABLE_SWIFT)
   set(INSTALL_OS_HEADERS_DIR "include/os" CACHE PATH "Path where the headers will be installed")
 endif()
 
+option(DISPATCH_ENABLE_ASSERTS "enable debug assertions" FALSE)
+
 option(ENABLE_DTRACE "enable dtrace support" "")
 
 option(ENABLE_TESTING "build libdispatch tests" ON)
