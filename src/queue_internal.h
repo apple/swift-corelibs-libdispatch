@@ -964,7 +964,7 @@ dispatch_queue_attr_info_t _dispatch_queue_attr_to_info(dispatch_queue_attr_t);
 // If dc_flags is less than 0x1000, then the object is a continuation.
 // Otherwise, the object has a private layout and memory management rules. The
 // layout until after 'do_next' must align with normal objects.
-#if __LP64__
+#if DISPATCH_SIZEOF_PTR == 8
 #define DISPATCH_CONTINUATION_HEADER(x) \
 	union { \
 		const void *do_vtable; \

@@ -1326,7 +1326,7 @@ _dispatch_queue_drain_try_lock_wlh(dispatch_queue_t dq, uint64_t *dq_state)
 	if (unlikely(!_dq_state_is_base_wlh(old_state) ||
 			!_dq_state_is_enqueued_on_target(old_state) ||
 			_dq_state_is_enqueued_on_manager(old_state))) {
-#if !__LP64__
+#if DISPATCH_SIZEOF_PTR == 4
 		old_state >>= 32;
 #endif
 		DISPATCH_INTERNAL_CRASH(old_state, "Invalid wlh state");

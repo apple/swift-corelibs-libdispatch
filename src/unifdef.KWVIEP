@@ -2574,6 +2574,19 @@ _dispatch_queue_compute_priority_and_wlh(dispatch_queue_t dq,
 
 DISPATCH_ALWAYS_INLINE
 static void
+_dispatch_queue_setter_assert_inactive(dispatch_queue_class_t dq)
+{
+	uint64_t dq_state = os_atomic_load2o(dq._dq, dq_state, relaxed);
+	if (likely(dq_state & DISPATCH_QUEUE_INACTIVE)) return;
+#if DISPATCH_SIZEOF_PTR == 4
+	dq_state >>= 32;
+#endif
+	DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
+			"dispatch queue/source property setter called after activation");
+}
+
+DISPATCH_ALWAYS_INLINE
+static void
 _dispatch_workloop_attributes_alloc_if_needed(dispatch_workloop_t dwl)
 {
 	if (unlikely(!dwl->dwl_attr)) {
@@ -4182,7 +4195,7 @@ _dispatch_workloop_dispose(dispatch_workloop_t dwl, bool *allow_free)
 			DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
 					"Release of a locked workloop");
 		}
-#ifndef __LP64__
+#if DISPATCH_SIZEOF_PTR == 4
 		dq_state >>= 32;
 #endif
 		DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
@@ -4582,7 +4595,7 @@ _dispatch_workloop_wakeup(dispatch_workloop_t dwl, dispatch_qos_t qos,
 	});
 
 	if (unlikely(_dq_state_is_suspended(old_state))) {
-#ifndef __LP64__
+#if DISPATCH_SIZEOF_PTR == 4
 		old_state >>= 32;
 #endif
 		DISPATCH_CLIENT_CRASH(old_state, "Waking up an inactive workloop");
