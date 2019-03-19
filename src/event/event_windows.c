@@ -104,7 +104,7 @@ _dispatch_timer_callback(PTP_CALLBACK_INSTANCE Instance, PVOID Context,
 void
 _dispatch_event_loop_timer_arm(uint32_t tidx,
 		dispatch_timer_delay_s range,
-		dispatch_clock_now_cache_t nows DISPATCH_UNUSED)
+		dispatch_clock_now_cache_t nows)
 {
 	dispatch_windows_timeout_t timer;
 	FILETIME ftDueTime;
@@ -113,9 +113,9 @@ _dispatch_event_loop_timer_arm(uint32_t tidx,
 	switch (DISPATCH_TIMER_CLOCK(tidx)) {
 	case DISPATCH_CLOCK_WALL:
 		timer = &_dispatch_windows_timeout[DISPATCH_CLOCK_WALL];
-
-		WIN_PORT_ERROR();
-		__assume(0);
+		liTime.QuadPart = range.delay +
+			_dispatch_time_now_cached(DISPATCH_TIMER_CLOCK(tidx), nows);
+		break;
 
 	case DISPATCH_CLOCK_UPTIME:
 	case DISPATCH_CLOCK_MONOTONIC:
@@ -149,9 +149,7 @@ _dispatch_event_loop_timer_delete(uint32_t tidx)
 	switch (DISPATCH_TIMER_CLOCK(tidx)) {
 	case DISPATCH_CLOCK_WALL:
 		timer = &_dispatch_windows_timeout[DISPATCH_CLOCK_WALL];
-
-		WIN_PORT_ERROR();
-		__assume(0);
+		break;
 
 	case DISPATCH_CLOCK_UPTIME:
 	case DISPATCH_CLOCK_MONOTONIC:
