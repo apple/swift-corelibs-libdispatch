@@ -260,8 +260,7 @@ _pop_timer_resolution(DWORD ms)
 	if (ms) timeEndPeriod(ms);
 }
 
-void
-_dispatch_sema4_create_slow(_dispatch_sema4_t *s4, int policy DISPATCH_UNUSED)
+void _dispatch_sema4_init(_dispatch_sema4_t *sema, int policy DISPATCH_UNUSED)
 {
 	HANDLE tmp;
 
@@ -271,7 +270,7 @@ _dispatch_sema4_create_slow(_dispatch_sema4_t *s4, int policy DISPATCH_UNUSED)
 		_dispatch_temporary_resource_shortage();
 	}
 
-	if (!os_atomic_cmpxchg(s4, 0, tmp, relaxed)) {
+	if (!os_atomic_cmpxchg(sema, 0, tmp, relaxed)) {
 		CloseHandle(tmp);
 	}
 }
