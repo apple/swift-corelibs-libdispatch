@@ -41,7 +41,7 @@ _dispatch_benchmark_init(void *context)
 	register size_t cnt = bdata->count;
 	size_t i = 0;
 	uint64_t start, delta;
-#if DISPATCH_SIZEOF_PTR == 8
+#if DISPATCH_SIZEOF_PTR == 8 && !defined(_WIN32)
 	__uint128_t lcost;
 #else
 	long double lcost;
@@ -93,7 +93,7 @@ dispatch_benchmark_f(size_t count, register void *ctxt,
 	};
 	static dispatch_once_t pred;
 	uint64_t ns, start, delta;
-#if DISPATCH_SIZEOF_PTR == 8
+#if DISPATCH_SIZEOF_PTR == 8 && !defined(_WIN32)
 	__uint128_t conversion, big_denom;
 #else
 	long double conversion, big_denom;
