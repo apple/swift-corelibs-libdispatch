@@ -2536,7 +2536,7 @@ _dispatch_queue_setter_assert_inactive(dispatch_queue_class_t dq)
 {
 	uint64_t dq_state = os_atomic_load2o(dq._dq, dq_state, relaxed);
 	if (likely(dq_state & DISPATCH_QUEUE_INACTIVE)) return;
-#ifndef __LP64__
+#if DISPATCH_SIZEOF_PTR == 4
 	dq_state >>= 32;
 #endif
 	DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
@@ -2851,7 +2851,7 @@ _dispatch_lane_class_dispose(dispatch_lane_class_t dqu, bool *allow_free)
 			DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
 					"Release of a locked queue");
 		}
-#ifndef __LP64__
+#if DISPATCH_SIZEOF_PTR == 4
 		dq_state >>= 32;
 #endif
 		DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
@@ -4114,7 +4114,7 @@ _dispatch_workloop_dispose(dispatch_workloop_t dwl, bool *allow_free)
 			DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
 					"Release of a locked workloop");
 		}
-#ifndef __LP64__
+#if DISPATCH_SIZEOF_PTR == 4
 		dq_state >>= 32;
 #endif
 		DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
@@ -4505,7 +4505,7 @@ _dispatch_workloop_wakeup(dispatch_workloop_t dwl, dispatch_qos_t qos,
 	});
 
 	if (unlikely(_dq_state_is_suspended(old_state))) {
-#ifndef __LP64__
+#if DISPATCH_SIZEOF_PTR == 4
 		old_state >>= 32;
 #endif
 		DISPATCH_CLIENT_CRASH(old_state, "Waking up an inactive workloop");
