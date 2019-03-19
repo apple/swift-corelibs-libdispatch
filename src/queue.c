@@ -4055,6 +4055,7 @@ static const struct dispatch_queue_global_s _dispatch_custom_workloop_root_queue
 static void
 _dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
 {
+#if defined(_POSIX_THREADS)
 	dispatch_workloop_attr_t dwla = dwl->dwl_attr;
 	pthread_attr_t attr;
 
@@ -4082,7 +4083,7 @@ _dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
 				(unsigned long)dwla->dwla_cpupercent.refillms);
 	}
 #endif // HAVE_PTHREAD_ATTR_SETCPUPERCENT_NP
- #if TARGET_OS_MAC
+#if TARGET_OS_MAC
 	if (_dispatch_workloop_has_kernel_attributes(dwl)) {
 		int rv = _pthread_workloop_create((uint64_t)dwl, 0, &attr);
 		switch (rv) {
@@ -4099,6 +4100,7 @@ _dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
 	}
 #endif // TARGET_OS_MAC
 	pthread_attr_destroy(&attr);
+#endif // defined(_POSIX_THREADS)
 }
 
 void
@@ -5679,7 +5681,9 @@ static void
 _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 {
 	int remaining = n;
+#if !defined(_WIN32)
 	int r = ENOSYS;
+#endif
 
 	_dispatch_root_queues_init();
 	_dispatch_debug_root_queue(dq, __func__);
@@ -5777,9 +5781,11 @@ _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 			}
 			_dispatch_temporary_resource_shortage();
 		}
+#if DISPATCH_USE_PTHREAD_ROOT_QUEUES
 		if (_dispatch_mgr_sched.prio > _dispatch_mgr_sched.default_prio) {
 			(void)dispatch_assume_zero(SetThreadPriority((HANDLE)hThread, _dispatch_mgr_sched.prio) == TRUE);
 		}
+#endif
 		CloseHandle((HANDLE)hThread);
 	} while (--remaining);
 #endif // defined(_WIN32)
@@ -7010,7 +7016,9 @@ _dispatch_sig_thread(void *ctxt DISPATCH_UNUSED)
 {
 	// never returns, so burn bridges behind us
 	_dispatch_clear_stack(0);
-#if !defined(_WIN32)
+#if defined(_WIN32)
+	Sleep(INFINITE);
+#else
 	_dispatch_sigsuspend();
 #endif
 }

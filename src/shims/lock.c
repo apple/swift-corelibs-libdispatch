@@ -508,7 +508,7 @@ _dispatch_wait_on_address(uint32_t volatile *_address, uint32_t value,
 	}
 	return _dispatch_futex_wait(address, value, NULL, FUTEX_PRIVATE_FLAG);
 #elif defined(_WIN32)
-	WaitOnAddress(address, &value, sizeof(value), INFINITE);
+	return WaitOnAddress(address, &value, sizeof(value), INFINITE) == TRUE;
 #else
 #error _dispatch_wait_on_address unimplemented for this platform
 #endif
@@ -651,7 +651,9 @@ _dispatch_once_wait(dispatch_once_gate_t dgo)
 {
 	dispatch_lock self = _dispatch_lock_value_for_self();
 	uintptr_t old_v, new_v;
+#if HAVE_UL_UNFAIR_LOCK || HAVE_FUTEX
 	dispatch_lock *lock = &dgo->dgo_gate.dgl_lock;
+#endif
 	uint32_t timeout = 1;
 
 	for (;;) {
@@ -680,7 +682,7 @@ _dispatch_once_wait(dispatch_once_gate_t dgo)
 		_dispatch_futex_wait(lock, (dispatch_lock)new_v, NULL,
 				FUTEX_PRIVATE_FLAG);
 #else
-		_dispatch_thread_switch(new_v, flags, timeout++);
+		_dispatch_thread_switch(new_v, 0, timeout++);
 #endif
 		(void)timeout;
 	}
