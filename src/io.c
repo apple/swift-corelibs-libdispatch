@@ -1394,11 +1394,11 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 			int result = ioctlsocket((SOCKET)fd, (long)FIONBIO, &value);
 			(void)dispatch_assume_zero(result);
 			_dispatch_stream_init(fd_entry,
-				_dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false));
+				_dispatch_get_default_queue(false));
 		} else {
 			dispatch_suspend(fd_entry->barrier_queue);
-			dispatch_once_f(&_dispatch_io_devs_lockq_pred, NULL,
-					_dispatch_io_devs_lockq_init);
+			dispatch_once_f(&_dispatch_io_init_pred, NULL,
+					_dispatch_io_queues_init);
 			dispatch_async(_dispatch_io_devs_lockq, ^{
 				_dispatch_disk_init(fd_entry, 0);
 				dispatch_resume(fd_entry->barrier_queue);

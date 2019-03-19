@@ -3574,6 +3574,7 @@ _dispatch_queue_drain_should_narrow_slow(uint64_t now,
 	}
 #endif // TARGET_OS_MAC
 	pthread_attr_destroy(&attr);
+#endif // defined(_POSIX_THREADS)
 }
 
 void
@@ -5569,7 +5570,9 @@ static void
 _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 {
 	int remaining = n;
+#if !defined(_WIN32)
 	int r = ENOSYS;
+#endif
 
 	_dispatch_root_queues_init();
 	_dispatch_debug_root_queue(dq, __func__);
@@ -5667,9 +5670,11 @@ _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 			}
 			_dispatch_temporary_resource_shortage();
 		}
+#if DISPATCH_USE_PTHREAD_ROOT_QUEUES
 		if (_dispatch_mgr_sched.prio > _dispatch_mgr_sched.default_prio) {
 			(void)dispatch_assume_zero(SetThreadPriority((HANDLE)hThread, _dispatch_mgr_sched.prio) == TRUE);
 		}
+#endif
 		CloseHandle((HANDLE)hThread);
 	} while (--remaining);
 #endif // defined(_WIN32)
@@ -6904,7 +6909,7 @@ _dispatch_sig_thread(void *ctxt DISPATCH_UNUSED)
 	// never returns, so burn bridges behind us
 	_dispatch_clear_stack(0);
 #if defined(_WIN32)
-	for (;;) SuspendThread(GetCurrentThread());
+	Sleep(INFINITE);
 #else
 	_dispatch_sigsuspend();
 #endif

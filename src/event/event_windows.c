@@ -32,23 +32,20 @@ enum _dispatch_windows_port {
 #pragma mark dispatch_unote_t
 
 bool
-_dispatch_unote_register(dispatch_unote_t du DISPATCH_UNUSED,
-		dispatch_wlh_t wlh DISPATCH_UNUSED,
-		dispatch_priority_t pri DISPATCH_UNUSED)
+_dispatch_unote_register_muxed(dispatch_unote_t du DISPATCH_UNUSED)
 {
 	WIN_PORT_ERROR();
 	return false;
 }
 
 void
-_dispatch_unote_resume(dispatch_unote_t du DISPATCH_UNUSED)
+_dispatch_unote_resume_muxed(dispatch_unote_t du DISPATCH_UNUSED)
 {
 	WIN_PORT_ERROR();
 }
 
 bool
-_dispatch_unote_unregister(dispatch_unote_t du DISPATCH_UNUSED,
-		uint32_t flags DISPATCH_UNUSED)
+_dispatch_unote_unregister_muxed(dispatch_unote_t du DISPATCH_UNUSED)
 {
 	WIN_PORT_ERROR();
 	return false;
@@ -102,8 +99,8 @@ _dispatch_timer_callback(PTP_CALLBACK_INSTANCE Instance, PVOID Context,
 }
 
 void
-_dispatch_event_loop_timer_arm(uint32_t tidx,
-		dispatch_timer_delay_s range,
+_dispatch_event_loop_timer_arm(dispatch_timer_heap_t dth DISPATCH_UNUSED,
+		uint32_t tidx, dispatch_timer_delay_s range,
 		dispatch_clock_now_cache_t nows)
 {
 	dispatch_windows_timeout_t timer;
@@ -142,7 +139,8 @@ _dispatch_event_loop_timer_arm(uint32_t tidx,
 }
 
 void
-_dispatch_event_loop_timer_delete(uint32_t tidx)
+_dispatch_event_loop_timer_delete(dispatch_timer_heap_t dth DISPATCH_UNUSED,
+		uint32_t tidx)
 {
 	dispatch_windows_timeout_t timer;
 
@@ -239,6 +237,12 @@ _dispatch_event_loop_drain(uint32_t flags)
 }
 
 void
+_dispatch_event_loop_cancel_waiter(dispatch_sync_context_t dsc DISPATCH_UNUSED)
+{
+	WIN_PORT_ERROR();
+}
+
+void
 _dispatch_event_loop_wake_owner(dispatch_sync_context_t dsc,
 		dispatch_wlh_t wlh, uint64_t old_state, uint64_t new_state)
 {
@@ -269,9 +273,9 @@ _dispatch_event_loop_assert_not_owned(dispatch_wlh_t wlh)
 #endif
 
 void
-_dispatch_event_loop_leave_immediate(dispatch_wlh_t wlh, uint64_t dq_state)
+_dispatch_event_loop_leave_immediate(uint64_t dq_state)
 {
-	(void)wlh; (void)dq_state;
+	(void)dq_state;
 }
 
 #endif // DISPATCH_EVENT_BACKEND_WINDOWS
