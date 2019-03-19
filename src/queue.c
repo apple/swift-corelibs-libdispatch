@@ -6358,7 +6358,7 @@ _dispatch_runloop_handle_is_valid(dispatch_runloop_handle_t handle)
 #elif defined(__linux__)
 	return handle >= 0;
 #elif defined(_WIN32)
-	return handle != INVALID_HANDLE_VALUE;
+	return handle != NULL;
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6447,7 +6447,13 @@ _dispatch_runloop_queue_handle_init(void *ctxt)
 	}
 	handle = fd;
 #elif defined(_WIN32)
-	handle = INVALID_HANDLE_VALUE;
+	HANDLE hEvent;
+	hEvent = CreateEventW(NULL, /*bManualReset=*/TRUE,
+		/*bInitialState=*/FALSE, NULL);
+	if (hEvent == NULL) {
+		DISPATCH_INTERNAL_CRASH(GetLastError(), "CreateEventW");
+	}
+	handle = hEvent;
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6475,7 +6481,9 @@ _dispatch_runloop_queue_handle_dispose(dispatch_lane_t dq)
 	int rc = close(handle);
 	(void)dispatch_assume_zero(rc);
 #elif defined(_WIN32)
-	CloseHandle(handle);
+	BOOL bSuccess;
+	bSuccess = CloseHandle(handle);
+	(void)dispatch_assume(bSuccess);
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6510,6 +6518,10 @@ _dispatch_runloop_queue_class_poke(dispatch_lane_t dq)
 		result = eventfd_write(handle, 1);
 	} while (result == -1 && errno == EINTR);
 	(void)dispatch_assume_zero(result);
+#elif defined(_WIN32)
+	BOOL bSuccess;
+	bSuccess = SetEvent(handle);
+	(void)dispatch_assume(bSuccess);
 #else
 #error "runloop support not implemented on this platform"
 #endif
