@@ -149,9 +149,10 @@ _dispatch_uptime(void)
 	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_UPTIME, &ts));
 	return _dispatch_timespec_to_nano(ts);
-#elif TARGET_OS_WIN32
-	LARGE_INTEGER now;
-	return QueryPerformanceCounter(&now) ? now.QuadPart : 0;
+#elif defined(_WIN32)
+	ULONGLONG ullUnbiasedTime;
+	QueryUnbiasedInterruptTime(&ullUnbiasedTime);
+	return ullUnbiasedTime * 100;
 #else
 #error platform needs to implement _dispatch_uptime()
 #endif
