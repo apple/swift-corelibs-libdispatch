@@ -6468,6 +6468,8 @@ _dispatch_runloop_handle_is_valid(dispatch_runloop_handle_t handle)
 	return MACH_PORT_VALID(handle);
 #elif defined(__linux__)
 	return handle >= 0;
+#elif defined(_WIN32)
+	return handle != NULL;
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6482,6 +6484,8 @@ _dispatch_runloop_queue_get_handle(dispatch_lane_t dq)
 #elif defined(__linux__)
 	// decode: 0 is a valid fd, so offset by 1 to distinguish from NULL
 	return ((dispatch_runloop_handle_t)(uintptr_t)dq->do_ctxt) - 1;
+#elif defined(_WIN32)
+	return ((dispatch_runloop_handle_t)(uintptr_t)dq->do_ctxt);
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6497,6 +6501,8 @@ _dispatch_runloop_queue_set_handle(dispatch_lane_t dq,
 #elif defined(__linux__)
 	// encode: 0 is a valid fd, so offset by 1 to distinguish from NULL
 	dq->do_ctxt = (void *)(uintptr_t)(handle + 1);
+#elif defined(_WIN32)
+	dq->do_ctxt = (void *)(uintptr_t)handle;
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6551,6 +6557,14 @@ _dispatch_runloop_queue_handle_init(void *ctxt)
 		}
 	}
 	handle = fd;
+#elif defined(_WIN32)
+	HANDLE hEvent;
+	hEvent = CreateEventW(NULL, /*bManualReset=*/TRUE,
+		/*bInitialState=*/FALSE, NULL);
+	if (hEvent == NULL) {
+		DISPATCH_INTERNAL_CRASH(GetLastError(), "CreateEventW");
+	}
+	handle = hEvent;
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6577,6 +6591,10 @@ _dispatch_runloop_queue_handle_dispose(dispatch_lane_t dq)
 #elif defined(__linux__)
 	int rc = close(handle);
 	(void)dispatch_assume_zero(rc);
+#elif defined(_WIN32)
+	BOOL bSuccess;
+	bSuccess = CloseHandle(handle);
+	(void)dispatch_assume(bSuccess);
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6609,6 +6627,10 @@ _dispatch_runloop_queue_class_poke(dispatch_lane_t dq)
 		result = eventfd_write(handle, 1);
 	} while (result == -1 && errno == EINTR);
 	(void)dispatch_assume_zero(result);
+#elif defined(_WIN32)
+	BOOL bSuccess;
+	bSuccess = SetEvent(handle);
+	(void)dispatch_assume(bSuccess);
 #else
 #error "runloop support not implemented on this platform"
 #endif
