@@ -7438,13 +7438,11 @@ _dispatch_get_main_queue_handle_4CF(void)
 	return _dispatch_runloop_queue_get_handle(dq->_as_dl);
 }
 
-#if TARGET_OS_MAC
 dispatch_runloop_handle_t
 _dispatch_get_main_queue_port_4CF(void)
 {
 	return _dispatch_get_main_queue_handle_4CF();
 }
-#endif
 
 void
 _dispatch_main_queue_callback_4CF(
