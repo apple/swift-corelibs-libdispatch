@@ -177,13 +177,13 @@ void _dispatch_prohibit_transition_to_multithreaded(bool prohibit);
 
 #if TARGET_OS_MAC
 #define DISPATCH_COCOA_COMPAT 1
-#elif defined(__linux__) || defined(__FreeBSD__)
+#elif defined(__linux__) || defined(__FreeBSD__) || defined(_WIN32)
 #define DISPATCH_COCOA_COMPAT 1
 #else
 #define DISPATCH_COCOA_COMPAT 0
 #endif
 
-#if DISPATCH_COCOA_COMPAT || defined(_WIN32)
+#if DISPATCH_COCOA_COMPAT
 
 #define DISPATCH_CF_SPI_VERSION 20160712
 
@@ -257,7 +257,7 @@ API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT
 void (*_Nullable _dispatch_end_NSAutoReleasePool)(void *);
 
-#endif /* DISPATCH_COCOA_COMPAT || defined(_WIN32) */
+#endif /* DISPATCH_COCOA_COMPAT */
 
 API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
