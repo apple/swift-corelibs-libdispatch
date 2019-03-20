@@ -183,18 +183,50 @@ gettimeofday(struct timeval *tp, void *tzp)
 	return 0;
 }
 
+typedef void (WINAPI *QueryUnbiasedInterruptTimePreciseT)(PULONGLONG);
+static QueryUnbiasedInterruptTimePreciseT QueryUnbiasedInterruptTimePrecisePtr;
+
+static BOOL
+mach_absolute_time_init(PINIT_ONCE InitOnce, PVOID Parameter, PVOID *lpContext)
+{
+	// QueryUnbiasedInterruptTimePrecise() is declared in the Windows headers
+	// but it isn't available in any import libraries. We must manually load it
+	// from KernelBase.dll.
+	HMODULE kernelbase = LoadLibraryW(L"KernelBase.dll");
+	if (!kernelbase) {
+		print_winapi_error("LoadLibraryW", GetLastError());
+		abort();
+	}
+	QueryUnbiasedInterruptTimePrecisePtr =
+			(QueryUnbiasedInterruptTimePreciseT)GetProcAddress(kernelbase,
+					"QueryUnbiasedInterruptTimePrecise");
+	if (!QueryUnbiasedInterruptTimePrecisePtr) {
+		fprintf(stderr, "QueryUnbiasedInterruptTimePrecise is not available\n");
+		abort();
+	}
+	return TRUE;
+}
+
+uint64_t
+mach_absolute_time(void)
+{
+	static INIT_ONCE init_once = INIT_ONCE_STATIC_INIT;
+	if (!InitOnceExecuteOnce(&init_once, mach_absolute_time_init, NULL, NULL)) {
+		print_winapi_error("InitOnceExecuteOnce", GetLastError());
+		abort();
+	}
+	ULONGLONG result = 0;
+	QueryUnbiasedInterruptTimePrecisePtr(&result);
+	return result * 100;  // Convert from 100ns units
+}
+
 void
 print_winapi_error(const char *function_name, DWORD error)
 {
 	char *message = NULL;
 	DWORD len = FormatMessageA(
-			FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
-			NULL,
-			error,
-			0,
-			(LPSTR)&message,
-			0,
-			NULL);
+			FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM, NULL,
+			error, 0, (LPSTR)&message, 0, NULL);
 	if (len > 0) {
 		// Note: FormatMessage includes a newline at the end of the message
 		fprintf(stderr, "%s: %s", function_name, message);
@@ -214,10 +246,6 @@ sleep(unsigned int seconds)
 int
 usleep(unsigned int usec)
 {
-	DWORD ms = usec / 1000;
-	if (ms == 0 && usec != 0) {
-		ms = 1;
-	}
-	Sleep(ms);
+	Sleep((usec + 999) / 1000);
 	return 0;
 }

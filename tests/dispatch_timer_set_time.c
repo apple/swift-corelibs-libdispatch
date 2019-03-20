@@ -18,11 +18,12 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
-#include <sys/time.h>
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <sys/time.h>
+#endif
 
 #include <dispatch/dispatch.h>
 

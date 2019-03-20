@@ -97,7 +97,7 @@
 // Use the largest type your platform is comfortable doing atomic ops with.
 // TODO: rdar://11477843
 typedef unsigned long bitmap_t;
-#if defined(__LP64__)
+#if DISPATCH_SIZEOF_PTR == 8
 #define BYTES_PER_BITMAP 8
 #else
 #define BYTES_PER_BITMAP 4
@@ -147,7 +147,7 @@ typedef unsigned long bitmap_t;
 
 #define PADDING_TO_CONTINUATION_SIZE(x) (ROUND_UP_TO_CONTINUATION_SIZE(x) - (x))
 
-#if defined(__LP64__)
+#if DISPATCH_SIZEOF_PTR == 8
 #define SIZEOF_HEADER 16
 #else
 #define SIZEOF_HEADER 8
