@@ -110,12 +110,23 @@
 		struct type *le_prev; \
 	}
 
+#define	LIST_EMPTY(head) ((head)->lh_first == NULL)
+
 #define LIST_FIRST(head) ((head)->lh_first)
 
 #define LIST_FOREACH(var, head, field) \
 	for ((var) = LIST_FIRST((head)); \
 		(var); \
 		(var) = LIST_NEXT((var), field))
+
+#define	LIST_FOREACH_SAFE(var, head, field, tvar) \
+	for ((var) = LIST_FIRST((head)); \
+		(var) && ((tvar) = LIST_NEXT((var), field), 1); \
+		(var) = (tvar))
+
+#define	LIST_INIT(head) do { \
+	LIST_FIRST((head)) = NULL; \
+} while (0)
 
 #define LIST_NEXT(elm, field) ((elm)->field.le_next)
 
