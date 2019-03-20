@@ -156,9 +156,9 @@ void *_dispatch_wait_for_enqueuer(void **ptr);
 #elif defined(_WIN32)
 #define _dispatch_preemption_yield(n) { (void)n; Sleep(0); }
 #define _dispatch_preemption_yield_to(th, n) { (void)n; Sleep(0); }
-#else 
-#define _dispatch_preemption_yield(n) { (void)n; pthread_yield(); }
-#define _dispatch_preemption_yield_to(th, n) { (void)n; pthread_yield(); }
+#else
+#define _dispatch_preemption_yield(n) { (void)n; sched_yield(); }
+#define _dispatch_preemption_yield_to(th, n) { (void)n; sched_yield(); }
 #endif // HAVE_MACH
 
 #pragma mark -
