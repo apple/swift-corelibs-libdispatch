@@ -31,8 +31,11 @@
 #include <pthread.h>
 #else // defined(_WIN32)
 #include "shims/generic_win_stubs.h"
-#include "shims/generic_sys_queue.h"
 #endif // defined(_WIN32)
+
+#if defined(_WIN32) || defined(__ANDROID__)
+#include "shims/generic_sys_queue.h"
+#endif
 
 #ifdef __ANDROID__
 #include "shims/android_stubs.h"

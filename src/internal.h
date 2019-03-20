@@ -269,12 +269,12 @@ upcast(dispatch_object_t dou)
 #if defined(_WIN32)
 #include <time.h>
 #else
-#include <sys/queue.h>
 #include <sys/mount.h>
 #ifdef __ANDROID__
 #include <linux/sysctl.h>
 #else
 #include <sys/sysctl.h>
+#include <sys/queue.h>
 #endif /* __ANDROID__ */
 #include <sys/socket.h>
 #include <sys/time.h>
