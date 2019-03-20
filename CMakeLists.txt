@@ -8,7 +8,7 @@ project(dispatch
         LANGUAGES C CXX)
 enable_testing()
 
-if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+if(MSVC)
   include(ClangClCompileRules)
 endif()
 

@@ -179,7 +179,7 @@ if(WIN32)
                              PRIVATE
                                _CRT_NONSTDC_NO_WARNINGS)
 endif()
-if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+if(MSVC)
   target_compile_options(dispatch PRIVATE /EHs-c-)
 else()
   target_compile_options(dispatch PRIVATE -fno-exceptions)
@@ -203,7 +203,7 @@ if(BSD_OVERLAY_FOUND)
                          PRIVATE
                            ${BSD_OVERLAY_CFLAGS})
 endif()
-if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+if(MSVC)
   target_compile_options(dispatch
                          PRIVATE
                            /W3)
@@ -213,7 +213,7 @@ else()
                            -Wall)
 endif()
 # FIXME(compnerd) add check for -fblocks?
-if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+if(MSVC)
   target_compile_options(dispatch
                          PRIVATE
                            -Xclang -fblocks)

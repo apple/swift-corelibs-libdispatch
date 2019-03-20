@@ -1,5 +1,5 @@
 
-if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+if(MSVC)
   # TODO: someone needs to provide the msvc equivalent warning flags
   macro(dispatch_common_warnings)
   endmacro()

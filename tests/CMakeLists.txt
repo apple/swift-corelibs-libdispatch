@@ -98,7 +98,7 @@ function(add_unit_test name)
                            PRIVATE
                              ${BSD_OVERLAY_CFLAGS})
   endif()
-  if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+  if(MSVC)
     target_compile_options(${name} PRIVATE -Xclang -fblocks)
     target_compile_options(${name} PRIVATE /W3 -Wno-deprecated-declarations)
   else()
