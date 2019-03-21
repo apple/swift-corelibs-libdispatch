@@ -306,9 +306,6 @@ upcast(dispatch_object_t dou)
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#if defined(_WIN32)
-#define _CRT_RAND_S
-#endif
 #include <stdlib.h>
 #include <string.h>
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))

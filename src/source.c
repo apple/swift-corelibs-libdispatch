@@ -197,7 +197,7 @@ dispatch_source_get_extended_data(dispatch_source_t ds,
 }
 
 void
-dispatch_source_merge_data(dispatch_source_t ds, unsigned long val)
+dispatch_source_merge_data(dispatch_source_t ds, uintptr_t val)
 {
 	dispatch_queue_flags_t dqf = _dispatch_queue_atomic_flags(ds);
 	dispatch_source_refs_t dr = ds->ds_refs;

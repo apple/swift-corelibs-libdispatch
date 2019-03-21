@@ -108,13 +108,14 @@ _dispatch_get_nanoseconds(void)
 	dispatch_assume_zero(clock_gettime(CLOCK_REALTIME, &ts));
 	return _dispatch_timespec_to_nano(ts);
 #elif defined(_WIN32)
+	static const uint64_t kNTToUNIXBiasAdjustment = 11644473600 * NSEC_PER_SEC;
 	// FILETIME is 100-nanosecond intervals since January 1, 1601 (UTC).
 	FILETIME ft;
 	ULARGE_INTEGER li;
-	GetSystemTimeAsFileTime(&ft);
+	GetSystemTimePreciseAsFileTime(&ft);
 	li.LowPart = ft.dwLowDateTime;
 	li.HighPart = ft.dwHighDateTime;
-	return li.QuadPart * 100ull;
+	return li.QuadPart * 100ull - kNTToUNIXBiasAdjustment;
 #else
 	struct timeval tv;
 	dispatch_assert_zero(gettimeofday(&tv, NULL));
@@ -148,9 +149,10 @@ _dispatch_uptime(void)
 	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_UPTIME, &ts));
 	return _dispatch_timespec_to_nano(ts);
-#elif TARGET_OS_WIN32
-	LARGE_INTEGER now;
-	return QueryPerformanceCounter(&now) ? now.QuadPart : 0;
+#elif defined(_WIN32)
+	ULONGLONG ullUnbiasedTime;
+	QueryUnbiasedInterruptTime(&ullUnbiasedTime);
+	return ullUnbiasedTime * 100;
 #else
 #error platform needs to implement _dispatch_uptime()
 #endif

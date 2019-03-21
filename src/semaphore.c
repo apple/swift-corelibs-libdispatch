@@ -76,7 +76,7 @@ _dispatch_semaphore_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 			dsema->dsema_sema);
 #endif
 	offset += dsnprintf(&buf[offset], bufsiz - offset,
-			"value = %" PRId64 ", orig = %" PRId64 " }", dsema->dsema_value, dsema->dsema_orig);
+			"value = %" PRIdPTR ", orig = %" PRIdPTR " }", dsema->dsema_value, dsema->dsema_orig);
 	return offset;
 }
 

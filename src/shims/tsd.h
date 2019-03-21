@@ -112,7 +112,8 @@ DISPATCH_TSD_INLINE
 static inline void
 _dispatch_thread_key_create(DWORD *k, void (DISPATCH_TSD_DTOR_CC *d)(void *))
 {
-	dispatch_assert_zero((*k = FlsAlloc(d)));
+	*k = FlsAlloc(d);
+	dispatch_assert(*k != FLS_OUT_OF_INDEXES);
 }
 
 extern DWORD __dispatch_tsd_key;

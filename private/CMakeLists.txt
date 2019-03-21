@@ -14,6 +14,8 @@ if (INSTALL_PRIVATE_HEADERS)
             private.h
             queue_private.h
             source_private.h
+            time_private.h
+            workloop_private.h
           DESTINATION
             "${INSTALL_DISPATCH_HEADERS_DIR}")
 endif()
