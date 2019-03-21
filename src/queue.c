@@ -7300,21 +7300,21 @@ libdispatch_init(void)
 #ifdef SYS_gettid
 DISPATCH_ALWAYS_INLINE
 static inline pid_t
-gettid(void)
+_gettid(void)
 {
 	return (pid_t)syscall(SYS_gettid);
 }
 #elif defined(__FreeBSD__)
 DISPATCH_ALWAYS_INLINE
 static inline pid_t
-gettid(void)
+_gettid(void)
 {
 	return (pid_t)pthread_getthreadid_np();
 }
 #elif defined(_WIN32)
 DISPATCH_ALWAYS_INLINE
 static inline DWORD
-gettid(void)
+_gettid(void)
 {
 	return GetCurrentThreadId();
 }
@@ -7429,7 +7429,7 @@ libdispatch_tsd_init(void)
 #else
 	FlsSetValue(__dispatch_tsd_key, &__dispatch_tsd);
 #endif // defined(_WIN32)
-	__dispatch_tsd.tid = gettid();
+	__dispatch_tsd.tid = _gettid();
 }
 #endif
 
