@@ -29,6 +29,14 @@
 #include "protocolServer.h"
 #endif
 
+#ifdef __linux__
+// The clang compiler in Ubuntu 18.04 has a bug that causes it to crash
+// when compiling _dispatch_bug_kevent_vanished(). As a workaround, use a
+// less capable version of this function on Linux until a fixed version
+// of the compiler is available.
+#define RDAR_49023449 1
+#endif // __linux__
+
 #pragma mark -
 #pragma mark dispatch_init
 
@@ -955,6 +963,7 @@ _dispatch_continuation_get_function_symbol(dispatch_continuation_t dc)
 	return dc->dc_func;
 }
 
+#if HAVE_MACH
 void
 _dispatch_bug_kevent_client(const char *msg, const char *filter,
 		const char *operation, int err, uint64_t ident, uint64_t udata,
@@ -998,6 +1007,23 @@ _dispatch_bug_kevent_client(const char *msg, const char *filter,
 				msg, strerror(err), err, udata, filter, ident, ident, func);
 	}
 }
+#endif // HAVE_MACH
+
+#if RDAR_49023449
+
+// The clang compiler on Ubuntu18.04 crashes when compiling the full version of
+// this function. This reduced version avoids the crash but logs less useful
+// information.
+void
+_dispatch_bug_kevent_vanished(dispatch_unote_t du)
+{
+	_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_kevent_vanished",
+			"BUG in libdispatch client: %s, monitored resource vanished before "
+			"the source cancel handler was invoked",
+			dux_type(du._du)->dst_kind);
+}
+
+#else // RDAR_49023449
 
 void
 _dispatch_bug_kevent_vanished(dispatch_unote_t du)
@@ -1012,7 +1038,7 @@ _dispatch_bug_kevent_vanished(dispatch_unote_t du)
 		dc = du._dr->ds_handler[DS_EVENT_HANDLER];
 		if (dc) func = _dispatch_continuation_get_function_symbol(dc);
 		break;
- #if HAVE_MACH
+#if HAVE_MACH
 	case DISPATCH_MACH_CHANNEL_TYPE:
 		func = du._dmrr->dmrr_handler_func;
 		break;
@@ -1026,6 +1052,8 @@ _dispatch_bug_kevent_vanished(dispatch_unote_t du)
 			dou._dq->dq_label ? dou._dq->dq_label : "<unknown>",
 			du._du->du_ident, du._du->du_ident, func);
 }
+
+#endif // RDAR_49023449
 
 DISPATCH_NOINLINE DISPATCH_WEAK
 void
