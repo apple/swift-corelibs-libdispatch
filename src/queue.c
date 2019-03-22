@@ -7296,7 +7296,6 @@ libdispatch_init(void)
 #include <sys/syscall.h>
 #endif
 
-#ifndef __ANDROID__
 #ifdef SYS_gettid
 DISPATCH_ALWAYS_INLINE
 static inline pid_t
@@ -7321,7 +7320,6 @@ _gettid(void)
 #else
 #error "SYS_gettid unavailable on this system"
 #endif /* SYS_gettid */
-#endif /* ! __ANDROID__ */
 
 #define _tsd_call_cleanup(k, f)  do { \
 		if ((f) && tsd->k) ((void(*)(void*))(f))(tsd->k); \
