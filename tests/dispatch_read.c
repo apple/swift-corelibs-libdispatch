@@ -18,7 +18,6 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
-#include <sys/stat.h>
 #include <sys/types.h>
 #include <assert.h>
 #include <fcntl.h>
@@ -48,27 +47,26 @@ int
 main(void)
 {
 	char *path = dispatch_test_get_large_file();
-	struct stat sb;
 
 	dispatch_test_start("Dispatch Source Read");
 
-	int infd = open(path, O_RDONLY);
+	dispatch_fd_t infd = dispatch_test_fd_open(path, O_RDONLY);
 	if (infd == -1) {
 		perror(path);
 		exit(EXIT_FAILURE);
 	}
 	dispatch_test_release_large_file(path);
 	free(path);
-	if (fstat(infd, &sb) == -1) {
-		perror(path);
-		exit(EXIT_FAILURE);
-	}
-	bytes_total = (size_t)sb.st_size;
 
+	bytes_total = (size_t)dispatch_test_fd_lseek(infd, 0, SEEK_END);
+	dispatch_test_fd_lseek(infd, 0, SEEK_SET);
+
+#if !defined(_WIN32)
 	if (fcntl(infd, F_SETFL, O_NONBLOCK) != 0) {
 		perror(path);
 		exit(EXIT_FAILURE);
 	}
+#endif
 
 	if (!dispatch_test_check_evfilt_read_for_fd(infd)) {
 		test_skip("EVFILT_READ kevent not firing for test file");
@@ -88,11 +86,11 @@ main(void)
 		test_double_less_than_or_equal("estimated", estimated, bytes_total - bytes_read);
 		const ssize_t bufsiz = 1024*500; // 500 KB buffer
 		static char buffer[1024*500];	// 500 KB buffer
-		ssize_t actual = read(infd, buffer, sizeof(buffer));
+		ssize_t actual = dispatch_test_fd_read(infd, buffer, sizeof(buffer));
 		bytes_read += (size_t)actual;
 		printf("bytes read: %zd\n", actual);
 		if (actual < bufsiz) {
-			actual = read(infd, buffer, sizeof(buffer));
+			actual = dispatch_test_fd_read(infd, buffer, sizeof(buffer));
 			bytes_read += (size_t)actual;
 			// confirm EOF condition
 			test_long("EOF", actual, 0);
@@ -102,7 +100,7 @@ main(void)
 
 	dispatch_source_set_cancel_handler(reader, ^{
 		test_sizet("Bytes read", bytes_read, bytes_total);
-		int res = close(infd);
+		int res = dispatch_test_fd_close(infd);
 		test_errno("close", res == -1 ? errno : 0, 0);
 		dispatch_release(reader);
 	});

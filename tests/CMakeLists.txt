@@ -45,6 +45,9 @@ if (WIN32)
                                _CRT_NONSTDC_NO_WARNINGS
                                _CRT_SECURE_NO_WARNINGS
                                _USE_MATH_DEFINES)
+  target_link_libraries(bsdtests
+                        PUBLIC
+                          bcrypt)
 endif ()
 
 add_executable(bsdtestharness

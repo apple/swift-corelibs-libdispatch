@@ -40,7 +40,7 @@ extern "C" {
 
 void dispatch_test_start(const char* desc);
 
-bool dispatch_test_check_evfilt_read_for_fd(int fd);
+bool dispatch_test_check_evfilt_read_for_fd(dispatch_fd_t fd);
 
 char *dispatch_test_get_large_file(void);
 void dispatch_test_release_large_file(const char *path);
@@ -52,6 +52,13 @@ void _dispatch_test_current(const char* file, long line, const char* desc, dispa
 int sysctlbyname(const char *name, void *oldp, size_t *oldlenp, void *newp,
 		size_t *newpl);
 #endif
+
+dispatch_fd_t dispatch_test_fd_open(const char *path, int flags);
+int dispatch_test_fd_close(dispatch_fd_t fd);
+off_t dispatch_test_fd_lseek(dispatch_fd_t fd, off_t offset, int whence);
+ssize_t dispatch_test_fd_pread(dispatch_fd_t fd, void *buf, size_t count, off_t offset);
+ssize_t dispatch_test_fd_read(dispatch_fd_t fd, void *buf, size_t count);
+ssize_t dispatch_test_fd_write(dispatch_fd_t fd, const void *buf, size_t count);
 
 #if defined(__cplusplus)
 } /* extern "C" */
