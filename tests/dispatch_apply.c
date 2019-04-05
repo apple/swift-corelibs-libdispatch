@@ -22,6 +22,11 @@
 #include <stdio.h>
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
+#ifdef __ANDROID__
+#include <linux/sysctl.h>
+#else
+#include <sys/sysctl.h>
+#endif /* __ANDROID__ */
 #endif
 #include <stdlib.h>
 #include <assert.h>
@@ -29,11 +34,6 @@
 #include <libkern/OSAtomic.h>
 #endif
 #include <sys/types.h>
-#ifdef __ANDROID__
-#include <linux/sysctl.h>
-#else
-#include <sys/sysctl.h>
-#endif /* __ANDROID__ */
 
 #include <bsdtests.h>
 #include "dispatch_test.h"
@@ -80,6 +80,10 @@ static void test_apply_contended(dispatch_queue_t dq)
 	uint32_t activecpu;
 #ifdef __linux__
 	activecpu = (uint32_t)sysconf(_SC_NPROCESSORS_ONLN);
+#elif defined(_WIN32)
+	SYSTEM_INFO si;
+	GetSystemInfo(&si);
+	activecpu = si.dwNumberOfProcessors;
 #else
 	size_t s = sizeof(activecpu);
 	sysctlbyname("hw.activecpu", &activecpu, &s, NULL, 0);

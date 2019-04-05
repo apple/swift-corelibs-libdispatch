@@ -23,6 +23,11 @@
 #include <dispatch/private.h>
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
+#ifdef __ANDROID__
+#include <linux/sysctl.h>
+#else
+#include <sys/sysctl.h>
+#endif /* __ANDROID__ */
 #endif
 #include <stdlib.h>
 #include <assert.h>
@@ -30,11 +35,6 @@
 #include <TargetConditionals.h>
 #endif
 #include <sys/types.h>
-#ifdef __ANDROID__
-#include <linux/sysctl.h>
-#else
-#include <sys/sysctl.h>
-#endif /* __ANDROID__ */
 
 #include <bsdtests.h>
 #include "dispatch_test.h"
@@ -85,6 +85,10 @@ n_blocks(void)
 	dispatch_once(&pred, ^{
 #ifdef __linux__
 		n = (int)sysconf(_SC_NPROCESSORS_CONF);
+#elif defined(_WIN32)
+		SYSTEM_INFO si;
+		GetSystemInfo(&si);
+		n = (int)si.dwNumberOfProcessors;
 #else
 		size_t l = sizeof(n);
 		int rc = sysctlbyname("hw.ncpu", &n, &l, NULL, 0);
