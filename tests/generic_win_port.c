@@ -1,3 +1,4 @@
+#define _CRT_RAND_S
 #include <generic_win_port.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -234,6 +235,14 @@ print_winapi_error(const char *function_name, DWORD error)
 	} else {
 		fprintf(stderr, "%s: error %lu\n", function_name, error);
 	}
+}
+
+intptr_t
+random(void)
+{
+	unsigned int x;
+	rand_s(&x);
+	return x & INT_MAX;
 }
 
 unsigned int
