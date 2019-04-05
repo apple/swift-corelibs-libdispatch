@@ -196,7 +196,9 @@ add_unit_test(dispatch_c99 NO_BSD_OVERLAY SOURCES dispatch_c99.c)
 add_unit_test(dispatch_plusplus SOURCES dispatch_plusplus.cpp)
 
 # test-specific link options
-if(NOT WIN32)
+if(WIN32)
+  target_link_libraries(dispatch_io_net PRIVATE WS2_32)
+else()
   target_link_libraries(dispatch_group PRIVATE m)
   target_link_libraries(dispatch_timer_short PRIVATE m)
 endif()

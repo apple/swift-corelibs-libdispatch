@@ -21,17 +21,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+#include <netdb.h>
+#include <netinet/in.h>
+#include <spawn.h>
+#include <sys/socket.h>
+#include <sys/param.h>
 #include <unistd.h>
+#elif defined(_WIN32)
+#include <WinSock2.h>
+#include <WS2tcpip.h>
+#include <Windows.h>
 #endif
 #include <errno.h>
-#include <netdb.h>
 #include <sys/types.h>
-#include <sys/param.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <spawn.h>
 #ifdef __APPLE__
 #include <crt_externs.h>
 #include <mach-o/dyld.h>
@@ -41,7 +45,9 @@
 #include "dispatch_test.h"
 #include <dispatch/dispatch.h>
 
+#if !defined(_WIN32)
 extern char **environ;
+#endif
 
 #ifndef DISPATCHTEST_IO
 #if DISPATCH_API_VERSION >= 20100226 && DISPATCH_API_VERSION != 20101110
@@ -49,8 +55,16 @@ extern char **environ;
 #endif
 #endif
 
-#if defined(__linux__) || defined(__FreeBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(_WIN32)
 #define _NSGetExecutablePath(ef,bs) (*(bs)=(size_t)snprintf(ef,*(bs),"%s",argv[0]),0)
+#endif
+
+#if defined(_WIN32)
+typedef USHORT in_port_t;
+#endif
+
+#if !defined(_WIN32)
+#define closesocket(x) close(x)
 #endif
 
 #if DISPATCHTEST_IO
@@ -59,11 +73,20 @@ main(int argc, char** argv)
 {
 	struct hostent *he;
 	int sockfd = -1, clientfd = -1;
-	int read_fd = -1, fd = -1;
+	dispatch_fd_t read_fd = -1, fd = -1;
 	struct sockaddr_in addr1, addr2, server;
 	socklen_t addr2len;
 	socklen_t addr1len;
 	pid_t clientid;
+
+#if defined(_WIN32)
+	WSADATA wsa;
+	int err = WSAStartup(MAKEWORD(2, 2), &wsa);
+	if (err != 0) {
+		fprintf(stderr, "WSAStartup failed with %d\n", err);
+		test_stop();
+	}
+#endif
 
 	if (argc == 3) {
 		// Client
@@ -93,7 +116,7 @@ main(int argc, char** argv)
 		// Read from the socket and compare the contents are what we expect
 
 		const char *path = argv[2];
-		fd = open(path, O_RDONLY);
+		fd = dispatch_test_fd_open(path, O_RDONLY);
 		if (fd == -1) {
 			test_errno("client-open", errno, 0);
 			test_stop();
@@ -114,12 +137,8 @@ main(int argc, char** argv)
 		// investigate what the impact of lack of file cache disabling has 
 		// for this test
 #endif
-		struct stat sb;
-		if (fstat(fd, &sb)) {
-			test_errno("client-fstat", errno, 0);
-			test_stop();
-		}
-		size_t size = (size_t)sb.st_size;
+		size_t size = (size_t)dispatch_test_fd_lseek(fd, 0, SEEK_END);
+		dispatch_test_fd_lseek(fd, 0, SEEK_SET);
 
 		__block dispatch_data_t g_d1 = dispatch_data_empty;
 		__block dispatch_data_t g_d2 = dispatch_data_empty;
@@ -167,8 +186,8 @@ main(int argc, char** argv)
 				 memcmp(dict_contig_buf, socket_contig_buf,
 				 MIN(dict_contig_size, socket_contig_size)), 0);
 
-		close(fd);
-		close(sockfd);
+		dispatch_test_fd_close(fd);
+		closesocket(sockfd);
 		dispatch_release(g_d1);
 		dispatch_release(g_d2);
 		dispatch_release(dict_data);
@@ -223,7 +242,7 @@ main(int argc, char** argv)
 		// unlink the file as soon as it can, so the server must open it before
 		// starting the client process.
 		char *path = dispatch_test_get_large_file();
-		read_fd = open(path, O_RDONLY);
+		read_fd = dispatch_test_fd_open(path, O_RDONLY);
 		if (read_fd == -1) {
 			test_errno("open", errno, 0);
 			goto stop_test;
@@ -242,6 +261,23 @@ main(int argc, char** argv)
 			test_errno("Server-posix_spawnp()", error, 0);
 			goto stop_test;
 		}
+#elif defined(_WIN32)
+		WCHAR *cmdline = argv_to_command_line(arguments);
+		if (!cmdline) {
+			fprintf(stderr, "argv_to_command_line() failed\n");
+			test_stop();
+		}
+		STARTUPINFOW si = {.cb = sizeof(si)};
+		PROCESS_INFORMATION pi;
+		BOOL created = CreateProcessW(NULL, cmdline, NULL, NULL, FALSE, 0, NULL,
+				NULL, &si, &pi);
+		DWORD error = GetLastError();
+		free(cmdline);
+		if (!created) {
+			print_winapi_error("CreateProcessW", error);
+			test_stop();
+		}
+		clientid = (pid_t)pi.dwProcessId;
 #elif defined(__unix__)
 		clientid = fork();
 		if (clientid == -1) {
@@ -275,12 +311,8 @@ main(int argc, char** argv)
 		// investigate what the impact of lack of file cache disabling has 
 		// for this test
 #endif
-		struct stat sb;
-		if (fstat(read_fd, &sb)) {
-			test_errno("fstat", errno, 0);
-			goto stop_test;
-		}
-		size_t size = (size_t)sb.st_size;
+		size_t size = (size_t)dispatch_test_fd_lseek(read_fd, 0, SEEK_END);
+		dispatch_test_fd_lseek(read_fd, 0, SEEK_SET);
 
 		dispatch_group_t g = dispatch_group_create();
 		dispatch_group_enter(g);
@@ -294,9 +326,9 @@ main(int argc, char** argv)
 			// convenience method handlers should only be called once
 			if (dispatch_data_get_size(d)!= size) {
 				fprintf(stderr, "Reading of data didn't complete\n");
-				close(read_fd);
-				close(clientfd);
-				close(sockfd);
+				dispatch_test_fd_close(read_fd);
+				closesocket(clientfd);
+				closesocket(sockfd);
 				test_stop();
 			}
 			dispatch_group_enter(g);
@@ -308,21 +340,21 @@ main(int argc, char** argv)
 				if (remaining) {
 					fprintf(stderr, "Server-dispatch_write() incomplete .. "
 							"%zu bytes\n", dispatch_data_get_size(remaining));
-					close(read_fd);
-					close(clientfd);
-					close(sockfd);
+					dispatch_test_fd_close(read_fd);
+					closesocket(clientfd);
+					closesocket(sockfd);
 					test_stop();
 				}
-				close(clientfd); // Sending the client EOF
+				closesocket(clientfd); // Sending the client EOF
 				dispatch_group_leave(g);
 			});
-			close(read_fd);
+			dispatch_test_fd_close(read_fd);
 			dispatch_group_leave(g);
 		});
 		test_group_wait(g);
 		dispatch_release(g);
 		fprintf(stderr, "Shutting down server\n");
-		close(sockfd);
+		closesocket(sockfd);
 		free(path);
 		test_stop();
 
@@ -331,9 +363,9 @@ stop_test:
 			dispatch_test_release_large_file(path);
 			free(path);
 		}
-		close(read_fd);
-		close(clientfd);
-		close(sockfd);
+		dispatch_test_fd_close(read_fd);
+		closesocket(clientfd);
+		closesocket(sockfd);
 		test_stop();
 	}
 }
