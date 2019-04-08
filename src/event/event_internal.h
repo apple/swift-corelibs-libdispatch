@@ -123,11 +123,17 @@ _dispatch_timer_flags_from_clock(dispatch_clock_t clock)
 	return (dispatch_unote_timer_flags_t)(clock << 2);
 }
 
+#if defined(_WIN32)
+typedef uintptr_t dispatch_unote_ident_t;
+#else
+typedef uint32_t dispatch_unote_ident_t;
+#endif
+
 #define DISPATCH_UNOTE_CLASS_HEADER() \
 	dispatch_source_type_t du_type; \
 	uintptr_t du_owner_wref; /* "weak" back reference to the owner object */ \
 	os_atomic(dispatch_unote_state_t) du_state; \
-	uint32_t  du_ident; \
+	dispatch_unote_ident_t du_ident; \
 	int8_t    du_filter; \
 	uint8_t   du_is_direct : 1; \
 	uint8_t   du_is_timer : 1; \
