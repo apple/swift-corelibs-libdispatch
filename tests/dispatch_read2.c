@@ -20,16 +20,16 @@
 
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/param.h>
 #include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+#include <fts.h>
+#include <sys/param.h>
 #include <unistd.h>
 #endif
 #include <errno.h>
-#include <fts.h>
 #ifdef __APPLE__
 #include <mach/mach.h>
 #include <mach/mach_time.h>
@@ -68,10 +68,12 @@ dispatch_read2(dispatch_fd_t fd,
 			  dispatch_queue_t queue,
 			  void (^handler)(dispatch_data_t d, int error))
 {
+#if !defined(_WIN32)
 	if (fcntl(fd, F_SETFL, O_NONBLOCK) != 0) {
 		test_errno("fcntl O_NONBLOCK", errno, 0);
 		test_stop();
 	}
+#endif
 	dispatch_source_t reader = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ,
 			(uintptr_t)fd, 0, queue);
 	test_ptr_notnull("reader", reader);
@@ -82,16 +84,28 @@ dispatch_read2(dispatch_fd_t fd,
 	dispatch_source_set_event_handler(reader, ^{
 		const ssize_t bufsiz = 1024*512; // 512KB buffer
 		char *buffer = NULL;
+#if defined(_WIN32)
+		SYSTEM_INFO si;
+		GetSystemInfo(&si);
+		size_t pagesize = (size_t)si.dwPageSize;
+		buffer = _aligned_malloc(bufsiz, pagesize);
+#else
 		size_t pagesize = (size_t)sysconf(_SC_PAGESIZE);
 		posix_memalign((void **)&buffer, pagesize, bufsiz);
-		ssize_t actual = read(fd, buffer, bufsiz);
+#endif
+		ssize_t actual = dispatch_test_fd_read(fd, buffer, bufsiz);
 		if (actual == -1) {
 			err = errno;
 		}
 		if (actual > 0) {
 			bytes_read += (size_t)actual;
+#if defined(_WIN32)
+			dispatch_data_t tmp_data = dispatch_data_create(buffer, (size_t)actual,
+					NULL, ^{ _aligned_free(buffer); });
+#else
 			dispatch_data_t tmp_data = dispatch_data_create(buffer, (size_t)actual,
 					NULL, DISPATCH_DATA_DESTRUCTOR_FREE);
+#endif
 			dispatch_data_t concat = dispatch_data_create_concat(data,tmp_data);
 			dispatch_release(tmp_data);
 			dispatch_release(data);
@@ -100,7 +114,7 @@ dispatch_read2(dispatch_fd_t fd,
 		// If we reached EOF or we read as much we were asked to.
 		if (actual < bufsiz || bytes_read >= length) {
 			char foo[2];
-			actual = read(fd, foo, 2);
+			actual = dispatch_test_fd_read(fd, foo, 2);
 			bytes_read += (size_t)actual;
 			// confirm EOF condition
 			test_long("EOF", actual, 0);
@@ -123,7 +137,7 @@ static void
 test_read(void)
 {
 	char *path = dispatch_test_get_large_file();
-	int fd = open(path, O_RDONLY);
+	dispatch_fd_t fd = dispatch_test_fd_open(path, O_RDONLY);
 	if (fd == -1) {
 		test_errno("open", errno, 0);
 		test_stop();
@@ -139,12 +153,8 @@ test_read(void)
 	// investigate what the impact of lack of file cache disabling has 
 	// for this test
 #endif
-	struct stat sb;
-	if (fstat(fd, &sb)) {
-		test_errno("fstat", errno, 0);
-		test_stop();
-	}
-	size_t size = (size_t)sb.st_size;
+	size_t size = (size_t)dispatch_test_fd_lseek(fd, 0, SEEK_END);
+	dispatch_test_fd_lseek(fd, 0, SEEK_SET);
 	dispatch_group_t g = dispatch_group_create();
 	void (^b)(dispatch_data_t, int) = ^(dispatch_data_t d, int error) {
 		test_errno("read error", error, 0);
@@ -158,7 +168,7 @@ test_read(void)
 			if (contig_size) {
 				// Validate the copied buffer is similar to what we expect
 				char *buf = (char*)malloc(size);
-				pread(fd, buf, size, 0);
+				dispatch_test_fd_pread(fd, buf, size, 0);
 				test_long("dispatch data contents", memcmp(buf, contig_buf,
 						size), 0);
 				free(buf);
@@ -170,7 +180,7 @@ test_read(void)
 	dispatch_group_enter(g);
 	dispatch_read(fd, SIZE_MAX, dispatch_get_global_queue(0, 0), b); // rdar://problem/7795794
 	test_group_wait(g);
-	lseek(fd, 0, SEEK_SET);
+	dispatch_test_fd_lseek(fd, 0, SEEK_SET);
 	if (dispatch_test_check_evfilt_read_for_fd(fd)) {
 		dispatch_group_enter(g);
 		dispatch_read2(fd, size, dispatch_get_global_queue(0,0), b);
@@ -179,22 +189,39 @@ test_read(void)
 		test_skip("EVFILT_READ kevent not firing for test file");
 	}
 	dispatch_release(g);
-	close(fd);
+	dispatch_test_fd_close(fd);
 }
 
 static void
 test_read_write(void)
 {
-	const char *path_in = "/dev/urandom";
-	char path_out[] = "/tmp/dispatchtest_io.XXXXXX";
-	const size_t siz_in = 10240;
+#if defined(_WIN32)
+	char *path_in = dispatch_test_get_large_file();
+	char path_out[] = "dispatchtest_io.XXXXXX";
 
-	int in = open(path_in, O_RDONLY);
+	dispatch_fd_t in = dispatch_test_fd_open(path_in, O_RDONLY);
 	if (in == -1) {
 		test_errno("open", errno, 0);
 		test_stop();
 	}
-	int out = mkstemp(path_out);
+	dispatch_test_release_large_file(path_in);
+	free(path_in);
+
+	size_t siz_in = (size_t)dispatch_test_fd_lseek(in, 0, SEEK_END);
+	dispatch_test_fd_lseek(in, 0, SEEK_SET);
+#else
+	const char *path_in = "/dev/urandom";
+	char path_out[] = "/tmp/dispatchtest_io.XXXXXX";
+	const size_t siz_in = 10240;
+
+	dispatch_fd_t in = dispatch_test_fd_open(path_in, O_RDONLY);
+	if (in == -1) {
+		test_errno("open", errno, 0);
+		test_stop();
+	}
+#endif
+
+	dispatch_fd_t out = mkstemp(path_out);
 	if (out == -1) {
 		test_errno("mkstemp", errno, 0);
 		test_stop();
@@ -203,6 +230,7 @@ test_read_write(void)
 		test_errno("unlink", errno, 0);
 		test_stop();
 	}
+
 	dispatch_queue_t q = dispatch_get_global_queue(0,0);
 	dispatch_group_t g = dispatch_group_create();
 	dispatch_group_enter(g);
@@ -212,7 +240,7 @@ test_read_write(void)
 			test_errno("dispatch_read", err_in, 0);
 			test_stop();
 		}
-		close(in);
+		dispatch_test_fd_close(in);
 		size_t siz_out = dispatch_data_get_size(data_in);
 		test_sizet("read size", siz_out, siz_in);
 		dispatch_retain(data_in);
@@ -222,14 +250,14 @@ test_read_write(void)
 				test_errno("dispatch_write", err_out, 0);
 				test_stop();
 			}
-			lseek(out, 0, SEEK_SET);
+			dispatch_test_fd_lseek(out, 0, SEEK_SET);
 			dispatch_read(out, siz_out, q,
 					^(dispatch_data_t cmp, int err_cmp) {
 				if (err_cmp) {
 					test_errno("dispatch_read", err_cmp, 0);
 					test_stop();
 				}
-				close(out);
+				dispatch_test_fd_close(out);
 				size_t siz_cmp = dispatch_data_get_size(cmp);
 				test_sizet("readback size", siz_cmp, siz_out);
 				const void *data_buf, *cmp_buf;
@@ -252,17 +280,32 @@ test_read_write(void)
 static void
 test_read_writes(void) // <rdar://problem/7785143>
 {
-	const char *path_in = "/dev/urandom";
-	char path_out[] = "/tmp/dispatchtest_io.XXXXXX";
 	const size_t chunks_out = 320;
 	const size_t siz_chunk = 32, siz_in = siz_chunk * chunks_out;
 
-	int in = open(path_in, O_RDONLY);
+#if defined(_WIN32)
+	char *path_in = dispatch_test_get_large_file();
+	char path_out[] = "dispatchtest_io.XXXXXX";
+
+	dispatch_fd_t in = dispatch_test_fd_open(path_in, O_RDONLY);
 	if (in == -1) {
 		test_errno("open", errno, 0);
 		test_stop();
 	}
-	int out = mkstemp(path_out);
+	dispatch_test_release_large_file(path_in);
+	free(path_in);
+#else
+	const char *path_in = "/dev/urandom";
+	char path_out[] = "/tmp/dispatchtest_io.XXXXXX";
+
+	dispatch_fd_t in = dispatch_test_fd_open(path_in, O_RDONLY);
+	if (in == -1) {
+		test_errno("open", errno, 0);
+		test_stop();
+	}
+#endif
+
+	dispatch_fd_t out = mkstemp(path_out);
 	if (out == -1) {
 		test_errno("mkstemp", errno, 0);
 		test_stop();
@@ -271,6 +314,7 @@ test_read_writes(void) // <rdar://problem/7785143>
 		test_errno("unlink", errno, 0);
 		test_stop();
 	}
+
 	dispatch_queue_t q = dispatch_get_global_queue(0,0);
 	dispatch_group_t g = dispatch_group_create();
 	dispatch_group_enter(g);
@@ -281,7 +325,7 @@ test_read_writes(void) // <rdar://problem/7785143>
 			test_errno("dispatch_read", err_in, 0);
 			test_stop();
 		}
-		close(in);
+		dispatch_test_fd_close(in);
 		siz_out = dispatch_data_get_size(data_in);
 		test_sizet("read size", siz_out, siz_in);
 		dispatch_retain(data_in);
@@ -311,14 +355,14 @@ test_read_writes(void) // <rdar://problem/7785143>
 	});
 	test_group_wait(g);
 	dispatch_group_enter(g);
-	lseek(out, 0, SEEK_SET);
+	dispatch_test_fd_lseek(out, 0, SEEK_SET);
 	dispatch_read(out, siz_in, q,
 			^(dispatch_data_t cmp, int err_cmp) {
 		if (err_cmp) {
 			test_errno("dispatch_read", err_cmp, 0);
 			test_stop();
 		}
-		close(out);
+		dispatch_test_fd_close(out);
 		size_t siz_cmp = dispatch_data_get_size(cmp);
 		test_sizet("readback size", siz_cmp, siz_out);
 		const void *data_buf, *cmp_buf;
@@ -336,6 +380,7 @@ test_read_writes(void) // <rdar://problem/7785143>
 	dispatch_release(g);
 }
 
+#if !defined(_WIN32)
 static void
 test_writes_reads_eagain(void) // rdar://problem/8333366
 {
@@ -395,6 +440,7 @@ test_writes_reads_eagain(void) // rdar://problem/8333366
 	Block_release(b);
 	dispatch_release(g);
 }
+#endif
 
 #endif // DISPATCHTEST_IO
 
@@ -408,7 +454,9 @@ main(void)
 		test_read();
 		test_read_write();
 		test_read_writes();
+#if !defined(_WIN32)
 		test_writes_reads_eagain();
+#endif
 #endif
 		test_fin(NULL);
 	});

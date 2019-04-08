@@ -1,6 +1,9 @@
 #pragma once
 
+#include <dispatch/dispatch.h>
+#include <fcntl.h>
 #include <stdint.h>
+#include <sys/types.h>
 #include <Windows.h>
 
 typedef int kern_return_t;
@@ -65,8 +68,14 @@ mach_timebase_info(mach_timebase_info_t tbi)
 	return 0;
 }
 
+dispatch_fd_t
+mkstemp(char *tmpl);
+
 void
 print_winapi_error(const char *function_name, DWORD error);
+
+intptr_t
+random(void);
 
 unsigned int
 sleep(unsigned int seconds);

@@ -20,17 +20,17 @@
 
 #include <dispatch/dispatch.h>
 #include <dispatch/private.h>
-#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
-#include <unistd.h>
-#endif
 #include <stdlib.h>
 #include <stdio.h>
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <sys/types.h>
+#include <unistd.h>
 #ifdef __ANDROID__
 #include <linux/sysctl.h>
 #else
 #include <sys/sysctl.h>
 #endif /* __ANDROID__ */
+#endif
 
 #include <bsdtests.h>
 #include "dispatch_test.h"
@@ -234,6 +234,10 @@ main(int argc __attribute__((unused)), char* argv[] __attribute__((unused)))
 
 #ifdef __linux__
 	activecpu = (uint32_t)sysconf(_SC_NPROCESSORS_ONLN);
+#elif defined(_WIN32)
+	SYSTEM_INFO si;
+	GetSystemInfo(&si);
+	activecpu = si.dwNumberOfProcessors;
 #else
 	size_t s = sizeof(activecpu);
 	sysctlbyname("hw.activecpu", &activecpu, &s, NULL, 0);

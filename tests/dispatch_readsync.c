@@ -23,12 +23,12 @@
 #include <stdlib.h>
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
-#endif
 #ifdef __ANDROID__
 #include <linux/sysctl.h>
 #else
 #include <sys/sysctl.h>
 #endif /* __ANDROID__ */
+#endif
 #include <assert.h>
 
 #include <bsdtests.h>
@@ -142,6 +142,11 @@ main(void)
 #ifdef __linux__
 	activecpu = (uint32_t)sysconf(_SC_NPROCESSORS_ONLN);
 	// don't want to parse /proc/sys/kernel/threads-max
+	wq_max_threads = activecpu * NTHREADS + 2;
+#elif defined(_WIN32)
+	SYSTEM_INFO si;
+	GetSystemInfo(&si);
+	activecpu = si.dwNumberOfProcessors;
 	wq_max_threads = activecpu * NTHREADS + 2;
 #else
 	size_t s = sizeof(uint32_t);

@@ -39,14 +39,25 @@ void finish(void* cxt);
 void
 stage1(int stage)
 {
+#if defined(_WIN32)
+	char *path = dispatch_test_get_large_file();
+	dispatch_fd_t fd = dispatch_test_fd_open(path, O_RDONLY);
+	if (fd == -1)
+	{
+		perror(path);
+		exit(EXIT_FAILURE);
+	}
+	dispatch_test_release_large_file(path);
+	free(path);
+#else
 	const char *path = "/dev/random";
-
 	int fd = open(path, O_RDONLY);
 	if (fd == -1)
 	{
 		perror(path);
 		exit(EXIT_FAILURE);
 	}
+#endif
 
 	dispatch_queue_t main_q = dispatch_get_main_queue();
 	test_ptr_notnull("main_q", main_q);
@@ -57,13 +68,13 @@ stage1(int stage)
 	dispatch_source_set_event_handler(source, ^{
 		size_t buffer_size = 500*1024;
 		char buffer[500*1024];
-		ssize_t sz = read(fd, buffer, buffer_size);
+		ssize_t sz = dispatch_test_fd_read(fd, buffer, buffer_size);
 		test_double_less_than_or_equal("kevent read 1", sz, buffer_size+1);
 		dispatch_source_cancel(source);
 	});
 
 	dispatch_source_set_cancel_handler(source, ^{
-		int res = close(fd);
+		int res = dispatch_test_fd_close(fd);
 		test_errno("close", res ==  -1 ? errno : 0, 0);
 		dispatch_release(source);
 		if (stage == 1)
@@ -87,9 +98,7 @@ void
 stage2(void)
 {
 	char *path = dispatch_test_get_large_file();
-	struct stat sb;
-
-	int fd = open(path, O_RDONLY);
+	dispatch_fd_t fd = dispatch_test_fd_open(path, O_RDONLY);
 	if (fd == -1)
 	{
 		perror(path);
@@ -100,20 +109,15 @@ stage2(void)
 
 	if (!dispatch_test_check_evfilt_read_for_fd(fd)) {
 		test_skip("EVFILT_READ kevent not firing for test file");
-		close(fd);
+		dispatch_test_fd_close(fd);
 		dispatch_async(dispatch_get_main_queue(), ^{
 			stage1(3);
 		});
 		return;
 	}
 
-	if (fstat(fd, &sb) == -1)
-	{
-		perror(path);
-		exit(EXIT_FAILURE);
-	}
-
-	ssize_t expected = sb.st_size;
+	ssize_t expected = dispatch_test_fd_lseek(fd, 0, SEEK_END);
+	dispatch_test_fd_lseek(fd, 0, SEEK_SET);
 	actual = 0;
 
 	dispatch_queue_t main_q = dispatch_get_main_queue();
@@ -126,11 +130,11 @@ stage2(void)
 		size_t est = dispatch_source_get_data(source);
 		test_double_less_than_or_equal("estimated", est, expected - actual);
 		char buffer[500*1024];
-		ssize_t sz = read(fd, buffer, sizeof(buffer));
+		ssize_t sz = dispatch_test_fd_read(fd, buffer, sizeof(buffer));
 		actual += sz;
 		if (sz < (ssize_t)sizeof(buffer))
 		{
-			sz = read(fd, buffer, sizeof(buffer));
+			sz = dispatch_test_fd_read(fd, buffer, sizeof(buffer));
 			actual += sz;
 			test_long("EOF", sz, 0);
 			dispatch_source_cancel(source);
@@ -139,7 +143,7 @@ stage2(void)
 
 	dispatch_source_set_cancel_handler(source, ^{
 		test_long("bytes read", actual, expected);
-		int res = close(fd);
+		int res = dispatch_test_fd_close(fd);
 		test_errno("close", res ==  -1 ? errno : 0, 0);
 		dispatch_release(source);
 		dispatch_async(dispatch_get_main_queue(), ^{

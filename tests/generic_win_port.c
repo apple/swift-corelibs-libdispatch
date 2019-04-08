@@ -1,4 +1,6 @@
+#define _CRT_RAND_S
 #include <generic_win_port.h>
+#include <dispatch_test.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -220,6 +222,42 @@ mach_absolute_time(void)
 	return result * 100;  // Convert from 100ns units
 }
 
+static void
+randomize_name(char *out)
+{
+	static const char chars[] =
+			"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz._-";
+	const size_t num_chars = sizeof(chars) - 1;
+	unsigned int lo, hi;
+	rand_s(&lo);
+	rand_s(&hi);
+	uint64_t val = ((uint64_t)hi << 32) | lo;
+	for (int j = 0; j < 6; j++) {
+		out[j] = chars[val % num_chars];
+		val /= num_chars;
+	}
+}
+
+dispatch_fd_t
+mkstemp(char *tmpl)
+{
+	size_t len = strlen(tmpl);
+	if (len < 6) {
+		errno = EINVAL;
+		return -1;
+	}
+	char *replace = &tmpl[len - 6];
+	for (int i = 0; i < 100; i++) {
+		randomize_name(replace);
+		dispatch_fd_t fd = dispatch_test_fd_open(tmpl, O_RDWR | O_CREAT | O_EXCL);
+		if (fd != -1) {
+			return fd;
+		}
+	}
+	errno = EEXIST;
+	return -1;
+}
+
 void
 print_winapi_error(const char *function_name, DWORD error)
 {
@@ -234,6 +272,14 @@ print_winapi_error(const char *function_name, DWORD error)
 	} else {
 		fprintf(stderr, "%s: error %lu\n", function_name, error);
 	}
+}
+
+intptr_t
+random(void)
+{
+	unsigned int x;
+	rand_s(&x);
+	return x & INT_MAX;
 }
 
 unsigned int
