@@ -270,19 +270,24 @@ if(ENABLE_SWIFT)
   else()
     set(library_kind STATIC)
   endif()
+
   set(swiftDispatch_OUTPUT_FILE
       ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_${library_kind}_LIBRARY_PREFIX}swiftDispatch${CMAKE_${library_kind}_LIBRARY_SUFFIX})
-  install(FILES
-            ${swiftDispatch_OUTPUT_FILE}
-          DESTINATION
-            ${INSTALL_TARGET_DIR})
-  if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-    if(BUILD_SHARED_LIBS)
-      install(FILES
-                ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_IMPORT_LIBRARY_PREFIX}swiftDispatch${CMAKE_IMPORT_LIBRARY_SUFFIX}
-              DESTINATION
-                ${INSTALL_TARGET_DIR})
-    endif()
+
+  if(CMAKE_SYSTEM_NAME STREQUAL Windows AND BUILD_SHARED_LIBS)
+    install(FILES
+              ${swiftDispatch_OUTPUT_FILE}
+            DESTINATION
+              bin)
+    install(FILES
+              ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_IMPORT_LIBRARY_PREFIX}swiftDispatch${CMAKE_IMPORT_LIBRARY_SUFFIX}
+            DESTINATION
+              ${INSTALL_TARGET_DIR})
+  else()
+    install(FILES
+              ${swiftDispatch_OUTPUT_FILE}
+            DESTINATION
+              ${INSTALL_TARGET_DIR})
   endif()
 endif()
 
