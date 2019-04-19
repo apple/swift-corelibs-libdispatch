@@ -27,28 +27,217 @@ enum _dispatch_windows_port {
 	DISPATCH_PORT_TIMER_CLOCK_WALL,
 	DISPATCH_PORT_TIMER_CLOCK_UPTIME,
 	DISPATCH_PORT_TIMER_CLOCK_MONOTONIC,
+	DISPATCH_PORT_FILE_HANDLE,
 };
 
 #pragma mark dispatch_unote_t
 
-bool
-_dispatch_unote_register_muxed(dispatch_unote_t du DISPATCH_UNUSED)
+typedef struct dispatch_muxnote_s {
+	LIST_ENTRY(dispatch_muxnote_s) dmn_list;
+	dispatch_unote_ident_t dmn_ident;
+	int8_t dmn_filter;
+	enum _dispatch_muxnote_handle_type {
+		DISPATCH_MUXNOTE_HANDLE_TYPE_INVALID,
+		DISPATCH_MUXNOTE_HANDLE_TYPE_FILE,
+	} dmn_handle_type;
+} *dispatch_muxnote_t;
+
+static LIST_HEAD(dispatch_muxnote_bucket_s, dispatch_muxnote_s)
+    _dispatch_sources[DSL_HASH_SIZE];
+
+static SRWLOCK _dispatch_file_handles_lock = SRWLOCK_INIT;
+static LIST_HEAD(, dispatch_unote_linkage_s) _dispatch_file_handles;
+
+DISPATCH_ALWAYS_INLINE
+static inline struct dispatch_muxnote_bucket_s *
+_dispatch_unote_muxnote_bucket(uint32_t ident)
 {
-	WIN_PORT_ERROR();
-	return false;
+	return &_dispatch_sources[DSL_HASH(ident)];
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline dispatch_muxnote_t
+_dispatch_unote_muxnote_find(struct dispatch_muxnote_bucket_s *dmb,
+		dispatch_unote_ident_t ident, int8_t filter)
+{
+	dispatch_muxnote_t dmn;
+	if (filter == EVFILT_WRITE) filter = EVFILT_READ;
+	LIST_FOREACH(dmn, dmb, dmn_list) {
+		if (dmn->dmn_ident == ident && dmn->dmn_filter == filter) {
+			break;
+		}
+	}
+	return dmn;
+}
+
+static dispatch_muxnote_t
+_dispatch_muxnote_create(dispatch_unote_t du)
+{
+	dispatch_muxnote_t dmn;
+	int8_t filter = du._du->du_filter;
+	HANDLE handle = (HANDLE)du._du->du_ident;
+
+	dmn = _dispatch_calloc(1, sizeof(*dmn));
+	if (dmn == NULL) {
+		DISPATCH_INTERNAL_CRASH(0, "_dispatch_calloc");
+	}
+	dmn->dmn_ident = (dispatch_unote_ident_t)handle;
+	dmn->dmn_filter = filter;
+
+	switch (filter) {
+	case EVFILT_SIGNAL:
+		WIN_PORT_ERROR();
+
+	case EVFILT_WRITE:
+	case EVFILT_READ:
+		switch (GetFileType(handle)) {
+		case FILE_TYPE_UNKNOWN:
+			// ensure that an invalid handle was not passed
+			(void)dispatch_assume(GetLastError() == NO_ERROR);
+			DISPATCH_INTERNAL_CRASH(0, "unknown handle type");
+
+		case FILE_TYPE_REMOTE:
+			DISPATCH_INTERNAL_CRASH(0, "unused handle type");
+
+		case FILE_TYPE_CHAR:
+			// The specified file is a character file, typically a
+			// LPT device or a console.
+			WIN_PORT_ERROR();
+
+		case FILE_TYPE_DISK:
+			// The specified file is a disk file
+			dmn->dmn_handle_type =
+				DISPATCH_MUXNOTE_HANDLE_TYPE_FILE;
+			break;
+
+		case FILE_TYPE_PIPE:
+			// The specified file is a socket, a named pipe, or an
+			// anonymous pipe.
+			WIN_PORT_ERROR();
+		}
+
+		break;
+
+	default:
+		DISPATCH_INTERNAL_CRASH(0, "unexpected filter");
+	}
+
+
+	return dmn;
+}
+
+static void
+_dispatch_muxnote_dispose(dispatch_muxnote_t dmn)
+{
+	free(dmn);
+}
+
+DISPATCH_ALWAYS_INLINE
+static BOOL
+_dispatch_io_trigger(dispatch_muxnote_t dmn)
+{
+	BOOL bSuccess;
+
+	switch (dmn->dmn_handle_type) {
+	case DISPATCH_MUXNOTE_HANDLE_TYPE_INVALID:
+		DISPATCH_INTERNAL_CRASH(0, "invalid handle");
+
+	case DISPATCH_MUXNOTE_HANDLE_TYPE_FILE:
+		bSuccess = PostQueuedCompletionStatus(hPort, 0,
+			(ULONG_PTR)DISPATCH_PORT_FILE_HANDLE, NULL);
+		if (bSuccess == FALSE) {
+			DISPATCH_INTERNAL_CRASH(GetLastError(),
+				"PostQueuedCompletionStatus");
+		}
+		break;
+	}
+
+	return bSuccess;
+}
+
+bool
+_dispatch_unote_register_muxed(dispatch_unote_t du)
+{
+	struct dispatch_muxnote_bucket_s *dmb;
+	dispatch_muxnote_t dmn;
+
+	dmb = _dispatch_unote_muxnote_bucket(du._du->du_ident);
+	dmn = _dispatch_unote_muxnote_find(dmb, du._du->du_ident,
+		du._du->du_filter);
+	if (dmn) {
+		WIN_PORT_ERROR();
+	} else {
+		dmn = _dispatch_muxnote_create(du);
+		if (dmn) {
+			if (_dispatch_io_trigger(dmn) == FALSE) {
+				_dispatch_muxnote_dispose(dmn);
+				dmn = NULL;
+			} else {
+				LIST_INSERT_HEAD(dmb, dmn, dmn_list);
+			}
+		}
+	}
+
+	if (dmn) {
+		dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
+
+		AcquireSRWLockExclusive(&_dispatch_file_handles_lock);
+		LIST_INSERT_HEAD(&_dispatch_file_handles, dul, du_link);
+		ReleaseSRWLockExclusive(&_dispatch_file_handles_lock);
+
+		dul->du_muxnote = dmn;
+		_dispatch_unote_state_set(du, DISPATCH_WLH_ANON,
+			DU_STATE_ARMED);
+	}
+
+	return dmn != NULL;
 }
 
 void
-_dispatch_unote_resume_muxed(dispatch_unote_t du DISPATCH_UNUSED)
+_dispatch_unote_resume_muxed(dispatch_unote_t du)
 {
-	WIN_PORT_ERROR();
+	dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
+	dispatch_muxnote_t dmn = dul->du_muxnote;
+	dispatch_assert(_dispatch_unote_registered(du));
+	_dispatch_io_trigger(dmn);
 }
 
 bool
-_dispatch_unote_unregister_muxed(dispatch_unote_t du DISPATCH_UNUSED)
+_dispatch_unote_unregister_muxed(dispatch_unote_t du)
 {
-	WIN_PORT_ERROR();
-	return false;
+	dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
+	dispatch_muxnote_t dmn = dul->du_muxnote;
+
+	AcquireSRWLockExclusive(&_dispatch_file_handles_lock);
+	LIST_REMOVE(dul, du_link);
+	_LIST_TRASH_ENTRY(dul, du_link);
+	ReleaseSRWLockExclusive(&_dispatch_file_handles_lock);
+	dul->du_muxnote = NULL;
+
+	LIST_REMOVE(dmn, dmn_list);
+	_dispatch_muxnote_dispose(dmn);
+
+	_dispatch_unote_state_set(du, DU_STATE_UNREGISTERED);
+	return true;
+}
+
+static void
+_dispatch_event_merge_file_handle()
+{
+	dispatch_unote_linkage_t dul, dul_next;
+
+	AcquireSRWLockExclusive(&_dispatch_file_handles_lock);
+	LIST_FOREACH_SAFE(dul, &_dispatch_file_handles, du_link, dul_next) {
+		dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
+
+		// consumed by dux_merge_evt()
+		_dispatch_retain_unote_owner(du);
+		dispatch_assert(dux_needs_rearm(du._du));
+		_dispatch_unote_state_clear_bit(du, DU_STATE_ARMED);
+		os_atomic_store2o(du._dr, ds_pending_data, ~1, relaxed);
+		dux_merge_evt(du._du, EV_ADD | EV_ENABLE | EV_DISPATCH, 1, 0);
+	}
+	ReleaseSRWLockExclusive(&_dispatch_file_handles_lock);
 }
 
 #pragma mark timers
@@ -219,6 +408,10 @@ _dispatch_event_loop_drain(uint32_t flags)
 
 		case DISPATCH_PORT_TIMER_CLOCK_MONOTONIC:
 			_dispatch_event_merge_timer(DISPATCH_CLOCK_MONOTONIC);
+			break;
+
+		case DISPATCH_PORT_FILE_HANDLE:
+			_dispatch_event_merge_file_handle();
 			break;
 
 		default:
