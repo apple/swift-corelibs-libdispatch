@@ -107,7 +107,7 @@
 
 #define LIST_ENTRY(type) struct { \
 		struct type *le_next; \
-		struct type *le_prev; \
+		struct type **le_prev; \
 	}
 
 #define	LIST_EMPTY(head) ((head)->lh_first == NULL)
@@ -133,13 +133,14 @@
 #define LIST_REMOVE(elm, field) do { \
 		if (LIST_NEXT((elm), field) != NULL) \
 			LIST_NEXT((elm), field)->field.le_prev = (elm)->field.le_prev; \
+		*(elm)->field.le_prev = LIST_NEXT((elm), field); \
 	} while (0)
 
 #define LIST_INSERT_HEAD(head, elm, field) do { \
 		if ((LIST_NEXT((elm), field) = LIST_FIRST((head))) != NULL) \
-			LIST_FIRST((head))->field.le_prev = LIST_NEXT((elm), field); \
+			LIST_FIRST((head))->field.le_prev = &LIST_NEXT((elm), field); \
 		LIST_FIRST((head)) = (elm); \
-		(elm)->field.le_prev = LIST_FIRST((head)); \
+		(elm)->field.le_prev = &LIST_FIRST((head)); \
 	} while (0)
 
 #endif // __DISPATCH_SHIMS_SYS_QUEUE__
