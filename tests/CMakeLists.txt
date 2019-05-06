@@ -155,6 +155,7 @@ set(DISPATCH_C_TESTS
     starfish
     data
     io_net
+    io_pipe_close
     select)
 
 # Tests that usually pass, but occasionally fail.
@@ -193,6 +194,8 @@ foreach(test ${DISPATCH_C_TESTS})
                 SOURCES
                   dispatch_${test}.c)
 endforeach()
+
+set_tests_properties(dispatch_io_pipe_close PROPERTIES TIMEOUT 5)
 
 # test dispatch API for various C/CXX language variants
 add_unit_test(dispatch_c99 NO_BSD_OVERLAY SOURCES dispatch_c99.c)
