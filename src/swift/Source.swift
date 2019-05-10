@@ -12,6 +12,9 @@
 
 import CDispatch
 import _SwiftDispatchOverlayShims
+#if os(Windows)
+import WinSDK
+#endif
 
 extension DispatchSourceProtocol {
 
@@ -179,7 +182,13 @@ extension DispatchSource {
 #endif
 
 	public class func makeReadSource(fileDescriptor: Int32, queue: DispatchQueue? = nil) -> DispatchSourceRead {
-		let source = dispatch_source_create(_swift_dispatch_source_type_READ(), UInt(fileDescriptor), 0, queue?.__wrapped)
+#if os(Windows)
+		let handle: UInt = UInt(_get_osfhandle(fileDescriptor))
+		if handle == UInt(bitPattern: INVALID_HANDLE_VALUE) { fatalError("unable to get underlying handle from file descriptor") }
+#else
+		let handle: UInt = UInt(fileDescriptor)
+#endif
+		let source = dispatch_source_create(_swift_dispatch_source_type_READ(), handle, 0, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceRead
 	}
 
@@ -216,7 +225,13 @@ extension DispatchSource {
 #endif
 
 	public class func makeWriteSource(fileDescriptor: Int32, queue: DispatchQueue? = nil) -> DispatchSourceWrite {
-		let source = dispatch_source_create(_swift_dispatch_source_type_WRITE(), UInt(fileDescriptor), 0, queue?.__wrapped)
+#if os(Windows)
+		let handle: UInt = UInt(_get_osfhandle(fileDescriptor))
+		if handle == UInt(bitPattern: INVALID_HANDLE_VALUE) { fatalError("unable to get underlying handle from file descriptor") }
+#else
+		let handle: UInt = UInt(fileDescriptor)
+#endif
+		let source = dispatch_source_create(_swift_dispatch_source_type_WRITE(), handle, 0, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceWrite
 	}
 }
