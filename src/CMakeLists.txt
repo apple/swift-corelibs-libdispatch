@@ -124,6 +124,9 @@ if(ENABLE_SWIFT)
                     CFLAGS
                       -fblocks
                       -fmodule-map-file=${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
+                      $<$<PLATFORM_ID:Windows>:-D_MT>
+                      # TODO(compnerd) handle /MT builds
+                      $<$<PLATFORM_ID:Windows>:-D_DLL>
                     DEPENDS
                       module-maps
                       DispatchStubs
@@ -134,6 +137,8 @@ if(ENABLE_SWIFT)
                       -lBlocksRuntime
                       -L $<TARGET_LINKER_FILE_DIR:dispatch>
                       -ldispatch
+                      $<$<AND:$<PLATFORM_ID:Windows>,$<CONFIG:Debug>>:-lmsvcrtd>
+                      $<$<AND:$<PLATFORM_ID:Windows>,$<NOT:$<CONFIG:Debug>>>:-lmsvcrt>
                     MODULE_NAME
                       Dispatch
                     MODULE_LINK_NAME
