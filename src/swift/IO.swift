@@ -11,6 +11,9 @@
 //===----------------------------------------------------------------------===//
 
 import CDispatch
+#if os(Windows)
+import WinSDK
+#endif
 
 extension DispatchIO {
 
@@ -34,11 +37,27 @@ extension DispatchIO {
 		public static let strictInterval = IntervalFlags(rawValue: 1)
 	}
 
+#if os(Windows)
+	public class func read(fromHandle: HANDLE, maxLength: Int, runningHandlerOn queue: DispatchQueue, handler: @escaping (_ data: DispatchData, _ error: Int32) -> Void) {
+		dispatch_read(dispatch_fd_t(bitPattern: fromHandle), maxLength, queue.__wrapped) { (data: dispatch_data_t, error: Int32) in
+			handler(DispatchData(borrowedData: data), error)
+		}
+	}
+#endif
+
 	public class func read(fromFileDescriptor: Int32, maxLength: Int, runningHandlerOn queue: DispatchQueue, handler: @escaping (_ data: DispatchData, _ error: Int32) -> Void) {
 		dispatch_read(dispatch_fd_t(fromFileDescriptor), maxLength, queue.__wrapped) { (data: dispatch_data_t, error: Int32) in
 			handler(DispatchData(borrowedData: data), error)
 		}
 	}
+
+#if os(Windows)
+	public class func write(toHandle: HANDLE, data: DispatchData, runningHandlerOn queue: DispatchQueue, handler: @escaping(_ data: DispatchData??, _ error: Int32) -> Void) {
+		dispatch_write(dispatch_fd_t(bitPattern: toHandle), data.__wrapped.__wrapped, queue.__wrapped) { (data: dispatch_data_t?, error: Int32) in
+			handler(data.map { DispatchData(borrowedData: $0) }, error)
+		}
+	}
+#endif
 
 	public class func write(toFileDescriptor: Int32, data: DispatchData, runningHandlerOn queue: DispatchQueue, handler: @escaping (_ data: DispatchData?, _ error: Int32) -> Void) {
 		dispatch_write(dispatch_fd_t(toFileDescriptor), data.__wrapped.__wrapped, queue.__wrapped) { (data: dispatch_data_t?, error: Int32) in
