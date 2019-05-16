@@ -124,9 +124,6 @@ if(ENABLE_SWIFT)
                     CFLAGS
                       -fblocks
                       -fmodule-map-file=${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
-                      $<$<PLATFORM_ID:Windows>:-D_MT>
-                      # TODO(compnerd) handle /MT builds
-                      $<$<PLATFORM_ID:Windows>:-D_DLL>
                     DEPENDS
                       module-maps
                       DispatchStubs
@@ -158,6 +155,11 @@ if(ENABLE_SWIFT)
                     SWIFT_FLAGS
                       -I ${PROJECT_SOURCE_DIR}
                       ${swift_optimization_flags}
+                      $<$<PLATFORM_ID:Windows>:-Xcc>
+                      $<$<PLATFORM_ID:Windows>:-D_MT>
+                      # TODO(compnerd) handle /MT builds
+                      $<$<PLATFORM_ID:Windows>:-Xcc>
+                      $<$<PLATFORM_ID:Windows>:-D_DLL>
                     TARGET
                       ${CMAKE_C_COMPILER_TARGET})
 endif()
