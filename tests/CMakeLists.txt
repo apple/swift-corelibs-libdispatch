@@ -141,7 +141,6 @@ set(DISPATCH_C_TESTS
     api
     debug
     queue_finalizer
-    group
     overcommit
     context_for_key
     after
@@ -152,7 +151,6 @@ set(DISPATCH_C_TESTS
     timer_bit31
     timer_bit63
     timer_set_time
-    starfish
     data
     io_net
     io_pipe_close
@@ -164,8 +162,10 @@ if(EXTENDED_TEST_SUITE)
   list(APPEND DISPATCH_C_TESTS
        priority
        concur
+       group
        read
        read2
+       starfish
        suspend_timer
        pingpong
        drift
