@@ -181,6 +181,13 @@ extension DispatchSource {
 	}
 #endif
 
+#if os(Windows)
+	public class func makeReadSource(handle: HANDLE, queue: DispatchQueue? = nil) -> DispatchSourceRead {
+		let source = dispatch_source_create(_swift_dispatch_source_type_READ(), UInt(bitPattern: handle), 0, queue?.__wrapped)
+		return DispatchSource(source: source) as DispatchSourceRead
+	}
+#endif
+
 	public class func makeReadSource(fileDescriptor: Int32, queue: DispatchQueue? = nil) -> DispatchSourceRead {
 #if os(Windows)
 		let handle: UInt = UInt(_get_osfhandle(fileDescriptor))
@@ -221,6 +228,13 @@ extension DispatchSource {
 	public class func makeFileSystemObjectSource(fileDescriptor: Int32, eventMask: FileSystemEvent, queue: DispatchQueue? = nil) -> DispatchSourceFileSystemObject {
 		let source = dispatch_source_create(_swift_dispatch_source_type_VNODE(), UInt(fileDescriptor), eventMask.rawValue, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceFileSystemObject
+	}
+#endif
+
+#if os(Windows)
+	public class func makeWriteSource(handle: HANDLE, queue: DispatchQueue? = nil) -> DispatchSourceWrite {
+		let source = dispatch_source_create(_swift_dispatch_source_type_WRITE(), UInt(bitPattern: handle), 0, queue?.__wrapped)
+		return DispatchSource(source: source) as DispatchSourceWrite
 	}
 #endif
 
