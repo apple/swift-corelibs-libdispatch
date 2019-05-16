@@ -159,6 +159,7 @@ set(DISPATCH_C_TESTS
 # Tests that usually pass, but occasionally fail.
 # Excluded by default for purposes of Swift CI
 if(EXTENDED_TEST_SUITE)
+  # When dispatch_group is reenabled here, also remove the if(EXTENDED_TEST_SUITE) condition below
   list(APPEND DISPATCH_C_TESTS
        priority
        concur
@@ -205,7 +206,10 @@ add_unit_test(dispatch_plusplus SOURCES dispatch_plusplus.cpp)
 if(WIN32)
   target_link_libraries(dispatch_io_net PRIVATE WS2_32)
 else()
-  target_link_libraries(dispatch_group PRIVATE m)
+  # When dispatch_group is reenabled above, remove this
+  if(EXTENDED_TEST_SUITE)
+    target_link_libraries(dispatch_group PRIVATE m)
+  endif()
   target_link_libraries(dispatch_timer_short PRIVATE m)
 endif()
 
