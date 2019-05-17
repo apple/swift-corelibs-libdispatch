@@ -3,6 +3,12 @@ cmake_minimum_required(VERSION 3.4.3)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
+# NOTE(compnerd) enable CMP0091 - select MSVC Runtime Library via the
+# CMAKE_MSVC_RUNTIME_LIBRARY setting
+if(POLICY CMP0091)
+  cmake_policy(CMP0091 NEW)
+endif()
+
 project(dispatch
         VERSION 1.3
         LANGUAGES C CXX)
@@ -18,6 +24,9 @@ set(CMAKE_C_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_STANDARD 11)
 
 set(CMAKE_C_VISIBILITY_PRESET hidden)
+
+# NOTE(compnerd) default to /MD or /MDd based on the configuration on Windows
+set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>DLL)
 
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)

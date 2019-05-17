@@ -134,8 +134,6 @@ if(ENABLE_SWIFT)
                       -lBlocksRuntime
                       -L $<TARGET_LINKER_FILE_DIR:dispatch>
                       -ldispatch
-                      $<$<AND:$<PLATFORM_ID:Windows>,$<CONFIG:Debug>>:-lmsvcrtd>
-                      $<$<AND:$<PLATFORM_ID:Windows>,$<NOT:$<CONFIG:Debug>>>:-lmsvcrt>
                     MODULE_NAME
                       Dispatch
                     MODULE_LINK_NAME
@@ -155,11 +153,7 @@ if(ENABLE_SWIFT)
                     SWIFT_FLAGS
                       -I ${PROJECT_SOURCE_DIR}
                       ${swift_optimization_flags}
-                      $<$<PLATFORM_ID:Windows>:-Xcc>
-                      $<$<PLATFORM_ID:Windows>:-D_MT>
-                      # TODO(compnerd) handle /MT builds
-                      $<$<PLATFORM_ID:Windows>:-Xcc>
-                      $<$<PLATFORM_ID:Windows>:-D_DLL>
+                      $<$<PLATFORM_ID:Windows>:-libc;${CMAKE_MSVC_RUNTIME_LIBRARY}>
                     TARGET
                       ${CMAKE_C_COMPILER_TARGET})
 endif()
