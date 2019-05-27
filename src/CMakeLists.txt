@@ -296,5 +296,12 @@ if(ENABLE_SWIFT)
             DESTINATION
               ${INSTALL_TARGET_DIR})
   endif()
+
+  if(NOT BUILD_SHARED_LIBS)
+    install(FILES
+              $<TARGET_FILE:DispatchStubs>
+            DESTINATION
+              ${INSTALL_TARGET_DIR})
+  endif()
 endif()
 
