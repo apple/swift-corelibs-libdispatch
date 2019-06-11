@@ -6,6 +6,7 @@
 
 #include <Windows.h>
 #include <crtdbg.h>
+#include <Shlwapi.h>
 
 #include <io.h>
 #include <process.h>

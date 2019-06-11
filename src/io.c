@@ -401,15 +401,29 @@ dispatch_io_create_f(dispatch_io_type_t type, dispatch_fd_t fd,
 			^(int error){ cleanup_handler(context, error); });
 }
 
+#if defined(_WIN32)
+#define _is_separator(ch) ((ch) == '/' || (ch) == '\\')
+#else
+#define _is_separator(ch) ((ch) == '/')
+#endif
+
 dispatch_io_t
 dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 		int oflag, mode_t mode, dispatch_queue_t queue,
 		void (^cleanup_handler)(int error))
 {
-	if ((type != DISPATCH_IO_STREAM && type != DISPATCH_IO_RANDOM) ||
-			!(*path == '/')) {
+	if (type != DISPATCH_IO_STREAM && type != DISPATCH_IO_RANDOM) {
 		return DISPATCH_BAD_INPUT;
 	}
+#if defined(_WIN32)
+	if (PathIsRelativeA(path)) {
+		return DISPATCH_BAD_INPUT;
+	}
+#else
+	if (!_is_separator(*path)) {
+		return DISPATCH_BAD_INPUT;
+	}
+#endif
 	size_t pathlen = strlen(path);
 	dispatch_io_path_data_t path_data = malloc(sizeof(*path_data) + pathlen+1);
 	if (!path_data) {
@@ -444,9 +458,15 @@ dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 				break;
 			default:
 				if ((path_data->oflag & O_CREAT) &&
-						(*(path_data->path + path_data->pathlen - 1) != '/')) {
+						!_is_separator(*(path_data->path + path_data->pathlen - 1))) {
 					// Check parent directory
-					char *c = strrchr(path_data->path, '/');
+					char *c = NULL;
+					for (ssize_t i = (ssize_t)path_data->pathlen - 1; i >= 0; i--) {
+						if (_is_separator(path_data->path[i])) {
+							c = &path_data->path[i];
+							break;
+						}
+					}
 					dispatch_assert(c);
 					*c = 0;
 					int perr;
@@ -460,7 +480,11 @@ dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 							err = 0;
 							break;
 					);
+#if defined(_WIN32)
+					*c = '\\';
+#else
 					*c = '/';
+#endif
 				}
 				break;
 		);
@@ -1282,18 +1306,31 @@ _dispatch_fd_entry_guarded_open(dispatch_fd_entry_t fd_entry, const char *path,
 #if defined(_WIN32)
 	(void)mode;
 	DWORD dwDesiredAccess = 0;
-	if (oflag & _O_RDWR)
-		dwDesiredAccess = GENERIC_READ | GENERIC_WRITE;
-	else if (oflag & _O_RDONLY)
-		dwDesiredAccess = GENERIC_READ;
-	else if (oflag & _O_WRONLY)
-		dwDesiredAccess = GENERIC_WRITE;
+	switch (oflag & (_O_RDONLY | _O_WRONLY | _O_RDWR)) {
+		case _O_RDONLY:
+			dwDesiredAccess = GENERIC_READ;
+			break;
+		case _O_WRONLY:
+			dwDesiredAccess = GENERIC_WRITE;
+			break;
+		case _O_RDWR:
+			dwDesiredAccess = GENERIC_READ | GENERIC_WRITE;
+			break;
+	}
 	DWORD dwCreationDisposition = OPEN_EXISTING;
-	if (oflag & _O_CREAT)
+	if (oflag & _O_CREAT) {
 		dwCreationDisposition = OPEN_ALWAYS;
-	if (oflag & _O_TRUNC)
-		dwCreationDisposition = CREATE_ALWAYS;
-	return (dispatch_fd_t)CreateFile(path, dwDesiredAccess, 0, NULL, dwCreationDisposition, 0, NULL);
+		if (oflag & _O_EXCL) {
+			dwCreationDisposition = CREATE_NEW;
+		} else if (oflag & _O_TRUNC) {
+			dwCreationDisposition = CREATE_ALWAYS;
+		}
+	} else if (oflag & _O_TRUNC) {
+		dwCreationDisposition = TRUNCATE_EXISTING;
+	}
+	return (dispatch_fd_t)CreateFile(path, dwDesiredAccess,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+			dwCreationDisposition, 0, NULL);
 #else
 	return open(path, oflag, mode);
 #endif
