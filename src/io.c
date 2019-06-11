@@ -2483,8 +2483,14 @@ _dispatch_operation_deliver_data(dispatch_operation_t op,
 	if (op->direction == DOP_DIR_READ) {
 		if (op->buf_len) {
 			void *buf = op->buf;
+#if defined(_WIN32)
+			// buf is allocated with _aligned_malloc()
+			data = dispatch_data_create(buf, op->buf_len, NULL,
+					^{ _aligned_free(buf); });
+#else
 			data = dispatch_data_create(buf, op->buf_len, NULL,
 					DISPATCH_DATA_DESTRUCTOR_FREE);
+#endif
 			op->buf = NULL;
 			op->buf_len = 0;
 			dispatch_data_t d = dispatch_data_create_concat(op->data, data);
