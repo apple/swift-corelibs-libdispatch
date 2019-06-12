@@ -36,4 +36,10 @@ typedef __typeof__(_Generic((__SIZE_TYPE__)0,                                  \
 
 #define strcasecmp _stricmp
 
+/*
+ * Wrappers for dynamically loaded Windows APIs
+ */
+void _dispatch_QueryInterruptTimePrecise(PULONGLONG lpInterruptTimePrecise);
+void _dispatch_QueryUnbiasedInterruptTimePrecise(PULONGLONG lpUnbiasedInterruptTimePrecise);
+
 #endif
