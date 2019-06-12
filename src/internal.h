@@ -282,10 +282,8 @@ upcast(dispatch_object_t dou)
 #include <linux/sysctl.h>
 #else
 #include <sys/sysctl.h>
-#endif /* __ANDROID__ */
-#if !defined(__linux__)
 #include <sys/queue.h>
-#endif
+#endif /* __ANDROID__ */
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/mman.h>
