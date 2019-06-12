@@ -146,11 +146,8 @@ if(EXTENDED_TEST_SUITE)
        pingpong
        drift
        readsync
-       cascade)
-  if(NOT WIN32)
-    # Not ported to Windows yet
-    list(APPEND DISPATCH_C_TESTS io)
-  endif()
+       cascade
+       io)
   # an oddball; dispatch_priority.c compiled with -DUSE_SET_TARGET_QUEUE=1
   add_unit_test(dispatch_priority2 SOURCES dispatch_priority.c)
   target_compile_options(dispatch_priority2 PRIVATE -DUSE_SET_TARGET_QUEUE=1)
