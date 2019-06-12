@@ -94,7 +94,11 @@
 
 #define TAILQ_CONCAT(head1, head2, field) do { \
 		if (!TAILQ_EMPTY(head2)) { \
-			(head1)->tq_last = (head2)->tq_first; \
+			if ((head1)->tq_last) { \
+				(head1)->tq_last->field.te_next = (head2)->tq_first; \
+			} else { \
+				(head1)->tq_first = (head2)->tq_first; \
+			} \
 			(head2)->tq_first->field.te_prev = (head1)->tq_last; \
 			(head1)->tq_last = (head2)->tq_last; \
 			TAILQ_INIT((head2)); \
