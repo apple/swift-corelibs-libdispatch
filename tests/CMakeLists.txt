@@ -31,11 +31,6 @@ target_include_directories(bsdtests
                            PUBLIC
                              # bsdtests.h needs config_ac.h
                              ${PROJECT_BINARY_DIR})
-if(BSD_OVERLAY_FOUND)
-  target_compile_options(bsdtests
-                         PRIVATE
-                           ${BSD_OVERLAY_CFLAGS})
-endif()
 if (WIN32)
   target_sources(bsdtests
                  PRIVATE
@@ -58,23 +53,13 @@ target_include_directories(bsdtestharness
                              ${CMAKE_CURRENT_BINARY_DIR}
                              ${CMAKE_CURRENT_SOURCE_DIR}
                              ${PROJECT_SOURCE_DIR})
-if(BSD_OVERLAY_FOUND)
-  target_compile_options(bsdtestharness
-                         PRIVATE
-                           ${BSD_OVERLAY_CFLAGS})
-endif()
 target_link_libraries(bsdtestharness
                       PRIVATE
                         bsdtests
                         dispatch)
-if(BSD_OVERLAY_FOUND)
-  target_link_libraries(bsdtestharness
-                        PRIVATE
-                          ${BSD_OVERLAY_LDFLAGS})
-endif()
 
 function(add_unit_test name)
-  set(options DISABLED_TEST;NO_BSD_OVERLAY)
+  set(options DISABLED_TEST)
   set(single_value_args)
   set(multiple_value_args SOURCES)
   cmake_parse_arguments(AUT "${options}" "${single_value_args}" "${multiple_value_args}" ${ARGN})
@@ -97,11 +82,6 @@ function(add_unit_test name)
   target_include_directories(${name}
                              SYSTEM BEFORE PRIVATE
                                "${BlocksRuntime_INCLUDE_DIR}")
-  if(BSD_OVERLAY_FOUND AND NOT AUT_NO_BSD_OVERLAY)
-    target_compile_options(${name}
-                           PRIVATE
-                             ${BSD_OVERLAY_CFLAGS})
-  endif()
   if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
     target_compile_options(${name} PRIVATE -Xclang -fblocks)
     target_compile_options(${name} PRIVATE /W3 -Wno-deprecated-declarations)
@@ -115,11 +95,6 @@ function(add_unit_test name)
                           dispatch
                           Threads::Threads
                           BlocksRuntime::BlocksRuntime)
-  if(BSD_OVERLAY_FOUND AND NOT AUT_NO_BSD_OVERLAY)
-    target_link_libraries(${name}
-                          PRIVATE
-                            ${BSD_OVERLAY_LDFLAGS})
-  endif()
   target_link_libraries(${name} PRIVATE bsdtests)
   add_test(NAME ${name}
            COMMAND bsdtestharness $<TARGET_FILE:${name}>)
@@ -199,7 +174,7 @@ endforeach()
 set_tests_properties(dispatch_io_pipe_close PROPERTIES TIMEOUT 5)
 
 # test dispatch API for various C/CXX language variants
-add_unit_test(dispatch_c99 NO_BSD_OVERLAY SOURCES dispatch_c99.c)
+add_unit_test(dispatch_c99 SOURCES dispatch_c99.c)
 add_unit_test(dispatch_plusplus SOURCES dispatch_plusplus.cpp)
 
 # test-specific link options
