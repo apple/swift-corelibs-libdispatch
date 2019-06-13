@@ -200,15 +200,6 @@ check_function_exists(strlcpy HAVE_STRLCPY)
 check_function_exists(sysconf HAVE_SYSCONF)
 check_function_exists(arc4random HAVE_ARC4RANDOM)
 
-if(NOT HAVE_STRLCPY AND NOT HAVE_GETPROGNAME)
-  include(FindPkgConfig)
-  pkg_check_modules(BSD_OVERLAY libbsd-overlay)
-  if(BSD_OVERLAY_FOUND)
-    set(HAVE_STRLCPY 1 CACHE INTERNAL "Have function strlcpy" FORCE)
-    set(HAVE_GETPROGNAME 1 CACHE INTERNAL "Have function getprogname" FORCE)
-  endif()
-endif()
-
 find_package(Threads REQUIRED)
 
 check_include_files("TargetConditionals.h" HAVE_TARGETCONDITIONALS_H)
