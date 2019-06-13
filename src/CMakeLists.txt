@@ -204,11 +204,6 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL Android)
                          PRIVATE
                            -U_GNU_SOURCE)
 endif()
-if(BSD_OVERLAY_FOUND)
-  target_compile_options(dispatch
-                         PRIVATE
-                           ${BSD_OVERLAY_CFLAGS})
-endif()
 if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
   target_compile_options(dispatch
                          PRIVATE
@@ -229,9 +224,6 @@ else()
                          PRIVATE
                            -fblocks
                            -momit-leaf-frame-pointer)
-endif()
-if(BSD_OVERLAY_FOUND)
-  target_link_libraries(dispatch PRIVATE ${BSD_OVERLAY_LDFLAGS})
 endif()
 if(LibRT_FOUND)
   target_link_libraries(dispatch PRIVATE RT::rt)
