@@ -28,18 +28,44 @@ enum _dispatch_windows_port {
 	DISPATCH_PORT_TIMER_CLOCK_UPTIME,
 	DISPATCH_PORT_TIMER_CLOCK_MONOTONIC,
 	DISPATCH_PORT_FILE_HANDLE,
+	DISPATCH_PORT_PIPE_HANDLE_READ,
+	DISPATCH_PORT_PIPE_HANDLE_WRITE,
+};
+
+enum _dispatch_muxnote_events {
+	DISPATCH_MUXNOTE_EVENT_READ = 1 << 0,
+	DISPATCH_MUXNOTE_EVENT_WRITE = 1 << 1,
 };
 
 #pragma mark dispatch_unote_t
 
 typedef struct dispatch_muxnote_s {
 	LIST_ENTRY(dispatch_muxnote_s) dmn_list;
+	LIST_HEAD(, dispatch_unote_linkage_s) dmn_readers_head;
+	LIST_HEAD(, dispatch_unote_linkage_s) dmn_writers_head;
+
+	// This refcount solves a race condition that can happen with I/O completion
+	// ports. When we enqueue packets with muxnote pointers associated with
+	// them, it's possible that those packets might not be processed until after
+	// the event has been unregistered. We increment this upon creating a
+	// muxnote or posting to a completion port, and we decrement it upon
+	// unregistering the event or processing a packet. When it hits zero, we
+	// dispose the muxnote.
+	os_atomic(uintptr_t) dmn_refcount;
+
 	dispatch_unote_ident_t dmn_ident;
 	int8_t dmn_filter;
 	enum _dispatch_muxnote_handle_type {
 		DISPATCH_MUXNOTE_HANDLE_TYPE_INVALID,
 		DISPATCH_MUXNOTE_HANDLE_TYPE_FILE,
+		DISPATCH_MUXNOTE_HANDLE_TYPE_PIPE,
 	} dmn_handle_type;
+	enum _dispatch_muxnote_events dmn_events;
+
+	// Used by the pipe monitoring thread
+	HANDLE dmn_thread;
+	HANDLE dmn_event;
+	os_atomic(bool) dmn_stop;
 } *dispatch_muxnote_t;
 
 static LIST_HEAD(dispatch_muxnote_bucket_s, dispatch_muxnote_s)
@@ -71,7 +97,8 @@ _dispatch_unote_muxnote_find(struct dispatch_muxnote_bucket_s *dmb,
 }
 
 static dispatch_muxnote_t
-_dispatch_muxnote_create(dispatch_unote_t du)
+_dispatch_muxnote_create(dispatch_unote_t du,
+		enum _dispatch_muxnote_events events)
 {
 	dispatch_muxnote_t dmn;
 	int8_t filter = du._du->du_filter;
@@ -81,12 +108,18 @@ _dispatch_muxnote_create(dispatch_unote_t du)
 	if (dmn == NULL) {
 		DISPATCH_INTERNAL_CRASH(0, "_dispatch_calloc");
 	}
+	os_atomic_store(&dmn->dmn_refcount, 1, relaxed);
 	dmn->dmn_ident = (dispatch_unote_ident_t)handle;
 	dmn->dmn_filter = filter;
+	dmn->dmn_events = events;
+	LIST_INIT(&dmn->dmn_readers_head);
+	LIST_INIT(&dmn->dmn_writers_head);
 
 	switch (filter) {
 	case EVFILT_SIGNAL:
 		WIN_PORT_ERROR();
+		free(dmn);
+		return NULL;
 
 	case EVFILT_WRITE:
 	case EVFILT_READ:
@@ -103,17 +136,28 @@ _dispatch_muxnote_create(dispatch_unote_t du)
 			// The specified file is a character file, typically a
 			// LPT device or a console.
 			WIN_PORT_ERROR();
+			free(dmn);
+			return NULL;
 
 		case FILE_TYPE_DISK:
 			// The specified file is a disk file
-			dmn->dmn_handle_type =
-				DISPATCH_MUXNOTE_HANDLE_TYPE_FILE;
+			dmn->dmn_handle_type = DISPATCH_MUXNOTE_HANDLE_TYPE_FILE;
 			break;
 
 		case FILE_TYPE_PIPE:
 			// The specified file is a socket, a named pipe, or an
-			// anonymous pipe.
-			WIN_PORT_ERROR();
+			// anonymous pipe. Use GetNamedPipeInfo() to distinguish between
+			// a pipe and a socket. Despite its name, it also succeeds for
+			// anonymous pipes.
+			if (!GetNamedPipeInfo(handle, NULL, NULL, NULL, NULL)) {
+				// We'll get ERROR_ACCESS_DENIED for outbound pipes.
+				if (GetLastError() != ERROR_ACCESS_DENIED) {
+					// The file is probably a socket.
+					WIN_PORT_ERROR();
+				}
+			}
+			dmn->dmn_handle_type = DISPATCH_MUXNOTE_HANDLE_TYPE_PIPE;
+			break;
 		}
 
 		break;
@@ -127,12 +171,135 @@ _dispatch_muxnote_create(dispatch_unote_t du)
 }
 
 static void
+_dispatch_muxnote_stop(dispatch_muxnote_t dmn)
+{
+	if (dmn->dmn_thread) {
+		// Keep trying to cancel ReadFile() until the thread exits
+		os_atomic_store(&dmn->dmn_stop, true, relaxed);
+		SetEvent(dmn->dmn_event);
+		do {
+			CancelIoEx((HANDLE)dmn->dmn_ident, /* lpOverlapped */ NULL);
+		} while (WaitForSingleObject(dmn->dmn_thread, 1) == WAIT_TIMEOUT);
+		CloseHandle(dmn->dmn_thread);
+		dmn->dmn_thread = NULL;
+	}
+	if (dmn->dmn_event) {
+		CloseHandle(dmn->dmn_event);
+		dmn->dmn_event = NULL;
+	}
+}
+
+static void
 _dispatch_muxnote_dispose(dispatch_muxnote_t dmn)
 {
+	if (dmn->dmn_thread) {
+		DISPATCH_INTERNAL_CRASH(0, "disposed a muxnote with an active thread");
+	}
 	free(dmn);
 }
 
-DISPATCH_ALWAYS_INLINE
+static void
+_dispatch_muxnote_retain(dispatch_muxnote_t dmn)
+{
+	uintptr_t refcount = os_atomic_inc(&dmn->dmn_refcount, relaxed);
+	if (refcount == 0) {
+		DISPATCH_INTERNAL_CRASH(0, "muxnote refcount overflow");
+	}
+	if (refcount == 1) {
+		DISPATCH_INTERNAL_CRASH(0, "retained a disposing muxnote");
+	}
+}
+
+static void
+_dispatch_muxnote_release(dispatch_muxnote_t dmn)
+{
+	uintptr_t refcount = os_atomic_dec(&dmn->dmn_refcount, relaxed);
+	if (refcount == 0) {
+		_dispatch_muxnote_dispose(dmn);
+	} else if (refcount == UINTPTR_MAX) {
+		DISPATCH_INTERNAL_CRASH(0, "muxnote refcount underflow");
+	}
+}
+
+static unsigned WINAPI
+_dispatch_pipe_monitor_thread(void *context)
+{
+	dispatch_muxnote_t dmn = (dispatch_muxnote_t)context;
+	HANDLE hPipe = (HANDLE)dmn->dmn_ident;
+	do {
+		char cBuffer[1];
+		DWORD dwNumberOfBytesTransferred;
+		OVERLAPPED ov = {0};
+		BOOL bSuccess = ReadFile(hPipe, cBuffer, /* nNumberOfBytesToRead */ 0,
+				&dwNumberOfBytesTransferred, &ov);
+		DWORD dwBytesAvailable;
+		DWORD dwError = GetLastError();
+		if (!bSuccess && dwError == ERROR_IO_PENDING) {
+			bSuccess = GetOverlappedResult(hPipe, &ov,
+					&dwNumberOfBytesTransferred, /* bWait */ TRUE);
+			dwError = GetLastError();
+		}
+		if (bSuccess) {
+			bSuccess = PeekNamedPipe(hPipe, NULL, 0, NULL, &dwBytesAvailable,
+					NULL);
+			dwError = GetLastError();
+		}
+		if (bSuccess) {
+			if (dwBytesAvailable == 0) {
+				// This can happen with a zero-byte write. Try again.
+				continue;
+			}
+		} else if (dwError == ERROR_NO_DATA) {
+			// The pipe is nonblocking. Try again.
+			Sleep(0);
+			continue;
+		} else {
+			_dispatch_debug("pipe[0x%llx]: GetLastError() returned %lu",
+					(long long)hPipe, dwError);
+			if (dwError == ERROR_OPERATION_ABORTED) {
+				continue;
+			}
+			os_atomic_store(&dmn->dmn_stop, true, relaxed);
+			dwBytesAvailable = 0;
+		}
+
+		// Make sure the muxnote stays alive until the packet is dequeued
+		_dispatch_muxnote_retain(dmn);
+
+		// The lpOverlapped parameter does not actually need to point to an
+		// OVERLAPPED struct. It's really just a pointer to pass back to
+		// GetQueuedCompletionStatus().
+		bSuccess = PostQueuedCompletionStatus(hPort,
+				dwBytesAvailable, (ULONG_PTR)DISPATCH_PORT_PIPE_HANDLE_READ,
+				(LPOVERLAPPED)dmn);
+		if (!bSuccess) {
+			DISPATCH_INTERNAL_CRASH(GetLastError(),
+					"PostQueuedCompletionStatus");
+		}
+
+		// If data is written into the pipe and not read right away, ReadFile()
+		// will keep returning immediately and we'll flood the completion port.
+		// This event lets us synchronize with _dispatch_event_loop_drain() so
+		// that we only post events when it's ready for them.
+		WaitForSingleObject(dmn->dmn_event, INFINITE);
+	} while (!os_atomic_load(&dmn->dmn_stop, relaxed));
+	_dispatch_debug("pipe[0x%llx]: monitor exiting", (long long)hPipe);
+	return 0;
+}
+
+static DWORD
+_dispatch_pipe_write_availability(HANDLE hPipe)
+{
+	IO_STATUS_BLOCK iosb;
+	FILE_PIPE_LOCAL_INFORMATION fpli;
+	NTSTATUS status = _dispatch_NtQueryInformationFile(hPipe, &iosb, &fpli,
+			sizeof(fpli), FilePipeLocalInformation);
+	if (!NT_SUCCESS(status)) {
+		return 1;
+	}
+	return fpli.WriteQuotaAvailable;
+}
+
 static BOOL
 _dispatch_io_trigger(dispatch_muxnote_t dmn)
 {
@@ -150,9 +317,56 @@ _dispatch_io_trigger(dispatch_muxnote_t dmn)
 				"PostQueuedCompletionStatus");
 		}
 		break;
+
+	case DISPATCH_MUXNOTE_HANDLE_TYPE_PIPE:
+		if ((dmn->dmn_events & DISPATCH_MUXNOTE_EVENT_READ) &&
+				!dmn->dmn_thread) {
+			HANDLE hThread = (HANDLE)_beginthreadex(/* security */ NULL,
+					/* stack_size */ 1, _dispatch_pipe_monitor_thread,
+					(void *)dmn, /* initflag */ 0, /* thrdaddr */ NULL);
+			if (!hThread) {
+				DISPATCH_INTERNAL_CRASH(errno, "_beginthread");
+			}
+			HANDLE hEvent = CreateEventW(NULL, /* bManualReset */ FALSE,
+					/* bInitialState */ FALSE, NULL);
+			if (!hEvent) {
+				DISPATCH_INTERNAL_CRASH(GetLastError(), "CreateEventW");
+			}
+			dmn->dmn_thread = hThread;
+			dmn->dmn_event = hEvent;
+		}
+		if (dmn->dmn_events & DISPATCH_MUXNOTE_EVENT_WRITE) {
+			_dispatch_muxnote_retain(dmn);
+			DWORD available =
+					_dispatch_pipe_write_availability((HANDLE)dmn->dmn_ident);
+			bSuccess = PostQueuedCompletionStatus(hPort, available,
+					(ULONG_PTR)DISPATCH_PORT_PIPE_HANDLE_WRITE,
+					(LPOVERLAPPED)dmn);
+			if (bSuccess == FALSE) {
+				DISPATCH_INTERNAL_CRASH(GetLastError(),
+						"PostQueuedCompletionStatus");
+			}
+		}
+		break;
 	}
 
-	return bSuccess;
+	return TRUE;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline enum _dispatch_muxnote_events
+_dispatch_unote_required_events(dispatch_unote_t du)
+{
+	switch (du._du->du_filter) {
+	case DISPATCH_EVFILT_CUSTOM_ADD:
+	case DISPATCH_EVFILT_CUSTOM_OR:
+	case DISPATCH_EVFILT_CUSTOM_REPLACE:
+		return 0;
+	case EVFILT_WRITE:
+		return DISPATCH_MUXNOTE_EVENT_WRITE;
+	default:
+		return DISPATCH_MUXNOTE_EVENT_READ;
+	}
 }
 
 bool
@@ -160,37 +374,52 @@ _dispatch_unote_register_muxed(dispatch_unote_t du)
 {
 	struct dispatch_muxnote_bucket_s *dmb;
 	dispatch_muxnote_t dmn;
+	enum _dispatch_muxnote_events events;
+
+	events = _dispatch_unote_required_events(du);
 
 	dmb = _dispatch_unote_muxnote_bucket(du._du->du_ident);
 	dmn = _dispatch_unote_muxnote_find(dmb, du._du->du_ident,
 		du._du->du_filter);
 	if (dmn) {
 		WIN_PORT_ERROR();
+		DISPATCH_INTERNAL_CRASH(0, "muxnote updating is not supported");
 	} else {
-		dmn = _dispatch_muxnote_create(du);
-		if (dmn) {
-			if (_dispatch_io_trigger(dmn) == FALSE) {
-				_dispatch_muxnote_dispose(dmn);
-				dmn = NULL;
-			} else {
-				LIST_INSERT_HEAD(dmb, dmn, dmn_list);
-			}
+		dmn = _dispatch_muxnote_create(du, events);
+		if (!dmn) {
+			return false;
 		}
+		if (_dispatch_io_trigger(dmn) == FALSE) {
+			_dispatch_muxnote_release(dmn);
+			return false;
+		}
+		LIST_INSERT_HEAD(dmb, dmn, dmn_list);
 	}
 
-	if (dmn) {
-		dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
+	dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
+	switch (dmn->dmn_handle_type) {
+	case DISPATCH_MUXNOTE_HANDLE_TYPE_INVALID:
+		DISPATCH_INTERNAL_CRASH(0, "invalid handle");
 
+	case DISPATCH_MUXNOTE_HANDLE_TYPE_FILE:
 		AcquireSRWLockExclusive(&_dispatch_file_handles_lock);
 		LIST_INSERT_HEAD(&_dispatch_file_handles, dul, du_link);
 		ReleaseSRWLockExclusive(&_dispatch_file_handles_lock);
+		break;
 
-		dul->du_muxnote = dmn;
-		_dispatch_unote_state_set(du, DISPATCH_WLH_ANON,
-			DU_STATE_ARMED);
+	case DISPATCH_MUXNOTE_HANDLE_TYPE_PIPE:
+		if (events & DISPATCH_MUXNOTE_EVENT_READ) {
+			LIST_INSERT_HEAD(&dmn->dmn_readers_head, dul, du_link);
+		} else if (events & DISPATCH_MUXNOTE_EVENT_WRITE) {
+			LIST_INSERT_HEAD(&dmn->dmn_writers_head, dul, du_link);
+		}
+		break;
 	}
 
-	return dmn != NULL;
+	dul->du_muxnote = dmn;
+	_dispatch_unote_state_set(du, DISPATCH_WLH_ANON, DU_STATE_ARMED);
+
+	return true;
 }
 
 void
@@ -208,21 +437,34 @@ _dispatch_unote_unregister_muxed(dispatch_unote_t du)
 	dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
 	dispatch_muxnote_t dmn = dul->du_muxnote;
 
-	AcquireSRWLockExclusive(&_dispatch_file_handles_lock);
-	LIST_REMOVE(dul, du_link);
-	_LIST_TRASH_ENTRY(dul, du_link);
-	ReleaseSRWLockExclusive(&_dispatch_file_handles_lock);
+	switch (dmn->dmn_handle_type) {
+	case DISPATCH_MUXNOTE_HANDLE_TYPE_INVALID:
+		DISPATCH_INTERNAL_CRASH(0, "invalid handle");
+
+	case DISPATCH_MUXNOTE_HANDLE_TYPE_FILE:
+		AcquireSRWLockExclusive(&_dispatch_file_handles_lock);
+		LIST_REMOVE(dul, du_link);
+		_LIST_TRASH_ENTRY(dul, du_link);
+		ReleaseSRWLockExclusive(&_dispatch_file_handles_lock);
+		break;
+
+	case DISPATCH_MUXNOTE_HANDLE_TYPE_PIPE:
+		LIST_REMOVE(dul, du_link);
+		_LIST_TRASH_ENTRY(dul, du_link);
+		break;
+	}
 	dul->du_muxnote = NULL;
 
 	LIST_REMOVE(dmn, dmn_list);
-	_dispatch_muxnote_dispose(dmn);
+	_dispatch_muxnote_stop(dmn);
+	_dispatch_muxnote_release(dmn);
 
 	_dispatch_unote_state_set(du, DU_STATE_UNREGISTERED);
 	return true;
 }
 
 static void
-_dispatch_event_merge_file_handle()
+_dispatch_event_merge_file_handle(void)
 {
 	dispatch_unote_linkage_t dul, dul_next;
 
@@ -238,6 +480,56 @@ _dispatch_event_merge_file_handle()
 		dux_merge_evt(du._du, EV_ADD | EV_ENABLE | EV_DISPATCH, 1, 0);
 	}
 	ReleaseSRWLockExclusive(&_dispatch_file_handles_lock);
+}
+
+static void
+_dispatch_event_merge_pipe_handle_read(dispatch_muxnote_t dmn,
+		DWORD dwBytesAvailable)
+{
+	dispatch_unote_linkage_t dul, dul_next;
+	LIST_FOREACH_SAFE(dul, &dmn->dmn_readers_head, du_link, dul_next) {
+		dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
+		// consumed by dux_merge_evt()
+		_dispatch_retain_unote_owner(du);
+		dispatch_unote_state_t du_state = _dispatch_unote_state(du);
+		du_state &= ~DU_STATE_ARMED;
+		uintptr_t data = dwBytesAvailable;
+		uint32_t flags;
+		if (dwBytesAvailable > 0) {
+			flags = EV_ADD | EV_ENABLE | EV_DISPATCH;
+		} else {
+			du_state |= DU_STATE_NEEDS_DELETE;
+			flags = EV_DELETE | EV_DISPATCH;
+		}
+		_dispatch_unote_state_set(du, du_state);
+		os_atomic_store2o(du._dr, ds_pending_data, ~data, relaxed);
+		dux_merge_evt(du._du, flags, data, 0);
+	}
+	SetEvent(dmn->dmn_event);
+	// Retained when posting the completion packet
+	_dispatch_muxnote_release(dmn);
+}
+
+static void
+_dispatch_event_merge_pipe_handle_write(dispatch_muxnote_t dmn,
+		DWORD dwBytesAvailable)
+{
+	dispatch_unote_linkage_t dul, dul_next;
+	LIST_FOREACH_SAFE(dul, &dmn->dmn_writers_head, du_link, dul_next) {
+		dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
+		// consumed by dux_merge_evt()
+		_dispatch_retain_unote_owner(du);
+		_dispatch_unote_state_clear_bit(du, DU_STATE_ARMED);
+		uintptr_t data = dwBytesAvailable;
+		if (dwBytesAvailable > 0) {
+			os_atomic_store2o(du._dr, ds_pending_data, ~data, relaxed);
+		} else {
+			os_atomic_store2o(du._dr, ds_pending_data, 0, relaxed);
+		}
+		dux_merge_evt(du._du, EV_ADD | EV_ENABLE | EV_DISPATCH, data, 0);
+	}
+	// Retained when posting the completion packet
+	_dispatch_muxnote_release(dmn);
 }
 
 #pragma mark timers
@@ -412,6 +704,16 @@ _dispatch_event_loop_drain(uint32_t flags)
 
 		case DISPATCH_PORT_FILE_HANDLE:
 			_dispatch_event_merge_file_handle();
+			break;
+
+		case DISPATCH_PORT_PIPE_HANDLE_READ:
+			_dispatch_event_merge_pipe_handle_read((dispatch_muxnote_t)pOV,
+					dwNumberOfBytesTransferred);
+			break;
+
+		case DISPATCH_PORT_PIPE_HANDLE_WRITE:
+			_dispatch_event_merge_pipe_handle_write((dispatch_muxnote_t)pOV,
+					dwNumberOfBytesTransferred);
 			break;
 
 		default:

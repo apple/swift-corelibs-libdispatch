@@ -337,6 +337,21 @@ ssize_t
 dispatch_test_fd_read(dispatch_fd_t fd, void *buf, size_t count)
 {
 #if defined(_WIN32)
+	if (GetFileType((HANDLE)fd) == FILE_TYPE_PIPE) {
+		OVERLAPPED ov = {0};
+		DWORD num_read;
+		BOOL success = ReadFile((HANDLE)fd, buf, count, &num_read, &ov);
+		if (!success && GetLastError() == ERROR_IO_PENDING) {
+			success = GetOverlappedResult((HANDLE)fd, &ov, &num_read,
+					/* bWait */ TRUE);
+		}
+		if (!success) {
+			print_winapi_error("ReadFile", GetLastError());
+			errno = EIO;
+			return -1;
+		}
+		return (ssize_t)num_read;
+	}
 	DWORD num_read;
 	if (!ReadFile((HANDLE)fd, buf, count, &num_read, NULL)) {
 		print_winapi_error("ReadFile", GetLastError());
@@ -353,6 +368,21 @@ ssize_t
 dispatch_test_fd_write(dispatch_fd_t fd, const void *buf, size_t count)
 {
 #if defined(_WIN32)
+	if (GetFileType((HANDLE)fd) == FILE_TYPE_PIPE) {
+		OVERLAPPED ov = {0};
+		DWORD num_written;
+		BOOL success = WriteFile((HANDLE)fd, buf, count, &num_written, &ov);
+		if (!success && GetLastError() == ERROR_IO_PENDING) {
+			success = GetOverlappedResult((HANDLE)fd, &ov, &num_written,
+					/* bWait */ TRUE);
+		}
+		if (!success) {
+			print_winapi_error("WriteFile", GetLastError());
+			errno = EIO;
+			return -1;
+		}
+		return (ssize_t)num_written;
+	}
 	DWORD num_written;
 	if (!WriteFile((HANDLE)fd, buf, count, &num_written, NULL)) {
 		print_winapi_error("WriteFile", GetLastError());

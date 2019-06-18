@@ -6,6 +6,13 @@ DISPATCH_STATIC_GLOBAL(dispatch_once_t _dispatch_precise_time_pred);
 DISPATCH_STATIC_GLOBAL(_precise_time_fn_t _dispatch_QueryInterruptTimePrecise_ptr);
 DISPATCH_STATIC_GLOBAL(_precise_time_fn_t _dispatch_QueryUnbiasedInterruptTimePrecise_ptr);
 
+typedef NTSTATUS (NTAPI *_NtQueryInformationFile_fn_t)(HANDLE FileHandle,
+		PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation, ULONG Length,
+		FILE_INFORMATION_CLASS FileInformationClass);
+
+DISPATCH_STATIC_GLOBAL(dispatch_once_t _dispatch_ntdll_pred);
+DISPATCH_STATIC_GLOBAL(_NtQueryInformationFile_fn_t _dispatch_NtQueryInformationFile_ptr);
+
 static void
 _dispatch_init_precise_time(void *context DISPATCH_UNUSED)
 {
@@ -37,4 +44,28 @@ _dispatch_QueryUnbiasedInterruptTimePrecise(PULONGLONG lpUnbiasedInterruptTimePr
 {
 	dispatch_once_f(&_dispatch_precise_time_pred, NULL, _dispatch_init_precise_time);
 	return _dispatch_QueryUnbiasedInterruptTimePrecise_ptr(lpUnbiasedInterruptTimePrecise);
+}
+
+static void
+_dispatch_init_ntdll(void *context DISPATCH_UNUSED)
+{
+	HMODULE ntdll = LoadLibraryW(L"ntdll.dll");
+	if (!ntdll) {
+		// ntdll is not required.
+		return;
+	}
+	_dispatch_NtQueryInformationFile_ptr = (_NtQueryInformationFile_fn_t)
+			GetProcAddress(ntdll, "NtQueryInformationFile");
+}
+
+NTSTATUS _dispatch_NtQueryInformationFile(HANDLE FileHandle,
+		PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation, ULONG Length,
+		FILE_INFORMATION_CLASS FileInformationClass)
+{
+	dispatch_once_f(&_dispatch_ntdll_pred, NULL, _dispatch_init_ntdll);
+	if (!_dispatch_NtQueryInformationFile_ptr) {
+		return STATUS_NOT_SUPPORTED;
+	}
+	return _dispatch_NtQueryInformationFile_ptr(FileHandle, IoStatusBlock,
+			FileInformation, Length, FileInformationClass);
 }
