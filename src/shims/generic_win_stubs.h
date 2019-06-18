@@ -6,7 +6,9 @@
 
 #include <Windows.h>
 #include <crtdbg.h>
+#include <ntstatus.h>
 #include <Shlwapi.h>
+#include <winternl.h>
 
 #include <io.h>
 #include <process.h>
@@ -40,7 +42,29 @@ typedef __typeof__(_Generic((__SIZE_TYPE__)0,                                  \
 /*
  * Wrappers for dynamically loaded Windows APIs
  */
+
 void _dispatch_QueryInterruptTimePrecise(PULONGLONG lpInterruptTimePrecise);
 void _dispatch_QueryUnbiasedInterruptTimePrecise(PULONGLONG lpUnbiasedInterruptTimePrecise);
+
+enum {
+	FilePipeLocalInformation = 24,
+};
+
+typedef struct _FILE_PIPE_LOCAL_INFORMATION {
+	ULONG NamedPipeType;
+	ULONG NamedPipeConfiguration;
+	ULONG MaximumInstances;
+	ULONG CurrentInstances;
+	ULONG InboundQuota;
+	ULONG ReadDataAvailable;
+	ULONG OutboundQuota;
+	ULONG WriteQuotaAvailable;
+	ULONG NamedPipeState;
+	ULONG NamedPipeEnd;
+} FILE_PIPE_LOCAL_INFORMATION, *PFILE_PIPE_LOCAL_INFORMATION;
+
+NTSTATUS _dispatch_NtQueryInformationFile(HANDLE FileHandle,
+		PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation, ULONG Length,
+		FILE_INFORMATION_CLASS FileInformationClass);
 
 #endif
