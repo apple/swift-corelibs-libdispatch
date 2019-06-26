@@ -245,6 +245,7 @@ target_link_libraries(dispatch
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
   target_link_libraries(dispatch
                         PRIVATE
+                          ShLwApi
                           WS2_32
                           WinMM
                           synchronization)
