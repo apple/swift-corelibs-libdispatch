@@ -20,16 +20,17 @@
 
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/param.h>
 #include <assert.h>
 #include <fcntl.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+#include <fts.h>
+#include <sys/param.h>
 #include <unistd.h>
 #endif
 #include <errno.h>
-#include <fts.h>
 #ifdef __APPLE__
 #include <mach/mach.h>
 #include <mach/mach_time.h>
@@ -78,7 +79,7 @@ test_io_close(int with_timer, bool from_path)
 	#define READSIZE (512*1024)
 	unsigned int i;
 	const char *path = LARGE_FILE;
-	int fd = open(path, O_RDONLY);
+	dispatch_fd_t fd = dispatch_test_fd_open(path, O_RDONLY);
 	if (fd == -1) {
 		if (errno == ENOENT) {
 			test_skip("Large file not found");
@@ -93,12 +94,8 @@ test_io_close(int with_timer, bool from_path)
 		test_stop();
 	}
 #endif
-	struct stat sb;
-	if (fstat(fd, &sb)) {
-		test_errno("fstat", errno, 0);
-		test_stop();
-	}
-	const size_t size = (size_t)sb.st_size / chunks;
+	const size_t size = (size_t)dispatch_test_fd_lseek(fd, 0, SEEK_END) / chunks;
+	dispatch_test_fd_lseek(fd, 0, SEEK_SET);
 	const int expected_error = with_timer? ECANCELED : 0;
 	dispatch_source_t t = NULL;
 	dispatch_group_t g = dispatch_group_create();
@@ -106,7 +103,7 @@ test_io_close(int with_timer, bool from_path)
 	void (^cleanup_handler)(int error) = ^(int error) {
 		test_errno("create error", error, 0);
 		dispatch_group_leave(g);
-		close(fd);
+		dispatch_test_fd_close(fd);
 	};
 	dispatch_io_t io;
 	if (!from_path) {
@@ -198,18 +195,25 @@ test_io_close(int with_timer, bool from_path)
 static void
 test_io_stop(void) // rdar://problem/8250057
 {
-	int fds[2], *fd = fds;
+	dispatch_fd_t fds[2], *fd = fds;
+#if defined(_WIN32)
+	if (!CreatePipe((PHANDLE)&fds[0], (PHANDLE)&fds[1], NULL, 0)) {
+		test_long("CreatePipe", GetLastError(), ERROR_SUCCESS);
+		test_stop();
+	}
+#else
 	if(pipe(fd) == -1) {
 		test_errno("pipe", errno, 0);
 		test_stop();
 	}
+#endif
 	dispatch_group_t g = dispatch_group_create();
 	dispatch_group_enter(g);
 	dispatch_io_t io = dispatch_io_create(DISPATCH_IO_STREAM, *fd,
 			dispatch_get_global_queue(0, 0), ^(int error) {
 		test_errno("create error", error, 0);
-		close(*fd);
-		close(*(fd+1));
+		dispatch_test_fd_close(*fd);
+		dispatch_test_fd_close(*(fd+1));
 		dispatch_group_leave(g);
 	});
 	dispatch_group_enter(g);
@@ -241,23 +245,33 @@ static void
 test_io_read_write(void)
 {
 	char *path_in = dispatch_test_get_large_file();
+#if defined(_WIN32)
+	char *temp_dir = getenv("TMP");
+	if (!temp_dir) {
+		temp_dir = getenv("TEMP");
+	}
+	if (!temp_dir) {
+		test_ptr_notnull("temporary directory", temp_dir);
+		test_stop();
+	}
+	char *path_out = NULL;
+	asprintf(&path_out, "%s\\dispatchtest_io.XXXXXX", temp_dir);
+#else
 	char path_out[] = "/tmp/dispatchtest_io.XXXXXX";
+#endif
 
-	int in = open(path_in, O_RDONLY);
+	dispatch_fd_t in = dispatch_test_fd_open(path_in, O_RDONLY);
 	if (in == -1) {
 		test_errno("open", errno, 0);
 		test_stop();
 	}
 	dispatch_test_release_large_file(path_in);
 	free(path_in);
-	struct stat sb;
-	if (fstat(in, &sb)) {
-		test_errno("fstat", errno, 0);
-		test_stop();
-	}
-	const size_t siz_in = MIN(1024 * 1024, (size_t)sb.st_size);
+	const size_t siz_in =
+			MIN(1024 * 1024, (size_t)dispatch_test_fd_lseek(in, 0, SEEK_END));
+	dispatch_test_fd_lseek(in, 0, SEEK_SET);
 
-	int out = mkstemp(path_out);
+	dispatch_fd_t out = mkstemp(path_out);
 	if (out == -1) {
 		test_errno("mkstemp", errno, 0);
 		test_stop();
@@ -266,13 +280,16 @@ test_io_read_write(void)
 		test_errno("unlink", errno, 0);
 		test_stop();
 	}
+#if defined(_WIN32)
+	free(path_out);
+#endif
 	dispatch_queue_t q = dispatch_get_global_queue(0,0);
 	dispatch_group_t g = dispatch_group_create();
 	dispatch_group_enter(g);
 	dispatch_io_t io_in = dispatch_io_create(DISPATCH_IO_STREAM, in,
 			q, ^(int error) {
 		test_errno("dispatch_io_create", error, 0);
-		close(in);
+		dispatch_test_fd_close(in);
 		dispatch_group_leave(g);
 	});
 	dispatch_io_set_high_water(io_in, siz_in/4);
@@ -315,7 +332,7 @@ test_io_read_write(void)
 	});
 	dispatch_release(io_in);
 	test_group_wait(g);
-	lseek(out, 0, SEEK_SET);
+	dispatch_test_fd_lseek(out, 0, SEEK_SET);
 	dispatch_group_enter(g);
 	dispatch_read(out, siz_in, q,
 			^(dispatch_data_t cmp, int err_cmp) {
@@ -323,7 +340,7 @@ test_io_read_write(void)
 			test_errno("dispatch_read", err_cmp, 0);
 			test_stop();
 		}
-		close(out);
+		dispatch_test_fd_close(out);
 		size_t siz_cmp = dispatch_data_get_size(cmp);
 		test_sizet("readback size", siz_cmp, siz_in);
 		const void *data_buf, *cmp_buf;
@@ -353,7 +370,7 @@ static void
 test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 		void (^process_data)(size_t))
 {
-	int fd = open(path, O_RDONLY);
+	dispatch_fd_t fd = dispatch_test_fd_open(path, O_RDONLY);
 	if (fd == -1) {
 		// Don't stop for access permission issues
 		if (errno == EACCES) {
@@ -375,15 +392,25 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 		case DISPATCH_ASYNC_READ_ON_SERIAL_QUEUE:
 			dispatch_async(queue, ^{
 				char* buffer = NULL;
+#if defined(_WIN32)
+				SYSTEM_INFO si;
+				GetSystemInfo(&si);
+				buffer = _aligned_malloc(size, si.dwPageSize);
+#else
 				size_t pagesize = (size_t)sysconf(_SC_PAGESIZE);
 				posix_memalign((void **)&buffer, pagesize, size);
-				ssize_t r = read(fd, buffer, size);
+#endif
+				ssize_t r = dispatch_test_fd_read(fd, buffer, size);
 				if (r == -1) {
 					test_errno("async read error", errno, 0);
 					test_stop();
 				}
+#if defined(_WIN32)
+				_aligned_free(buffer);
+#else
 				free(buffer);
-				close(fd);
+#endif
+				dispatch_test_fd_close(fd);
 				process_data((size_t)r);
 			});
 			break;
@@ -393,7 +420,7 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 					test_errno("dispatch_read error", error, 0);
 					test_stop();
 				}
-				close(fd);
+				dispatch_test_fd_close(fd);
 				process_data(dispatch_data_get_size(d));
 			});
 			break;
@@ -405,7 +432,7 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 					test_errno("dispatch_io_create error", error, 0);
 					test_stop();
 				}
-				close(fd);
+				dispatch_test_fd_close(fd);
 				process_data(dispatch_data_get_size(d));
 				dispatch_release(d);
 			};
@@ -452,33 +479,57 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 	}
 }
 
-static int
-test_read_dirs(char **paths, dispatch_queue_t queue, dispatch_group_t g,
-		dispatch_semaphore_t s, volatile uint32_t *bytes, int option)
+static void
+test_enumerate_dir_trees(char **paths,
+		void (^process_file)(char *path, size_t size))
 {
+#if defined(_WIN32)
+	for (size_t i = 0; paths[i]; i++) {
+		char *search_path = NULL;
+		asprintf(&search_path, "%s\\*", paths[i]);
+		WIN32_FIND_DATAA node;
+		HANDLE find = FindFirstFileA(search_path, &node);
+		free(search_path);
+		if (find == INVALID_HANDLE_VALUE) {
+			if (GetLastError() == ERROR_ACCESS_DENIED) {
+				return;
+			}
+			test_ptr_not("FindFirstFile", find, INVALID_HANDLE_VALUE);
+			test_stop();
+		}
+		do {
+			if (strcmp(node.cFileName, ".") == 0 ||
+					strcmp(node.cFileName, "..") == 0) {
+				continue;
+			}
+			char *node_path = NULL;
+			asprintf(&node_path, "%s\\%s", paths[i], node.cFileName);
+			if (node.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+				char *subdir_paths[] = {node_path, NULL};
+				test_enumerate_dir_trees(subdir_paths, process_file);
+			} else {
+				size_t size = (size_t)(((uint64_t)node.nFileSizeHigh << 32) |
+						node.nFileSizeLow);
+				process_file(node_path, size);
+			}
+			free(node_path);
+		} while (FindNextFileA(find, &node));
+		FindClose(find);
+	}
+#else
 	FTS *tree = fts_open(paths, FTS_PHYSICAL|FTS_XDEV, NULL);
 	if (!tree) {
 		test_ptr_notnull("fts_open failed", tree);
 		test_stop();
 	}
-	int files_opened = 0;
-	size_t size, total_size = 0;
 	FTSENT *node;
 	while ((node = fts_read(tree)) &&
 			!(node->fts_info == FTS_ERR || node->fts_info == FTS_NS)) {
 		if (node->fts_level > 0 && node->fts_name[0] == '.') {
 			fts_set(tree, node, FTS_SKIP);
 		} else if (node->fts_info == FTS_F) {
-			dispatch_group_enter(g);
-			dispatch_semaphore_wait(s, DISPATCH_TIME_FOREVER);
-			size = (size_t)node->fts_statp->st_size;
-			total_size += size;
-			files_opened++;
-			test_async_read(node->fts_path, size, option, queue, ^(size_t len){
-				OSAtomicAdd32((int32_t)len, (volatile int32_t *)bytes);
-				dispatch_semaphore_signal(s);
-				dispatch_group_leave(g);
-			});
+			size_t size = (size_t)node->fts_statp->st_size;
+			process_file(node->fts_path, size);
 		}
 	}
 	if ((!node && errno) || (node && (node->fts_info == FTS_ERR ||
@@ -490,12 +541,37 @@ test_read_dirs(char **paths, dispatch_queue_t queue, dispatch_group_t g,
 		test_errno("fts_close failed", errno, 0);
 		test_stop();
 	}
+#endif
+}
+
+static int
+test_read_dirs(char **paths, dispatch_queue_t queue, dispatch_group_t g,
+		dispatch_semaphore_t s, _Atomic size_t *bytes, int option)
+{
+	__block int files_opened = 0;
+	__block size_t total_size = 0;
+	test_enumerate_dir_trees(paths, ^(char *path, size_t size){
+		dispatch_group_enter(g);
+		dispatch_semaphore_wait(s, DISPATCH_TIME_FOREVER);
+		total_size += size;
+		files_opened++;
+		test_async_read(path, size, option, queue, ^(size_t len){
+			atomic_fetch_add_explicit(bytes, len, memory_order_relaxed);
+			dispatch_semaphore_signal(s);
+			dispatch_group_leave(g);
+		});
+	});
 	test_group_wait(g);
 	test_sizet("total size", *bytes, total_size);
 	return files_opened;
 }
 
-extern __attribute__((weak_import)) void
+#if defined(_WIN32)
+extern __declspec(dllimport)
+#else
+extern __attribute__((weak_import))
+#endif
+void
 _dispatch_iocntl(uint32_t param, uint64_t value);
 
 enum {
@@ -507,11 +583,22 @@ enum {
 static void
 test_read_many_files(void)
 {
+#if defined(_WIN32)
+	char *paths[] = {NULL, NULL};
+	char *system_root = getenv("SystemRoot");
+	if (!system_root) {
+		test_ptr_notnull("SystemRoot", system_root);
+		test_stop();
+	}
+	asprintf(&paths[0], "%s\\System32", system_root);
+#else
 	char *paths[] = {"/usr/lib", NULL};
+#endif
+
 	dispatch_group_t g = dispatch_group_create();
 	dispatch_semaphore_t s = dispatch_semaphore_create(maxopenfiles);
 	uint64_t start;
-	volatile uint32_t bytes;
+	_Atomic size_t bytes;
 	int files_read, i;
 
 	const dispatch_queue_t queues[] = {
@@ -543,15 +630,17 @@ test_read_many_files(void)
 			"dispatch_io_read() from path on concurrent queue",
 	};
 
-	if (_dispatch_iocntl) {
+	if (&_dispatch_iocntl) {
 		const size_t chunk_pages = 3072;
 		_dispatch_iocntl(DISPATCH_IOCNTL_CHUNK_PAGES, (uint64_t)chunk_pages);
 	}
+#if !defined(_WIN32)
 	struct rlimit l;
 	if (!getrlimit(RLIMIT_NOFILE, &l) && l.rlim_cur < 2 * maxopenfiles + 256) {
 		l.rlim_cur = 2 * maxopenfiles + 256;
 		setrlimit(RLIMIT_NOFILE, &l);
 	}
+#endif
 	for (i = 0; i < (int)(sizeof(queues)/sizeof(dispatch_queue_t)); ++i) {
 		fprintf(stdout, "%s:\n", names[i]);
 		bytes = 0;
@@ -566,6 +655,9 @@ test_read_many_files(void)
 	dispatch_release(queues[DISPATCH_ASYNC_READ_ON_SERIAL_QUEUE]);
 	dispatch_release(s);
 	dispatch_release(g);
+#if defined(_WIN32)
+	free(paths[0]);
+#endif
 }
 
 static void
@@ -574,6 +666,11 @@ test_io_from_io(void) // rdar://problem/8388909
 #if DISPATCH_API_VERSION >= 20101012
 	const size_t siz_in = 10240;
 	dispatch_queue_t q = dispatch_get_global_queue(0, 0);
+	dispatch_group_t g = dispatch_group_create();
+	dispatch_io_t io = NULL;
+
+	// Windows does not easily support immutable directories
+#if !defined(_WIN32)
 	char path[] = "/tmp/dispatchtest_io.XXXXXX/file.name";
 	char *tmp = strrchr(path, '/');
 	*tmp = '\0';
@@ -595,7 +692,7 @@ test_io_from_io(void) // rdar://problem/8388909
 	}
 #endif
 	*tmp = '/';
-	dispatch_io_t io = dispatch_io_create_with_path(DISPATCH_IO_RANDOM, path,
+	io = dispatch_io_create_with_path(DISPATCH_IO_RANDOM, path,
 			O_CREAT|O_RDWR, 0600, q, ^(int error) {
 				if (error) {
 					test_errno("channel cleanup called with error", error, 0);
@@ -604,7 +701,6 @@ test_io_from_io(void) // rdar://problem/8388909
 				test_errno("channel cleanup called", error, 0);
 			});
 
-	dispatch_group_t g = dispatch_group_create();
 	char *foo = malloc(256);
 	dispatch_data_t tdata;
 	tdata = dispatch_data_create(foo, 256, NULL, DISPATCH_DATA_DESTRUCTOR_FREE);
@@ -641,13 +737,27 @@ test_io_from_io(void) // rdar://problem/8388909
 		test_stop();
 	}
 #endif
-	const char *path_in = "/dev/urandom";
-	int in = open(path_in, O_RDONLY);
+	*tmp = '/';
+#endif // !defined(_WIN32)
+
+#if defined(_WIN32)
+	char *path = dispatch_test_get_large_file();
+	char *path_in = dispatch_test_get_large_file();
+	dispatch_fd_t in = dispatch_test_fd_open(path_in, O_RDONLY);
 	if (in == -1) {
 		test_errno("open", errno, 0);
 		test_stop();
 	}
-	*tmp = '/';
+	dispatch_test_release_large_file(path_in);
+	free(path_in);
+#else
+	const char *path_in = "/dev/urandom";
+	dispatch_fd_t in = dispatch_test_fd_open(path_in, O_RDONLY);
+	if (in == -1) {
+		test_errno("open", errno, 0);
+		test_stop();
+	}
+#endif
 	dispatch_group_enter(g);
 
 	io = dispatch_io_create_with_path(DISPATCH_IO_RANDOM, path,
@@ -704,6 +814,10 @@ test_io_from_io(void) // rdar://problem/8388909
 	dispatch_release(g);
 	test_sizet("readback size", dispatch_data_get_size(data_out), siz_in);
 	dispatch_release(data_out);
+#if defined(_WIN32)
+	dispatch_test_release_large_file(path);
+	free(path);
+#endif
 #endif
 }
 

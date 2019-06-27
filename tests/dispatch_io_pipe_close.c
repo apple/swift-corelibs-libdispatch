@@ -19,10 +19,14 @@
  */
 
 #include <stdio.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <limits.h>
 #include <errno.h>
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+#include <unistd.h>
+#elif defined(_WIN32)
+#include <Windows.h>
+#endif
 
 #include <bsdtests.h>
 #include "dispatch_test.h"
@@ -30,23 +34,32 @@
 
 int
 main() {
+    dispatch_test_start(NULL);
+
+#if defined(_WIN32)
+    dispatch_fd_t readFD, writeFD;
+    if (!CreatePipe((PHANDLE)&readFD, (PHANDLE)&writeFD, NULL, 0)) {
+        test_long("CreatePipe", GetLastError(), ERROR_SUCCESS);
+        test_stop();
+        _Exit(EXIT_FAILURE);
+    }
+#else
     int pipe_fds[2] = { -1, -1 };
     int pipe_err = pipe(pipe_fds);
     int readFD = pipe_fds[0];
     int writeFD = pipe_fds[1];
-
-    dispatch_test_start(NULL);
     if (pipe_err) {
         test_errno("pipe", errno, 0);
         test_stop();
         _Exit(EXIT_FAILURE);
     }
+#endif
 
-    printf("readFD=%d, writeFD=%d\n", readFD, writeFD);
+    printf("readFD=%lld, writeFD=%lld\n", (long long)readFD, (long long)writeFD);
     dispatch_queue_t q = dispatch_queue_create("q", NULL);
     dispatch_io_t io = dispatch_io_create(DISPATCH_IO_STREAM, readFD, q, ^(int err) {
         printf("cleanup, err=%d\n", err);
-        close(readFD);
+        dispatch_test_fd_close(readFD);
         printf("all done\n");
         test_stop();
         _Exit(EXIT_SUCCESS);
@@ -57,7 +70,7 @@ main() {
         if (data != NULL && dispatch_data_get_size(data) > 0) {
             // will only happen once
             printf("closing writeFD\n");
-            close(writeFD);
+            dispatch_test_fd_close(writeFD);
             dispatch_after(DISPATCH_TIME_NOW + 1, q, ^{
                 dispatch_io_close(io, 0);
             });
@@ -65,7 +78,7 @@ main() {
     });
     dispatch_resume(io);
     printf("writing\n");
-    write(writeFD, "x", 1);
+    dispatch_test_fd_write(writeFD, "x", 1);
     printf("wrtten\n");
     dispatch_main();
 }
