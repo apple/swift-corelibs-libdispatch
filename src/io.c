@@ -2410,7 +2410,43 @@ syscall:
 	if (op->direction == DOP_DIR_READ) {
 		if (op->params.type == DISPATCH_IO_STREAM) {
 #if defined(_WIN32)
-			ReadFile((HANDLE)op->fd_entry->fd, buf, (DWORD)len, (LPDWORD)&processed, NULL);
+			HANDLE hFile = (HANDLE)op->fd_entry->fd;
+			BOOL bSuccess;
+			if (GetFileType(hFile) == FILE_TYPE_PIPE) {
+				OVERLAPPED ovlOverlapped = {};
+				DWORD dwTotalBytesAvail;
+				bSuccess = PeekNamedPipe(hFile, NULL, 0, NULL,
+						&dwTotalBytesAvail, NULL);
+				if (bSuccess) {
+					if (dwTotalBytesAvail == 0) {
+						err = EAGAIN;
+						goto error;
+					}
+					len = MIN(len, dwTotalBytesAvail);
+					bSuccess = ReadFile(hFile, buf, (DWORD)len,
+							(LPDWORD)&processed, &ovlOverlapped);
+				}
+				if (!bSuccess) {
+					DWORD dwError = GetLastError();
+					if (dwError == ERROR_IO_PENDING) {
+						bSuccess = GetOverlappedResult(hFile, &ovlOverlapped,
+								(LPDWORD)&processed, /* bWait */ TRUE);
+						dwError = GetLastError();
+					}
+					if (dwError == ERROR_BROKEN_PIPE ||
+							dwError == ERROR_NO_DATA) {
+						bSuccess = TRUE;
+						processed = 0;
+					}
+				}
+			} else {
+				bSuccess = ReadFile(hFile, buf, (DWORD)len,
+						(LPDWORD)&processed, NULL);
+			}
+			if (!bSuccess) {
+				err = EIO;
+				goto error;
+			}
 #else
 			processed = read(op->fd_entry->fd, buf, len);
 #endif
@@ -2419,7 +2455,8 @@ syscall:
 			OVERLAPPED ovlOverlapped = {};
 			ovlOverlapped.Offset = off & 0xffffffff;
 			ovlOverlapped.OffsetHigh = (off >> 32) & 0xffffffff;
-			ReadFile((HANDLE)op->fd_entry->fd, buf, (DWORD)len, (LPDWORD)&processed, &ovlOverlapped);
+			ReadFile((HANDLE)op->fd_entry->fd, buf, (DWORD)len,
+					(LPDWORD)&processed, &ovlOverlapped);
 #else
 			processed = pread(op->fd_entry->fd, buf, len, off);
 #endif
@@ -2427,7 +2464,51 @@ syscall:
 	} else if (op->direction == DOP_DIR_WRITE) {
 		if (op->params.type == DISPATCH_IO_STREAM) {
 #if defined(_WIN32)
-			WriteFile((HANDLE)op->fd_entry->fd, buf, (DWORD)len, (LPDWORD)&processed, NULL);
+			HANDLE hFile = (HANDLE)op->fd_entry->fd;
+			BOOL bSuccess;
+			if (GetFileType(hFile) == FILE_TYPE_PIPE) {
+				// Unfortunately there isn't a good way to achieve O_NONBLOCK
+				// semantics when writing to a pipe. SetNamedPipeHandleState()
+				// can allow pipes to be switched into a "no wait" mode, but
+				// that doesn't work on most pipe handles because Windows
+				// doesn't consistently create pipes with FILE_WRITE_ATTRIBUTES
+				// access. The best we can do is to try to query the write quota
+				// and then write as much as we can.
+				IO_STATUS_BLOCK iosb;
+				FILE_PIPE_LOCAL_INFORMATION fpli;
+				NTSTATUS status = _dispatch_NtQueryInformationFile(hFile, &iosb,
+						&fpli, sizeof(fpli), FilePipeLocalInformation);
+				if (NT_SUCCESS(status)) {
+					if (fpli.WriteQuotaAvailable == 0) {
+						err = EAGAIN;
+						goto error;
+					}
+					len = MIN(len, fpli.WriteQuotaAvailable);
+				}
+				OVERLAPPED ovlOverlapped = {};
+				bSuccess = WriteFile(hFile, buf, (DWORD)len,
+						(LPDWORD)&processed, &ovlOverlapped);
+				if (!bSuccess) {
+					DWORD dwError = GetLastError();
+					if (dwError == ERROR_IO_PENDING) {
+						bSuccess = GetOverlappedResult(hFile, &ovlOverlapped,
+								(LPDWORD)&processed, /* bWait */ TRUE);
+						dwError = GetLastError();
+					}
+					if (dwError == ERROR_BROKEN_PIPE ||
+							dwError == ERROR_NO_DATA) {
+						bSuccess = TRUE;
+						processed = 0;
+					}
+				}
+			} else {
+				bSuccess = WriteFile(hFile, buf, (DWORD)len,
+						(LPDWORD)&processed, NULL);
+			}
+			if (!bSuccess) {
+				err = EIO;
+				goto error;
+			}
 #else
 			processed = write(op->fd_entry->fd, buf, len);
 #endif
@@ -2436,7 +2517,8 @@ syscall:
 			OVERLAPPED ovlOverlapped = {};
 			ovlOverlapped.Offset = off & 0xffffffff;
 			ovlOverlapped.OffsetHigh = (off >> 32) & 0xffffffff;
-			WriteFile((HANDLE)op->fd_entry->fd, buf, (DWORD)len, (LPDWORD)&processed, &ovlOverlapped);
+			WriteFile((HANDLE)op->fd_entry->fd, buf, (DWORD)len,
+					(LPDWORD)&processed, &ovlOverlapped);
 #else
 			processed = pwrite(op->fd_entry->fd, buf, len, off);
 #endif
