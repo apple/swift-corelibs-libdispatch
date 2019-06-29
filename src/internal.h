@@ -280,10 +280,9 @@ upcast(dispatch_object_t dou)
 #include <sys/mount.h>
 #ifdef __ANDROID__
 #include <linux/sysctl.h>
-#else
-#include <sys/sysctl.h>
 #endif /* __ANDROID__ */
 #if !defined(__linux__)
+#include <sys/sysctl.h>
 #include <sys/queue.h>
 #endif
 #include <sys/socket.h>
