@@ -23,7 +23,9 @@
 #ifdef __ANDROID__
 #include <linux/sysctl.h>
 #else
+#if !defined(__linux__)
 #include <sys/sysctl.h>
+#endif
 #endif /* __ANDROID__ */
 #include <mach/mach.h>
 #include <mach/mach_time.h>
