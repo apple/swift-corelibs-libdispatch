@@ -35,6 +35,14 @@ include(DispatchUtilities)
 set(SWIFT_LIBDIR "lib" CACHE PATH "Library folder name, defined by swift main buildscript")
 set(INSTALL_LIBDIR "${SWIFT_LIBDIR}" CACHE PATH "Path where the libraries should be installed")
 
+# User-configurable Android specific options.
+set(SWIFT_ANDROID_API_LEVEL "" CACHE STRING
+  "Version number for the Android API")
+set(SWIFT_ANDROID_NDK_PATH "" CACHE STRING
+  "Path to the directory that contains the Android NDK tools that are executable on the build machine")
+set(SWIFT_ANDROID_NDK_GCC_VERSION "" CACHE STRING
+  "The GCC version to use when building for Android. Currently only 4.9 is supported.")
+
 include(DispatchAppleOptions)
 include(DispatchSanitization)
 

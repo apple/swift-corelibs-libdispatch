@@ -129,6 +129,41 @@ if(ENABLE_SWIFT)
     endif()
   endif()
 
+  # Android specific configuration.
+  if(CMAKE_SYSTEM_NAME STREQUAL Android)
+    if("${ANDROID_ABI}" STREQUAL "armeabi-v7a")
+      set(SWIFT_SDK_ANDROID_ARCH_NDK_TRIPLE "arm-linux-androideabi")
+      set(SWIFT_SDK_ANDROID_SWIFT_ARCH_NAME "armv7")
+    elseif("${ANDROID_ABI}" STREQUAL "arm64-v8a")
+      set(SWIFT_SDK_ANDROID_ARCH_NDK_TRIPLE "aarch64-linux-android")
+      set(SWIFT_SDK_ANDROID_SWIFT_ARCH_NAME "aarch64")
+    elseif("${ANDROID_ABI}" STREQUAL "x86")
+      set(SWIFT_SDK_ANDROID_ARCH_NDK_TRIPLE "i686-linux-android")
+      set(SWIFT_SDK_ANDROID_SWIFT_ARCH_NAME "i686")
+    elseif("${ANDROID_ABI}" STREQUAL "x86_64")
+      set(SWIFT_SDK_ANDROID_ARCH_NDK_TRIPLE "x86_64-linux-android")
+      set(SWIFT_SDK_ANDROID_SWIFT_ARCH_NAME "x86_64")
+    else()
+      message(FATAL_ERROR "Unknown arch for android SDK: ${ANDROID_ABI}")
+    endif()
+
+    # Get the prebuilt suffix to create the correct toolchain path when using the NDK
+    if("${CMAKE_HOST_SYSTEM_NAME}" STREQUAL "Darwin")
+      set(_swift_android_prebuilt_build "darwin-x86_64")
+    elseif("${CMAKE_HOST_SYSTEM_NAME}" STREQUAL "Linux")
+      set(_swift_android_prebuilt_build "linux-x86_64")
+    endif()
+    set(SWIFT_SDK_ANDROID_ARCH_NDK_PREBUILT_PATH "${SWIFT_ANDROID_NDK_PATH}/toolchains/llvm/prebuilt/${_swift_android_prebuilt_build}")
+
+    # Setting Android specific Swift flags.
+    get_filename_component(swift_android_lib_directory_path ${CMAKE_SWIFT_COMPILER} DIRECTORY)
+    set(swift_android_lib_directory_path ${swift_android_lib_directory_path}/../lib/swift/android/${SWIFT_SDK_ANDROID_SWIFT_ARCH_NAME})
+    get_filename_component(swift_android_lib_directory_path ${swift_android_lib_directory_path} ABSOLUTE)
+
+    set(swift_android_link_flags -L ${swift_android_lib_directory_path} -tools-directory ${SWIFT_SDK_ANDROID_ARCH_NDK_PREBUILT_PATH}/bin)
+    set(swift_android_compile_flags -Xcc -I${SWIFT_ANDROID_NDK_PATH}/sysroot/usr/include -Xcc -I${SWIFT_ANDROID_NDK_PATH}/sysroot/usr/include/${SWIFT_SDK_ANDROID_ARCH_NDK_TRIPLE})
+  endif()
+
   add_swift_library(swiftDispatch
                     CFLAGS
                       -fblocks
@@ -138,6 +173,7 @@ if(ENABLE_SWIFT)
                       DispatchStubs
                     LINK_FLAGS
                       ${use_ld_flag}
+                      ${swift_android_link_flags}
                       -lDispatchStubs
                       -L $<TARGET_LINKER_FILE_DIR:BlocksRuntime>
                       -lBlocksRuntime
@@ -169,6 +205,7 @@ if(ENABLE_SWIFT)
                       # TODO(compnerd) handle /MT builds
                       $<$<PLATFORM_ID:Windows>:-Xcc>
                       $<$<PLATFORM_ID:Windows>:-D_DLL>
+                      ${swift_android_compile_flags}
                     TARGET
                       ${CMAKE_C_COMPILER_TARGET})
 endif()
