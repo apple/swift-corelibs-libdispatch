@@ -1,3 +1,4 @@
+include(CheckCCompilerFlag)
 
 include(SwiftSupport)
 include(DTrace)
@@ -228,11 +229,11 @@ if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
                          PRIVATE
                            -Xclang -fblocks)
 else()
-  # FIXME(compnerd) add check for -momit-leaf-frame-pointer?
-  target_compile_options(dispatch
-                         PRIVATE
-                           -fblocks
-                           -momit-leaf-frame-pointer)
+  check_c_compiler_flag("-momit-leaf-frame-pointer -Werror -Wall -O3" C_SUPPORTS_OMIT_LEAF_FRAME_POINTER)
+  target_compile_options(dispatch PRIVATE -fblocks)
+  if (C_SUPPORTS_OMIT_LEAF_FRAME_POINTER)
+    target_compile_options(dispatch PRIVATE -momit-leaf-frame-pointer)
+  endif()
 endif()
 if(LibRT_FOUND)
   target_link_libraries(dispatch PRIVATE RT::rt)
