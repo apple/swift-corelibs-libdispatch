@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 
+#include <winsock2.h>
 #include <Windows.h>
 #include <crtdbg.h>
 #include <ntstatus.h>
@@ -38,6 +39,8 @@ typedef __typeof__(_Generic((__SIZE_TYPE__)0,                                  \
 		_RPTF1(_CRT_ASSERT, "WIN_PORT_ERROR in %s", __FUNCTION__)
 
 #define strcasecmp _stricmp
+
+bool _dispatch_handle_is_socket(HANDLE hFile);
 
 /*
  * Wrappers for dynamically loaded Windows APIs
