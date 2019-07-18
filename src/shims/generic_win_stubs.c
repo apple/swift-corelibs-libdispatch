@@ -13,6 +13,19 @@ typedef NTSTATUS (NTAPI *_NtQueryInformationFile_fn_t)(HANDLE FileHandle,
 DISPATCH_STATIC_GLOBAL(dispatch_once_t _dispatch_ntdll_pred);
 DISPATCH_STATIC_GLOBAL(_NtQueryInformationFile_fn_t _dispatch_NtQueryInformationFile_ptr);
 
+bool
+_dispatch_handle_is_socket(HANDLE hFile)
+{
+	// GetFileType() returns FILE_TYPE_PIPE for both pipes and sockets. We can
+	// disambiguate by checking if PeekNamedPipe() fails with
+	// ERROR_INVALID_FUNCTION.
+	if (GetFileType(hFile) == FILE_TYPE_PIPE &&
+			!PeekNamedPipe(hFile, NULL, 0, NULL, NULL, NULL)) {
+		return GetLastError() == ERROR_INVALID_FUNCTION;
+	}
+	return false;
+}
+
 static void
 _dispatch_init_precise_time(void *context DISPATCH_UNUSED)
 {

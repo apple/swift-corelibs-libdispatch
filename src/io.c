@@ -2412,7 +2412,18 @@ syscall:
 #if defined(_WIN32)
 			HANDLE hFile = (HANDLE)op->fd_entry->fd;
 			BOOL bSuccess;
-			if (GetFileType(hFile) == FILE_TYPE_PIPE) {
+			if (_dispatch_handle_is_socket(hFile)) {
+				processed = recv((SOCKET)hFile, buf, len, 0);
+				if (processed < 0) {
+					bSuccess = FALSE;
+					err = WSAGetLastError();
+					if (err == WSAEWOULDBLOCK) {
+						err = EAGAIN;
+					}
+					goto error;
+				}
+				bSuccess = TRUE;
+			} else if (GetFileType(hFile) == FILE_TYPE_PIPE) {
 				OVERLAPPED ovlOverlapped = {};
 				DWORD dwTotalBytesAvail;
 				bSuccess = PeekNamedPipe(hFile, NULL, 0, NULL,
@@ -2466,7 +2477,18 @@ syscall:
 #if defined(_WIN32)
 			HANDLE hFile = (HANDLE)op->fd_entry->fd;
 			BOOL bSuccess;
-			if (GetFileType(hFile) == FILE_TYPE_PIPE) {
+			if (_dispatch_handle_is_socket(hFile)) {
+				processed = send((SOCKET)hFile, buf, len, 0);
+				if (processed < 0) {
+					bSuccess = FALSE;
+					err = WSAGetLastError();
+					if (err == WSAEWOULDBLOCK) {
+						err = EAGAIN;
+					}
+					goto error;
+				}
+				bSuccess = TRUE;
+			} else if (GetFileType(hFile) == FILE_TYPE_PIPE) {
 				// Unfortunately there isn't a good way to achieve O_NONBLOCK
 				// semantics when writing to a pipe. SetNamedPipeHandleState()
 				// can allow pipes to be switched into a "no wait" mode, but
