@@ -12,6 +12,13 @@ function(add_swift_target target)
   set(link_flags ${CMAKE_SWIFT_LINK_FLAGS})
 
   if(AST_TARGET)
+    if(ANDROID)
+      # Android target strings provided by the NDK toolchain look like
+      # "x86_64-none-linux-android21". swiftc doesn't understand the
+      # numbers at the end, so remove them here if they are present:
+      string(REGEX REPLACE "[0-9]+$" "" AST_TARGET "${AST_TARGET}")
+    endif()
+
     list(APPEND compile_flags -target;${AST_TARGET})
     list(APPEND link_flags -target;${AST_TARGET})
   endif()
