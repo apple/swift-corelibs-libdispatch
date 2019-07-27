@@ -27,6 +27,9 @@
 #endif
 
 #include <stdint.h>
+#if defined(_WIN32)
+#include <inttypes.h>
+#endif
 
 // <rdar://problem/6368156&7563559>
 #if TARGET_OS_MAC
