@@ -171,7 +171,7 @@ if(ENABLE_SWIFT)
                       $<$<PLATFORM_ID:Windows>:-Xcc>
                       $<$<PLATFORM_ID:Windows>:-D_DLL>
                     TARGET
-                      ${CMAKE_C_COMPILER_TARGET})
+                      ${CMAKE_SWIFT_COMPILER_TARGET})
 endif()
 if(ENABLE_DTRACE)
   dtrace_usdt_probe(${CMAKE_CURRENT_SOURCE_DIR}/provider.d
