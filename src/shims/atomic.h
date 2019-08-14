@@ -32,7 +32,7 @@
 #endif
 
 // FreeBSD only defines _Bool in C mode. In C++ mode _Bool is not being defined.
-#if defined(__cplusplus) && (defined(__FreeBSD__) || defined(_WIN32))
+#if defined(__cplusplus)
 #define _Bool bool
 #endif
 
