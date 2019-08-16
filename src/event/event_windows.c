@@ -84,9 +84,6 @@ typedef struct dispatch_muxnote_s {
 static LIST_HEAD(dispatch_muxnote_bucket_s, dispatch_muxnote_s)
     _dispatch_sources[DSL_HASH_SIZE];
 
-static SRWLOCK _dispatch_file_handles_lock = SRWLOCK_INIT;
-static LIST_HEAD(, dispatch_unote_linkage_s) _dispatch_file_handles;
-
 DISPATCH_ALWAYS_INLINE
 static inline struct dispatch_muxnote_bucket_s *
 _dispatch_unote_muxnote_bucket(uint32_t ident)
@@ -366,8 +363,9 @@ _dispatch_io_trigger(dispatch_muxnote_t dmn)
 		DISPATCH_INTERNAL_CRASH(0, "invalid handle");
 
 	case DISPATCH_MUXNOTE_HANDLE_TYPE_FILE:
+		_dispatch_muxnote_retain(dmn);
 		bSuccess = PostQueuedCompletionStatus(hPort, 0,
-			(ULONG_PTR)DISPATCH_PORT_FILE_HANDLE, NULL);
+			(ULONG_PTR)DISPATCH_PORT_FILE_HANDLE, (LPOVERLAPPED)dmn);
 		if (bSuccess == FALSE) {
 			DISPATCH_INTERNAL_CRASH(GetLastError(),
 				"PostQueuedCompletionStatus");
@@ -509,11 +507,6 @@ _dispatch_unote_register_muxed(dispatch_unote_t du)
 		DISPATCH_INTERNAL_CRASH(0, "invalid handle");
 
 	case DISPATCH_MUXNOTE_HANDLE_TYPE_FILE:
-		AcquireSRWLockExclusive(&_dispatch_file_handles_lock);
-		LIST_INSERT_HEAD(&_dispatch_file_handles, dul, du_link);
-		ReleaseSRWLockExclusive(&_dispatch_file_handles_lock);
-		break;
-
 	case DISPATCH_MUXNOTE_HANDLE_TYPE_PIPE:
 	case DISPATCH_MUXNOTE_HANDLE_TYPE_SOCKET:
 		if (events & DISPATCH_MUXNOTE_EVENT_READ) {
@@ -550,12 +543,6 @@ _dispatch_unote_unregister_muxed(dispatch_unote_t du)
 		DISPATCH_INTERNAL_CRASH(0, "invalid handle");
 
 	case DISPATCH_MUXNOTE_HANDLE_TYPE_FILE:
-		AcquireSRWLockExclusive(&_dispatch_file_handles_lock);
-		LIST_REMOVE(dul, du_link);
-		_LIST_TRASH_ENTRY(dul, du_link);
-		ReleaseSRWLockExclusive(&_dispatch_file_handles_lock);
-		break;
-
 	case DISPATCH_MUXNOTE_HANDLE_TYPE_PIPE:
 	case DISPATCH_MUXNOTE_HANDLE_TYPE_SOCKET:
 		LIST_REMOVE(dul, du_link);
@@ -573,14 +560,11 @@ _dispatch_unote_unregister_muxed(dispatch_unote_t du)
 }
 
 static void
-_dispatch_event_merge_file_handle(void)
+_dispatch_event_merge_file_handle(dispatch_muxnote_t dmn)
 {
 	dispatch_unote_linkage_t dul, dul_next;
-
-	AcquireSRWLockExclusive(&_dispatch_file_handles_lock);
-	LIST_FOREACH_SAFE(dul, &_dispatch_file_handles, du_link, dul_next) {
+	LIST_FOREACH_SAFE(dul, &dmn->dmn_readers_head, du_link, dul_next) {
 		dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
-
 		// consumed by dux_merge_evt()
 		_dispatch_retain_unote_owner(du);
 		dispatch_assert(dux_needs_rearm(du._du));
@@ -588,7 +572,17 @@ _dispatch_event_merge_file_handle(void)
 		os_atomic_store2o(du._dr, ds_pending_data, ~1, relaxed);
 		dux_merge_evt(du._du, EV_ADD | EV_ENABLE | EV_DISPATCH, 1, 0);
 	}
-	ReleaseSRWLockExclusive(&_dispatch_file_handles_lock);
+	LIST_FOREACH_SAFE(dul, &dmn->dmn_writers_head, du_link, dul_next) {
+		dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
+		// consumed by dux_merge_evt()
+		_dispatch_retain_unote_owner(du);
+		dispatch_assert(dux_needs_rearm(du._du));
+		_dispatch_unote_state_clear_bit(du, DU_STATE_ARMED);
+		os_atomic_store2o(du._dr, ds_pending_data, ~1, relaxed);
+		dux_merge_evt(du._du, EV_ADD | EV_ENABLE | EV_DISPATCH, 1, 0);
+	}
+	// Retained when posting the completion packet
+	_dispatch_muxnote_release(dmn);
 }
 
 static void
@@ -858,7 +852,7 @@ _dispatch_event_loop_drain(uint32_t flags)
 			break;
 
 		case DISPATCH_PORT_FILE_HANDLE:
-			_dispatch_event_merge_file_handle();
+			_dispatch_event_merge_file_handle((dispatch_muxnote_t)pOV);
 			break;
 
 		case DISPATCH_PORT_PIPE_HANDLE_READ:
