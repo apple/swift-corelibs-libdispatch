@@ -30,7 +30,6 @@ include(CheckLibraryExists)
 include(CheckSymbolExists)
 include(GNUInstallDirs)
 include(SwiftSupport)
-include(DispatchUtilities)
 
 set(SWIFT_LIBDIR "lib" CACHE PATH "Library folder name, defined by swift main buildscript")
 set(INSTALL_LIBDIR "${SWIFT_LIBDIR}" CACHE PATH "Path where the libraries should be installed")
@@ -82,18 +81,6 @@ option(DISPATCH_ENABLE_ASSERTS "enable debug assertions" FALSE)
 option(ENABLE_DTRACE "enable dtrace support" "")
 
 option(ENABLE_TESTING "build libdispatch tests" ON)
-
-option(USE_LLD_LINKER "use the lld linker" FALSE)
-
-if(NOT USE_LLD_LINKER AND
-   (CMAKE_SYSTEM_NAME STREQUAL Linux OR
-    CMAKE_SYSTEM_NAME STREQUAL FreeBSD OR
-    CMAKE_SYSTEM_NAME STREQUAL Android))
-  set(USE_GOLD_LINKER_DEFAULT TRUE)
-else()
-  set(USE_GOLD_LINKER_DEFAULT FALSE)
-endif()
-option(USE_GOLD_LINKER "use the gold linker" ${USE_GOLD_LINKER_DEFAULT})
 
 option(ENABLE_THREAD_LOCAL_STORAGE "enable usage of thread local storage via _Thread_local" ON)
 set(DISPATCH_USE_THREAD_LOCAL_STORAGE ${ENABLE_THREAD_LOCAL_STORAGE})
