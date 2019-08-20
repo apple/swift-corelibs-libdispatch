@@ -174,27 +174,62 @@ _dispatch_muxnote_create(dispatch_unote_t du,
 }
 
 static void
-_dispatch_muxnote_stop(dispatch_muxnote_t dmn)
+_dispatch_muxnote_disarm_events(dispatch_muxnote_t dmn,
+		enum _dispatch_muxnote_events events)
 {
-	if (dmn->dmn_thread) {
-		// Keep trying to cancel ReadFile() until the thread exits
-		os_atomic_store(&dmn->dmn_stop, true, relaxed);
-		SetEvent(dmn->dmn_event);
-		do {
-			CancelIoEx((HANDLE)dmn->dmn_ident, /* lpOverlapped */ NULL);
-		} while (WaitForSingleObject(dmn->dmn_thread, 1) == WAIT_TIMEOUT);
-		CloseHandle(dmn->dmn_thread);
-		dmn->dmn_thread = NULL;
-	}
-	if (dmn->dmn_threadpool_wait) {
-		SetThreadpoolWait(dmn->dmn_threadpool_wait, NULL, NULL);
-		WaitForThreadpoolWaitCallbacks(dmn->dmn_threadpool_wait,
-				/* fCancelPendingCallbacks */ FALSE);
-		CloseThreadpoolWait(dmn->dmn_threadpool_wait);
-		dmn->dmn_threadpool_wait = NULL;
-	}
-	if (dmn->dmn_handle_type == DISPATCH_MUXNOTE_HANDLE_TYPE_SOCKET) {
-		WSAEventSelect((SOCKET)dmn->dmn_ident, NULL, 0);
+	long lNetworkEvents;
+	dmn->dmn_events &= ~events;
+	switch (dmn->dmn_handle_type) {
+	case DISPATCH_MUXNOTE_HANDLE_TYPE_INVALID:
+		DISPATCH_INTERNAL_CRASH(0, "invalid handle");
+
+	case DISPATCH_MUXNOTE_HANDLE_TYPE_FILE:
+		break;
+
+	case DISPATCH_MUXNOTE_HANDLE_TYPE_PIPE:
+		if ((events & DISPATCH_MUXNOTE_EVENT_READ) && dmn->dmn_thread) {
+			// Keep trying to cancel ReadFile() until the thread exits
+			os_atomic_store(&dmn->dmn_stop, true, relaxed);
+			SetEvent(dmn->dmn_event);
+			do {
+				CancelIoEx((HANDLE)dmn->dmn_ident, /* lpOverlapped */ NULL);
+			} while (WaitForSingleObject(dmn->dmn_thread, 1) == WAIT_TIMEOUT);
+			CloseHandle(dmn->dmn_thread);
+			dmn->dmn_thread = NULL;
+		}
+		break;
+
+	case DISPATCH_MUXNOTE_HANDLE_TYPE_SOCKET:
+		lNetworkEvents = dmn->dmn_network_events;
+		if (events & DISPATCH_MUXNOTE_EVENT_READ) {
+			lNetworkEvents &= ~FD_READ;
+		}
+		if (events & DISPATCH_MUXNOTE_EVENT_WRITE) {
+			lNetworkEvents &= ~FD_WRITE;
+		}
+		if (lNetworkEvents == dmn->dmn_network_events) {
+			break;
+		}
+		int iResult;
+		if (lNetworkEvents & (FD_READ | FD_WRITE)) {
+			iResult = WSAEventSelect((SOCKET)dmn->dmn_ident,
+					(WSAEVENT)dmn->dmn_event, lNetworkEvents);
+		} else {
+			lNetworkEvents = 0;
+			iResult = WSAEventSelect((SOCKET)dmn->dmn_ident, NULL, 0);
+		}
+		if (iResult != 0) {
+			DISPATCH_INTERNAL_CRASH(WSAGetLastError(), "WSAEventSelect");
+		}
+		dmn->dmn_network_events = lNetworkEvents;
+		if (!lNetworkEvents && dmn->dmn_threadpool_wait) {
+			SetThreadpoolWait(dmn->dmn_threadpool_wait, NULL, NULL);
+			WaitForThreadpoolWaitCallbacks(dmn->dmn_threadpool_wait,
+					/* fCancelPendingCallbacks */ FALSE);
+			CloseThreadpoolWait(dmn->dmn_threadpool_wait);
+			dmn->dmn_threadpool_wait = NULL;
+		}
+		break;
 	}
 }
 
@@ -389,8 +424,16 @@ _dispatch_io_trigger(dispatch_muxnote_t dmn)
 		}
 		if (dmn->dmn_events & DISPATCH_MUXNOTE_EVENT_WRITE) {
 			_dispatch_muxnote_retain(dmn);
-			DWORD available =
+			DWORD available;
+			if (dmn->dmn_events & DISPATCH_MUXNOTE_EVENT_READ) {
+				// We can't query a pipe which has a read source open on it
+				// because the ReadFile() in the background thread might cause
+				// NtQueryInformationFile() to block
+				available = 1;
+			} else {
+				available =
 					_dispatch_pipe_write_availability((HANDLE)dmn->dmn_ident);
+			}
 			bSuccess = PostQueuedCompletionStatus(hPort, available,
 					(ULONG_PTR)DISPATCH_PORT_PIPE_HANDLE_WRITE,
 					(LPOVERLAPPED)dmn);
@@ -487,8 +530,12 @@ _dispatch_unote_register_muxed(dispatch_unote_t du)
 	dmn = _dispatch_unote_muxnote_find(dmb, du._du->du_ident,
 		du._du->du_filter);
 	if (dmn) {
-		WIN_PORT_ERROR();
-		DISPATCH_INTERNAL_CRASH(0, "muxnote updating is not supported");
+		if (events & ~dmn->dmn_events) {
+			dmn->dmn_events |= events;
+			if (_dispatch_io_trigger(dmn) == FALSE) {
+				return false;
+			}
+		}
 	} else {
 		dmn = _dispatch_muxnote_create(du, events);
 		if (!dmn) {
@@ -551,9 +598,18 @@ _dispatch_unote_unregister_muxed(dispatch_unote_t du)
 	}
 	dul->du_muxnote = NULL;
 
-	LIST_REMOVE(dmn, dmn_list);
-	_dispatch_muxnote_stop(dmn);
-	_dispatch_muxnote_release(dmn);
+	enum _dispatch_muxnote_events disarmed = 0;
+	if (LIST_EMPTY(&dmn->dmn_readers_head)) {
+		disarmed |= DISPATCH_MUXNOTE_EVENT_READ;
+	}
+	if (LIST_EMPTY(&dmn->dmn_writers_head)) {
+		disarmed |= DISPATCH_MUXNOTE_EVENT_WRITE;
+	}
+	_dispatch_muxnote_disarm_events(dmn, disarmed);
+	if (!dmn->dmn_events) {
+		LIST_REMOVE(dmn, dmn_list);
+		_dispatch_muxnote_release(dmn);
+	}
 
 	_dispatch_unote_state_set(du, DU_STATE_UNREGISTERED);
 	return true;

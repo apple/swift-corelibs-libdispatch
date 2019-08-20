@@ -127,6 +127,7 @@ set(DISPATCH_C_TESTS
     timer_bit63
     timer_set_time
     data
+    io_muxed
     io_net
     io_pipe
     io_pipe_close
@@ -178,6 +179,7 @@ add_unit_test(dispatch_plusplus SOURCES dispatch_plusplus.cpp)
 
 # test-specific link options
 if(WIN32)
+  target_link_libraries(dispatch_io_muxed PRIVATE WS2_32)
   target_link_libraries(dispatch_io_net PRIVATE WS2_32)
 else()
   # When dispatch_group is reenabled above, remove this
