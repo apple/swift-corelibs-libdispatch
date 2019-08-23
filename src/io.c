@@ -20,6 +20,11 @@
 
 #include "internal.h"
 
+#if defined(__FreeBSD__)
+#include <fcntl.h>
+#define F_RDADVISE F_RDAHEAD
+#endif
+
 #ifndef DISPATCH_IO_DEBUG
 #define DISPATCH_IO_DEBUG DISPATCH_DEBUG
 #endif

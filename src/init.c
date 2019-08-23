@@ -374,7 +374,7 @@ dispatch_get_global_queue(intptr_t priority, uintptr_t flags)
 	dispatch_assert(countof(_dispatch_root_queues) ==
 			DISPATCH_ROOT_QUEUE_COUNT);
 
-	if (flags & ~(uintptr_t)DISPATCH_QUEUE_OVERCOMMIT) {
+	if (flags & ~(unsigned long)DISPATCH_QUEUE_OVERCOMMIT) {
 		return DISPATCH_BAD_INPUT;
 	}
 	dispatch_qos_t qos = _dispatch_qos_from_queue_priority(priority);

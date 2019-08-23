@@ -159,7 +159,7 @@ dispatch_source_get_data(dispatch_source_t ds)
 #endif
 #endif // DISPATCH_USE_MEMORYSTATUS
 	uint64_t value = os_atomic_load2o(dr, ds_data, relaxed);
-	return (uintptr_t)(dr->du_has_extended_status ?
+	return (unsigned long)(dr->du_has_extended_status ?
 			DISPATCH_SOURCE_GET_DATA(value) : value);
 }
 

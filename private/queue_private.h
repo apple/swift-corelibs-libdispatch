@@ -149,6 +149,13 @@ dispatch_set_qos_class_fallback(dispatch_object_t object,
 
 #define DISPATCH_QUEUE_FLAGS_MASK (DISPATCH_QUEUE_OVERCOMMIT)
 
+// On FreeBSD pthread_attr_t is a typedef to a pointer type
+#if defined(__FreeBSD__)
+#  define DISPATCH_QUEUE_NULLABLE_PTHREAD_ATTR_PTR _Nullable
+#else
+#  define DISPATCH_QUEUE_NULLABLE_PTHREAD_ATTR_PTR
+#endif
+
 /*!
  * @function dispatch_queue_attr_make_with_overcommit
  *
@@ -329,7 +336,7 @@ DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_global_t
 dispatch_pthread_root_queue_create(const char *_Nullable label,
-		unsigned long flags, const pthread_attr_t *_Nullable attr,
+		unsigned long flags, const pthread_attr_t DISPATCH_QUEUE_NULLABLE_PTHREAD_ATTR_PTR *_Nullable attr,
 		dispatch_block_t _Nullable configure);
 
 /*!

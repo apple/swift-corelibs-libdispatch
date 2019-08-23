@@ -21,7 +21,7 @@
 #include "internal.h"
 
 DISPATCH_WEAK // rdar://problem/8503746
-long _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema);
+intptr_t _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema);
 
 #pragma mark -
 #pragma mark dispatch_semaphore_t

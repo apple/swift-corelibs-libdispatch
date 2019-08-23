@@ -54,6 +54,7 @@ add_library(dispatch
               shims/perfmon.h
               shims/time.h
               shims/tsd.h
+              shims/yield.c
               shims/yield.h)
 
 set_target_properties(dispatch
