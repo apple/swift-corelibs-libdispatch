@@ -116,20 +116,6 @@ if(ENABLE_SWIFT)
                         PROPERTIES
                           POSITION_INDEPENDENT_CODE YES)
 
-  if(USE_LLD_LINKER)
-    if(CMAKE_HOST_SYSTEM_NAME STREQUAL Windows)
-      set(use_ld_flag -use-ld=lld.exe)
-    else()
-      set(use_ld_flag -use-ld=lld)
-    endif()
-  elseif(USE_GOLD_LINKER)
-    if(CMAKE_HOST_SYSTEM_NAME STREQUAL Windows)
-      set(use_ld_flag -use-ld=gold.exe)
-    else()
-      set(use_ld_flag -use-ld=gold)
-    endif()
-  endif()
-
   add_swift_library(swiftDispatch
                     CFLAGS
                       -fblocks
@@ -138,7 +124,6 @@ if(ENABLE_SWIFT)
                       module-maps
                       DispatchStubs
                     LINK_FLAGS
-                      ${use_ld_flag}
                       -lDispatchStubs
                       -L $<TARGET_LINKER_FILE_DIR:BlocksRuntime>
                       -lBlocksRuntime
@@ -260,7 +245,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
                  "-Xlinker -dead_strip"
                  "-Xlinker -alias_list -Xlinker ${PROJECT_SOURCE_DIR}/xcodeconfig/libdispatch.aliases")
 endif()
-dispatch_set_linker(dispatch)
 
 install(TARGETS
           dispatch

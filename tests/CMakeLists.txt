@@ -47,7 +47,6 @@ endif ()
 
 add_executable(bsdtestharness
                bsdtestharness.c)
-dispatch_set_linker(bsdtestharness)
 target_include_directories(bsdtestharness
                            PRIVATE
                              ${CMAKE_CURRENT_BINARY_DIR}
@@ -89,7 +88,6 @@ function(add_unit_test name)
     target_compile_options(${name} PRIVATE -fblocks)
     target_compile_options(${name} PRIVATE -Wall -Wno-deprecated-declarations)
   endif()
-  dispatch_set_linker(${name})
   target_link_libraries(${name}
                         PRIVATE
                           dispatch
