@@ -338,7 +338,7 @@ _dlock_wait(uint32_t *uaddr, uint32_t val, uint32_t timeout, uint32_t flags)
 			if (timeout == 0) {
 				continue;
 			}
-			/* FALLTHROUGH */
+			DISPATCH_FALLTHROUGH;
 		case ETIMEDOUT:
 		case EFAULT:
 			return -rc;
@@ -427,7 +427,7 @@ _futex_blocking_op(uint32_t *uaddr, int futex_op, uint32_t val,
 			if (timeout == 0) {
 				continue;
 			}
-			/* FALLTHROUGH */
+			DISPATCH_FALLTHROUGH;
 		case ETIMEDOUT:
 		case EFAULT:
 		case EWOULDBLOCK:
