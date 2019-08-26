@@ -781,11 +781,14 @@ _dispatch_transform_to_base32_with_table(dispatch_data_t data, const unsigned ch
 			case 1:
 				*ptr++ = '='; // c
 				*ptr++ = '='; // d
+				DISPATCH_FALLTHROUGH;
 			case 2:
 				*ptr++ = '='; // e
+				DISPATCH_FALLTHROUGH;
 			case 3:
 				*ptr++ = '='; // f
 				*ptr++ = '='; // g
+				DISPATCH_FALLTHROUGH;
 			case 4:
 				*ptr++ = '='; // h
 				break;
