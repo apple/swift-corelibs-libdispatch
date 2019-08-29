@@ -19,6 +19,12 @@ set(CMAKE_CXX_STANDARD 11)
 
 set(CMAKE_C_VISIBILITY_PRESET hidden)
 
+# NOTE(compnerd) this is a horrible workaround for Windows to ensure that the
+# tests can run as there is no rpath equivalent and `PATH` is used to lookup the
+# libraries.
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
