@@ -124,6 +124,7 @@ if(ENABLE_SWIFT)
                       module-maps
                       DispatchStubs
                     LINK_FLAGS
+                      -L $<TARGET_LINKER_FILE_DIR:DispatchStubs>
                       -lDispatchStubs
                       -L $<TARGET_LINKER_FILE_DIR:BlocksRuntime>
                       -lBlocksRuntime
