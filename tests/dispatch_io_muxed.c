@@ -55,11 +55,16 @@ test_file_muxed(void)
 		test_ptr_notnull("temporary directory", temp_dir);
 		test_stop();
 	}
-	char *path = NULL;
-	asprintf(&path, "%s\\dispatchtest_io.XXXXXX", temp_dir);
+	char *path_separator = "\\";
 #else
-	char path[] = "/tmp/dispatchtest_io.XXXXXX";
+	char *temp_dir = getenv("TMPDIR");
+	if (!temp_dir) {
+		temp_dir = "/tmp";
+	}
+	char *path_separator = "/";
 #endif
+	char *path = NULL;
+	asprintf(&path, "%s%sdispatchtest_io.XXXXXX", temp_dir, path_separator);
 	dispatch_fd_t fd = mkstemp(path);
 	if (fd == -1) {
 		test_errno("mkstemp", errno, 0);
