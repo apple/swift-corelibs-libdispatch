@@ -116,53 +116,6 @@ endif()
 
 option(INSTALL_PRIVATE_HEADERS "installs private headers in the same location as the public ones" OFF)
 
-if(NOT CMAKE_SYSTEM_NAME STREQUAL Darwin)
-  set(BlocksRuntime_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/src/BlocksRuntime)
-
-  # NOTE(compnerd) use the `BUILD_SHARED_LIBS` variable to determine what type
-  # of library to build.  If it is true, we will generate shared libraries,
-  # otherwise we will generate static libraries.
-  add_library(BlocksRuntime
-              ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/data.c
-              ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/runtime.c)
-  if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-    target_sources(BlocksRuntime
-                   PRIVATE
-                     ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/BlocksRuntime.def)
-    if(NOT BUILD_SHARED_LIBS)
-      target_compile_definitions(BlocksRuntime
-                                 PRIVATE
-                                   BlocksRuntime_STATIC)
-    endif()
-  endif()
-  set_target_properties(BlocksRuntime
-                        PROPERTIES
-                          POSITION_INDEPENDENT_CODE TRUE)
-  if(HAVE_OBJC AND CMAKE_DL_LIBS)
-    target_link_libraries(BlocksRuntime
-                          PUBLIC
-                            ${CMAKE_DL_LIBS})
-  endif()
-
-  add_library(BlocksRuntime::BlocksRuntime ALIAS BlocksRuntime)
-
-  install(FILES
-            ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/Block.h
-          DESTINATION
-            "${INSTALL_BLOCK_HEADERS_DIR}")
-  if(INSTALL_PRIVATE_HEADERS)
-    install(FILES
-              ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/Block_private.h
-            DESTINATION
-              "${INSTALL_BLOCK_HEADERS_DIR}")
-  endif()
-  install(TARGETS
-            BlocksRuntime
-          ARCHIVE DESTINATION ${INSTALL_TARGET_DIR}
-          LIBRARY DESTINATION ${INSTALL_TARGET_DIR}
-          RUNTIME DESTINATION bin)
-endif()
-
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)
 if(_GNU_SOURCE)
   set(CMAKE_REQUIRED_DEFINITIONS ${CMAKE_REQUIRED_DEFINITIONS} -D_GNU_SOURCE)
