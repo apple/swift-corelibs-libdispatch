@@ -3,6 +3,8 @@ include(CheckCCompilerFlag)
 include(SwiftSupport)
 include(DTrace)
 
+add_subdirectory(BlocksRuntime)
+
 add_library(dispatch
               allocator.c
               apply.c
