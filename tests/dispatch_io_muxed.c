@@ -47,7 +47,7 @@ test_file_muxed(void)
 	printf("\nFile Muxed\n");
 
 #if defined(_WIN32)
-	char *temp_dir = getenv("TMP");
+	const char *temp_dir = getenv("TMP");
 	if (!temp_dir) {
 		temp_dir = getenv("TEMP");
 	}
@@ -55,13 +55,13 @@ test_file_muxed(void)
 		test_ptr_notnull("temporary directory", temp_dir);
 		test_stop();
 	}
-	char *path_separator = "\\";
+	const char *path_separator = "\\";
 #else
-	char *temp_dir = getenv("TMPDIR");
+	const char *temp_dir = getenv("TMPDIR");
 	if (!temp_dir) {
 		temp_dir = "/tmp";
 	}
-	char *path_separator = "/";
+	const char *path_separator = "/";
 #endif
 	char *path = NULL;
 	asprintf(&path, "%s%sdispatchtest_io.XXXXXX", temp_dir, path_separator);

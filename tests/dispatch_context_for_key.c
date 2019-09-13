@@ -31,7 +31,7 @@
 
 #if DISPATCH_API_VERSION >= 20100825 && DISPATCH_API_VERSION != 20101110
 
-static char *ctxts[] = {"ctxt for app", "ctxt for key 1",
+static const char *ctxts[] = {"ctxt for app", "ctxt for key 1",
 		"ctxt for key 2", "ctxt for key 1 bis", "ctxt for key 4"};
 volatile long ctxts_destroyed;
 static dispatch_group_t g;
@@ -58,20 +58,20 @@ test_context_for_key(void)
 	dispatch_queue_t ttq = dispatch_get_global_queue(0, 0);
 	dispatch_group_enter(g);
 #if DISPATCH_API_VERSION >= 20101011
-	dispatch_queue_set_specific(tq, &ctxts[4], ctxts[4], destructor);
+	dispatch_queue_set_specific(tq, &ctxts[4], (char *)ctxts[4], destructor);
 #else
 	dispatch_set_context_for_key(tq, &ctxts[4], ctxts[4], ttq, destructor);
 #endif
 	dispatch_set_target_queue(tq, ttq);
 	dispatch_group_enter(g);
-	dispatch_set_context(q, ctxts[0]);
+	dispatch_set_context(q, (char *)ctxts[0]);
 	dispatch_set_target_queue(q, tq);
 	dispatch_set_finalizer_f(q, destructor);
 
 	dispatch_async(q, ^{
 		dispatch_group_enter(g);
 #if DISPATCH_API_VERSION >= 20101011
-		dispatch_queue_set_specific(q, &ctxts[1], ctxts[1], destructor);
+		dispatch_queue_set_specific(q, &ctxts[1], (char *)ctxts[1], destructor);
 #else
 		dispatch_set_context_for_key(q, &ctxts[1], ctxts[1], ttq, destructor);
 #endif
@@ -80,7 +80,7 @@ test_context_for_key(void)
 	dispatch_async(dispatch_get_global_queue(0, 0), ^{
 		dispatch_group_enter(g);
 #if DISPATCH_API_VERSION >= 20101011
-		dispatch_queue_set_specific(q, &ctxts[2], ctxts[2], destructor);
+		dispatch_queue_set_specific(q, &ctxts[2], (char *)ctxts[2], destructor);
 #else
 		dispatch_set_context_for_key(q, &ctxts[2], ctxts[2], ttq, destructor);
 #endif
@@ -114,7 +114,7 @@ test_context_for_key(void)
 		dispatch_group_enter(g);
 		void *ctxt;
 #if DISPATCH_API_VERSION >= 20101011
-		dispatch_queue_set_specific(q, &ctxts[1], ctxts[3], destructor);
+		dispatch_queue_set_specific(q, &ctxts[1], (char *)ctxts[3], destructor);
 		ctxt = dispatch_queue_get_specific(q, &ctxts[1]);
 #else
 		dispatch_set_context_for_key(q, &ctxts[1], ctxts[3], ttq, destructor);
