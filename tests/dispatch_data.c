@@ -43,9 +43,9 @@ test_concat(void)
 {
 	dispatch_group_enter(g);
 	dispatch_async(dispatch_get_main_queue(), ^{
-		char* buffer1 = "This is buffer1 ";
+		const char* buffer1 = "This is buffer1 ";
 		size_t size1 = 17;
-		char* buffer2 = "This is buffer2 ";
+		const char* buffer2 = "This is buffer2 ";
 		size_t size2 = 17;
 		__block bool buffer2_destroyed = false;
 

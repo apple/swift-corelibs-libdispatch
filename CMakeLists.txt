@@ -6,7 +6,6 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 project(dispatch
         VERSION 1.3
         LANGUAGES C CXX)
-enable_testing()
 
 if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
   include(ClangClCompileRules)
@@ -36,6 +35,7 @@ include(CheckLibraryExists)
 include(CheckSymbolExists)
 include(GNUInstallDirs)
 include(SwiftSupport)
+include(CTest)
 
 set(SWIFT_LIBDIR "lib" CACHE PATH "Library folder name, defined by swift main buildscript")
 set(INSTALL_LIBDIR "${SWIFT_LIBDIR}" CACHE PATH "Path where the libraries should be installed")
@@ -85,8 +85,6 @@ endif()
 option(DISPATCH_ENABLE_ASSERTS "enable debug assertions" FALSE)
 
 option(ENABLE_DTRACE "enable dtrace support" "")
-
-option(ENABLE_TESTING "build libdispatch tests" ON)
 
 option(ENABLE_THREAD_LOCAL_STORAGE "enable usage of thread local storage via _Thread_local" ON)
 set(DISPATCH_USE_THREAD_LOCAL_STORAGE ${ENABLE_THREAD_LOCAL_STORAGE})
@@ -286,7 +284,7 @@ add_subdirectory(man)
 add_subdirectory(os)
 add_subdirectory(private)
 add_subdirectory(src)
-if(ENABLE_TESTING)
+if(BUILD_TESTING)
   add_subdirectory(tests)
 endif()
 
