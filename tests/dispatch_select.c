@@ -69,7 +69,7 @@ stage1(int stage)
 		size_t buffer_size = 500*1024;
 		char buffer[500*1024];
 		ssize_t sz = dispatch_test_fd_read(fd, buffer, buffer_size);
-		test_double_less_than_or_equal("kevent read 1", sz, buffer_size+1);
+		test_sizet_less_than_or_equal("kevent read 1", sz, buffer_size+1);
 		dispatch_source_cancel(source);
 	});
 
@@ -128,7 +128,7 @@ stage2(void)
 
 	dispatch_source_set_event_handler(source, ^{
 		size_t est = dispatch_source_get_data(source);
-		test_double_less_than_or_equal("estimated", est, expected - actual);
+		test_sizet_less_than_or_equal("estimated", est, expected - actual);
 		char buffer[500*1024];
 		ssize_t sz = dispatch_test_fd_read(fd, buffer, sizeof(buffer));
 		actual += sz;
