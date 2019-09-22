@@ -5769,13 +5769,8 @@ _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 #endif
 	do {
 		_dispatch_retain(dq); // released in _dispatch_worker_thread
-#if DISPATCH_DEBUG
-		unsigned dwStackSize = 0;
-#else
-		unsigned dwStackSize = 64 * 1024;
-#endif
 		uintptr_t hThread = 0;
-		while (!(hThread = _beginthreadex(NULL, dwStackSize, _dispatch_worker_thread_thunk, dq, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL))) {
+		while (!(hThread = _beginthreadex(NULL, /* stack_size */ 0, _dispatch_worker_thread_thunk, dq, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL))) {
 			if (errno != EAGAIN) {
 				(void)dispatch_assume(hThread);
 			}
