@@ -124,8 +124,7 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 	PSYSTEM_LOGICAL_PROCESSOR_INFORMATION slpiInfo = NULL;
 	PSYSTEM_LOGICAL_PROCESSOR_INFORMATION slpiCurrent = NULL;
 	DWORD dwProcessorLogicalCount = 0;
-	DWORD dwProcessorPackageCount = 0;
-	DWORD dwProcessorCoreCount = 0;
+	DWORD dwProcessorPhysicalCount = 0;
 	DWORD dwSize = 0;
 
 	while (true) {
@@ -154,12 +153,10 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 	     slpiCurrent++, dwSize -= sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION)) {
 		switch (slpiCurrent->Relationship) {
 		case RelationProcessorCore:
-			++dwProcessorCoreCount;
+			++dwProcessorPhysicalCount;
 			dwProcessorLogicalCount += __popcnt64(slpiCurrent->ProcessorMask);
 			break;
 		case RelationProcessorPackage:
-			++dwProcessorPackageCount;
-			break;
 		case RelationNumaNode:
 		case RelationCache:
 		case RelationGroup:
@@ -172,11 +169,10 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 
 	switch (c) {
 	case _dispatch_hw_config_logical_cpus:
+	case _dispatch_hw_config_active_cpus:
 		return dwProcessorLogicalCount;
 	case _dispatch_hw_config_physical_cpus:
-		return dwProcessorPackageCount;
-	case _dispatch_hw_config_active_cpus:
-		return dwProcessorCoreCount;
+		return dwProcessorPhysicalCount;
 	}
 #else
 	const char *name = NULL;
