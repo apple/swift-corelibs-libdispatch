@@ -2085,12 +2085,12 @@ pick:
 	switch (result) {
 	case DISPATCH_OP_DELIVER:
 		flags = DOP_DEFAULT;
-		// Fall through
+		DISPATCH_FALLTHROUGH;
 	case DISPATCH_OP_DELIVER_AND_COMPLETE:
 		flags = (flags != DOP_DEFAULT) ? DOP_DELIVER | DOP_NO_EMPTY :
 				DOP_DEFAULT;
 		_dispatch_operation_deliver_data(op, flags);
-		// Fall through
+		DISPATCH_FALLTHROUGH;
 	case DISPATCH_OP_COMPLETE:
 		if (flags != DOP_DEFAULT) {
 			_dispatch_stream_complete_operation(stream, op);
@@ -2102,7 +2102,7 @@ pick:
 		break;
 	case DISPATCH_OP_COMPLETE_RESUME:
 		_dispatch_stream_complete_operation(stream, op);
-		// Fall through
+		DISPATCH_FALLTHROUGH;
 	case DISPATCH_OP_RESUME:
 		if (_dispatch_stream_operation_avail(stream)) {
 			stream->source_running = true;

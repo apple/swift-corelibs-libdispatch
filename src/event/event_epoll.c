@@ -174,6 +174,7 @@ _dispatch_muxnote_create(dispatch_unote_t du, uint32_t events)
 	}
 	case EVFILT_WRITE:
 		filter = EVFILT_READ;
+		DISPATCH_FALLTHROUGH;
 	case EVFILT_READ:
 		if (fstat(fd, &sb) < 0) {
 			return NULL;
