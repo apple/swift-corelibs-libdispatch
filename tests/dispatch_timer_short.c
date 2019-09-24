@@ -52,10 +52,11 @@ static
 void
 test_fin(void *cxt)
 {
-	unsigned long finalCount = (unsigned long)count;
+	uint32_t finalCount = (uint32_t)count;
 	fprintf(stderr, "Called back every %llu us on average\n",
 			(delay/finalCount)/NSEC_PER_USEC);
-	test_long_less_than("Frequency", 1, (long)ceil((double)delay/(finalCount*interval)));
+	test_long_less_than("Frequency", 1,
+		(long)ceil((double)delay/(double)(finalCount*interval)));
 	int i;
 	for (i = 0; i < N; i++) {
 		dispatch_source_cancel(t[i]);
