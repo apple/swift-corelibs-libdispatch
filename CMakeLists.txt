@@ -1,14 +1,29 @@
 
-cmake_minimum_required(VERSION 3.4.3)
+cmake_minimum_required(VERSION 3.15.1)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules)
+
+# NOTE(compnerd) enable CMP0091 - select MSVC runtime based on
+# CMAKE_MSVC_RUNTIME_LIBRARY.  Requires CMake 3.15 or newer.
+if(POLICY CMP0091)
+  cmake_policy(SET CMP0091 NEW)
+endif()
 
 project(dispatch
-        VERSION 1.3
-        LANGUAGES C CXX)
+  VERSION 1.3
+  LANGUAGES C CXX)
 
 if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
   include(ClangClCompileRules)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+  include(DispatchWindowsSupport)
+  dispatch_windows_arch_spelling(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_MSVC_ARCH)
+  dispatch_windows_include_for_arch(${DISPATCH_MSVC_ARCH} DISPATCH_INCLUDES)
+  include_directories(BEFORE SYSTEM ${DISPATCH_INCLUDES})
+  dispatch_windows_lib_for_arch(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_LIBDIR)
+  link_directories(${DISPATCH_LIBDIR})
 endif()
 
 set(CMAKE_C_STANDARD 11)
@@ -17,6 +32,7 @@ set(CMAKE_C_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_STANDARD 11)
 
 set(CMAKE_C_VISIBILITY_PRESET hidden)
+set(CMAKE_C_VISIBILITY_INLINES_HIDDEN YES)
 
 # NOTE(compnerd) this is a horrible workaround for Windows to ensure that the
 # tests can run as there is no rpath equivalent and `PATH` is used to lookup the
@@ -28,74 +44,37 @@ set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 
+include(CheckCCompilerFlag)
 include(CheckCSourceCompiles)
 include(CheckFunctionExists)
 include(CheckIncludeFiles)
 include(CheckLibraryExists)
 include(CheckSymbolExists)
 include(GNUInstallDirs)
-include(SwiftSupport)
 include(CTest)
-
-set(SWIFT_LIBDIR "lib" CACHE PATH "Library folder name, defined by swift main buildscript")
-set(INSTALL_LIBDIR "${SWIFT_LIBDIR}" CACHE PATH "Path where the libraries should be installed")
 
 include(DispatchAppleOptions)
 include(DispatchSanitization)
-
 include(DispatchCompilerWarnings)
-dispatch_common_warnings()
-
-option(ENABLE_DISPATCH_INIT_CONSTRUCTOR "enable libdispatch_init as a constructor" ON)
-set(USE_LIBDISPATCH_INIT_CONSTRUCTOR ${ENABLE_DISPATCH_INIT_CONSTRUCTOR})
+include(DTrace)
+include(SwiftSupport)
 
 # NOTE(abdulras) this is the CMake supported way to control whether we generate
 # shared or static libraries.  This impacts the behaviour of `add_library` in
 # what type of library it generates.
 option(BUILD_SHARED_LIBS "build shared libraries" ON)
 
-option(ENABLE_SWIFT "enable libdispatch swift overlay" OFF)
-if(ENABLE_SWIFT)
-  if(NOT CMAKE_SWIFT_COMPILER)
-    message(FATAL_ERROR "CMAKE_SWIFT_COMPILER must be defined to enable swift")
-  endif()
-
-  string(TOLOWER ${CMAKE_SYSTEM_NAME} swift_os)
-  get_swift_host_arch(swift_arch)
-
-  if(BUILD_SHARED_LIBS)
-    set(swift_dir swift)
-  else()
-    set(swift_dir swift_static)
-  endif()
-
-  set(INSTALL_TARGET_DIR "${INSTALL_LIBDIR}/${swift_dir}/${swift_os}" CACHE PATH "Path where the libraries will be installed")
-  set(INSTALL_DISPATCH_HEADERS_DIR "${INSTALL_LIBDIR}/${swift_dir}/dispatch" CACHE PATH "Path where the headers will be installed for libdispatch")
-  set(INSTALL_BLOCK_HEADERS_DIR "${INSTALL_LIBDIR}/${swift_dir}/Block" CACHE PATH "Path where the headers will be installed for the blocks runtime")
-  set(INSTALL_OS_HEADERS_DIR "${INSTALL_LIBDIR}/${swift_dir}/os" CACHE PATH "Path where the os/ headers will be installed")
-endif()
-
-if(NOT ENABLE_SWIFT)
-  set(INSTALL_TARGET_DIR "${INSTALL_LIBDIR}" CACHE PATH "Path where the libraries will be installed")
-  set(INSTALL_DISPATCH_HEADERS_DIR "include/dispatch" CACHE PATH "Path where the headers will be installed")
-  set(INSTALL_BLOCK_HEADERS_DIR "include" CACHE PATH "Path where the headers will be installed for the blocks runtime")
-  set(INSTALL_OS_HEADERS_DIR "include/os" CACHE PATH "Path where the headers will be installed")
-endif()
-
 option(DISPATCH_ENABLE_ASSERTS "enable debug assertions" FALSE)
+
+option(ENABLE_DISPATCH_INIT_CONSTRUCTOR "enable libdispatch_init as a constructor" ON)
+set(USE_LIBDISPATCH_INIT_CONSTRUCTOR ${ENABLE_DISPATCH_INIT_CONSTRUCTOR})
 
 option(ENABLE_DTRACE "enable dtrace support" "")
 
-option(ENABLE_THREAD_LOCAL_STORAGE "enable usage of thread local storage via _Thread_local" ON)
-set(DISPATCH_USE_THREAD_LOCAL_STORAGE ${ENABLE_THREAD_LOCAL_STORAGE})
-
-if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
-   CMAKE_SYSTEM_NAME STREQUAL Android OR
-   CMAKE_SYSTEM_NAME STREQUAL FreeBSD OR
-   CMAKE_SYSTEM_NAME STREQUAL Windows)
-  set(ENABLE_INTERNAL_PTHREAD_WORKQUEUES_DEFAULT ON)
-else()
+if(CMAKE_SYSTEM_NAME STREQUAL Darwin OR CMAKE_SYSTEM_NAME STREQUAL FreeBSD)
   set(ENABLE_INTERNAL_PTHREAD_WORKQUEUES_DEFAULT OFF)
+else()
+  set(ENABLE_INTERNAL_PTHREAD_WORKQUEUES_DEFAULT ON)
 endif()
 option(ENABLE_INTERNAL_PTHREAD_WORKQUEUES "use libdispatch's own implementation of pthread workqueues" ${ENABLE_INTERNAL_PTHREAD_WORKQUEUES_DEFAULT})
 if(ENABLE_INTERNAL_PTHREAD_WORKQUEUES)
@@ -113,6 +92,15 @@ else()
 endif()
 
 option(INSTALL_PRIVATE_HEADERS "installs private headers in the same location as the public ones" OFF)
+
+option(ENABLE_SWIFT "enable libdispatch swift overlay" OFF)
+if(ENABLE_SWIFT)
+  enable_language(Swift)
+endif()
+
+option(ENABLE_THREAD_LOCAL_STORAGE "enable usage of thread local storage via _Thread_local" ON)
+set(DISPATCH_USE_THREAD_LOCAL_STORAGE ${ENABLE_THREAD_LOCAL_STORAGE})
+
 
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)
 if(_GNU_SOURCE)
@@ -143,8 +131,6 @@ check_function_exists(pthread_workqueue_setdispatch_np HAVE_PTHREAD_WORKQUEUE_SE
 check_function_exists(strlcpy HAVE_STRLCPY)
 check_function_exists(sysconf HAVE_SYSCONF)
 check_function_exists(arc4random HAVE_ARC4RANDOM)
-
-find_package(Threads REQUIRED)
 
 check_include_files("TargetConditionals.h" HAVE_TARGETCONDITIONALS_H)
 check_include_files("dlfcn.h" HAVE_DLFCN_H)
@@ -181,7 +167,7 @@ else()
   set(USE_MACH_SEM 0)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-  add_definitions(-DUSE_WIN32_SEM)
+  add_compile_definitions($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:USE_WIN32_SEM>)
 endif()
 check_library_exists(pthread sem_init "" USE_POSIX_SEM)
 # NOTE: android has not always provided a libpthread, but uses the pthreads API
@@ -211,7 +197,7 @@ check_symbol_exists(VQ_FREE_SPACE_CHANGE "sys/mount.h" HAVE_DECL_VQ_FREE_SPACE_C
 check_symbol_exists(strlcpy "string.h" HAVE_STRLCPY)
 check_symbol_exists(program_invocation_name "errno.h" HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME)
 if (HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME)
-  add_definitions(-D_GNU_SOURCE=1)
+  add_compile_definitions($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:_GNU_SOURCE=1>)
 endif()
 check_symbol_exists(__printflike "bsd/sys/cdefs.h" HAVE_PRINTFLIKE)
 
@@ -220,30 +206,27 @@ if(CMAKE_SYSTEM_NAME STREQUAL Android)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL FreeBSD)
-  add_definitions(-D_WITH_DPRINTF)
+  add_compile_definitions($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:_WITH_DPRINTF>)
 endif()
 
-if(ENABLE_DTRACE STREQUAL "")
+if(ENABLE_DTRACE)
   find_program(dtrace_EXECUTABLE dtrace)
-  if(dtrace_EXECUTABLE)
-    add_definitions(-DDISPATCH_USE_DTRACE=1)
-  else()
-    add_definitions(-DDISPATCH_USE_DTRACE=0)
-  endif()
-elseif(ENABLE_DTRACE)
-  find_program(dtrace_EXECUTABLE dtrace)
-  if(NOT dtrace_EXECUTABLE)
+  if(NOT dtrace_EXECUTABLE AND NOT ENABLE_DTRACE STREQUAL "")
     message(FATAL_ERROR "dtrace not found but explicitly requested")
   endif()
-  add_definitions(-DDISPATCH_USE_DTRACE=1)
+endif()
+
+if(dtrace_EXECUTABLE)
+  add_compile_definitions($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:DISPATCH_USE_DTRACE=1>)
 else()
-  add_definitions(-DDISPATCH_USE_DTRACE=0)
+  add_compile_definitions($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:DISPATCH_USE_DTRACE=0>)
 endif()
 
 find_program(leaks_EXECUTABLE leaks)
 if(leaks_EXECUTABLE)
   set(HAVE_LEAKS TRUE)
 endif()
+
 
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
   add_custom_command(OUTPUT
@@ -266,18 +249,24 @@ add_custom_target(module-maps ALL
                   DEPENDS
                      "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
                      "${PROJECT_SOURCE_DIR}/private/module.modulemap")
+
 configure_file("${PROJECT_SOURCE_DIR}/cmake/config.h.in"
                "${PROJECT_BINARY_DIR}/config/config_ac.h")
-add_definitions(-DHAVE_CONFIG_H)
+add_compile_definitions($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:HAVE_CONFIG_H>)
 
-if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-  include(DispatchWindowsSupport)
-  dispatch_windows_arch_spelling(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_MSVC_ARCH)
-  dispatch_windows_include_for_arch(${DISPATCH_MSVC_ARCH} DISPATCH_INCLUDES)
-  include_directories(BEFORE SYSTEM ${DISPATCH_INCLUDES})
-  dispatch_windows_lib_for_arch(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_LIBDIR)
-  link_directories(${DISPATCH_LIBDIR})
+
+if(ENABLE_SWIFT)
+  set(INSTALL_TARGET_DIR "${CMAKE_INSTALL_LIBDIR}/swift$<$<NOT:$<BOOL:${BUILD_SHARED_LIBS}>>:_static>/$<LOWER_CASE:${CMAKE_SYSTEM_NAME}>" CACHE PATH "Path where the libraries will be installed")
+  set(INSTALL_DISPATCH_HEADERS_DIR "${CMAKE_INSTALL_LIBDIR}/swift$<$<NOT:$<BOOL:${BUILD_SHARED_LIBS}>>:_static>/dispatch" CACHE PATH "Path where the headers will be installed for libdispatch")
+  set(INSTALL_BLOCK_HEADERS_DIR "${CMAKE_INSTALL_LIBDIR}/swift$<$<NOT:$<BOOL:${BUILD_SHARED_LIBS}>>:_static>/Block" CACHE PATH "Path where the headers will be installed for the blocks runtime")
+  set(INSTALL_OS_HEADERS_DIR "${CMAKE_INSTALL_LIBDIR}/swift$<$<NOT:$<BOOL:${BUILD_SHARED_LIBS}>>:_static>/os" CACHE PATH "Path where the os/ headers will be installed")
+else()
+  set(INSTALL_TARGET_DIR "${CMAKE_INSTALL_LIBDIR}" CACHE PATH "Path where the libraries will be installed")
+  set(INSTALL_DISPATCH_HEADERS_DIR "include/dispatch" CACHE PATH "Path where the headers will be installed")
+  set(INSTALL_BLOCK_HEADERS_DIR "include" CACHE PATH "Path where the headers will be installed for the blocks runtime")
+  set(INSTALL_OS_HEADERS_DIR "include/os" CACHE PATH "Path where the headers will be installed")
 endif()
+
 
 add_subdirectory(dispatch)
 add_subdirectory(man)
@@ -287,4 +276,3 @@ add_subdirectory(src)
 if(BUILD_TESTING)
   add_subdirectory(tests)
 endif()
-
