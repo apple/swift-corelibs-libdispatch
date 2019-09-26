@@ -1,0 +1,7 @@
+
+set(DISPATCH_HAS_SWIFT_SDK_OVERLAY @ENABLE_SWIFT@)
+
+if(NOT TARGET dispatch)
+  include(@DISPATCH_EXPORTS_FILE@)
+endif()
+

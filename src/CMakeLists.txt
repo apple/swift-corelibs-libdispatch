@@ -159,7 +159,9 @@ if(ENABLE_SWIFT)
   add_subdirectory(swift)
 endif()
 
+set_property(GLOBAL APPEND PROPERTY DISPATCH_EXPORTS dispatch)
 install(TARGETS dispatch
+        EXPORT dispatchExports
         ARCHIVE DESTINATION ${INSTALL_TARGET_DIR}
         LIBRARY DESTINATION ${INSTALL_TARGET_DIR}
         RUNTIME DESTINATION bin)
