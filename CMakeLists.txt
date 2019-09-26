@@ -9,6 +9,11 @@ if(POLICY CMP0091)
   cmake_policy(SET CMP0091 NEW)
 endif()
 
+# Enable Policy 0091 to select MSVC runtime library by flags
+if(POLICY CMP0091)
+  cmake_policy(CMP0091 NEW)
+endif()
+
 project(dispatch
   VERSION 1.3
   LANGUAGES C CXX)
@@ -39,6 +44,9 @@ set(CMAKE_C_VISIBILITY_INLINES_HIDDEN YES)
 # libraries.
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# NOTE(compnerd) default to /MD or /MDd based upon the configuration
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
