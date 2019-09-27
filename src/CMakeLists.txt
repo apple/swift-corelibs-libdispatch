@@ -109,12 +109,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     _CRT_NONSTDC_NO_WARNINGS
     _CRT_SECURE_NO_WARNINGS)
 elseif(CMAKE_SYSTEM_NAME STREQUAL Android)
-  target_compile_definitions(dispatch PRIVATE
+  target_compile_options(dispatch PRIVATE
     -U_GNU_SOURCE)
 endif()
 if(DISPATCH_ENABLE_ASSERTS)
   target_compile_definitions(dispatch PRIVATE
-    -DDISPATCH_DEBUG=1)
+    DISPATCH_DEBUG=1)
 endif()
 
 if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
