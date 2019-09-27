@@ -12,13 +12,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL Windows)
   endif()
 endif()
 
-set_target_properties(BlocksRuntime PROPERTIES
-  POSITION_INDEPENDENT_CODE TRUE
-  INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(BlocksRuntime PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR})
 if(HAVE_OBJC AND CMAKE_DL_LIBS)
   target_link_libraries(BlocksRuntime PUBLIC
     ${CMAKE_DL_LIBS})
 endif()
+
+set_target_properties(BlocksRuntime PROPERTIES
+  POSITION_INDEPENDENT_CODE TRUE)
 
 add_library(BlocksRuntime::BlocksRuntime ALIAS BlocksRuntime)
 
