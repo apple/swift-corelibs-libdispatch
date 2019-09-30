@@ -95,14 +95,13 @@ endif()
 set_target_properties(dispatch PROPERTIES
   POSITION_INDEPENDENT_CODE YES)
 
-target_include_directories(dispatch PRIVATE
+target_include_directories(dispatch PUBLIC
   ${PROJECT_BINARY_DIR}
   ${PROJECT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}
-  ${CMAKE_CURRENT_BINARY_DIR}
+  ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(dispatch PRIVATE
   ${PROJECT_SOURCE_DIR}/private)
-target_include_directories(dispatch SYSTEM BEFORE PRIVATE
-  "${BlocksRuntime_INCLUDE_DIR}")
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
   target_compile_definitions(dispatch PRIVATE
@@ -137,7 +136,8 @@ if(LibRT_FOUND)
   target_link_libraries(dispatch PRIVATE RT::rt)
 endif()
 target_link_libraries(dispatch PRIVATE
-  Threads::Threads
+  Threads::Threads)
+target_link_libraries(dispatch PUBLIC
   BlocksRuntime::BlocksRuntime)
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
   target_link_libraries(dispatch PRIVATE
@@ -159,7 +159,9 @@ if(ENABLE_SWIFT)
   add_subdirectory(swift)
 endif()
 
+set_property(GLOBAL APPEND PROPERTY DISPATCH_EXPORTS dispatch)
 install(TARGETS dispatch
+        EXPORT dispatchExports
         ARCHIVE DESTINATION ${INSTALL_TARGET_DIR}
         LIBRARY DESTINATION ${INSTALL_TARGET_DIR}
         RUNTIME DESTINATION bin)

@@ -46,11 +46,15 @@ install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
   ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftdoc
   DESTINATION ${INSTALL_TARGET_DIR}/${swift_arch})
+set_property(GLOBAL APPEND PROPERTY DISPATCH_EXPORTS swiftDispatch)
 install(TARGETS swiftDispatch
+  EXPORT dispatchExports
   ARCHIVE DESTINATION ${INSTALL_TARGET_DIR}
   LIBRARY DESTINATION ${INSTALL_TARGET_DIR}
   RUNTIME DESTINATION bin)
 if(NOT BUILD_SHARED_LIBS)
+  set_property(GLOBAL APPEND PROPERTY DISPATCH_EXPORTS DispatchStubs)
   install(TARGETS DispatchStubs
+    EXPORT dispatchExports
     DESTINATION ${INSTALL_TARGET_DIR})
 endif()
