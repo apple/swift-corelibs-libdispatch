@@ -34,10 +34,12 @@ target_compile_options(swiftDispatch PRIVATE
   "SHELL:-Xcc -I${PROJECT_SOURCE_DIR}")
 set_target_properties(swiftDispatch PROPERTIES
   Swift_MODULE_NAME Dispatch
-  Swift_MODULE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/swift)
+  Swift_MODULE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/swift
+  INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_BINARY_DIR}/swift)
 target_link_libraries(swiftDispatch PRIVATE
   DispatchStubs
-  BlocksRuntime::BlocksRuntime
+  BlocksRuntime::BlocksRuntime)
+target_link_libraries(swiftDispatch PUBLIC
   dispatch)
 add_dependencies(swiftDispatch module-maps)
 
