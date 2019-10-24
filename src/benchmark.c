@@ -43,8 +43,10 @@ _dispatch_benchmark_init(void *context)
 	uint64_t start, delta;
 #if DISPATCH_SIZEOF_PTR == 8 && !defined(_WIN32)
 	__uint128_t lcost;
+	static const __uint128_t lcost_max = UINT64_MAX;
 #else
 	long double lcost;
+	static const long double lcost_max = (long double)UINT64_MAX;
 #endif
 #if HAVE_MACH_ABSOLUTE_TIME
 	kern_return_t kr;
@@ -67,7 +69,7 @@ _dispatch_benchmark_init(void *context)
 #endif
 	lcost /= cnt;
 
-	bdata->loop_cost = lcost > UINT64_MAX ? UINT64_MAX : (uint64_t)lcost;
+	bdata->loop_cost = lcost > lcost_max ? UINT64_MAX : (uint64_t)lcost;
 }
 
 #ifdef __BLOCKS__
@@ -95,8 +97,10 @@ dispatch_benchmark_f(size_t count, register void *ctxt,
 	uint64_t ns, start, delta;
 #if DISPATCH_SIZEOF_PTR == 8 && !defined(_WIN32)
 	__uint128_t conversion, big_denom;
+	static const __uint128_t conversion_max = UINT64_MAX;
 #else
 	long double conversion, big_denom;
+	static const long double conversion_max = (long double)UINT64_MAX;
 #endif
 	size_t i = 0;
 
@@ -122,7 +126,7 @@ dispatch_benchmark_f(size_t count, register void *ctxt,
 #endif
 	big_denom *= count;
 	conversion /= big_denom;
-	ns = conversion > UINT64_MAX ? UINT64_MAX : (uint64_t)conversion;
+	ns = conversion > conversion_max ? UINT64_MAX : (uint64_t)conversion;
 
 	return ns - bdata.loop_cost;
 }
