@@ -1269,15 +1269,15 @@ _dispatch_logv(const char *msg, size_t len, va_list *ap_ptr)
 		return;
 	}
 	if (unlikely(dispatch_logfile != -1)) {
-		if (!ap_ptr) {
-			return _dispatch_log_file((char*)msg, len);
+		if (ap_ptr) {
+			return _dispatch_logv_file(msg, *ap_ptr);
 		}
-		return _dispatch_logv_file(msg, *ap_ptr);
+		return _dispatch_log_file((char*)msg, len);
 	}
-	if (!ap_ptr) {
-		return _dispatch_syslog(msg);
+	if (ap_ptr) {
+		return _dispatch_vsyslog(msg, *ap_ptr);
 	}
-	return _dispatch_vsyslog(msg, *ap_ptr);
+	return _dispatch_syslog(msg);
 }
 
 DISPATCH_NOINLINE
