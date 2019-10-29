@@ -235,23 +235,21 @@ dispatch_data_create_f(const void *buffer, size_t size, dispatch_queue_t queue,
 }
 
 dispatch_data_t
-dispatch_data_create_alloc(size_t size, void** buffer_ptr)
-{
-	dispatch_data_t data = dispatch_data_empty;
-	void *buffer = NULL;
+dispatch_data_create_alloc(size_t size, void** buffer_ptr) {
+    dispatch_data_t data = dispatch_data_empty;
+    void *buffer = NULL;
 
-	if (unlikely(!size)) {
-		goto out;
-	}
-	data = _dispatch_data_alloc(0, size);
-	buffer = (void*)data + sizeof(struct dispatch_data_s);
-	_dispatch_data_init(data, buffer, size, NULL,
-			DISPATCH_DATA_DESTRUCTOR_NONE);
-out:
-	if (buffer_ptr) {
-		*buffer_ptr = buffer;
-	}
-	return data;
+    if (!unlikely(!size)) {
+        data = _dispatch_data_alloc(0, size);
+        buffer = (void *) data + sizeof(struct dispatch_data_s);
+        _dispatch_data_init(data, buffer, size, NULL,
+                            DISPATCH_DATA_DESTRUCTOR_NONE);
+
+    }
+    if (buffer_ptr) {
+        *buffer_ptr = buffer;
+    }
+    return data;
 }
 
 void
@@ -368,7 +366,8 @@ dispatch_data_create_subrange(dispatch_data_t dd, size_t offset,
 
 	if (offset >= dd->size || !length) {
 		return dispatch_data_empty;
-	} else if (length > dd->size - offset) {
+	}
+	if (length > dd->size - offset) {
 		length = dd->size - offset;
 	} else if (length == dd->size) {
 		_dispatch_data_retain(dd);
@@ -517,34 +516,32 @@ out:
 }
 
 const void *
-dispatch_data_get_flattened_bytes_4libxpc(dispatch_data_t dd)
-{
-	const void *buffer;
-	size_t offset = 0;
+dispatch_data_get_flattened_bytes_4libxpc(dispatch_data_t dd) {
+    const void *buffer;
+    size_t offset = 0;
 
-	if (unlikely(!dd->size)) {
-		return NULL;
-	}
+    if (unlikely(!dd->size)) {
+        return NULL;
+    }
 
-	buffer = _dispatch_data_map_direct(dd, 0, &dd, &offset);
-	if (buffer) {
-		return buffer;
-	}
+    buffer = _dispatch_data_map_direct(dd, 0, &dd, &offset);
+    if (buffer) {
+        return buffer;
+    }
 
-	void *flatbuf = _dispatch_data_flatten(dd);
-	if (likely(flatbuf)) {
-		// we need a release so that readers see the content of the buffer
-		if (unlikely(!os_atomic_cmpxchgv2o(dd, buf, NULL, flatbuf,
-				&buffer, release))) {
-			free(flatbuf);
-		} else {
-			buffer = flatbuf;
-		}
-	} else {
-		return NULL;
-	}
+    void *flatbuf = _dispatch_data_flatten(dd);
+    if (!likely(flatbuf)) {
+        return NULL;
+    }
+    // we need a release so that readers see the content of the buffer
+    if (unlikely(!os_atomic_cmpxchgv2o(dd, buf, NULL, flatbuf,
+                                       &buffer, release))) {
+        free(flatbuf);
+    } else {
+        buffer = flatbuf;
+    }
 
-	return buffer + offset;
+    return buffer + offset;
 }
 
 #if DISPATCH_USE_CLIENT_CALLOUT
@@ -587,10 +584,9 @@ bool
 dispatch_data_apply_f(dispatch_data_t dd, void *ctxt,
 		dispatch_data_applier_function_t applier)
 {
-	if (!dd->size) {
-		return true;
-	}
-	return _dispatch_data_apply(dd, 0, 0, dd->size, ctxt, applier);
+    if (dd->size)
+        return _dispatch_data_apply(dd, 0, 0, dd->size, ctxt, applier);
+    return true;
 }
 
 bool
@@ -663,14 +659,13 @@ _dispatch_data_copy_region(dispatch_data_t dd, size_t from, size_t size,
 // Returs either a leaf object or an object composed of a single leaf object
 dispatch_data_t
 dispatch_data_copy_region(dispatch_data_t dd, size_t location,
-		size_t *offset_ptr)
-{
-	if (location >= dd->size) {
-		*offset_ptr = dd->size;
-		return dispatch_data_empty;
-	}
-	*offset_ptr = 0;
-	return _dispatch_data_copy_region(dd, 0, dd->size, location, offset_ptr);
+		size_t *offset_ptr) {
+    if (location < dd->size) {
+        *offset_ptr = 0;
+        return _dispatch_data_copy_region(dd, 0, dd->size, location, offset_ptr);
+    }
+    *offset_ptr = dd->size;
+    return dispatch_data_empty;
 }
 
 #if HAVE_MACH

@@ -84,7 +84,7 @@ extern "C" void * objc_retainAutoreleasedReturnValue(void *obj) {
         swift_retain(obj);
         return obj;
     }
-    else return NULL;
+    return NULL;
 }
 
 #if defined(_WIN32)

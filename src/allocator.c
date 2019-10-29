@@ -569,7 +569,6 @@ unlock:
 	if (last_locked) {
 		os_atomic_store(&page_bitmaps[0], BITMAP_C(0), relaxed);
 	}
-	return;
 }
 
 DISPATCH_ALLOC_NOINLINE
