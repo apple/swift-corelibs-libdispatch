@@ -45,14 +45,6 @@ final public class UnfairLock {
         lock(); defer { unlock() }
         return closure()
     }
-
-    /// Execute a closure while acquiring the lock.
-    ///
-    /// - Parameter closure: The closure to run.
-    public func synchronized(_ closure: () -> Void) {
-        lock(); defer { unlock() }
-        return closure()
-    }
 }
 
 /// Property wrapper to make read/write access to the
@@ -62,7 +54,7 @@ final public class UnfairLock {
 public struct Atomic<Value> {
 
     private let lock = UnfairLock()
-    var _stored: Value
+    private var _stored: Value
 
     public init(wrappedValue initialValue: Value) {
       _stored = initialValue
@@ -82,36 +74,56 @@ public struct Atomic<Value> {
 
 extension Sequence {
 
-    /// A form of map that reads the Elements of the Sequnce
-    /// and presents them on a number of threads determined by
-    /// the concurrentPerform class method on DispatchQueue.
+    /// A form of map that reads the Elements of the Sequence
+    /// and processes them on the number of threads specified.
     ///
-    /// - Parameter closure: The closure to run.
+    /// - Parameter maxConcurrency: Maximum number of threads to start.
+    /// - Parameter queueName: Name used for the concurrent queue
+    /// - Parameter priority: Quality of service of threads created
+    /// - Parameter worker: Closure to call to perform work
+    ///
+    /// Up to maxConcurrency threads used to execute the `worker` closure
+    /// passing in each value in the sequence and a closure to call when
+    /// the work is complete and an output value is available.
     @available(OSX 10.12, iOS 13, tvOS 13, watchOS 6, *)
     @discardableResult
-    public func concurrentMap<Output>(queueName: String = "concurrentMap",
-                 priority: DispatchQoS = .default,
-                 worker: @escaping (Element) -> Output) -> [Output] {
+    func concurrentMap<Output>(maxConcurrency: Int = 4,
+                               queueName: String = "concurrentMap",
+                               priority: DispatchQoS = .default,
+                               worker: @escaping (Element,
+                            @escaping (Output) -> Void) -> Void) -> [Output] {
         let input = Array(self)
         var output = Array<Output>(unsafeUninitializedCapacity: input.count,
                                    initializingWith: {
                                     (buffer, initializedCount) in
                                     let stride = MemoryLayout<Output>.stride
                                     memset(buffer.baseAddress, 0,
-                                           stride * buffer.count)
-                                    initializedCount = buffer.count
-        })
-        let concurrentQueue = DispatchQueue(label: queueName, qos: priority,
-                                            attributes: .concurrent)
+                                           stride * input.count)
+                                    initializedCount = input.count})
 
-        output.withUnsafeMutableBufferPointer {
-            buffer in
-            concurrentQueue.sync {
-                DispatchQueue.concurrentPerform(iterations: input.count) {
-                    index in
-                    buffer.baseAddress![index] = worker(input[index])
+        output.withUnsafeMutableBufferPointer { buffer in
+            let buffro = buffer
+            let concurrentQueue = DispatchQueue(label: queueName, qos: priority,
+                                                attributes: .concurrent)
+            // Semaphore regulates the maximum number of active threads
+            let semaphore = DispatchSemaphore(value: maxConcurrency)
+            // ThreadGroup waits for running threads to complete
+            let threadGroup = DispatchGroup()
+
+            for index in 0..<input.count {
+                threadGroup.enter()
+                semaphore.wait()
+
+                concurrentQueue.async {
+                    worker(input[index], { result in
+                        buffro[index] = result
+                        threadGroup.leave()
+                        semaphore.signal()
+                    })
                 }
             }
+
+            threadGroup.wait()
         }
 
         return output
