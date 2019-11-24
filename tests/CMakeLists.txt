@@ -78,9 +78,6 @@ function(add_unit_test name)
     # to reduce probability of test failures due to machine load.
     target_compile_options(${name} PRIVATE -DLENIENT_DEADLINES=1)
   endif()
-  target_include_directories(${name}
-                             SYSTEM BEFORE PRIVATE
-                               "${BlocksRuntime_INCLUDE_DIR}")
   if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
     target_compile_options(${name} PRIVATE -Xclang -fblocks)
     target_compile_options(${name} PRIVATE /W3 -Wno-deprecated-declarations)

@@ -45,6 +45,4 @@ if(BlocksRuntime_FOUND)
                             INTERFACE_INCLUDE_DIRECTORIES
                               ${BlocksRuntime_INCLUDE_DIR})
   endif()
-else()
-  set(BlocksRuntime_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/src/BlocksRuntime")
 endif()
