@@ -115,6 +115,8 @@ endif()
 
 find_package(LibRT)
 
+find_package(BlocksRuntime QUIET)
+
 check_function_exists(_pthread_workqueue_init HAVE__PTHREAD_WORKQUEUE_INIT)
 check_function_exists(getprogname HAVE_GETPROGNAME)
 check_function_exists(mach_absolute_time HAVE_MACH_ABSOLUTE_TIME)
