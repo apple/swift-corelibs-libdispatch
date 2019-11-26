@@ -15,7 +15,7 @@ import Dispatch
 /// Wrapper for os_unfair_lock mutex primitve from the
 /// project: https://github.com/Alamofire/Alamofire
 @available(OSX 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
-public final class UnfairLock {
+public class UnfairLock {
     private let unfairLock: os_unfair_lock_t
 
     public init() {
@@ -28,11 +28,11 @@ public final class UnfairLock {
         unfairLock.deallocate()
     }
 
-    private func lock() {
+    private final func lock() {
         os_unfair_lock_lock(unfairLock)
     }
 
-    private func unlock() {
+    private final func unlock() {
         os_unfair_lock_unlock(unfairLock)
     }
 
@@ -41,78 +41,29 @@ public final class UnfairLock {
     /// - Parameter closure: The closure to run.
     ///
     /// - Returns:           The value the closure generated.
-    func synchronized<T>(_ closure: () -> T) -> T {
+    public final func around<T>(_ closure: () throws -> T) rethrows -> T {
         lock(); defer { unlock() }
-        return closure()
+        return try closure()
     }
 
     /// Execute a closure while acquiring the lock.
     ///
     /// - Parameter closure: The closure to run.
-    func synchronized(_ closure: () -> Void) {
+    public final func around(_ closure: () throws -> Void) rethrows {
         lock(); defer { unlock() }
-        return closure()
+        return try closure()
     }
 }
 
-public typealias SynchronizableLock = UnfairLock
-private var allLocks = [OpaquePointer: SynchronizableLock]()
-private var lockLock = SynchronizableLock()
+public class Synchronized<Wrapped>: UnfairLock {
+    private var data: Wrapped
 
-protocol Synchronizable {
-    mutating func synchronized<T>(_ closure: (inout Self) -> T) -> T
-}
-
-extension Dictionary: Synchronizable {}
-extension Array: Synchronizable {}
-extension Int: Synchronizable {}
-
-extension Synchronizable {
-
-    public mutating func synchronized<T>(_ closure: (inout Self) -> T) -> T {
-        let lockee = UnsafeMutablePointer(&self)
-        let lock = lockLock.synchronized { () -> SynchronizableLock in
-            let key = OpaquePointer(lockee)
-            var lock = allLocks[key]
-            if lock == nil {
-                lock = SynchronizableLock()
-                allLocks[key] = lock
-            }
-            return lock!
-        }
-        return lock.synchronized { closure(&lockee.pointee) }
+    public init(_ data: Wrapped) {
+        self.data = data
     }
 
-    public mutating func desynchronize() {
-        let lockee = UnsafeMutablePointer(&self)
-        lockLock.synchronized {
-            allLocks[OpaquePointer(lockee)] = nil
-        }
-    }
-}
-
-/// Property wrapper to make read/write access to the
-/// wrapped value synchronous across multiple threads.
-@available(OSX 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
-@propertyWrapper
-public struct Atomic<Value> {
-
-    private let lock = UnfairLock()
-    private var _stored: Value
-
-    public init(wrappedValue initialValue: Value) {
-      _stored = initialValue
-    }
-
-    public var wrappedValue: Value {
-        get {
-            return lock.synchronized { _stored }
-        }
-        set(newValue) {
-            lock.synchronized {
-                _stored = newValue
-            }
-        }
+    public func synchronized<T>(_ body: (inout Wrapped) throws -> T) rethrows -> T {
+        return try around { try body(&self.data) }
     }
 }
 
