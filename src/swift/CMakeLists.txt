@@ -37,8 +37,11 @@ set_target_properties(swiftDispatch PROPERTIES
   Swift_MODULE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/swift
   INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_BINARY_DIR}/swift)
 target_link_libraries(swiftDispatch PRIVATE
-  DispatchStubs
-  BlocksRuntime::BlocksRuntime)
+  DispatchStubs)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL Darwin)
+  target_link_libraries(swiftDispatch PRIVATE
+    BlocksRuntime::BlocksRuntime)
+endif()
 target_link_libraries(swiftDispatch PUBLIC
   dispatch)
 add_dependencies(swiftDispatch module-maps)
