@@ -49,7 +49,7 @@
 #  endif // !DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101200)
 #else
 #  define DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(x) 1
-#  if __IPHONE_OS_VERSION_MIN_REQUIRED < 90000
+#  if !TARGET_OS_DRIVERKIT && __IPHONE_OS_VERSION_MIN_REQUIRED < 90000
 #    error "iOS hosts older than iOS 9.0 aren't supported anymore"
 #  endif
 #endif

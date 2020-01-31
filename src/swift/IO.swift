@@ -5,14 +5,14 @@
 // Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 import CDispatch
 
-public extension DispatchIO {
+extension DispatchIO {
 
 	public enum StreamType : UInt  {
 		case stream = 0
@@ -35,14 +35,14 @@ public extension DispatchIO {
 	}
 
 	public class func read(fromFileDescriptor: Int32, maxLength: Int, runningHandlerOn queue: DispatchQueue, handler: @escaping (_ data: DispatchData, _ error: Int32) -> Void) {
-		dispatch_read(fromFileDescriptor, maxLength, queue.__wrapped) { (data: dispatch_data_t, error: Int32) in
+		dispatch_read(dispatch_fd_t(fromFileDescriptor), maxLength, queue.__wrapped) { (data: dispatch_data_t, error: Int32) in
 			handler(DispatchData(borrowedData: data), error)
 		}
 	}
 
 	public class func write(toFileDescriptor: Int32, data: DispatchData, runningHandlerOn queue: DispatchQueue, handler: @escaping (_ data: DispatchData?, _ error: Int32) -> Void) {
-		dispatch_write(toFileDescriptor, data.__wrapped.__wrapped, queue.__wrapped) { (data: dispatch_data_t?, error: Int32) in
-			handler(data.flatMap { DispatchData(borrowedData: $0) }, error)
+		dispatch_write(dispatch_fd_t(toFileDescriptor), data.__wrapped.__wrapped, queue.__wrapped) { (data: dispatch_data_t?, error: Int32) in
+			handler(data.map { DispatchData(borrowedData: $0) }, error)
 		}
 	}
 
@@ -90,21 +90,21 @@ public extension DispatchIO {
 
 	public func read(offset: off_t, length: Int, queue: DispatchQueue, ioHandler: @escaping (_ done: Bool, _ data: DispatchData?, _ error: Int32) -> Void) {
 		dispatch_io_read(self.__wrapped, offset, length, queue.__wrapped) { (done: Bool, data: dispatch_data_t?, error: Int32) in
-			ioHandler(done, data.flatMap { DispatchData(borrowedData: $0) }, error)
+			ioHandler(done, data.map { DispatchData(borrowedData: $0) }, error)
 		}
 	}
 
 	public func write(offset: off_t, data: DispatchData, queue: DispatchQueue, ioHandler: @escaping (_ done: Bool, _ data: DispatchData?, _ error: Int32) -> Void) {
 		dispatch_io_write(self.__wrapped, offset, data.__wrapped.__wrapped, queue.__wrapped) { (done: Bool, data: dispatch_data_t?, error: Int32) in
-			ioHandler(done, data.flatMap { DispatchData(borrowedData: $0) }, error)
+			ioHandler(done, data.map { DispatchData(borrowedData: $0) }, error)
 		}
 	}
 
 	public func setInterval(interval: DispatchTimeInterval, flags: IntervalFlags = []) {
-		dispatch_io_set_interval(self.__wrapped, UInt64(interval.rawValue), flags.rawValue)
+		dispatch_io_set_interval(self.__wrapped, UInt64(interval.rawValue), dispatch_io_interval_flags_t(flags.rawValue))
 	}
 
 	public func close(flags: CloseFlags = []) {
-		dispatch_io_close(self.__wrapped, flags.rawValue)
+		dispatch_io_close(self.__wrapped, dispatch_io_close_flags_t(flags.rawValue))
 	}
 }

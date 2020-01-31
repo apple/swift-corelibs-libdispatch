@@ -23,7 +23,7 @@
 
 #ifndef _os_atomic_basetypeof
 #define _os_atomic_basetypeof(p) \
-		typeof(atomic_load_explicit(_os_atomic_c11_atomic(p), memory_order_relaxed))
+		__typeof__(atomic_load_explicit(_os_atomic_c11_atomic(p), memory_order_relaxed))
 #endif
 
 #define firehose_atomic_maxv2o(p, f, v, o, m) \
@@ -134,6 +134,7 @@ firehose_mig_server(dispatch_mig_callback_t demux, size_t maxmsgsz,
 	}
 	if (unlikely(rc != KERN_SUCCESS && rc != MIG_NO_REPLY)) {
 		// destroy the request - but not the reply port
+		// (MIG moved it into the msg_reply).
 		hdr->msgh_remote_port = 0;
 		mach_msg_destroy(hdr);
 	}
@@ -210,7 +211,7 @@ firehose_buffer_stream_flush(firehose_buffer_t fb, firehose_stream_t stream)
 			old_state.fss_atomic_state, new_state.fss_atomic_state, relaxed);
 }
 
-/**
+/*!
  * @function firehose_buffer_tracepoint_reserve
  *
  * @abstract
@@ -354,7 +355,7 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 		// firehose_buffer_stream_chunk_install())
 		__firehose_critical_region_enter();
 #if KERNEL
-		new_state.fss_allocator = (uint32_t)cpu_number();
+		new_state.fss_allocator = 1;
 #else
 		new_state.fss_allocator = _dispatch_lock_value_for_self();
 #endif
@@ -388,7 +389,7 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 	return firehose_buffer_tracepoint_reserve_slow(fb, &ask, privptr);
 }
 
-/**
+/*!
  * @function firehose_buffer_tracepoint_flush
  *
  * @abstract

@@ -5,12 +5,13 @@
 // Copyright (c) 2014 - 2016 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
-// See http://swift.org/LICENSE.txt for license information
-// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
 
 import CDispatch
+import _SwiftDispatchOverlayShims
 
 public struct DispatchWorkItemFlags : OptionSet, RawRepresentable {
 	public let rawValue: UInt
@@ -18,35 +19,35 @@ public struct DispatchWorkItemFlags : OptionSet, RawRepresentable {
 
 	public static let barrier = DispatchWorkItemFlags(rawValue: 0x1)
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	public static let detached = DispatchWorkItemFlags(rawValue: 0x2)
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	public static let assignCurrentContext = DispatchWorkItemFlags(rawValue: 0x4)
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	public static let noQoS = DispatchWorkItemFlags(rawValue: 0x8)
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	public static let inheritQoS = DispatchWorkItemFlags(rawValue: 0x10)
 
-	@available(OSX 10.10, iOS 8.0, *)
+	@available(macOS 10.10, iOS 8.0, *)
 	public static let enforceQoS = DispatchWorkItemFlags(rawValue: 0x20)
 }
 
-@available(OSX 10.10, iOS 8.0, *)
+@available(macOS 10.10, iOS 8.0, *)
 public class DispatchWorkItem {
 	internal var _block: _DispatchBlock
 
 	public init(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], block: @escaping @convention(block) () -> ()) {
-		_block =  dispatch_block_create_with_qos_class(dispatch_block_flags_t(flags.rawValue),
+		_block =  dispatch_block_create_with_qos_class(dispatch_block_flags_t(UInt32(flags.rawValue)),
 			qos.qosClass.rawValue.rawValue, Int32(qos.relativePriority), block)
 	}
 
 	// Used by DispatchQueue.synchronously<T> to provide a path through
 	// dispatch_block_t, as we know the lifetime of the block in question.
 	internal init(flags: DispatchWorkItemFlags = [], noescapeBlock: () -> ()) {
-		_block = _swift_dispatch_block_create_noescape(dispatch_block_flags_t(flags.rawValue), noescapeBlock)
+		_block = _swift_dispatch_block_create_noescape(dispatch_block_flags_t(UInt32(flags.rawValue)), noescapeBlock)
 	}
 
 	public func perform() {
@@ -98,6 +99,3 @@ public class DispatchWorkItem {
 /// on the referential identity of a block. Particularly, dispatch_block_create.
 internal typealias _DispatchBlock = @convention(block) () -> Void
 internal typealias dispatch_block_t = @convention(block) () -> Void
-
-@_silgen_name("_swift_dispatch_block_create_noescape")
-internal func _swift_dispatch_block_create_noescape(_ flags: dispatch_block_flags_t, _ block: () -> ()) -> _DispatchBlock

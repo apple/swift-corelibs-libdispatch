@@ -28,7 +28,6 @@
 
 __BEGIN_DECLS
 
-#if !TARGET_OS_WIN32
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT const struct dispatch_queue_offsets_s {
 	// always add new fields at the end
@@ -51,7 +50,6 @@ DISPATCH_EXPORT const struct dispatch_queue_offsets_s {
 	const uint16_t dqo_priority;
 	const uint16_t dqo_priority_size;
 } dispatch_queue_offsets;
-#endif
 
 #if DISPATCH_LAYOUT_SPI
 /*!

@@ -44,15 +44,15 @@ struct firehose_client_s {
 	uint64_t volatile	fc_io_sent_flushed_pos;
 	uint64_t volatile	fc_io_flushed_pos;
 
-#define FC_STATE_ENQUEUED(for_io)      (0x0001u << (for_io))
+#define FC_STATE_ENQUEUED(for_io)      (uint16_t)(0x0001u << (for_io))
 #define FC_STATE_MEM_ENQUEUED           0x0001
 #define FC_STATE_IO_ENQUEUED            0x0002
 
-#define FC_STATE_CANCELING(for_io)     (0x0010u << (for_io))
+#define FC_STATE_CANCELING(for_io)     (uint16_t)(0x0010u << (for_io))
 #define FC_STATE_MEM_CANCELING          0x0010
 #define FC_STATE_IO_CANCELING           0x0020
 
-#define FC_STATE_CANCELED(for_io)      (0x0100u << (for_io))
+#define FC_STATE_CANCELED(for_io)      (uint16_t)(0x0100u << (for_io))
 #define FC_STATE_MEM_CANCELED           0x0100
 #define FC_STATE_IO_CANCELED            0x0200
 #define FC_STATE_CANCELED_MASK          0x0300
@@ -73,14 +73,13 @@ struct firehose_client_s {
 	os_atomic(uint8_t)	fc_mach_channel_refcnt;
 	// These bits are mutated from different locking domains, and so cannot be
 	// safely consolidated into a bit-field.
+	bool volatile		fc_strings_cached;
 	bool volatile		fc_memory_corrupted;
 	bool volatile		fc_needs_io_snapshot;
 	bool volatile		fc_needs_mem_snapshot;
 	bool volatile		fc_quarantined;
-};
+} DISPATCH_ATOMIC64_ALIGN;
 
-void
-_firehose_client_xref_dispose(struct firehose_client_s *fc);
 void
 _firehose_client_dispose(struct firehose_client_s *fc);
 

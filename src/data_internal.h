@@ -107,8 +107,8 @@ void _dispatch_data_dispose(dispatch_data_t data, bool *allow_free);
 void _dispatch_data_set_target_queue(struct dispatch_data_s *dd,
 		dispatch_queue_t tq);
 #endif
+DISPATCH_COLD
 size_t _dispatch_data_debug(dispatch_data_t data, char* buf, size_t bufsiz);
-const void* _dispatch_data_get_flattened_bytes(struct dispatch_data_s *dd);
 
 #if !defined(__cplusplus)
 extern const dispatch_block_t _dispatch_data_destructor_inline;

@@ -27,15 +27,20 @@
 #ifndef __DISPATCH_OS_SHIMS__
 #define __DISPATCH_OS_SHIMS__
 
+#if !defined(_WIN32)
 #include <pthread.h>
+#else // defined(_WIN32)
+#include "shims/generic_win_stubs.h"
+#include "shims/generic_sys_queue.h"
+#endif // defined(_WIN32)
 
-#ifdef __linux__
-#include "shims/linux_stubs.h"
-#endif
 #ifdef __ANDROID__
 #include "shims/android_stubs.h"
-#endif
+#endif // __ANDROID__
 
+#if !HAVE_MACH
+#include "shims/mach.h"
+#endif
 #include "shims/target.h"
 
 #if DISPATCH_USE_INTERNAL_WORKQUEUE
@@ -65,20 +70,19 @@
 #define FD_COPY(f, t) (void)(*(t) = *(f))
 #endif
 
-#if TARGET_OS_WIN32
-#define bzero(ptr,len) memset((ptr), 0, (len))
-#define snprintf _snprintf
+#if HAVE_STRLCPY
+#include <string.h>
+#else // that is, if !HAVE_STRLCPY
 
-inline size_t strlcpy(char *dst, const char *src, size_t size) {
-	int res = strlen(dst) + strlen(src) + 1;
-	if (size > 0) {
-		size_t n = size - 1;
-		strncpy(dst, src, n);
-		dst[n] = 0;
-	}
-	return res;
-}
-#endif // TARGET_OS_WIN32
+size_t strlcpy(char *dst, const char *src, size_t size);
+
+#endif // HAVE_STRLCPY
+
+#ifndef TAILQ_FOREACH_SAFE
+#define TAILQ_FOREACH_SAFE(var, head, field, temp)                         \
+	for ((var) = TAILQ_FIRST((head));                                      \
+		(var) && ((temp) = TAILQ_NEXT((var), field), 1); (var) = (temp))
+#endif
 
 #if PTHREAD_WORKQUEUE_SPI_VERSION < 20140716
 static inline int
@@ -150,7 +154,7 @@ _pthread_workqueue_should_narrow(pthread_priority_t priority)
 #if HAVE_PTHREAD_QOS_H && __has_include(<pthread/qos_private.h>) && \
 		defined(PTHREAD_MAX_PARALLELISM_PHYSICAL) && \
 		DISPATCH_HAVE_HW_CONFIG_COMMPAGE && \
-		DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(109900)
+		DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101300)
 #define DISPATCH_USE_PTHREAD_QOS_MAX_PARALLELISM 1
 #define DISPATCH_MAX_PARALLELISM_PHYSICAL PTHREAD_MAX_PARALLELISM_PHYSICAL
 #else
@@ -247,7 +251,7 @@ void __builtin_trap(void);
 
 #if __has_feature(c_static_assert)
 #define __dispatch_is_array(x) \
-	_Static_assert(!__builtin_types_compatible_p(typeof((x)[0]) *, typeof(x)), \
+	_Static_assert(!__builtin_types_compatible_p(__typeof__((x)[0]) *, __typeof__(x)), \
 				#x " isn't an array")
 #define countof(x) \
 	({ __dispatch_is_array(x); sizeof(x) / sizeof((x)[0]); })

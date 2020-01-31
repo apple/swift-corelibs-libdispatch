@@ -50,7 +50,7 @@ os_atomic_set_first_bit(volatile unsigned long *p, unsigned int max)
 				 "mov	%[_all_ones], %[_bit]" "\n\t"
 				 "3: \n\t"
 				 : [_p] "=m" (*p), [_val] "=&r" (val), [_bit] "=&r" (bit)
-				 : [_all_ones] "i" ((typeof(bit))UINT_MAX) : "memory", "cc");
+				 : [_all_ones] "i" ((__typeof__(bit))UINT_MAX) : "memory", "cc");
 	} else {
 		__asm__ (
 				 "1: \n\t"
@@ -68,8 +68,8 @@ os_atomic_set_first_bit(volatile unsigned long *p, unsigned int max)
 				 "mov	%[_all_ones], %[_bit]" "\n\t"
 				 "3: \n\t"
 				 : [_p] "=m" (*p), [_val] "=&r" (val), [_bit] "=&r" (bit)
-				 : [_all_ones] "i" ((typeof(bit))UINT_MAX),
-				   [_max] "g" ((typeof(bit))max) : "memory", "cc");
+				 : [_all_ones] "i" ((__typeof__(bit))UINT_MAX),
+				   [_max] "g" ((__typeof__(bit))max) : "memory", "cc");
 	}
 	return (unsigned int)bit;
 }

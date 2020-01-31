@@ -48,7 +48,7 @@
 #endif
 
 #define _dispatch_wait_until(c) ({ \
-		typeof(c) _c; \
+		__typeof__(c) _c; \
 		for (;;) { \
 			if (likely(_c = (c))) break; \
 			dispatch_hardware_pause(); \
@@ -602,6 +602,42 @@ firehose_buffer_get_logging_prefs(firehose_buffer_t fb, size_t *length)
 	return (void *)addr;
 }
 
+bool
+firehose_buffer_should_send_strings(firehose_buffer_t fb)
+{
+	mach_port_t sendp = fb->fb_header.fbh_sendp[FIREHOSE_BUFFER_PUSHPORT_MEM];
+	kern_return_t kr;
+	boolean_t result = false;
+
+	if (unlikely(sendp == MACH_PORT_DEAD)) {
+		return false;
+	}
+
+	if (likely(sendp)) {
+		kr = firehose_send_should_send_strings(sendp, &result);
+		if (likely(kr == KERN_SUCCESS)) {
+			return result;
+		}
+		if (kr != MACH_SEND_INVALID_DEST) {
+			DISPATCH_VERIFY_MIG(kr);
+			dispatch_assume_zero(kr);
+		}
+	}
+
+	sendp = firehose_client_reconnect(fb, sendp, FIREHOSE_BUFFER_PUSHPORT_MEM);
+	if (likely(MACH_PORT_VALID(sendp))) {
+		kr = firehose_send_should_send_strings(sendp, &result);
+		if (likely(kr == KERN_SUCCESS)) {
+			return result;
+		}
+		if (kr != MACH_SEND_INVALID_DEST) {
+			DISPATCH_VERIFY_MIG(kr);
+			dispatch_assume_zero(kr);
+		}
+	}
+	return false;
+}
+
 OS_NOT_TAIL_CALLED OS_NOINLINE
 static void
 firehose_client_send_push_and_wait(firehose_buffer_t fb, bool for_io,
@@ -695,14 +731,6 @@ firehose_client_push_notify_async(mach_port_t server_port OS_UNUSED,
 	firehose_buffer_t fb = ctxt->dtc_fb;
 	firehose_client_merge_updates(fb, true, push_reply, quarantined, NULL);
 	return KERN_SUCCESS;
-}
-
-kern_return_t
-firehose_client_get_logging_prefs_reply(mach_port_t req_port OS_UNUSED,
-		mach_port_t mem_port OS_UNUSED, mach_vm_size_t size OS_UNUSED)
-{
-	DISPATCH_INTERNAL_CRASH(0, "firehose_client_get_logging_prefs_reply "
-			"should never be sent to the buffer receive port");
 }
 
 #endif // !KERNEL
@@ -835,7 +863,7 @@ firehose_buffer_stream_chunk_install(firehose_buffer_t fb,
 		bool installed = false;
 		firehose_chunk_t fc = firehose_buffer_ref_to_chunk(fb, ref);
 
-		if (fc->fc_pos.fcp_atomic_pos) {
+		if (os_atomic_load(&fc->fc_pos.fcp_atomic_pos, relaxed)) {
 			// Needed for process death handling (recycle-reuse):
 			// No atomic fences required, we merely want to make sure the
 			// observers will see memory effects in program (asm) order.

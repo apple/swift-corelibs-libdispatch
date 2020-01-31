@@ -120,7 +120,7 @@ DISPATCH_SOURCE_TYPE_DECL(sock);
  * @discussion A dispatch source that monitors events on a network channel.
  */
 #define DISPATCH_SOURCE_TYPE_NW_CHANNEL (&_dispatch_source_type_nw_channel)
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) DISPATCH_LINUX_UNAVAILABLE()
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0)) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_SOURCE_TYPE_DECL(nw_channel);
 
 __END_DECLS
@@ -190,9 +190,15 @@ enum {
  *
  * @constant DISPATCH_NW_CHANNEL_FLOW_ADV_UPDATE
  * Received network channel flow advisory.
+ * @constant DISPATCH_NW_CHANNEL_CHANNEL_EVENT
+ * Received network channel event.
+ * @constant DISPATCH_NW_CHANNEL_INTF_ADV_UPDATE
+ * Received network channel interface advisory.
  */
 enum {
 	DISPATCH_NW_CHANNEL_FLOW_ADV_UPDATE = 0x00000001,
+	DISPATCH_NW_CHANNEL_CHANNEL_EVENT = 0x00000002,
+	DISPATCH_NW_CHANNEL_INTF_ADV_UPDATE = 0x00000004,
 };
 
 /*!
@@ -236,6 +242,9 @@ enum {
  *
  * @constant DISPATCH_VFS_DESIREDDISK
  * Filesystem has exceeded the DESIREDDISK level
+ *
+ * @constant DISPATCH_VFS_FREE_SPACE_CHANGE
+ * Filesystem free space changed.
  */
 enum {
 	DISPATCH_VFS_NOTRESP = 0x0001,
@@ -251,6 +260,7 @@ enum {
 	DISPATCH_VFS_QUOTA = 0x1000,
 	DISPATCH_VFS_NEARLOWDISK = 0x2000,
 	DISPATCH_VFS_DESIREDDISK = 0x4000,
+	DISPATCH_VFS_FREE_SPACE_CHANGE = 0x8000,
 };
 
 /*!
@@ -323,6 +333,18 @@ enum {
 };
 
 /*!
+ * @enum dispatch_source_mach_recv_flags_t
+ *
+ * @constant DISPATCH_MACH_RECV_SYNC_PEEK
+ * The receive source will participate in synchronous IPC priority inversion
+ * avoidance when possible.
+ */
+enum {
+	DISPATCH_MACH_RECV_SYNC_PEEK DISPATCH_ENUM_API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(4.0)) =
+			0x00008000,
+};
+
+/*!
  * @enum dispatch_source_proc_flags_t
  *
  * @constant DISPATCH_PROC_REAP
@@ -341,7 +363,7 @@ enum {
 enum {
 	DISPATCH_PROC_REAP DISPATCH_ENUM_API_DEPRECATED("unsupported flag",
 			macos(10.6,10.9), ios(4.0,7.0)) = 0x10000000,
-	DISPATCH_PROC_EXIT_STATUS DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(2.0)) = 0x04000000,
+	DISPATCH_PROC_EXIT_STATUS DISPATCH_ENUM_API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(2.0)) = 0x04000000,
 };
 
 /*!
@@ -405,7 +427,7 @@ enum {
 
 	DISPATCH_MEMORYPRESSURE_PROC_LIMIT_CRITICAL DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 0x20,
 
-	DISPATCH_MEMORYPRESSURE_MSL_STATUS DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 0xf0000000,
+	DISPATCH_MEMORYPRESSURE_MSL_STATUS DISPATCH_ENUM_API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0)) = 0xf0000000,
 };
 
 /*!
@@ -473,7 +495,7 @@ __BEGIN_DECLS
  * The result of passing NULL in this parameter is undefined.
  */
 #ifdef __BLOCKS__
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_source_set_mandatory_cancel_handler(dispatch_source_t source,
@@ -500,7 +522,7 @@ dispatch_source_set_mandatory_cancel_handler(dispatch_source_t source,
  * context of the dispatch source at the time the handler call is made.
  * The result of passing NULL in this parameter is undefined.
  */
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_source_set_mandatory_cancel_handler_f(dispatch_source_t source,
@@ -631,7 +653,7 @@ typedef struct dispatch_source_extended_data_s {
  * the value of the size argument. If this is less than the value of the size
  * argument, the remaining space in data will have been populated with zeroes.
  */
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
 DISPATCH_NOTHROW
 size_t

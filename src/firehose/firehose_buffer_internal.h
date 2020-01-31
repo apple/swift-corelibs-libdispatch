@@ -243,6 +243,9 @@ firehose_buffer_tracepoint_reserve_slow(firehose_buffer_t fb,
 void *
 firehose_buffer_get_logging_prefs(firehose_buffer_t fb, size_t *size);
 
+bool
+firehose_buffer_should_send_strings(firehose_buffer_t fb);
+
 void
 firehose_buffer_update_limits(firehose_buffer_t fb);
 

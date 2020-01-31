@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013 Apple Inc. All rights reserved.
+# Copyright (c) 2018 Apple Inc. All rights reserved.
 #
 # @APPLE_APACHE_LICENSE_HEADER_START@
 #
@@ -18,6 +18,7 @@
 # @APPLE_APACHE_LICENSE_HEADER_END@
 #
 
+__MergedGlobals
 __dispatch_bug.last_seen
 __dispatch_bug_deprecated.last_seen
 __dispatch_bug_kevent_client.last_seen
@@ -44,3 +45,5 @@ _dispatch_benchmark_f.pred
 _dispatch_io_defaults
 _dispatch_log_disabled
 _dispatch_logfile
+
+__dyld_private

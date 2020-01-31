@@ -25,10 +25,16 @@
 #	include <sys/eventfd.h>
 #	define DISPATCH_EVENT_BACKEND_EPOLL 1
 #	define DISPATCH_EVENT_BACKEND_KEVENT 0
+#	define DISPATCH_EVENT_BACKEND_WINDOWS 0
 #elif __has_include(<sys/event.h>)
 #	include <sys/event.h>
 #	define DISPATCH_EVENT_BACKEND_EPOLL 0
 #	define DISPATCH_EVENT_BACKEND_KEVENT 1
+#	define DISPATCH_EVENT_BACKEND_WINDOWS 0
+#elif defined(_WIN32)
+#	define DISPATCH_EVENT_BACKEND_EPOLL 0
+#	define DISPATCH_EVENT_BACKEND_KEVENT 0
+#	define DISPATCH_EVENT_BACKEND_WINDOWS 1
 #else
 #	error unsupported event loop
 #endif
@@ -60,7 +66,7 @@
 
 #if DISPATCH_TIMER_ASSERTIONS
 #define DISPATCH_TIMER_ASSERT(a, op, b, text) ({ \
-		typeof(a) _a = (a); \
+		__typeof__(a) _a = (a); \
 		if (unlikely(!(_a op (b)))) { \
 			DISPATCH_CLIENT_CRASH(_a, "Timer: " text); \
 		} \
@@ -82,14 +88,12 @@
 
 #	if defined(EV_SET_QOS)
 #		define DISPATCH_USE_KEVENT_QOS 1
-#		ifndef KEVENT_FLAG_IMMEDIATE
-#		define KEVENT_FLAG_IMMEDIATE 0x001
-#		endif
-#		ifndef KEVENT_FLAG_ERROR_EVENTS
-#		define KEVENT_FLAG_ERROR_EVENTS 0x002
-#		endif
 #	else
 #		define DISPATCH_USE_KEVENT_QOS 0
+#	endif
+
+#	ifndef KEVENT_FLAG_ERROR_EVENTS
+#		define KEVENT_FLAG_ERROR_EVENTS 0x002
 #	endif
 
 #	ifdef NOTE_LEEWAY
@@ -112,6 +116,14 @@
 #	define NOTE_FUNLOCK 0x00000100
 #	endif
 
+// FreeBSD's kevent does not support those
+#	ifndef NOTE_ABSOLUTE
+#	define NOTE_ABSOLUTE 0
+#	endif
+#	ifndef NOTE_EXITSTATUS
+#	define NOTE_EXITSTATUS 0
+#	endif
+
 #	if HAVE_DECL_NOTE_REAP
 #	if defined(NOTE_REAP) && defined(__APPLE__)
 #	undef NOTE_REAP
@@ -131,9 +143,15 @@
 #	undef HAVE_DECL_VQ_DESIRED_DISK
 #	endif // VQ_DESIRED_DISK
 
+#	ifndef VQ_FREE_SPACE_CHANGE
+#	undef HAVE_DECL_VQ_FREE_SPACE_CHANGE
+#	endif // VQ_FREE_SPACE_CHANGE
+
 #	if !defined(EVFILT_NW_CHANNEL) && defined(__APPLE__)
-#	define EVFILT_NW_CHANNEL       (-16)
-#	define NOTE_FLOW_ADV_UPDATE    	0x1
+#	define EVFILT_NW_CHANNEL		(-16)
+#	define NOTE_FLOW_ADV_UPDATE		0x1
+#	define NOTE_CHANNEL_EVENT		0x2
+#	define NOTE_IF_ADV_UPD			0x4
 #	endif
 #else // DISPATCH_EVENT_BACKEND_KEVENT
 #	define EV_ADD					0x0001
@@ -152,9 +170,15 @@
 
 #	define DISPATCH_HAVE_TIMER_QOS 0
 #	define DISPATCH_HAVE_TIMER_COALESCING 0
-#	define KEVENT_FLAG_IMMEDIATE 0x001
 #	define DISPATCH_HAVE_DIRECT_KNOTES 0
 #endif // !DISPATCH_EVENT_BACKEND_KEVENT
+
+// These flags are used by dispatch generic code and
+// translated back by the various backends to similar semantics
+// hence must be defined even on non Darwin platforms
+#ifndef KEVENT_FLAG_IMMEDIATE
+#	define KEVENT_FLAG_IMMEDIATE 0x001
+#endif
 
 #ifdef EV_UDATA_SPECIFIC
 #	define DISPATCH_EV_DIRECT		(EV_UDATA_SPECIFIC|EV_DISPATCH)
@@ -209,6 +233,10 @@ typedef unsigned int mach_msg_priority_t;
 #	ifndef MACH_SEND_SYNC_OVERRIDE
 #	define MACH_SEND_SYNC_OVERRIDE 0x00100000
 #	endif // MACH_SEND_SYNC_OVERRIDE
+
+#	ifndef MACH_MSG_STRICT_REPLY
+#	define MACH_MSG_STRICT_REPLY  0x00000200
+#	endif
 
 #	ifndef MACH_RCV_SYNC_WAIT
 #	define MACH_RCV_SYNC_WAIT 0x00004000

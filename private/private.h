@@ -32,8 +32,10 @@
 #include <os/availability.h>
 #include <TargetConditionals.h>
 #include <os/base.h>
-#elif defined(__linux__)
-#include <os/linux_base.h>
+#elif defined(_WIN32)
+#include <os/generic_win_base.h>
+#elif defined(__unix__)
+#include <os/generic_unix_base.h>
 #endif
 
 #if TARGET_OS_MAC
@@ -41,10 +43,12 @@
 #include <mach/mach.h>
 #include <mach/message.h>
 #endif
-#if HAVE_UNISTD_H
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
 #endif
+#if !defined(_WIN32)
 #include <pthread.h>
+#endif
 #if TARGET_OS_MAC
 #include <pthread/qos.h>
 #endif
@@ -58,11 +62,12 @@
 
 #include <dispatch/benchmark.h>
 #include <dispatch/queue_private.h>
+#if DISPATCH_CHANNEL_SPI
+#include <dispatch/channel_private.h>
+#endif
 #include <dispatch/workloop_private.h>
 #include <dispatch/source_private.h>
-#if DISPATCH_MACH_SPI
 #include <dispatch/mach_private.h>
-#endif // DISPATCH_MACH_SPI
 #include <dispatch/data_private.h>
 #include <dispatch/io_private.h>
 #include <dispatch/layout_private.h>
@@ -72,7 +77,7 @@
 #endif /* !__DISPATCH_BUILDING_DISPATCH__ */
 
 // <rdar://problem/9627726> Check that public and private dispatch headers match
-#if DISPATCH_API_VERSION != 20180109 // Keep in sync with <dispatch/dispatch.h>
+#if DISPATCH_API_VERSION != 20181008 // Keep in sync with <dispatch/dispatch.h>
 #error "Dispatch header mismatch between /usr/include and /usr/local/include"
 #endif
 
@@ -173,7 +178,7 @@ void _dispatch_prohibit_transition_to_multithreaded(bool prohibit);
 
 #if TARGET_OS_MAC
 #define DISPATCH_COCOA_COMPAT 1
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__FreeBSD__)
 #define DISPATCH_COCOA_COMPAT 1
 #else
 #define DISPATCH_COCOA_COMPAT 0
@@ -185,7 +190,7 @@ void _dispatch_prohibit_transition_to_multithreaded(bool prohibit);
 
 #if TARGET_OS_MAC
 typedef mach_port_t dispatch_runloop_handle_t;
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__FreeBSD__)
 typedef int dispatch_runloop_handle_t;
 #else
 #error "runloop support not implemented on this platform"
@@ -221,7 +226,7 @@ DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 mach_port_t
 _dispatch_runloop_root_queue_get_port_4CF(dispatch_queue_t queue);
 
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13.2), ios(11.2), tvos(11.2), watchos(4.2))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 bool
 _dispatch_source_will_reenable_kevent_4NW(dispatch_source_t source);
@@ -253,7 +258,7 @@ void (*_Nullable _dispatch_end_NSAutoReleasePool)(void *);
 
 #endif /* DISPATCH_COCOA_COMPAT */
 
-API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 _dispatch_poll_for_events_4launchd(void);

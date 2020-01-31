@@ -19,6 +19,7 @@ add_library(dispatch
               time.c
               transform.c
               voucher.c
+              shims.c
               protocol.defs
               provider.d
               allocator_internal.h
@@ -40,20 +41,27 @@ add_library(dispatch
               event/event_epoll.c
               event/event_internal.h
               event/event_kevent.c
+              event/event_windows.c
               firehose/firehose_internal.h
               shims/android_stubs.h
               shims/atomic.h
               shims/atomic_sfb.h
               shims/getprogname.h
               shims/hw_config.h
-              shims/linux_stubs.c
-              shims/linux_stubs.h
               shims/lock.c
               shims/lock.h
               shims/perfmon.h
               shims/time.h
               shims/tsd.h
               shims/yield.h)
+if(WIN32)
+  target_sources(dispatch
+                 PRIVATE
+                   shims/generic_sys_queue.h
+                   shims/generic_win_stubs.c
+                   shims/generic_win_stubs.h
+                   shims/getprogname.c)
+endif()
 if(DISPATCH_USE_INTERNAL_WORKQUEUE)
   target_sources(dispatch
                  PRIVATE
@@ -71,7 +79,7 @@ if(HAVE_OBJC)
 endif()
 if(ENABLE_SWIFT)
   set(swift_optimization_flags)
-  if(CMAKE_BUILD_TYPE MATCHES Release)
+  if(NOT CMAKE_BUILD_TYPE MATCHES Debug)
     set(swift_optimization_flags -O)
   endif()
   add_swift_library(swiftDispatch
@@ -93,20 +101,28 @@ if(ENABLE_SWIFT)
                       swift/Source.swift
                       swift/Time.swift
                       swift/Wrapper.swift
+                    TARGET
+                      ${CMAKE_C_COMPILER_TARGET}
                     CFLAGS
                       -fblocks
-                      -fmodule-map-file=${CMAKE_SOURCE_DIR}/dispatch/module.modulemap
+                      -fmodule-map-file=${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
                     SWIFT_FLAGS
-                      -I ${CMAKE_SOURCE_DIR}
-                      ${swift_optimization_flags})
-  add_dependencies(swiftDispatch
-                     module-map-symlinks)
+                      -I ${PROJECT_SOURCE_DIR}
+                      -I/usr/include
+                      ${swift_optimization_flags}
+                    DEPENDS
+                      ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap)
   target_sources(dispatch
                  PRIVATE
                    swift/DispatchStubs.cc
                    ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o)
+  if(CMAKE_BUILD_TYPE MATCHES Debug)
+    target_link_libraries(dispatch
+                          PRIVATE
+                            swiftSwiftOnoneSupport)
+  endif()
 endif()
-if(dtrace_EXECUTABLE)
+if(ENABLE_DTRACE)
   dtrace_usdt_probe(${CMAKE_CURRENT_SOURCE_DIR}/provider.d
                     OUTPUT_SOURCES
                       dispatch_dtrace_provider_headers)
@@ -116,19 +132,20 @@ if(dtrace_EXECUTABLE)
 endif()
 target_include_directories(dispatch
                            PRIVATE
-                             ${CMAKE_BINARY_DIR}
-                             ${CMAKE_SOURCE_DIR}
+                             ${PROJECT_BINARY_DIR}
+                             ${PROJECT_SOURCE_DIR}
                              ${CMAKE_CURRENT_SOURCE_DIR}
                              ${CMAKE_CURRENT_BINARY_DIR}
-                             ${CMAKE_SOURCE_DIR}/private)
-if(WITH_BLOCKS_RUNTIME)
-  target_include_directories(dispatch
-                             SYSTEM BEFORE PRIVATE
-                               "${WITH_BLOCKS_RUNTIME}")
+                             ${PROJECT_SOURCE_DIR}/private)
+target_include_directories(dispatch
+                           SYSTEM BEFORE PRIVATE
+                             "${BlocksRuntime_INCLUDE_DIR}")
+if(WIN32)
+  target_compile_definitions(dispatch
+                             PRIVATE
+                               _CRT_NONSTDC_NO_WARNINGS)
 endif()
-if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
-  target_compile_options(dispatch PRIVATE /EHsc-)
-else()
+if(NOT "${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
   target_compile_options(dispatch PRIVATE -fno-exceptions)
 endif()
 if(DISPATCH_ENABLE_ASSERTS)
@@ -140,6 +157,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL Windows)
   target_compile_definitions(dispatch
                              PRIVATE
                                -D_CRT_SECURE_NO_WARNINGS)
+elseif(CMAKE_SYSTEM_NAME STREQUAL Android)
+  target_compile_options(dispatch
+                         PRIVATE
+                           -U_GNU_SOURCE)
 endif()
 if(BSD_OVERLAY_FOUND)
   target_compile_options(dispatch
@@ -170,9 +191,19 @@ endif()
 if(BSD_OVERLAY_FOUND)
   target_link_libraries(dispatch PRIVATE ${BSD_OVERLAY_LDFLAGS})
 endif()
-target_link_libraries(dispatch PRIVATE Threads::Threads)
-if(WITH_BLOCKS_RUNTIME)
-  target_link_libraries(dispatch PRIVATE BlocksRuntime)
+if(LibRT_FOUND)
+  target_link_libraries(dispatch PRIVATE RT::rt)
+endif()
+target_link_libraries(dispatch
+                      PRIVATE
+                        Threads::Threads
+                        BlocksRuntime::BlocksRuntime)
+if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+  target_link_libraries(dispatch
+                        PRIVATE
+                          WS2_32
+                          WinMM
+                          synchronization)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
   set_property(TARGET dispatch
@@ -181,33 +212,30 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
                  "-Xlinker -compatibility_version -Xlinker 1"
                  "-Xlinker -current_version -Xlinker ${VERSION}"
                  "-Xlinker -dead_strip"
-                 "-Xlinker -alias_list -Xlinker ${CMAKE_SOURCE_DIR}/xcodeconfig/libdispatch.aliases")
+                 "-Xlinker -alias_list -Xlinker ${PROJECT_SOURCE_DIR}/xcodeconfig/libdispatch.aliases")
 endif()
-if(USE_GOLD_LINKER)
-  set_property(TARGET dispatch
-               APPEND_STRING
-               PROPERTY LINK_FLAGS
-                 -fuse-ld=gold)
-endif()
+dispatch_set_linker(dispatch)
 
 # Temporary staging; the various swift projects that depend on libdispatch
 # all expect libdispatch.so to be in src/.libs/libdispatch.so
 # So for now, make a copy so we don't have to do a coordinated commit across
 # all the swift projects to change this assumption.
 add_custom_command(TARGET dispatch POST_BUILD
-                   COMMAND cmake -E make_directory .libs
-                   COMMAND cmake -E copy $<TARGET_FILE:dispatch> .libs
+                   COMMAND ${CMAKE_COMMAND} -E make_directory .libs
+                   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:dispatch> .libs
                    COMMENT "Copying libdispatch to .libs")
+
+get_swift_host_arch(SWIFT_HOST_ARCH)
 
 install(TARGETS
           dispatch
         DESTINATION
-          "${CMAKE_INSTALL_LIBDIR}")
+          "${INSTALL_TARGET_DIR}")
 if(ENABLE_SWIFT)
   install(FILES
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftdoc
           DESTINATION
-            "${CMAKE_INSTALL_LIBDIR}/swift/${SWIFT_OS}/${CMAKE_SYSTEM_PROCESSOR}")
+            "${INSTALL_TARGET_DIR}/${SWIFT_HOST_ARCH}")
 endif()
 

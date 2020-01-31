@@ -19,6 +19,8 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
+#include <errno.h>
+
 #ifndef __DISPATCH_SHIMS_GETPROGNAME__
 #define __DISPATCH_SHIMS_GETPROGNAME__
 
@@ -27,6 +29,10 @@
 #ifdef __ANDROID__
 extern const char *__progname;
 #endif /* __ANDROID */
+
+#if defined(_WIN32)
+const char *getprogname(void);
+#else
 
 static inline char *
 getprogname(void)
@@ -39,6 +45,7 @@ getprogname(void)
 #   error getprogname(3) is not available on this platform
 # endif
 }
+#endif /* _WIN32 */
 #endif /* HAVE_GETPROGNAME */
 
 #endif /* __DISPATCH_SHIMS_GETPROGNAME__ */

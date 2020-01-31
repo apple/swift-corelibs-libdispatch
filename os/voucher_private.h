@@ -21,7 +21,7 @@
 #ifndef __OS_VOUCHER_PRIVATE__
 #define __OS_VOUCHER_PRIVATE__
 
-#ifndef __linux__
+#if __APPLE__
 #include <os/base.h>
 #include <os/availability.h>
 #endif
@@ -364,7 +364,7 @@ dispatch_block_create_with_voucher_and_qos_class(dispatch_block_flags_t flags,
  * Deprecated, do not use, will abort process if called.
  */
 API_DEPRECATED("removed SPI", \
-		macos(10.11,10.12), ios(9.0,10.0), watchos(2.0,3.0), tvos(9.0,10.0))
+		macos(10.11,10.13), ios(9.0,11.0), watchos(2.0,4.0), tvos(9.0,11.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
@@ -445,11 +445,11 @@ voucher_create_with_mach_msg(mach_msg_header_t *msg);
  * representation.
  */
 API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
-OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW
+OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW DISPATCH_COLD
 size_t
 voucher_kvoucher_debug(mach_port_t task, mach_port_name_t voucher, char *buf,
 		   size_t bufsiz, size_t offset, char * _Nullable prefix,
-		   size_t max_hex_data);
+		   size_t max_hex_data) ;
 
 /*!
  * @group Voucher Persona SPI
@@ -462,26 +462,24 @@ struct proc_persona_info;
  * @function voucher_get_current_persona
  *
  * @abstract
- * Retrieve the persona identifier of the 'originator' process for the current
- * voucher.
+ * Returns the persona identifier for the current thread.
  *
  * @discussion
- * Retrieve the persona identifier of the ’originator’ process possibly stored
- * in the PERSONA_TOKEN attribute of the currently adopted voucher.
+ * Retrieve the persona identifier from the currently adopted voucher.
  *
  * If the thread has not adopted a voucher, or the current voucher does not
- * contain a PERSONA_TOKEN attribute, this function returns the persona
- * identifier of the current process.
+ * contain persona information, this function returns the persona identifier
+ * of the current process.
  *
  * If the process is not running under a persona, then this returns
  * PERSONA_ID_NONE.
  *
  * @result
- * The persona identifier of the 'originator' process for the current voucher,
+ * The persona identifier for the current voucher,
  * or the persona identifier of the current process
  * or PERSONA_ID_NONE
  */
-API_AVAILABLE(ios(9.2))
+API_AVAILABLE(macos(10.14), ios(9.2))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW
 uid_t
 voucher_get_current_persona(void);
@@ -504,7 +502,7 @@ voucher_get_current_persona(void);
  * 0 on success: currently adopted voucher has a PERSONA_TOKEN
  * -1 on failure: persona_info is untouched/uninitialized
  */
-API_AVAILABLE(ios(9.2))
+API_AVAILABLE(macos(10.14), ios(9.2))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL1
 int
 voucher_get_current_persona_originator_info(
@@ -528,11 +526,107 @@ voucher_get_current_persona_originator_info(
  * 0 on success: currently adopted voucher has a PERSONA_TOKEN
  * -1 on failure: persona_info is untouched/uninitialized
  */
-API_AVAILABLE(ios(9.2))
+API_AVAILABLE(macos(10.14), ios(9.2))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL1
 int
 voucher_get_current_persona_proximate_info(
 	struct proc_persona_info *persona_info);
+
+/*!
+ * @function voucher_copy_with_persona_mach_voucher
+ *
+ * @abstract
+ * Creates a copy of the currently adopted voucher and replaces its
+ * persona information with the one passed in the specified mach voucher
+ *
+ * @discussion
+ * If the specified mach voucher is not one returned from
+ * mach_voucher_persona_for_originator() (called on behalf
+ * of the current process), this function will fail
+ *
+ * @param persona_mach_voucher
+ * mach voucher containing the new persona information
+ *
+ * @result
+ * On success, a copy of the current voucher with the new
+ * persona information
+ * On failure, VOUCHER_INVALID
+ */
+API_AVAILABLE(macos(10.14), ios(12))
+OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
+voucher_t _Nullable
+voucher_copy_with_persona_mach_voucher(
+	mach_voucher_t persona_mach_voucher);
+
+/*!
+ * @function mach_voucher_persona_self
+ *
+ * @abstract
+ * Creates a mach voucher containing the persona information of the
+ * current process that can be sent as a mach port descriptor in a message
+ *
+ * @discussion
+ * The returned mach voucher has been pre-processed so that it can be sent
+ * in a message
+ *
+ * @param persona_mach_voucher
+ * If successful, a reference to the newly created mach voucher
+ *
+ * @result
+ * KERN_SUCCESS: a mach voucher ready to be sent in a message is
+ * successfully created
+ * KERN_RESOURCE_SHORTAGE: mach voucher creation failed due to
+ * lack of free space
+ */
+API_AVAILABLE(macos(10.14), ios(12))
+OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL1
+kern_return_t
+mach_voucher_persona_self(mach_voucher_t *persona_mach_voucher);
+
+/*!
+ * @function mach_voucher_persona_for_originator
+ *
+ * @abstract
+ * Creates a mach voucher on behalf of the originator process by copying
+ * the persona information from the specified mach voucher and then
+ * updating the persona identifier to the specified value
+ *
+ * @discussion
+ * Should be called by a privileged process on behalf of the originator process.
+ * The newly created mach voucher should be returned to the originator in a
+ * message. The originator's thread can adopt the new persona by passing
+ * this mach voucher to voucher_copy_with_persona_mach_voucher().
+ *
+ * @param persona_id
+ * The new persona identifier to be set in the mach voucher
+ *
+ * @param originator_persona_mach_voucher
+ * A mach voucher received from the originator, where it was created using
+ * mach_voucher_persona_self()
+ *
+ * @param originator_unique_pid
+ * Unique pid of the originator process
+ *
+ * @param persona_mach_voucher
+ * If successful, a reference to the newly created mach voucher
+ *
+ * @result
+ * KERN_SUCCESS: a mach voucher ready to be returned to the
+ * originator was successfully created
+ * KERN_NO_ACCESS: process does not have privilege to carry
+ * out this operation
+ * KERN_INVALID_ARGUMENT: specified persona identifier is invalid
+ * KERN_INVALID_CAPABILITY: originator_unique_pid does not
+ * match the specified voucher originator's unique pid
+ * KERN_RESOURCE_SHORTAGE: mach voucher creation failed due to
+ * lack of free space
+ */
+API_AVAILABLE(macos(10.14), ios(12))
+OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL4
+kern_return_t
+mach_voucher_persona_for_originator(uid_t persona_id,
+	mach_voucher_t originator_persona_mach_voucher,
+	uint64_t originator_unique_pid, mach_voucher_t *persona_mach_voucher);
 
 #endif // __has_include(<mach/mach.h>)
 

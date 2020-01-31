@@ -4,7 +4,7 @@
 
 install(FILES
           object.h
-          linux_base.h
+          generic_unix_base.h
         DESTINATION
-          "${CMAKE_INSTALL_FULL_INCLUDEDIR}/os")
+          "${INSTALL_OS_HEADERS_DIR}")
 

@@ -8,8 +8,16 @@ project(dispatch
         LANGUAGES C CXX)
 enable_testing()
 
-set(CMAKE_C_VISIBILITY_PRESET hidden)
+if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+  include(ClangClCompileRules)
+endif()
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED YES)
+
 set(CMAKE_CXX_STANDARD 11)
+
+set(CMAKE_C_VISIBILITY_PRESET hidden)
 
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
@@ -21,8 +29,11 @@ include(CheckIncludeFiles)
 include(CheckLibraryExists)
 include(CheckSymbolExists)
 include(GNUInstallDirs)
+include(SwiftSupport)
+include(DispatchUtilities)
 
-set(WITH_BLOCKS_RUNTIME "" CACHE PATH "Path to blocks runtime")
+set(SWIFT_LIBDIR "lib" CACHE PATH "Library folder name, defined by swift main buildscript")
+set(INSTALL_LIBDIR "${SWIFT_LIBDIR}" CACHE PATH "Path where the libraries should be installed")
 
 include(DispatchAppleOptions)
 include(DispatchSanitization)
@@ -43,7 +54,9 @@ if(ENABLE_SWIFT)
   get_filename_component(SWIFT_TOOLCHAIN ${SWIFT_TOOLCHAIN} DIRECTORY)
 
   string(TOLOWER ${CMAKE_SYSTEM_NAME} SWIFT_OS)
-  set(SWIFT_RUNTIME_LIBDIR ${SWIFT_TOOLCHAIN}/lib/swift/${SWIFT_OS}/${CMAKE_SYSTEM_PROCESSOR})
+  get_swift_host_arch(SWIFT_HOST_ARCH)
+
+  set(SWIFT_RUNTIME_LIBDIR ${SWIFT_TOOLCHAIN}/${SWIFT_LIBDIR}/swift/${SWIFT_OS}/${SWIFT_HOST_ARCH})
 
   add_library(swiftCore
               SHARED IMPORTED GLOBAL)
@@ -58,25 +71,44 @@ if(ENABLE_SWIFT)
                         PROPERTIES
                           IMPORTED_LOCATION
                            ${SWIFT_RUNTIME_LIBDIR}/${CMAKE_SHARED_LIBRARY_PREFIX}swiftSwiftOnoneSupport${CMAKE_SHARED_LIBRARY_SUFFIX})
+
+  set(INSTALL_TARGET_DIR "${INSTALL_LIBDIR}/swift/${SWIFT_OS}" CACHE PATH "Path where the libraries will be installed")
+  set(INSTALL_DISPATCH_HEADERS_DIR "${INSTALL_LIBDIR}/swift/dispatch" CACHE PATH "Path where the headers will be installed for libdispatch")
+  set(INSTALL_BLOCK_HEADERS_DIR "${INSTALL_LIBDIR}/swift/Block" CACHE PATH "Path where the headers will be installed for the blocks runtime")
+  set(INSTALL_OS_HEADERS_DIR "${INSTALL_LIBDIR}/swift/os" CACHE PATH "Path where the os/ headers will be installed")
 endif()
+
+if(NOT ENABLE_SWIFT)
+  set(INSTALL_TARGET_DIR "${INSTALL_LIBDIR}" CACHE PATH "Path where the libraries will be installed")
+  set(INSTALL_DISPATCH_HEADERS_DIR "include/dispatch" CACHE PATH "Path where the headers will be installed")
+  set(INSTALL_BLOCK_HEADERS_DIR "include" CACHE PATH "Path where the headers will be installed for the blocks runtime")
+  set(INSTALL_OS_HEADERS_DIR "include/os" CACHE PATH "Path where the headers will be installed")
+endif()
+
+option(ENABLE_DTRACE "enable dtrace support" "")
 
 option(BUILD_SHARED_LIBS "build shared libraries" ON)
 
 option(ENABLE_TESTING "build libdispatch tests" ON)
 
-if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
-   CMAKE_SYSTEM_NAME STREQUAL Android)
-  set(USE_GOLD_LINKER_DEFAULT ON)
+option(USE_LLD_LINKER "use the lld linker" FALSE)
+
+if(NOT USE_LLD_LINKER AND
+   (CMAKE_SYSTEM_NAME STREQUAL Linux OR
+    CMAKE_SYSTEM_NAME STREQUAL FreeBSD OR
+    CMAKE_SYSTEM_NAME STREQUAL Android))
+  set(USE_GOLD_LINKER_DEFAULT TRUE)
 else()
-  set(USE_GOLD_LINKER_DEFAULT OFF)
+  set(USE_GOLD_LINKER_DEFAULT FALSE)
 endif()
 option(USE_GOLD_LINKER "use the gold linker" ${USE_GOLD_LINKER_DEFAULT})
 
-option(ENABLE_THREAD_LOCAL_STORAGE "enable usage of thread local storage via __thread" ON)
+option(ENABLE_THREAD_LOCAL_STORAGE "enable usage of thread local storage via _Thread_local" ON)
 set(DISPATCH_USE_THREAD_LOCAL_STORAGE ${ENABLE_THREAD_LOCAL_STORAGE})
 
 if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
    CMAKE_SYSTEM_NAME STREQUAL Android OR
+   CMAKE_SYSTEM_NAME STREQUAL FreeBSD OR
    CMAKE_SYSTEM_NAME STREQUAL Windows)
   set(ENABLE_INTERNAL_PTHREAD_WORKQUEUES_DEFAULT ON)
 else()
@@ -97,13 +129,16 @@ else()
   endif()
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
-   CMAKE_SYSTEM_NAME STREQUAL Android OR
-   CMAKE_SYSTEM_NAME STREQUAL Windows)
+option(INSTALL_PRIVATE_HEADERS "installs private headers in the same location as the public ones" OFF)
+
+find_package(BlocksRuntime QUIET)
+if(NOT BlocksRuntime_FOUND)
+  set(BlocksRuntime_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/src/BlocksRuntime)
+
   add_library(BlocksRuntime
               STATIC
-                ${CMAKE_SOURCE_DIR}/src/BlocksRuntime/data.c
-                ${CMAKE_SOURCE_DIR}/src/BlocksRuntime/runtime.c)
+                ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/data.c
+                ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/runtime.c)
   set_target_properties(BlocksRuntime
                         PROPERTIES
                           POSITION_INDEPENDENT_CODE TRUE)
@@ -112,10 +147,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL Linux OR
                           PROPERTIES
                             INTERFACE_LINK_LIBRARIES ${CMAKE_DL_LIBS})
   endif()
-  set(WITH_BLOCKS_RUNTIME "${CMAKE_SOURCE_DIR}/src/BlocksRuntime" CACHE PATH "Path to blocks runtime" FORCE)
-else()
-  # TODO(compnerd) support system installed BlocksRuntime
-  # find_package(BlocksRuntime REQUIRED)
+
+  add_library(BlocksRuntime::BlocksRuntime ALIAS BlocksRuntime)
+
+  install(FILES
+            ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/Block.h
+          DESTINATION
+            "${INSTALL_BLOCK_HEADERS_DIR}")
+  if(INSTALL_PRIVATE_HEADERS)
+    install(FILES
+              ${PROJECT_SOURCE_DIR}/src/BlocksRuntime/Block_private.h
+            DESTINATION
+              "${INSTALL_BLOCK_HEADERS_DIR}")
+  endif()
 endif()
 
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)
@@ -141,6 +185,7 @@ check_function_exists(pthread_key_init_np HAVE_PTHREAD_KEY_INIT_NP)
 check_function_exists(pthread_main_np HAVE_PTHREAD_MAIN_NP)
 check_function_exists(strlcpy HAVE_STRLCPY)
 check_function_exists(sysconf HAVE_SYSCONF)
+check_function_exists(arc4random HAVE_ARC4RANDOM)
 
 if(NOT HAVE_STRLCPY AND NOT HAVE_GETPROGNAME)
   include(FindPkgConfig)
@@ -163,10 +208,8 @@ check_include_files("libproc_internal.h" HAVE_LIBPROC_INTERNAL_H)
 check_include_files("mach/mach.h" HAVE_MACH)
 if(HAVE_MACH)
   set(__DARWIN_NON_CANCELABLE 1)
-  set(USE_MACH_SEM 1)
 else()
   set(__DARWIN_NON_CANCELABLE 0)
-  set(USE_MACH_SEM 0)
 endif()
 check_include_files("malloc/malloc.h" HAVE_MALLOC_MALLOC_H)
 check_include_files("memory.h" HAVE_MEMORY_H)
@@ -182,19 +225,27 @@ check_include_files("strings.h" HAVE_STRINGS_H)
 check_include_files("sys/guarded.h" HAVE_SYS_GUARDED_H)
 check_include_files("sys/stat.h" HAVE_SYS_STAT_H)
 check_include_files("sys/types.h" HAVE_SYS_TYPES_H)
-check_include_files("unistd.h" HAVE_UNISTD_H)
 check_include_files("objc/objc-internal.h" HAVE_OBJC)
 
-check_library_exists(pthread sem_init "" USE_POSIX_SEM)
+if(HAVE_MACH)
+  set(USE_MACH_SEM 1)
+else()
+  set(USE_MACH_SEM 0)
+endif()
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-  add_definitions(-DTARGET_OS_WIN32)
   add_definitions(-DUSE_WIN32_SEM)
+endif()
+check_library_exists(pthread sem_init "" USE_POSIX_SEM)
+# NOTE: android has not always provided a libpthread, but uses the pthreads API
+if(CMAKE_SYSTEM_NAME STREQUAL Android)
+  set(USE_POSIX_SEM 1)
 endif()
 
 check_symbol_exists(CLOCK_UPTIME "time.h" HAVE_DECL_CLOCK_UPTIME)
 check_symbol_exists(CLOCK_UPTIME_FAST "time.h" HAVE_DECL_CLOCK_UPTIME_FAST)
 check_symbol_exists(CLOCK_MONOTONIC "time.h" HAVE_DECL_CLOCK_MONOTONIC)
 check_symbol_exists(CLOCK_REALTIME "time.h" HAVE_DECL_CLOCK_REALTIME)
+check_symbol_exists(CLOCK_MONOTONIC_COARSE "time.h" HAVE_DECL_CLOCK_MONOTONIC_COARSE)
 check_symbol_exists(FD_COPY "sys/select.h" HAVE_DECL_FD_COPY)
 check_symbol_exists(NOTE_LOWAT "sys/event.h" HAVE_DECL_NOTE_LOWAT)
 check_symbol_exists(NOTE_NONE "sys/event.h" HAVE_DECL_NOTE_NONE)
@@ -208,11 +259,34 @@ check_symbol_exists(VQ_NEARLOWDISK "sys/mount.h" HAVE_DECL_VQ_NEARLOWDISK)
 check_symbol_exists(VQ_QUOTA "sys/mount.h" HAVE_DECL_VQ_QUOTA)
 check_symbol_exists(VQ_UPDATE "sys/mount.h" HAVE_DECL_VQ_UPDATE)
 check_symbol_exists(VQ_VERYLOWDISK "sys/mount.h" HAVE_DECL_VQ_VERYLOWDISK)
-
+check_symbol_exists(VQ_FREE_SPACE_CHANGE "sys/mount.h" HAVE_DECL_VQ_FREE_SPACE_CHANGE)
+check_symbol_exists(strlcpy "string.h" HAVE_STRLCPY)
 check_symbol_exists(program_invocation_name "errno.h" HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME)
+if (HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME)
+  add_definitions(-D_GNU_SOURCE=1)
+endif()
+check_symbol_exists(__printflike "bsd/sys/cdefs.h" HAVE_PRINTFLIKE)
 
-find_program(dtrace_EXECUTABLE dtrace)
-if(dtrace_EXECUTABLE)
+if(CMAKE_SYSTEM_NAME STREQUAL Android)
+  set(ENABLE_DTRACE_DEFAULT OFF)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL FreeBSD)
+  add_definitions(-D_WITH_DPRINTF)
+endif()
+
+if(ENABLE_DTRACE STREQUAL "")
+  find_program(dtrace_EXECUTABLE dtrace)
+  if(dtrace_EXECUTABLE)
+    add_definitions(-DDISPATCH_USE_DTRACE=1)
+  else()
+    add_definitions(-DDISPATCH_USE_DTRACE=0)
+  endif()
+elseif(ENABLE_DTRACE)
+  find_program(dtrace_EXECUTABLE dtrace)
+  if(NOT dtrace_EXECUTABLE)
+    message(FATAL_ERROR "dtrace not found but explicitly requested")
+  endif()
   add_definitions(-DDISPATCH_USE_DTRACE=1)
 else()
   add_definitions(-DDISPATCH_USE_DTRACE=0)
@@ -224,23 +298,46 @@ if(leaks_EXECUTABLE)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
-  add_custom_target(module-map-symlinks
-                    ALL
-                    COMMAND
-                      ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/dispatch/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
-                    COMMAND
-                      ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/private/darwin/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
+  add_custom_command(OUTPUT
+                       "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                       "${PROJECT_SOURCE_DIR}/private/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/dispatch/darwin/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/private/darwin/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
+elseif(CMAKE_SYSTEM_NAME STREQUAL Windows)
+  add_custom_command(OUTPUT
+                       "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                       "${PROJECT_SOURCE_DIR}/private/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/private/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
 else()
-  add_custom_target(module-map-symlinks
-                    ALL
-                    COMMAND
-                      ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/dispatch/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/dispatch/module.modulemap"
-                    COMMAND
-                      ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/private/generic/module.modulemap" "${CMAKE_SOURCE_DIR}/private/module.modulemap")
+  add_custom_command(OUTPUT
+                       "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                       "${PROJECT_SOURCE_DIR}/private/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E create_symlink "${PROJECT_SOURCE_DIR}/private/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
 endif()
-configure_file("${CMAKE_SOURCE_DIR}/cmake/config.h.in"
-               "${CMAKE_BINARY_DIR}/config/config_ac.h")
+add_custom_target(module-map-symlinks
+                  DEPENDS
+                     "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                     "${PROJECT_SOURCE_DIR}/private/module.modulemap")
+configure_file("${PROJECT_SOURCE_DIR}/cmake/config.h.in"
+               "${PROJECT_BINARY_DIR}/config/config_ac.h")
 add_definitions(-DHAVE_CONFIG_H)
+
+if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+  include(DispatchWindowsSupport)
+  dispatch_windows_arch_spelling(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_MSVC_ARCH)
+  dispatch_windows_include_for_arch(${DISPATCH_MSVC_ARCH} DISPATCH_INCLUDES)
+  include_directories(BEFORE SYSTEM ${DISPATCH_INCLUDES})
+  dispatch_windows_lib_for_arch(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_LIBDIR)
+  link_directories(${DISPATCH_LIBDIR})
+endif()
 
 add_subdirectory(dispatch)
 add_subdirectory(man)

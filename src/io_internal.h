@@ -145,7 +145,11 @@ struct dispatch_operation_s {
 	dispatch_queue_t op_q;
 	dispatch_op_direction_t direction; // READ OR WRITE
 	dispatch_io_param_s params;
+#if defined(_WIN32)
+	LONGLONG offset;
+#else
 	off_t offset;
+#endif
 	size_t length;
 	int err;
 	dispatch_io_handler_t handler;
@@ -172,13 +176,19 @@ struct dispatch_io_s {
 	dispatch_fd_entry_t fd_entry;
 	unsigned int atomic_flags;
 	dispatch_fd_t fd, fd_actual;
+#if defined(_WIN32)
+	LONGLONG f_ptr;
+#else
 	off_t f_ptr;
+#endif
 	int err; // contains creation errors only
 };
 
 void _dispatch_io_set_target_queue(dispatch_io_t channel, dispatch_queue_t dq);
+DISPATCH_COLD
 size_t _dispatch_io_debug(dispatch_io_t channel, char* buf, size_t bufsiz);
 void _dispatch_io_dispose(dispatch_io_t channel, bool *allow_free);
+DISPATCH_COLD
 size_t _dispatch_operation_debug(dispatch_operation_t op, char* buf,
 		size_t bufsiz);
 void _dispatch_operation_dispose(dispatch_operation_t operation,

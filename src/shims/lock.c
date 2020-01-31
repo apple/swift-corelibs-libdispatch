@@ -20,16 +20,6 @@
 
 #include "internal.h"
 
-#define _dlock_syscall_switch(err, syscall, ...) \
-	for (;;) { \
-		int err; \
-		switch ((err = ((syscall) < 0 ? errno : 0))) { \
-		case EINTR: continue; \
-		__VA_ARGS__ \
-		} \
-		break; \
-	}
-
 #if TARGET_OS_MAC
 dispatch_static_assert(DLOCK_LOCK_DATA_CONTENTION ==
 		ULF_WAIT_WORKQ_DATA_CONTENTION);
@@ -49,6 +39,21 @@ _dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
 	thread_switch(_dispatch_lock_owner(value), option, timeout);
 }
 #endif // HAVE_UL_UNFAIR_LOCK
+#endif
+
+#if defined(_WIN32)
+#if !HAVE_UL_UNFAIR_LOCK
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
+		uint32_t timeout)
+{
+	(void)value;
+	(void)flags;
+	(void)timeout;
+	SwitchToThread();
+}
+#endif
 #endif
 
 #pragma mark - semaphores
@@ -144,8 +149,8 @@ _dispatch_sema4_timedwait(_dispatch_sema4_t *sema, dispatch_time_t timeout)
 
 	do {
 		uint64_t nsec = _dispatch_timeout(timeout);
-		_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
-		_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
+		_timeout.tv_sec = (__typeof__(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
+		_timeout.tv_nsec = (__typeof__(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
 		kr = semaphore_timedwait(*sema, _timeout);
 	} while (unlikely(kr == KERN_ABORTED));
 
@@ -200,8 +205,8 @@ _dispatch_sema4_timedwait(_dispatch_sema4_t *sema, dispatch_time_t timeout)
 
 	do {
 		uint64_t nsec = _dispatch_time_nanoseconds_since_epoch(timeout);
-		_timeout.tv_sec = (typeof(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
-		_timeout.tv_nsec = (typeof(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
+		_timeout.tv_sec = (__typeof__(_timeout.tv_sec))(nsec / NSEC_PER_SEC);
+		_timeout.tv_nsec = (__typeof__(_timeout.tv_nsec))(nsec % NSEC_PER_SEC);
 		ret = sem_timedwait(sema, &_timeout);
 	} while (unlikely(ret == -1 && errno == EINTR));
 
@@ -230,9 +235,7 @@ _push_timer_resolution(DWORD ms)
 	// aim for the best resolution we can accomplish
 	dispatch_once(&once, ^{
 		TIMECAPS tc;
-		MMRESULT res;
-		res = timeGetDevCaps(&tc, sizeof(tc));
-		if (res == MMSYSERR_NOERROR) {
+		if (timeGetDevCaps(&tc, sizeof(tc)) == MMSYSERR_NOERROR) {
 			best_resolution = min(max(tc.wPeriodMin, best_resolution),
 					tc.wPeriodMax);
 		}
@@ -302,7 +305,7 @@ _dispatch_sema4_timedwait(_dispatch_sema4_t *sema, dispatch_time_t timeout)
 	nsec = _dispatch_timeout(timeout);
 	msec = (DWORD)(nsec / (uint64_t)1000000);
 	resolution = _push_timer_resolution(msec);
-	wait_result = WaitForSingleObject(dsema->dsema_handle, msec);
+	wait_result = WaitForSingleObject(sema, msec);
 	_pop_timer_resolution(resolution);
 	return wait_result == WAIT_TIMEOUT;
 }
@@ -311,60 +314,79 @@ _dispatch_sema4_timedwait(_dispatch_sema4_t *sema, dispatch_time_t timeout)
 #endif
 
 #pragma mark - ulock wrappers
+#if HAVE_UL_COMPARE_AND_WAIT || HAVE_UL_UNFAIR_LOCK
+
+// returns 0, ETIMEDOUT, ENOTEMPTY, EFAULT, EINTR
+static int
+_dlock_wait(uint32_t *uaddr, uint32_t val, uint32_t timeout, uint32_t flags)
+{
+	for (;;) {
+		int rc = __ulock_wait(flags | ULF_NO_ERRNO, uaddr, val, timeout);
+		if (rc > 0) {
+			return ENOTEMPTY;
+		}
+		switch (-rc) {
+		case 0:
+			return 0;
+		case EINTR:
+			/*
+			 * if we have a timeout, we need to return for the caller to
+			 * recompute the new deadline, else just go back to wait.
+			 */
+			if (timeout == 0) {
+				continue;
+			}
+			/* FALLTHROUGH */
+		case ETIMEDOUT:
+		case EFAULT:
+			return -rc;
+		default:
+			DISPATCH_INTERNAL_CRASH(-rc, "ulock_wait() failed");
+		}
+	}
+}
+
+static void
+_dlock_wake(uint32_t *uaddr, uint32_t flags)
+{
+	int rc = __ulock_wake(flags | ULF_NO_ERRNO, uaddr, 0);
+	if (rc == 0 || rc == -ENOENT) return;
+	DISPATCH_INTERNAL_CRASH(-rc, "ulock_wake() failed");
+}
+
+#endif // HAVE_UL_COMPARE_AND_WAIT || HAVE_UL_UNFAIR_LOCK
 #if HAVE_UL_COMPARE_AND_WAIT
 
 static int
 _dispatch_ulock_wait(uint32_t *uaddr, uint32_t val, uint32_t timeout,
 		uint32_t flags)
 {
-	int rc;
-	_dlock_syscall_switch(err,
-		rc = __ulock_wait(UL_COMPARE_AND_WAIT | flags, uaddr, val, timeout),
-		case 0: return rc > 0 ? ENOTEMPTY : 0;
-		case ETIMEDOUT: case EFAULT: return err;
-		default: DISPATCH_INTERNAL_CRASH(err, "ulock_wait() failed");
-	);
+	return _dlock_wait(uaddr, val, timeout, flags | UL_COMPARE_AND_WAIT);
 }
 
 static void
 _dispatch_ulock_wake(uint32_t *uaddr, uint32_t flags)
 {
-	_dlock_syscall_switch(err,
-		__ulock_wake(UL_COMPARE_AND_WAIT | flags, uaddr, 0),
-		case 0: case ENOENT: break;
-		default: DISPATCH_INTERNAL_CRASH(err, "ulock_wake() failed");
-	);
+	return _dlock_wake(uaddr, flags | UL_COMPARE_AND_WAIT);
 }
 
-#endif
+#endif // HAVE_UL_COMPARE_AND_WAIT
 #if HAVE_UL_UNFAIR_LOCK
 
-// returns 0, ETIMEDOUT, ENOTEMPTY, EFAULT
 static int
 _dispatch_unfair_lock_wait(uint32_t *uaddr, uint32_t val, uint32_t timeout,
 		dispatch_lock_options_t flags)
 {
-	int rc;
-	_dlock_syscall_switch(err,
-		rc = __ulock_wait(UL_UNFAIR_LOCK | flags, uaddr, val, timeout),
-		case 0: return rc > 0 ? ENOTEMPTY : 0;
-		case ETIMEDOUT: case EFAULT: return err;
-		case EOWNERDEAD: DISPATCH_CLIENT_CRASH(*uaddr,
-				"corruption of lock owner");
-		default: DISPATCH_INTERNAL_CRASH(err, "ulock_wait() failed");
-	);
+	return _dlock_wait(uaddr, val, timeout, flags | UL_UNFAIR_LOCK);
 }
 
 static void
 _dispatch_unfair_lock_wake(uint32_t *uaddr, uint32_t flags)
 {
-	_dlock_syscall_switch(err, __ulock_wake(UL_UNFAIR_LOCK | flags, uaddr, 0),
-		case 0: case ENOENT: break;
-		default: DISPATCH_INTERNAL_CRASH(err, "ulock_wake() failed");
-	);
+	return _dlock_wake(uaddr, flags | UL_UNFAIR_LOCK);
 }
 
-#endif
+#endif // HAVE_UL_UNFAIR_LOCK
 #pragma mark - futex wrappers
 #if HAVE_FUTEX
 #include <sys/time.h>
@@ -455,12 +477,14 @@ _dispatch_wait_on_address(uint32_t volatile *_address, uint32_t value,
 #elif HAVE_FUTEX
 	if (nsecs != DISPATCH_TIME_FOREVER) {
 		struct timespec ts = {
-			.tv_sec = (typeof(ts.tv_sec))(nsec / NSEC_PER_SEC),
-			.tv_nsec = (typeof(ts.tv_nsec))(nsec % NSEC_PER_SEC),
+			.tv_sec = (__typeof__(ts.tv_sec))(nsec / NSEC_PER_SEC),
+			.tv_nsec = (__typeof__(ts.tv_nsec))(nsec % NSEC_PER_SEC),
 		};
 		return _dispatch_futex_wait(address, value, &ts, FUTEX_PRIVATE_FLAG);
 	}
 	return _dispatch_futex_wait(address, value, NULL, FUTEX_PRIVATE_FLAG);
+#elif defined(_WIN32)
+	WaitOnAddress(address, (PVOID)(uintptr_t)value, sizeof(value), INFINITE);
 #else
 #error _dispatch_wait_on_address unimplemented for this platform
 #endif
@@ -473,6 +497,8 @@ _dispatch_wake_by_address(uint32_t volatile *address)
 	_dispatch_ulock_wake((uint32_t *)address, ULF_WAKE_ALL);
 #elif HAVE_FUTEX
 	_dispatch_futex_wake((uint32_t *)address, INT_MAX, FUTEX_PRIVATE_FLAG);
+#elif defined(_WIN32)
+	WakeByAddressAll((uint32_t *)address);
 #else
 	(void)address;
 #endif
@@ -504,7 +530,7 @@ _dispatch_thread_event_wait_slow(dispatch_thread_event_t dte)
 		}
 #if HAVE_UL_COMPARE_AND_WAIT
 		int rc = _dispatch_ulock_wait(&dte->dte_value, UINT32_MAX, 0, 0);
-		dispatch_assert(rc == 0 || rc == EFAULT);
+		dispatch_assert(rc == 0 || rc == EFAULT || rc == EINTR);
 #elif HAVE_FUTEX
 		_dispatch_futex_wait(&dte->dte_value, UINT32_MAX,
 				NULL, FUTEX_PRIVATE_FLAG);
@@ -543,9 +569,7 @@ _dispatch_unfair_lock_lock_slow(dispatch_unfair_lock_t dul,
 		}
 		rc = _dispatch_unfair_lock_wait(&dul->dul_lock, new_value, 0, flags);
 		if (rc == ENOTEMPTY) {
-			next = value_self | DLOCK_WAITERS_BIT;
-		} else {
-			next = value_self;
+			next |= DLOCK_WAITERS_BIT;
 		}
 	}
 }
@@ -562,11 +586,11 @@ void
 _dispatch_unfair_lock_lock_slow(dispatch_unfair_lock_t dul,
 		dispatch_lock_options_t flags)
 {
-	dispatch_lock cur, value_self = _dispatch_lock_value_for_self();
+	dispatch_lock cur, self = _dispatch_lock_value_for_self();
 	uint32_t timeout = 1;
 
 	while (unlikely(!os_atomic_cmpxchgv(&dul->dul_lock,
-			DLOCK_OWNER_NULL, value_self, &cur, acquire))) {
+			DLOCK_OWNER_NULL, self, &cur, acquire))) {
 		if (unlikely(_dispatch_lock_is_locked_by(cur, self))) {
 			DISPATCH_CLIENT_CRASH(0, "trying to lock recursively");
 		}

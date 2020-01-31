@@ -51,7 +51,7 @@
  *
  *   Such objects are created when used as an NSData and -bytes is called and
  *   where the dispatch data object is an unflattened composite object.
- *   The underlying implementation is _dispatch_data_get_flattened_bytes
+ *   The underlying implementation is dispatch_data_get_flattened_bytes_4libxpc.
  *
  * TRIVIAL SUBRANGES (num_records == 1, buf == nil, destructor == nil)
  *
@@ -517,7 +517,7 @@ out:
 }
 
 const void *
-_dispatch_data_get_flattened_bytes(dispatch_data_t dd)
+dispatch_data_get_flattened_bytes_4libxpc(dispatch_data_t dd)
 {
 	const void *buffer;
 	size_t offset = 0;

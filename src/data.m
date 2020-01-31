@@ -131,8 +131,7 @@
 }
 
 - (const void *)bytes {
-	struct dispatch_data_s *dd = (void*)self;
-	return _dispatch_data_get_flattened_bytes(dd);
+	return dispatch_data_get_flattened_bytes_4libxpc(self);
 }
 
 - (BOOL)_isCompact {
@@ -151,11 +150,9 @@
 
 @end
 
+OS_OBJECT_NONLAZY_CLASS
 @implementation DISPATCH_CLASS(data_empty)
-
-// Force non-lazy class realization rdar://10640168
-+ (void)load {
-}
+OS_OBJECT_NONLAZY_CLASS_LOAD
 
 - (id)retain {
 	return (id)self;

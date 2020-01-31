@@ -26,10 +26,25 @@
 #include <endian.h>
 #define OSLittleEndian __LITTLE_ENDIAN
 #define OSBigEndian __BIG_ENDIAN
+#elif defined(__FreeBSD__)
+#include <sys/endian.h>
+#define OSLittleEndian _LITTLE_ENDIAN
+#define OSBigEndian _BIG_ENDIAN
+#elif defined(_WIN32)
+#define OSLittleEndian 1234
+#define OSBigEndian 4321
+#endif
+
+#if defined(__linux__) || defined(__FreeBSD__)
 #define OSSwapLittleToHostInt16 le16toh
 #define OSSwapBigToHostInt16 be16toh
 #define OSSwapHostToLittleInt16 htole16
 #define OSSwapHostToBigInt16 htobe16
+#elif defined(_WIN32)
+#define OSSwapLittleToHostInt16
+#define OSSwapBigToHostInt16 ntohs
+#define OSSwapHostToLittleInt16
+#define OSSwapHostToBigInt16 htons
 #endif
 
 #if defined(__LITTLE_ENDIAN__)
@@ -669,7 +684,7 @@ _dispatch_transform_to_base32_with_table(dispatch_data_t data, const unsigned ch
 	dest_size = howmany(total, 5);
 	// <rdar://problem/25676583>
 	// os_mul_overflow(dest_size, 8, &dest_size)
-	if (dest_size > SIZE_T_MAX / 8) {
+	if (dest_size > SIZE_MAX / 8) {
 		return NULL;
 	}
 	dest_size *= 8;
@@ -904,7 +919,7 @@ _dispatch_transform_to_base64(dispatch_data_t data)
 	dest_size = howmany(total, 3);
 	// <rdar://problem/25676583>
 	// os_mul_overflow(dest_size, 4, &dest_size)
-	if (dest_size > SIZE_T_MAX / 4) {
+	if (dest_size > SIZE_MAX / 4) {
 		return NULL;
 	}
 	dest_size *= 4;

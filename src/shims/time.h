@@ -31,7 +31,7 @@
 #error "Please #include <dispatch/dispatch.h> instead of this file directly."
 #endif
 
-#if TARGET_OS_WIN32
+#if defined(_WIN32)
 static inline unsigned int
 sleep(unsigned int seconds)
 {
@@ -107,7 +107,7 @@ _dispatch_get_nanoseconds(void)
 	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_REALTIME, &ts));
 	return _dispatch_timespec_to_nano(ts);
-#elif TARGET_OS_WIN32
+#elif defined(_WIN32)
 	// FILETIME is 100-nanosecond intervals since January 1, 1601 (UTC).
 	FILETIME ft;
 	ULARGE_INTEGER li;
@@ -122,16 +122,29 @@ _dispatch_get_nanoseconds(void)
 #endif
 }
 
+/* On the use of clock sources in the CLOCK_MONOTONIC family
+ *
+ * The code below requires monotonic clock sources that only tick
+ * while the machine is running.
+ *
+ * Per POSIX, the CLOCK_MONOTONIC family is supposed to tick during
+ * machine sleep; this is not the case on Linux, and that behavior
+ * became part of the Linux ABI.
+ *
+ * Using the CLOCK_MONOTONIC family on POSIX-compliant platforms
+ * will lead to bugs, hence its use is restricted to Linux.
+ */
+
 static inline uint64_t
 _dispatch_uptime(void)
 {
 #if HAVE_MACH_ABSOLUTE_TIME
 	return mach_absolute_time();
-#elif defined(__linux__)
+#elif HAVE_DECL_CLOCK_MONOTONIC && defined(__linux__)
 	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_MONOTONIC, &ts));
 	return _dispatch_timespec_to_nano(ts);
-#elif HAVE_DECL_CLOCK_UPTIME
+#elif HAVE_DECL_CLOCK_UPTIME && !defined(__linux__)
 	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_UPTIME, &ts));
 	return _dispatch_timespec_to_nano(ts);
@@ -156,9 +169,12 @@ _dispatch_monotonic_time(void)
 	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_MONOTONIC, &ts));
 	return _dispatch_timespec_to_nano(ts);
-#elif TARGET_OS_WIN32
-	LARGE_INTEGER now;
-	return QueryPerformanceCounter(&now) ? now.QuadPart : 0;
+#elif defined(_WIN32)
+	ULONGLONG ullTime;
+	if (!QueryUnbiasedInterruptTime(&ullTime))
+		return 0;
+
+	return ullTime * 100ull;
 #else
 #error platform needs to implement _dispatch_monotonic_time()
 #endif
@@ -170,11 +186,11 @@ _dispatch_approximate_time(void)
 {
 #if HAVE_MACH_APPROXIMATE_TIME
 	return mach_approximate_time();
-#elif defined(__linux__)
+#elif HAVE_DECL_CLOCK_MONOTONIC_COARSE && defined(__linux__)
 	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_MONOTONIC_COARSE, &ts));
 	return _dispatch_timespec_to_nano(ts);
-#elif HAVE_DECL_CLOCK_UPTIME_FAST
+#elif HAVE_DECL_CLOCK_UPTIME_FAST && !defined(__linux__)
 	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_UPTIME_FAST, &ts));
 	return _dispatch_timespec_to_nano(ts);

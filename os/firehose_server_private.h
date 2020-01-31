@@ -58,7 +58,8 @@ OS_OBJECT_DECL_CLASS(firehose_client);
  * This is the first event delivered, and no event is delivered until
  * the handler of that event returns
  *
- * The `page` argument really is really a firehose_client_connected_info_t.
+ * The `page` argument is really a firehose_client_connected_info_t.  The
+ * `fc_pos` argument is not meaningful.
  *
  * @const FIREHOSE_EVENT_CLIENT_DIED
  * The specified client is gone and will not flush new buffers
@@ -68,21 +69,23 @@ OS_OBJECT_DECL_CLASS(firehose_client);
  * FIREHOSE_EVENT_CLIENT_CORRUPTED event has been generated.
  *
  * @const FIREHOSE_EVENT_IO_BUFFER_RECEIVED
- * A new buffer needs to be pushed, `page` is set to that buffer.
+ * A new buffer needs to be pushed; `page` is set to that buffer, and `fc_pos`
+ * to its chunk position header.
  *
  * This event can be sent concurrently wrt FIREHOSE_EVENT_MEM_BUFFER_RECEIVED
  * events.
  *
  * @const FIREHOSE_EVENT_MEM_BUFFER_RECEIVED
- * A new buffer needs to be pushed, `page` is set to that buffer.
+ * A new buffer needs to be pushed; `page` is set to that buffer, and `fc_pos`
+ * to its chunk position header.
  *
  * This event can be sent concurrently wrt FIREHOSE_EVENT_IO_BUFFER_RECEIVED
  * events.
  *
  * @const FIREHOSE_EVENT_CLIENT_CORRUPTED
  * This event is received when a client is found being corrupted.
- * `page` is set to the buffer header page. When this event is received,
- * logs have likely been lost for this client.
+ * `page` is set to the buffer header page, and `fc_pos` is not meaningful. When
+ * this event is received, logs have likely been lost for this client.
  *
  * This buffer isn't really a proper firehose buffer page, but its content may
  * be useful for debugging purposes.
@@ -90,7 +93,8 @@ OS_OBJECT_DECL_CLASS(firehose_client);
  * @const FIREHOSE_EVENT_CLIENT_FINALIZE
  * This event is received when a firehose client structure is about to be
  * destroyed. Only firehose_client_get_context() can ever be called with
- * the passed firehose client. The `page` argument is NULL for this event.
+ * the passed firehose client. The `page` argument is NULL for this event, and
+ * the `fc_pos` argument is not meaningful.
  *
  * The event is sent from the context that is dropping the last refcount
  * of the client.
@@ -201,6 +205,19 @@ void *
 firehose_client_get_context(firehose_client_t client);
 
 /*!
+ * @function firehose_client_set_strings_cached
+ *
+ * @abstract
+ * Marks a given client as having strings cached already.
+ *
+ * @param client
+ * The specified client.
+ */
+OS_NOTHROW OS_NONNULL1
+void
+firehose_client_set_strings_cached(firehose_client_t client);
+
+/*!
  * @function firehose_client_set_context
  *
  * @abstract
@@ -289,7 +306,8 @@ firehose_client_metadata_stream_peek(firehose_client_t client,
  * Type of the handler block for firehose_server_init()
  */
 typedef void (^firehose_handler_t)(firehose_client_t client,
-		firehose_event_t event, firehose_chunk_t page);
+		firehose_event_t event, firehose_chunk_t page,
+		firehose_chunk_pos_u fc_pos);
 
 /*!
  * @function firehose_server_init
@@ -381,6 +399,7 @@ OS_ENUM(firehose_server_queue, unsigned long,
 	FIREHOSE_SERVER_QUEUE_UNKNOWN,
 	FIREHOSE_SERVER_QUEUE_IO,
 	FIREHOSE_SERVER_QUEUE_MEMORY,
+	FIREHOSE_SERVER_QUEUE_IO_WL,
 );
 
 /*!
@@ -443,7 +462,8 @@ OS_ENUM(firehose_snapshot_event, unsigned long,
  * Type of the handler block for firehose_snapshot
  */
 typedef void (^firehose_snapshot_handler_t)(firehose_client_t client,
-		firehose_snapshot_event_t event, firehose_chunk_t page);
+		firehose_snapshot_event_t event, firehose_chunk_t page,
+		firehose_chunk_pos_u fc_pos);
 
 /*!
  * @function firehose_snapshot

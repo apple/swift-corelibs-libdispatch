@@ -21,6 +21,7 @@
 #include <mach/std_types.defs>
 #include <mach/mach_types.defs>
 
+import <mach/mach.h>;
 import <firehose/firehose_types_private.h>;
 import <sys/qos.h>;
 

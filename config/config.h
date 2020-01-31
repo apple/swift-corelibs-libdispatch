@@ -257,3 +257,5 @@
 
 /* Define if using Darwin $NOCANCEL */
 #define __DARWIN_NON_CANCELABLE 1
+
+#define HAVE_STRLCPY 1

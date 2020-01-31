@@ -94,14 +94,17 @@ _dispatch_mach_xref_dispose(struct dispatch_mach_s *dm)
 extern dispatch_mach_xpc_hooks_t _dispatch_mach_xpc_hooks;
 extern const struct dispatch_mach_xpc_hooks_s _dispatch_mach_xpc_hooks_default;
 
+void _dispatch_mach_ipc_handoff_invoke(dispatch_continuation_t dc,
+		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 void _dispatch_mach_msg_async_reply_invoke(dispatch_continuation_t dc,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 void _dispatch_mach_dispose(dispatch_mach_t dm, bool *allow_free);
-void _dispatch_mach_activate(dispatch_mach_t dm, bool *allow_resume);
+void _dispatch_mach_activate(dispatch_mach_t dm);
 void _dispatch_mach_invoke(dispatch_mach_t dm, dispatch_invoke_context_t dic,
 		dispatch_invoke_flags_t flags);
 void _dispatch_mach_wakeup(dispatch_mach_t dm, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
+DISPATCH_COLD
 size_t _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz);
 void _dispatch_mach_notification_merge_evt(dispatch_unote_t du,
 		uint32_t flags, uintptr_t data, pthread_priority_t pp);
@@ -117,6 +120,7 @@ void _dispatch_xpc_sigterm_merge_evt(dispatch_unote_t du, uint32_t flags,
 void _dispatch_mach_msg_dispose(dispatch_mach_msg_t dmsg, bool *allow_free);
 void _dispatch_mach_msg_invoke(dispatch_mach_msg_t dmsg,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
+DISPATCH_COLD
 size_t _dispatch_mach_msg_debug(dispatch_mach_msg_t dmsg, char* buf,
 		size_t bufsiz);
 

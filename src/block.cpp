@@ -69,7 +69,10 @@ struct dispatch_block_private_data_s {
 		if (dbpd_voucher && dbpd_voucher != DISPATCH_NO_VOUCHER) {
 			voucher_retain(dbpd_voucher);
 		}
-		if (o.dbpd_block) dbpd_block = _dispatch_Block_copy(o.dbpd_block);
+		if (o.dbpd_block) {
+			dbpd_block = reinterpret_cast<dispatch_block_t>(
+					_dispatch_Block_copy(o.dbpd_block));
+		}
 		_dispatch_block_private_data_debug("copy from %p, block: %p from %p",
 				&o, dbpd_block, o.dbpd_block);
 		if (!o.dbpd_magic) return; // No group in initial copy of stack object
@@ -88,7 +91,7 @@ struct dispatch_block_private_data_s {
 		if (dbpd_magic != DISPATCH_BLOCK_PRIVATE_DATA_MAGIC) return;
 		if (dbpd_group) {
 			if (!dbpd_performed) dispatch_group_leave(dbpd_group);
-			_os_object_release(dbpd_group->_as_os_obj);
+			_os_object_release_without_xref_dispose(dbpd_group->_as_os_obj);
 		}
 		if (dbpd_queue) {
 			_os_object_release_internal_n(dbpd_queue->_as_os_obj, 2);
@@ -105,22 +108,18 @@ _dispatch_block_create(dispatch_block_flags_t flags, voucher_t voucher,
 		pthread_priority_t pri, dispatch_block_t block)
 {
 	struct dispatch_block_private_data_s dbpds(flags, voucher, pri, block);
-	return _dispatch_Block_copy(^{
+	return reinterpret_cast<dispatch_block_t>(_dispatch_Block_copy(^{
 		// Capture stack object: invokes copy constructor (17094902)
 		(void)dbpds;
 		_dispatch_block_invoke_direct(&dbpds);
-	});
+	}));
 }
 
 extern "C" {
 // The compiler hides the name of the function it generates, and changes it if
 // we try to reference it directly, but the linker still sees it.
 extern void DISPATCH_BLOCK_SPECIAL_INVOKE(void *)
-#ifdef __linux__
-		asm("___dispatch_block_create_block_invoke");
-#else
-		asm("____dispatch_block_create_block_invoke");
-#endif
+		__asm__(OS_STRINGIFY(__USER_LABEL_PREFIX__) "___dispatch_block_create_block_invoke");
 void (*const _dispatch_block_special_invoke)(void*) = DISPATCH_BLOCK_SPECIAL_INVOKE;
 }
 

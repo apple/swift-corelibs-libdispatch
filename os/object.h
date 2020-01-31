@@ -26,8 +26,10 @@
 #include <os/availability.h>
 #include <TargetConditionals.h>
 #include <os/base.h>
-#elif defined(__linux__)
-#include <os/linux_base.h>
+#elif defined(_WIN32)
+#include <os/generic_win_base.h>
+#elif defined(__unix__)
+#include <os/generic_unix_base.h>
 #endif
 
 /*!
@@ -89,12 +91,11 @@
 #endif
 
 #ifndef OS_OBJECT_SWIFT3
-#if defined(SWIFT_SDK_OVERLAY_DISPATCH_EPOCH) && \
-		SWIFT_SDK_OVERLAY_DISPATCH_EPOCH >= 2
+#ifdef __swift__
 #define OS_OBJECT_SWIFT3 1
-#else
+#else // __swift__
 #define OS_OBJECT_SWIFT3 0
-#endif // SWIFT_SDK_OVERLAY_DISPATCH_EPOCH >= 2
+#endif // __swift__
 #endif // OS_OBJECT_SWIFT3
 
 #if OS_OBJECT_USE_OBJC

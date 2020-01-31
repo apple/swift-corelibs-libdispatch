@@ -32,6 +32,8 @@
 #define DISPATCH_KEVENT_MUXED_MARKER  1ul
 #define DISPATCH_MACH_AUDIT_TOKEN_PID (5)
 
+#define dispatch_kevent_udata_t  __typeof__(((dispatch_kevent_t)NULL)->udata)
+
 typedef struct dispatch_muxnote_s {
 	LIST_ENTRY(dispatch_muxnote_s) dmn_list;
 	LIST_HEAD(, dispatch_unote_linkage_s) dmn_unotes_head;
@@ -44,9 +46,15 @@ DISPATCH_STATIC_GLOBAL(bool _dispatch_timers_force_max_leeway);
 DISPATCH_STATIC_GLOBAL(dispatch_once_t _dispatch_kq_poll_pred);
 DISPATCH_STATIC_GLOBAL(struct dispatch_muxnote_bucket_s _dispatch_sources[DSL_HASH_SIZE]);
 
+#if defined(__APPLE__)
 #define DISPATCH_NOTE_CLOCK_WALL      NOTE_NSECONDS | NOTE_MACH_CONTINUOUS_TIME
 #define DISPATCH_NOTE_CLOCK_MONOTONIC NOTE_MACHTIME | NOTE_MACH_CONTINUOUS_TIME
-#define DISPATCH_NOTE_CLOCK_UPTIME	  NOTE_MACHTIME
+#define DISPATCH_NOTE_CLOCK_UPTIME    NOTE_MACHTIME
+#else
+#define DISPATCH_NOTE_CLOCK_WALL      0
+#define DISPATCH_NOTE_CLOCK_MONOTONIC 0
+#define DISPATCH_NOTE_CLOCK_UPTIME    0
+#endif
 
 static const uint32_t _dispatch_timer_index_to_fflags[] = {
 #define DISPATCH_TIMER_FFLAGS_INIT(kind, qos, note) \
@@ -67,6 +75,9 @@ static const uint32_t _dispatch_timer_index_to_fflags[] = {
 };
 
 static inline void _dispatch_kevent_timer_drain(dispatch_kevent_t ke);
+#if DISPATCH_USE_KEVENT_WORKLOOP
+static void _dispatch_kevent_workloop_poke_drain(dispatch_kevent_t ke);
+#endif
 
 #pragma mark -
 #pragma mark kevent debug
@@ -98,6 +109,9 @@ _evfiltstr(short filt)
 #ifdef EVFILT_MEMORYSTATUS
 	_evfilt2(EVFILT_MEMORYSTATUS);
 #endif
+#if DISPATCH_USE_KEVENT_WORKLOOP
+	_evfilt2(EVFILT_WORKLOOP);
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 #endif // DISPATCH_EVENT_BACKEND_KEVENT
 
 	_evfilt2(DISPATCH_EVFILT_TIMER);
@@ -180,17 +194,20 @@ dispatch_kevent_debug(const char *verb, const dispatch_kevent_s *kev,
 	_dispatch_debug("%s kevent[%p] %s= { ident = 0x%llx, filter = %s, "
 			"flags = %s (0x%x), fflags = 0x%x, data = 0x%llx, udata = 0x%llx, "
 			"qos = 0x%x, ext[0] = 0x%llx, ext[1] = 0x%llx, ext[2] = 0x%llx, "
-			"ext[3] = 0x%llx }: %s #%u", verb, kev, i_n, kev->ident,
-			_evfiltstr(kev->filter), _evflagstr(kev->flags, flagstr,
-			sizeof(flagstr)), kev->flags, kev->fflags, kev->data, kev->udata,
-			kev->qos, kev->ext[0], kev->ext[1], kev->ext[2], kev->ext[3],
+			"ext[3] = 0x%llx }: %s #%u", verb, kev, i_n,
+			(unsigned long long)kev->ident, _evfiltstr(kev->filter),
+			_evflagstr(kev->flags, flagstr, sizeof(flagstr)), kev->flags, kev->fflags,
+			(unsigned long long)kev->data, (unsigned long long)kev->udata, kev->qos,
+			kev->ext[0], kev->ext[1], kev->ext[2], kev->ext[3],
 			function, line);
 #else
 	_dispatch_debug("%s kevent[%p] %s= { ident = 0x%llx, filter = %s, "
 			"flags = %s (0x%x), fflags = 0x%x, data = 0x%llx, udata = 0x%llx}: "
 			"%s #%u", verb, kev, i_n,
-			kev->ident, _evfiltstr(kev->filter), _evflagstr(kev->flags, flagstr,
-			sizeof(flagstr)), kev->flags, kev->fflags, kev->data, kev->udata,
+			(unsigned long long)kev->ident, _evfiltstr(kev->filter),
+			_evflagstr(kev->flags, flagstr, sizeof(flagstr)), kev->flags,
+			kev->fflags, (unsigned long long)kev->data,
+			(unsigned long long)kev->udata,
 			function, line);
 #endif
 }
@@ -306,6 +323,17 @@ _dispatch_kevent_mach_msg_size(dispatch_kevent_t ke)
 	return (mach_msg_size_t)ke->ext[1];
 }
 
+static inline bool
+_dispatch_kevent_has_machmsg_rcv_error(dispatch_kevent_t ke)
+{
+#define MACH_ERROR_RCV_SUB 0x4
+	mach_error_t kr = (mach_error_t) ke->fflags;
+	return (err_get_system(kr) == err_mach_ipc) &&
+			(err_get_sub(kr) == MACH_ERROR_RCV_SUB);
+#undef MACH_ERROR_RCV_SUB
+}
+
+static inline bool _dispatch_kevent_has_machmsg_rcv_error(dispatch_kevent_t ke);
 static void _dispatch_kevent_mach_msg_drain(dispatch_kevent_t ke);
 static inline void _dispatch_mach_host_calendar_change_register(void);
 
@@ -329,10 +357,17 @@ _dispatch_kevent_get_muxnote(dispatch_kevent_t ke)
 }
 
 DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_kevent_unote_is_muxed(dispatch_kevent_t ke)
+{
+	return ((uintptr_t)ke->udata) & DISPATCH_KEVENT_MUXED_MARKER;
+}
+
+DISPATCH_ALWAYS_INLINE
 static dispatch_unote_t
 _dispatch_kevent_get_unote(dispatch_kevent_t ke)
 {
-	dispatch_assert((ke->udata & DISPATCH_KEVENT_MUXED_MARKER) == 0);
+	dispatch_assert(_dispatch_kevent_unote_is_muxed(ke) == false);
 	return (dispatch_unote_t){ ._du = (dispatch_unote_class_t)ke->udata };
 }
 
@@ -352,7 +387,7 @@ _dispatch_kevent_print_error(dispatch_kevent_t ke)
 		}
 		// for EV_DELETE if the update was deferred we may have reclaimed
 		// the udata already, and it is unsafe to dereference it now.
-	} else if (ke->udata & DISPATCH_KEVENT_MUXED_MARKER) {
+	} else if (_dispatch_kevent_unote_is_muxed(ke)) {
 		ke->flags |= _dispatch_kevent_get_muxnote(ke)->dmn_kev.flags;
 	} else if (ke->udata) {
 		du = (dispatch_unote_class_t)(uintptr_t)ke->udata;
@@ -512,6 +547,11 @@ _dispatch_kevent_drain(dispatch_kevent_t ke)
 		_dispatch_kevent_mgr_debug("received", ke);
 		return;
 	}
+#if DISPATCH_USE_KEVENT_WORKLOOP
+	if (ke->filter == EVFILT_WORKLOOP) {
+		return _dispatch_kevent_workloop_poke_drain(ke);
+	}
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 	_dispatch_kevent_debug("received", ke);
 	if (unlikely(ke->flags & EV_ERROR)) {
 		if (ke->filter == EVFILT_PROC && ke->data == ESRCH) {
@@ -531,12 +571,13 @@ _dispatch_kevent_drain(dispatch_kevent_t ke)
 	}
 
 #if HAVE_MACH
-	if (ke->filter == EVFILT_MACHPORT && _dispatch_kevent_mach_msg_size(ke)) {
+	if (ke->filter == EVFILT_MACHPORT && (_dispatch_kevent_mach_msg_size(ke) ||
+			_dispatch_kevent_has_machmsg_rcv_error(ke))) {
 		return _dispatch_kevent_mach_msg_drain(ke);
 	}
 #endif
 
-	if (ke->udata & DISPATCH_KEVENT_MUXED_MARKER) {
+	if (_dispatch_kevent_unote_is_muxed(ke)) {
 		return _dispatch_kevent_merge_muxed(ke);
 	}
 	return _dispatch_kevent_merge(_dispatch_kevent_get_unote(ke), ke);
@@ -553,7 +594,7 @@ _dispatch_kq_create(intptr_t *fd_ptr)
 		.ident = 1,
 		.filter = EVFILT_USER,
 		.flags = EV_ADD|EV_CLEAR,
-		.udata = (uintptr_t)DISPATCH_WLH_MANAGER,
+		.udata = (dispatch_kevent_udata_t)DISPATCH_WLH_MANAGER,
 	};
 	int kqfd;
 
@@ -621,7 +662,7 @@ _dispatch_kq_init(void *context)
 			.filter = EVFILT_USER,
 			.flags = EV_ADD|EV_CLEAR,
 			.qos = _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG,
-			.udata = (uintptr_t)DISPATCH_WLH_MANAGER,
+			.udata = (dispatch_kevent_udata_t)DISPATCH_WLH_MANAGER,
 		};
 retry:
 		r = kevent_qos(kqfd, &ke, 1, NULL, 0, NULL, NULL,
@@ -679,7 +720,7 @@ _dispatch_kq_poll(dispatch_wlh_t wlh, dispatch_kevent_t ke, int n,
 		for (r = 0; r < n; r++) {
 			ke[r].flags |= EV_RECEIPT;
 		}
-		out_n = n;
+		n_out = n;
 	}
 #endif
 
@@ -694,10 +735,20 @@ retry:
 		}
 		r = kevent_qos(kqfd, ke, n, ke_out, n_out, buf, avail, flags);
 #else
+		(void)buf;
+		(void)avail;
 		const struct timespec timeout_immediately = {}, *timeout = NULL;
 		if (flags & KEVENT_FLAG_IMMEDIATE) timeout = &timeout_immediately;
 		r = kevent(kqfd, ke, n, ke_out, n_out, timeout);
 #endif
+#if DISPATCH_USE_KEVENT_WORKLOOP
+	} else {
+		flags |= KEVENT_FLAG_WORKLOOP;
+		if (!(flags & KEVENT_FLAG_ERROR_EVENTS)) {
+			flags |= KEVENT_FLAG_DYNAMIC_KQ_MUST_EXIST;
+		}
+		r = kevent_id((uintptr_t)wlh, ke, n, ke_out, n_out, buf, avail, flags);
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 	}
 	if (unlikely(r == -1)) {
 		int err = errno;
@@ -709,6 +760,14 @@ retry:
 			goto retry;
 		case EBADF:
 			DISPATCH_CLIENT_CRASH(err, "Do not close random Unix descriptors");
+#if DISPATCH_USE_KEVENT_WORKLOOP
+		case ENOENT:
+			if ((flags & KEVENT_FLAG_ERROR_EVENTS) &&
+					(flags & KEVENT_FLAG_DYNAMIC_KQ_MUST_EXIST)) {
+				return 0;
+			}
+			/* FALLTHROUGH */
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 		default:
 			DISPATCH_CLIENT_CRASH(err, "Unexpected error from kevent");
 		}
@@ -730,8 +789,9 @@ _dispatch_kq_drain(dispatch_wlh_t wlh, dispatch_kevent_t ke, int n,
 #if DISPATCH_USE_KEVENT_QOS
 	size_t size;
 	if (poll_for_events) {
-		size = DISPATCH_MACH_RECEIVE_MAX_INLINE_MESSAGE_SIZE +
-				DISPATCH_MACH_TRAILER_SIZE;
+		dispatch_assert(DISPATCH_MACH_RECEIVE_MAX_INLINE_MESSAGE_SIZE +
+				DISPATCH_MACH_TRAILER_SIZE <= 32 << 10);
+		size = 32 << 10; // match WQ_KEVENT_DATA_SIZE
 		buf = alloca(size);
 		avail = &size;
 	}
@@ -757,6 +817,14 @@ _dispatch_kq_drain(dispatch_wlh_t wlh, dispatch_kevent_t ke, int n,
 			}
 		}
 	} else {
+#if DISPATCH_USE_KEVENT_WORKLOOP
+		if (ke_out[0].flags & EV_ERROR) {
+			// When kevent returns errors it doesn't process the kqueue
+			// and doesn't rearm the return-to-kernel notification
+			// We need to assume we have to go back.
+			_dispatch_set_return_to_kernel();
+		}
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 		for (i = 0, r = 0; i < n; i++) {
 			_dispatch_kevent_drain(&ke_out[i]);
 		}
@@ -797,11 +865,11 @@ _dispatch_kq_unote_set_kevent(dispatch_unote_t _du, dispatch_kevent_t dk,
 		.ident  = du->du_ident,
 		.filter = dst->dst_filter,
 		.flags  = flags,
-		.udata  = (uintptr_t)du,
+		.udata  = (dispatch_kevent_udata_t)du,
 		.fflags = du->du_fflags | dst->dst_fflags,
-		.data   = (typeof(dk->data))dst->dst_data,
+		.data   = (__typeof__(dk->data))dst->dst_data,
 #if DISPATCH_USE_KEVENT_QOS
-		.qos    = (typeof(dk->qos))_dispatch_priority_to_pp_prefer_fallback(
+		.qos    = (__typeof__(dk->qos))_dispatch_priority_to_pp_prefer_fallback(
 				du->du_priority),
 #endif
 	};
@@ -810,7 +878,7 @@ _dispatch_kq_unote_set_kevent(dispatch_unote_t _du, dispatch_kevent_t dk,
 DISPATCH_ALWAYS_INLINE
 static inline int
 _dispatch_kq_deferred_find_slot(dispatch_deferred_items_t ddi,
-		int16_t filter, uint64_t ident, uint64_t udata)
+		int16_t filter, uint64_t ident, dispatch_kevent_udata_t udata)
 {
 	dispatch_kevent_t events = ddi->ddi_eventlist;
 	int i;
@@ -886,6 +954,49 @@ _dispatch_kq_immediate_update(dispatch_wlh_t wlh, dispatch_kevent_t ke)
 	return _dispatch_kq_update_one(wlh, ke);
 }
 
+#if HAVE_MACH
+void
+_dispatch_sync_ipc_handoff_begin(dispatch_wlh_t wlh, mach_port_t port,
+		uint64_t _Atomic *addr)
+{
+#if DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+	dispatch_kevent_s ke = {
+		.ident  = port,
+		.filter = EVFILT_WORKLOOP,
+		.flags  = EV_ADD | EV_DISABLE,
+		.fflags = NOTE_WL_SYNC_IPC | NOTE_WL_IGNORE_ESTALE,
+		.udata  = (uintptr_t)wlh,
+		.ext[EV_EXTIDX_WL_ADDR]  = (uintptr_t)addr,
+		.ext[EV_EXTIDX_WL_MASK]  = ~(uintptr_t)0,
+		.ext[EV_EXTIDX_WL_VALUE] = (uintptr_t)wlh,
+	};
+	int rc = _dispatch_kq_immediate_update(wlh, &ke);
+	if (unlikely(rc && rc != ENOENT)) {
+		DISPATCH_INTERNAL_CRASH(rc, "Unexpected error from kevent");
+	}
+#else
+	(void)wlh; (void)port; (void)addr;
+#endif // DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+}
+
+void
+_dispatch_sync_ipc_handoff_end(dispatch_wlh_t wlh, mach_port_t port)
+{
+#if DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+	dispatch_kevent_s ke = {
+		.ident  = port,
+		.filter = EVFILT_WORKLOOP,
+		.flags  = EV_ADD | EV_DELETE | EV_ENABLE,
+		.fflags = NOTE_WL_SYNC_IPC,
+		.udata  = (uintptr_t)wlh,
+	};
+	_dispatch_kq_deferred_update(wlh, &ke);
+#else
+	(void)wlh; (void)port;
+#endif // DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+}
+#endif
+
 DISPATCH_NOINLINE
 static bool
 _dispatch_kq_unote_update(dispatch_wlh_t wlh, dispatch_unote_t _du,
@@ -905,7 +1016,7 @@ _dispatch_kq_unote_update(dispatch_wlh_t wlh, dispatch_unote_t _du,
 
 	if (ddi && ddi->ddi_wlh == wlh) {
 		int slot = _dispatch_kq_deferred_find_slot(ddi,
-				du->du_filter, du->du_ident, (uintptr_t)du);
+				du->du_filter, du->du_ident, (dispatch_kevent_udata_t)du);
 		if (slot < ddi->ddi_nevents) {
 			// <rdar://problem/26202376> when deleting and an enable is pending,
 			// we must merge EV_ENABLE to do an immediate deletion
@@ -995,6 +1106,7 @@ _dispatch_muxnote_find(struct dispatch_muxnote_bucket_s *dmb,
 	return dmn;
 }
 
+#if HAVE_MACH
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_muxnote_t
 _dispatch_mach_muxnote_find(mach_port_t name, int16_t filter)
@@ -1003,6 +1115,7 @@ _dispatch_mach_muxnote_find(mach_port_t name, int16_t filter)
 	dmb = _dispatch_muxnote_bucket(name, filter);
 	return _dispatch_muxnote_find(dmb, name, filter);
 }
+#endif
 
 bool
 _dispatch_unote_register_muxed(dispatch_unote_t du)
@@ -1030,7 +1143,8 @@ _dispatch_unote_register_muxed(dispatch_unote_t du)
 #if DISPATCH_USE_KEVENT_QOS
 		dmn->dmn_kev.qos = _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG;
 #endif
-		dmn->dmn_kev.udata = (uintptr_t)dmn | DISPATCH_KEVENT_MUXED_MARKER;
+		dmn->dmn_kev.udata = (dispatch_kevent_udata_t)((uintptr_t)dmn |
+				DISPATCH_KEVENT_MUXED_MARKER);
 		if (unlikely(dux_type(du._du)->dst_update_mux)) {
 			installed = dux_type(du._du)->dst_update_mux(dmn);
 		} else {
@@ -1048,10 +1162,12 @@ _dispatch_unote_register_muxed(dispatch_unote_t du)
 	if (installed) {
 		dispatch_unote_linkage_t dul = _dispatch_unote_get_linkage(du);
 		LIST_INSERT_HEAD(&dmn->dmn_unotes_head, dul, du_link);
+#if HAVE_MACH
 		if (du._du->du_filter == DISPATCH_EVFILT_MACH_NOTIFICATION) {
 			os_atomic_store2o(du._dmsr, dmsr_notification_armed,
 					DISPATCH_MACH_NOTIFICATION_ARMED(dmn), relaxed);
 		}
+#endif
 		dul->du_muxnote = dmn;
 		_dispatch_unote_state_set(du, DISPATCH_WLH_ANON, DU_STATE_ARMED);
 		_dispatch_du_debug("installed", du._du);
@@ -1080,9 +1196,11 @@ _dispatch_unote_unregister_muxed(dispatch_unote_t du)
 	dispatch_muxnote_t dmn = dul->du_muxnote;
 	bool update = false, dispose = false;
 
+#if HAVE_MACH
 	if (dmn->dmn_kev.filter == DISPATCH_EVFILT_MACH_NOTIFICATION) {
 		os_atomic_store2o(du._dmsr, dmsr_notification_armed, false, relaxed);
 	}
+#endif
 	_dispatch_unote_state_set(du, DU_STATE_UNREGISTERED);
 	LIST_REMOVE(dul, du_link);
 	_LIST_TRASH_ENTRY(dul, du_link);
@@ -1140,6 +1258,12 @@ _dispatch_unote_unregister_direct(dispatch_unote_t du, uint32_t flags)
 	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
 	uint16_t action = EV_DELETE;
 	if (likely(du_wlh != DISPATCH_WLH_ANON && ddi && ddi->ddi_wlh == du_wlh)) {
+#if DISPATCH_USE_KEVENT_WORKLOOP
+		// Workloops are special: event delivery and servicing a workloop
+		// cannot race because the kernel can reason about these.
+		// Unregistering from a workloop is always safe and should always
+		// succeed immediately.
+#endif
 		action |= EV_ENABLE;
 		flags |= DUU_DELETE_ACK | DUU_MUST_SUCCEED;
 	}
@@ -1214,6 +1338,561 @@ _dispatch_event_loop_atfork_child(void)
 #endif
 }
 
+#if DISPATCH_USE_KEVENT_WORKLOOP
+#if DISPATCH_WLH_DEBUG
+/*
+ * Debug information for current thread & workloop:
+ *
+ * fflags:
+ * - NOTE_WL_THREAD_REQUEST is set if there is a thread request knote
+ * - NOTE_WL_SYNC_WAIT is set if there is at least one waiter
+ *
+ * ext[0]: 64bit thread ID of the owner if any
+ * ext[1]: 64bit thread ID of the servicer if any
+ * ext[2]: number of workloops owned by the caller thread
+ *
+ * If this interface is supported by the kernel, the returned error is EBUSY,
+ * if not it is EINVAL.
+ */
+static bool
+_dispatch_kevent_workloop_get_info(dispatch_wlh_t wlh, dispatch_kevent_t ke)
+{
+	uint32_t kev_flags = KEVENT_FLAG_IMMEDIATE | KEVENT_FLAG_ERROR_EVENTS |
+			KEVENT_FLAG_DYNAMIC_KQ_MUST_EXIST;
+	*ke = (dispatch_kevent_s){
+		.filter = EVFILT_WORKLOOP,
+		.flags  = EV_ADD | EV_ENABLE,
+	};
+	if (_dispatch_kq_poll(wlh, ke, 1, ke, 1, NULL, NULL, kev_flags)) {
+		dispatch_assert(ke->flags & EV_ERROR);
+		return ke->data == EBUSY;
+	}
+	*ke = (dispatch_kevent_s){
+		.flags = EV_ERROR,
+		.data  = ENOENT,
+	};
+	return true;
+}
+#endif
+
+DISPATCH_ALWAYS_INLINE
+static inline pthread_priority_t
+_dispatch_kevent_workloop_priority(dispatch_queue_t dq, int which,
+		dispatch_qos_t qos)
+{
+	dispatch_priority_t rq_pri = dq->do_targetq->dq_priority;
+	if (qos < _dispatch_priority_qos(rq_pri)) {
+		qos = _dispatch_priority_qos(rq_pri);
+	}
+	if (qos == DISPATCH_QOS_UNSPECIFIED) {
+#if 0 // we need to understand why this is happening first...
+		if (which != DISPATCH_WORKLOOP_ASYNC_FROM_SYNC) {
+			DISPATCH_INTERNAL_CRASH(which, "Should have had a QoS");
+		}
+#else
+		(void)which;
+#endif
+		//
+		// <rdar://32326125> When an enqueue happens right when a barrier ends,
+		// the barrier that ends may notice the next item before the enqueuer
+		// has had the time to set the max QoS on the queue.
+		//
+		// It is inconvenient to drop this thread request, and this case is rare
+		// enough that we instead ask for MAINTENANCE to avoid the kernel
+		// failing with ERANGE.
+		//
+		qos = DISPATCH_QOS_MAINTENANCE;
+	}
+	pthread_priority_t pp = _dispatch_qos_to_pp(qos);
+	return pp | (rq_pri & DISPATCH_PRIORITY_FLAG_OVERCOMMIT);
+}
+
+DISPATCH_ALWAYS_INLINE_NDEBUG
+static void
+_dispatch_kq_fill_workloop_event(dispatch_kevent_t ke, int which,
+		dispatch_wlh_t wlh, uint64_t dq_state)
+{
+	dispatch_queue_t dq = (dispatch_queue_t)wlh;
+	dispatch_qos_t qos = _dq_state_max_qos(dq_state);
+	pthread_priority_t pp = 0;
+	uint32_t fflags = 0;
+	uint64_t mask = 0;
+	uint16_t action = 0;
+
+	switch (which) {
+	case DISPATCH_WORKLOOP_ASYNC_FROM_SYNC:
+		fflags |= NOTE_WL_END_OWNERSHIP;
+		/* FALLTHROUGH */
+	case DISPATCH_WORKLOOP_ASYNC:
+	case DISPATCH_WORKLOOP_ASYNC_DISCOVER_SYNC:
+	case DISPATCH_WORKLOOP_ASYNC_QOS_UPDATE:
+		dispatch_assert(_dq_state_is_base_wlh(dq_state));
+		dispatch_assert(_dq_state_is_enqueued_on_target(dq_state));
+		action = EV_ADD | EV_ENABLE;
+		mask |= DISPATCH_QUEUE_ROLE_MASK;
+		mask |= DISPATCH_QUEUE_ENQUEUED;
+		mask |= DISPATCH_QUEUE_MAX_QOS_MASK;
+		if (which == DISPATCH_WORKLOOP_ASYNC_DISCOVER_SYNC) {
+			dispatch_assert(!_dq_state_in_sync_transfer(dq_state));
+			dispatch_assert(_dq_state_drain_locked(dq_state));
+			mask |= DISPATCH_QUEUE_SYNC_TRANSFER;
+			fflags |= NOTE_WL_DISCOVER_OWNER;
+		} else {
+			fflags |= NOTE_WL_IGNORE_ESTALE;
+		}
+		fflags |= NOTE_WL_UPDATE_QOS;
+		pp = _dispatch_kevent_workloop_priority(dq, which, qos);
+		break;
+
+	case DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_SYNC:
+		fflags |= NOTE_WL_END_OWNERSHIP;
+		/* FALLTHROUGH */
+	case DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_TRANSFER:
+		fflags |= NOTE_WL_IGNORE_ESTALE;
+		/* FALLTHROUGH */
+	case DISPATCH_WORKLOOP_ASYNC_LEAVE:
+		dispatch_assert(!_dq_state_is_enqueued_on_target(dq_state));
+		action = EV_ADD | EV_DELETE | EV_ENABLE;
+		mask |= DISPATCH_QUEUE_ENQUEUED;
+		break;
+
+	case DISPATCH_WORKLOOP_ASYNC_FORCE_END_OWNERSHIP:
+		// 0 is never a valid queue state, so the knote attach will fail due to
+		// the debounce. However, NOTE_WL_END_OWNERSHIP is always observed even
+		// when ESTALE is returned, which is the side effect we're after here.
+		fflags |= NOTE_WL_END_OWNERSHIP;
+		fflags |= NOTE_WL_IGNORE_ESTALE;
+		action = EV_ADD | EV_ENABLE;
+		mask = ~0ull;
+		dq_state = 0;
+		pp = _dispatch_kevent_workloop_priority(dq, which, qos);
+		break;
+
+	case DISPATCH_WORKLOOP_RETARGET:
+		action = EV_ADD | EV_DELETE | EV_ENABLE;
+		fflags |= NOTE_WL_END_OWNERSHIP;
+		break;
+
+	default:
+		DISPATCH_INTERNAL_CRASH(which, "Invalid transition");
+	}
+
+	*ke = (dispatch_kevent_s){
+		.ident  = (uintptr_t)wlh,
+		.filter = EVFILT_WORKLOOP,
+		.flags  = action,
+		.fflags = fflags | NOTE_WL_THREAD_REQUEST,
+		.qos    = (__typeof__(ke->qos))pp,
+		.udata  = (uintptr_t)wlh,
+
+		.ext[EV_EXTIDX_WL_ADDR]  = (uintptr_t)&dq->dq_state,
+		.ext[EV_EXTIDX_WL_MASK]  = mask,
+		.ext[EV_EXTIDX_WL_VALUE] = dq_state,
+	};
+	_dispatch_kevent_wlh_debug(_dispatch_workloop_actions[which], ke);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_kq_fill_ddi_workloop_event(dispatch_deferred_items_t ddi,
+		int which, dispatch_wlh_t wlh, uint64_t dq_state)
+{
+	int slot = _dispatch_kq_deferred_find_slot(ddi, EVFILT_WORKLOOP,
+			(uint64_t)wlh, (uint64_t)wlh);
+	if (slot == ddi->ddi_nevents) {
+		dispatch_assert(slot < DISPATCH_DEFERRED_ITEMS_EVENT_COUNT);
+		ddi->ddi_nevents++;
+	}
+	_dispatch_kq_fill_workloop_event(&ddi->ddi_eventlist[slot],
+			which, wlh, dq_state);
+}
+
+DISPATCH_ALWAYS_INLINE_NDEBUG
+static void
+_dispatch_kq_fill_workloop_sync_event(dispatch_kevent_t ke, int which,
+		dispatch_wlh_t wlh, uint64_t dq_state, dispatch_tid tid)
+{
+	dispatch_queue_t dq = (dispatch_queue_t)wlh;
+	pthread_priority_t pp = 0;
+	uint32_t fflags = 0;
+	uint64_t mask = 0;
+	uint16_t action = 0;
+
+	switch (which) {
+	case DISPATCH_WORKLOOP_SYNC_WAIT:
+		action = EV_ADD | EV_DISABLE;
+		fflags = NOTE_WL_SYNC_WAIT;
+		pp     = _dispatch_get_priority();
+		if (_dispatch_qos_from_pp(pp) == 0) {
+			pp = _dispatch_qos_to_pp(DISPATCH_QOS_DEFAULT);
+		}
+		if (_dq_state_received_sync_wait(dq_state)) {
+			fflags |= NOTE_WL_DISCOVER_OWNER;
+			mask = DISPATCH_QUEUE_ROLE_MASK | DISPATCH_QUEUE_RECEIVED_SYNC_WAIT;
+		}
+		break;
+
+	case DISPATCH_WORKLOOP_SYNC_FAKE:
+		action = EV_ADD | EV_DISABLE;
+		fflags = NOTE_WL_SYNC_WAKE;
+		break;
+
+	case DISPATCH_WORKLOOP_SYNC_WAKE:
+		dispatch_assert(_dq_state_drain_locked_by(dq_state, tid));
+		action = EV_ADD | EV_DISABLE;
+		fflags = NOTE_WL_SYNC_WAKE | NOTE_WL_DISCOVER_OWNER;
+		break;
+
+	case DISPATCH_WORKLOOP_SYNC_END:
+		action = EV_DELETE | EV_ENABLE;
+		fflags = NOTE_WL_SYNC_WAKE | NOTE_WL_END_OWNERSHIP;
+		break;
+
+	default:
+		DISPATCH_INTERNAL_CRASH(which, "Invalid transition");
+	}
+
+	*ke = (dispatch_kevent_s){
+		.ident  = tid,
+		.filter = EVFILT_WORKLOOP,
+		.flags  = action,
+		.fflags = fflags,
+		.udata  = (uintptr_t)wlh,
+		.qos    = (__typeof__(ke->qos))pp,
+
+		.ext[EV_EXTIDX_WL_MASK] = mask,
+		.ext[EV_EXTIDX_WL_VALUE] = dq_state,
+	};
+	if (fflags & NOTE_WL_DISCOVER_OWNER) {
+		ke->ext[EV_EXTIDX_WL_ADDR] = (uintptr_t)&dq->dq_state;
+	}
+	_dispatch_kevent_wlh_debug(_dispatch_workloop_actions[which], ke);
+}
+
+#define DISPATCH_KEVENT_WORKLOOP_ALLOW_ENOENT 1
+#define DISPATCH_KEVENT_WORKLOOP_ALLOW_ESTALE 2
+#define DISPATCH_KEVENT_WORKLOOP_ALLOW_EINTR  4
+
+DISPATCH_ALWAYS_INLINE
+static inline int
+_dispatch_kevent_workloop_drain_error(dispatch_kevent_t ke, long flags)
+{
+	int err = (int)ke->data;
+
+	_dispatch_kevent_wlh_debug("received error", ke);
+	dispatch_assert(ke->flags & EV_ERROR);
+	//
+	// Clear the error so that we can use the same struct to redrive as is
+	// but leave a breadcrumb about the error in xflags for debugging
+	//
+	ke->flags &= ~EV_ERROR;
+	ke->xflags = (uint32_t)err;
+	ke->data = 0;
+
+	switch (err) {
+	case EINTR:
+		if ((flags & DISPATCH_KEVENT_WORKLOOP_ALLOW_EINTR) &&
+				(ke->fflags & NOTE_WL_SYNC_WAIT)) {
+			return EINTR;
+		}
+		break;
+	case ENOENT:
+		if ((flags & DISPATCH_KEVENT_WORKLOOP_ALLOW_ENOENT) &&
+				(ke->flags & EV_DELETE) && (ke->fflags & NOTE_WL_SYNC_WAKE) &&
+				(ke->fflags & NOTE_WL_END_OWNERSHIP)) {
+			//
+			// When breaking out a waiter because of a retarget, that waiter may
+			// not have made his wait syscall yet, and we can't really prepost
+			// an EV_DELETE, so we have to redrive on ENOENT in this case
+			//
+			return ENOENT;
+		}
+		break;
+	case ESTALE:
+		if ((flags & DISPATCH_KEVENT_WORKLOOP_ALLOW_ESTALE) &&
+				!(ke->fflags & NOTE_WL_IGNORE_ESTALE) &&
+				ke->ext[EV_EXTIDX_WL_ADDR] && ke->ext[EV_EXTIDX_WL_MASK]) {
+			return ESTALE;
+		}
+		break;
+	case ERANGE:
+		DISPATCH_INTERNAL_CRASH((uintptr_t)ke->qos, "Broken priority");
+	case EOWNERDEAD:
+		DISPATCH_CLIENT_CRASH((uintptr_t)ke->ext[EV_EXTIDX_WL_VALUE],
+				"Invalid workloop owner, possible memory corruption");
+	default:
+		break;
+	}
+	DISPATCH_INTERNAL_CRASH(err, "Unexpected error from kevent");
+}
+
+DISPATCH_ALWAYS_INLINE
+static void
+_dispatch_kevent_workloop_stash(dispatch_wlh_t wlh, dispatch_kevent_t ke,
+		dispatch_deferred_items_t ddi)
+{
+	dispatch_queue_t dq = (dispatch_queue_t)wlh;
+	dispatch_assert(!ddi->ddi_stashed_dou._dq);
+	ddi->ddi_wlh_needs_delete = true;
+	_dispatch_retain(dq);
+	ddi->ddi_stashed_rq = upcast(dq->do_targetq)._dgq;
+	ddi->ddi_stashed_dou._dq = dq;
+	ddi->ddi_stashed_qos = _dispatch_qos_from_pp((pthread_priority_t)ke->qos);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline int
+_dispatch_event_loop_get_action_for_state(uint64_t dq_state)
+{
+	dispatch_assert(_dq_state_is_base_wlh(dq_state));
+
+	if (!_dq_state_is_enqueued_on_target(dq_state)) {
+		return DISPATCH_WORKLOOP_ASYNC_LEAVE;
+	}
+	if (!_dq_state_drain_locked(dq_state)) {
+		return DISPATCH_WORKLOOP_ASYNC;
+	}
+	if (!_dq_state_in_sync_transfer(dq_state)) {
+		return DISPATCH_WORKLOOP_ASYNC_DISCOVER_SYNC;
+	}
+	return DISPATCH_WORKLOOP_ASYNC_QOS_UPDATE;
+}
+
+DISPATCH_NOINLINE
+static void
+_dispatch_kevent_workloop_poke_drain(dispatch_kevent_t ke)
+{
+	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
+	dispatch_wlh_t wlh = (dispatch_wlh_t)ke->udata;
+
+#if DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+	if (ke->fflags & NOTE_WL_SYNC_IPC) {
+		dispatch_assert((ke->flags & EV_ERROR) && ke->data == ENOENT);
+		return _dispatch_kevent_wlh_debug("ignoring", ke);
+	}
+#endif // DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+
+	dispatch_assert(ke->fflags & NOTE_WL_THREAD_REQUEST);
+	if (ke->flags & EV_ERROR) {
+		uint64_t dq_state = ke->ext[EV_EXTIDX_WL_VALUE];
+
+		_dispatch_kevent_workloop_drain_error(ke,
+				DISPATCH_KEVENT_WORKLOOP_ALLOW_ESTALE);
+
+		if (!_dq_state_is_base_wlh(dq_state)) {
+			dispatch_assert((ke->flags & EV_DELETE) == 0);
+			//
+			// A late async request bounced because the queue is no longer
+			// a workloop. There is a DISPATCH_WORKLOOP_RETARGET transition that
+			// will take care of deleting the thread request
+			//
+			return _dispatch_kevent_wlh_debug("ignoring", ke);
+		}
+
+		//
+		// We're draining a failed _dispatch_event_loop_leave_deferred()
+		// so repeat its logic.
+		//
+		int action = _dispatch_event_loop_get_action_for_state(dq_state);
+		if (action == DISPATCH_WORKLOOP_ASYNC) {
+			_dispatch_kevent_wlh_debug("retry drain", ke);
+			return _dispatch_kevent_workloop_stash(wlh, ke, ddi);
+		} else {
+			_dispatch_kq_fill_workloop_event(ke, action, wlh, dq_state);
+			return _dispatch_kq_deferred_update(wlh, ke);
+		}
+	} else if (ddi->ddi_wlh_needs_delete) {
+		//
+		// we knew about this thread request because we learned about it
+		// in _dispatch_kevent_workloop_poke_self() while merging another event.
+		// It has already been accounted for, so just swallow it.
+		//
+		return _dispatch_kevent_wlh_debug("ignoring", ke);
+	} else {
+		//
+		// This is a new thread request, it is carrying a +1 reference.
+		//
+		_dispatch_kevent_wlh_debug("got drain", ke);
+		return _dispatch_kevent_workloop_stash(wlh, ke, ddi);
+	}
+}
+
+static void
+_dispatch_kevent_workloop_poke(dispatch_wlh_t wlh, uint64_t dq_state,
+		uint32_t flags)
+{
+	uint32_t kev_flags = KEVENT_FLAG_IMMEDIATE | KEVENT_FLAG_ERROR_EVENTS;
+	dispatch_kevent_s ke;
+	int action;
+
+	dispatch_assert(_dq_state_is_enqueued_on_target(dq_state));
+	dispatch_assert(!_dq_state_is_enqueued_on_manager(dq_state));
+	action = _dispatch_event_loop_get_action_for_state(dq_state);
+override:
+	_dispatch_kq_fill_workloop_event(&ke, action, wlh, dq_state);
+
+	if (_dispatch_kq_poll(wlh, &ke, 1, &ke, 1, NULL, NULL, kev_flags)) {
+		_dispatch_kevent_workloop_drain_error(&ke,
+				DISPATCH_KEVENT_WORKLOOP_ALLOW_ESTALE);
+		dispatch_assert(action == DISPATCH_WORKLOOP_ASYNC_DISCOVER_SYNC);
+		dq_state = ke.ext[EV_EXTIDX_WL_VALUE];
+		//
+		// There are 4 things that can cause an ESTALE for DISCOVER_SYNC:
+		// - the queue role changed, we don't want to redrive
+		// - the queue is no longer enqueued, we don't want to redrive
+		// - the max QoS changed, whoever changed it is doing the same
+		//   transition, so we don't need to redrive
+		// - the DISPATCH_QUEUE_IN_SYNC_TRANFER bit got set
+		//
+		// The interesting case is the last one, and will only happen in the
+		// following chain of events:
+		// 1. uncontended dispatch_sync()
+		// 2. contended dispatch_sync()
+		// 3. contended dispatch_async()
+		//
+		// And this code is running because of (3). It is possible that (1)
+		// hands off to (2) while this call is being made, causing the
+		// DISPATCH_QUEUE_IN_TRANSFER_SYNC to be set, and we don't need to tell
+		// the kernel about the owner anymore. However, the async in that case
+		// will have set a QoS on the queue (since dispatch_sync()s don't but
+		// dispatch_async()s always do), and we need to redrive to tell it
+		// to the kernel.
+		//
+		if (_dq_state_is_base_wlh(dq_state) &&
+				_dq_state_is_enqueued_on_target(dq_state) &&
+				_dq_state_in_sync_transfer(dq_state)) {
+			action = DISPATCH_WORKLOOP_ASYNC;
+			goto override;
+		}
+	}
+
+	if (!(flags & DISPATCH_EVENT_LOOP_OVERRIDE)) {
+		// Consume the reference that kept the workloop valid
+		// for the duration of the syscall.
+		return _dispatch_release_tailcall((dispatch_queue_t)wlh);
+	}
+	if (flags & DISPATCH_EVENT_LOOP_CONSUME_2) {
+		return _dispatch_release_2_tailcall((dispatch_queue_t)wlh);
+	}
+}
+
+DISPATCH_NOINLINE
+static void
+_dispatch_kevent_workloop_override_self(dispatch_deferred_items_t ddi,
+		uint64_t dq_state, uint32_t flags)
+{
+	dispatch_wlh_t wlh = ddi->ddi_wlh;
+	uint32_t kev_flags = KEVENT_FLAG_IMMEDIATE | KEVENT_FLAG_ERROR_EVENTS;
+	dispatch_kevent_s ke;
+	//
+	// The workloop received work from itself that caused an override
+	// after the drain lock has been taken, just comply and move on.
+	//
+	dispatch_assert(ddi->ddi_wlh_needs_delete);
+	ddi->ddi_wlh_needs_update = false;
+
+	_dispatch_kq_fill_workloop_event(&ke, DISPATCH_WORKLOOP_ASYNC,
+			wlh, dq_state);
+	if (_dispatch_kq_poll(wlh, &ke, 1, &ke, 1, NULL, NULL, kev_flags)) {
+		_dispatch_kevent_workloop_drain_error(&ke, 0);
+		__builtin_unreachable();
+	}
+	if (flags & DISPATCH_EVENT_LOOP_CONSUME_2) {
+		return _dispatch_release_2_no_dispose((dispatch_queue_t)wlh);
+	}
+}
+
+static void
+_dispatch_kevent_workloop_poke_self(dispatch_deferred_items_t ddi,
+		uint64_t dq_state, uint32_t flags)
+{
+	dispatch_queue_t dq = (dispatch_queue_t)ddi->ddi_wlh;
+
+	if (ddi->ddi_wlh_servicing) {
+		dispatch_assert(ddi->ddi_wlh_needs_delete);
+		if (flags & DISPATCH_EVENT_LOOP_OVERRIDE) {
+			return _dispatch_kevent_workloop_override_self(ddi, dq_state,flags);
+		}
+		//
+		// dx_invoke() wants to re-enqueue itself e.g.  because the thread pool
+		// needs narrowing, or the queue is suspended, or any other reason that
+		// interrupts the drain.
+		//
+		// This is called with a +2 on the queue, a +1 goes to the thread
+		// request, the other we dispose of.
+		//
+		dispatch_assert(!_dq_state_drain_locked(dq_state));
+		dispatch_assert(_dq_state_is_enqueued_on_target(dq_state));
+		dispatch_assert(flags & DISPATCH_EVENT_LOOP_CONSUME_2);
+		_dispatch_release_no_dispose(dq);
+		return _dispatch_event_loop_leave_deferred(ddi, dq_state);
+	}
+
+	//
+	// This codepath is only used during the initial phase of merging
+	// incoming kernel events in _dispatch_workloop_worker_thread, before
+	// trying to take the drain lock in order to drain the workloop.
+	//
+	// Once we have taken the drain lock, wakeups will not reach this codepath
+	// because ddi->ddi_wlh_servicing will be set.
+	//
+
+	if (ddi->ddi_wlh_needs_delete) {
+		//
+		// We know there is a thread request already (stolen or real).
+		// However, an event is causing the workloop to be overridden.
+		// The kernel already has applied the override, so we can
+		// safely swallow this event, which carries no refcount.
+		//
+		dispatch_assert(flags & DISPATCH_EVENT_LOOP_OVERRIDE);
+		dispatch_assert(ddi->ddi_stashed_dou._dq);
+		if (flags & DISPATCH_EVENT_LOOP_CONSUME_2) {
+			return _dispatch_release_2_no_dispose(dq);
+		}
+		return;
+	}
+
+	if (flags & DISPATCH_EVENT_LOOP_OVERRIDE) {
+		//
+		// An event delivery is causing an override, but didn't know
+		// about a thread request yet. However, since we're receving an override
+		// it means this initial thread request either exists in the kernel
+		// or is about to be made.
+		//
+		// If it is about to be made, it is possible that it will bounce with
+		// ESTALE, and will not be retried. It means we can't be sure there
+		// really is or even will be a knote in the kernel for it.
+		//
+		// We still want to take over the +1 this thread request carries whether
+		// it made it (or will make it) to the kernel, and turn it into a +2
+		// below.
+		//
+		// Overrides we receive in this way are coalesced and acknowleged
+		// only when we have to do a kevent() call for other reasons. The kernel
+		// will continue to apply the overrides in question until we acknowledge
+		// them, so there's no rush.
+		//
+		if (flags & DISPATCH_EVENT_LOOP_CONSUME_2) {
+			_dispatch_release_no_dispose(dq);
+		} else {
+			_dispatch_retain(dq);
+		}
+	} else {
+		//
+		// Merging events causes a thread request to be issued, this means
+		// the queue is empty in userland and the kernel event is the first
+		// thing enqueued. Consume the caller's +2.
+		//
+		dispatch_assert(flags & DISPATCH_EVENT_LOOP_CONSUME_2);
+	}
+	dispatch_assert(!ddi->ddi_stashed_dou._dq);
+	ddi->ddi_wlh_needs_delete = true;
+	ddi->ddi_wlh_needs_update = true;
+	ddi->ddi_stashed_rq = upcast(dq->do_targetq)._dgq;
+	ddi->ddi_stashed_dou._dq = dq;
+	ddi->ddi_stashed_qos = _dq_state_max_qos(dq_state);
+}
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 
 DISPATCH_NOINLINE
 void
@@ -1224,11 +1903,27 @@ _dispatch_event_loop_poke(dispatch_wlh_t wlh, uint64_t dq_state, uint32_t flags)
 			.ident  = 1,
 			.filter = EVFILT_USER,
 			.fflags = NOTE_TRIGGER,
-			.udata = (uintptr_t)DISPATCH_WLH_MANAGER,
+			.udata = (dispatch_kevent_udata_t)DISPATCH_WLH_MANAGER,
 		};
 		return _dispatch_kq_deferred_update(DISPATCH_WLH_ANON, &ke);
 	} else if (wlh && wlh != DISPATCH_WLH_ANON) {
+#if DISPATCH_USE_KEVENT_WORKLOOP
+		dispatch_queue_t dq = (dispatch_queue_t)wlh;
+		dispatch_assert(_dq_state_is_base_wlh(dq_state));
+		if (unlikely(_dq_state_is_enqueued_on_manager(dq_state))) {
+			dispatch_assert(!(flags & DISPATCH_EVENT_LOOP_OVERRIDE));
+			dispatch_assert(flags & DISPATCH_EVENT_LOOP_CONSUME_2);
+			_dispatch_trace_item_push(&_dispatch_mgr_q, dq);
+			return dx_push(_dispatch_mgr_q._as_dq, dq, 0);
+		}
+		dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
+		if (ddi && ddi->ddi_wlh == wlh) {
+			return _dispatch_kevent_workloop_poke_self(ddi, dq_state, flags);
+		}
+		return _dispatch_kevent_workloop_poke(wlh, dq_state, flags);
+#else
 		(void)dq_state; (void)flags;
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 	}
 	DISPATCH_INTERNAL_CRASH(wlh, "Unsupported wlh configuration");
 }
@@ -1242,10 +1937,32 @@ _dispatch_event_loop_drain(uint32_t flags)
 	int n;
 
 again:
+#if DISPATCH_USE_KEVENT_WORKLOOP
+	if (ddi->ddi_wlh_needs_update) {
+		// see _dispatch_event_loop_drain() comments about the lazy handling
+		// of DISPATCH_EVENT_LOOP_OVERRIDE
+		dispatch_queue_t dq = (dispatch_queue_t)wlh;
+		uint64_t dq_state = os_atomic_load2o(dq, dq_state, relaxed);
+
+		dispatch_assert(ddi->ddi_wlh_needs_delete);
+		ddi->ddi_wlh_needs_update = false;
+		_dispatch_kq_fill_ddi_workloop_event(ddi,
+				DISPATCH_WORKLOOP_ASYNC_QOS_UPDATE, wlh, dq_state);
+	}
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 	n = ddi->ddi_nevents;
 	ddi->ddi_nevents = 0;
 	_dispatch_kq_drain(wlh, ddi->ddi_eventlist, n, flags);
 
+#if DISPATCH_USE_KEVENT_WORKLOOP
+	dispatch_workloop_t dwl = _dispatch_wlh_to_workloop(wlh);
+	if (dwl) {
+		dispatch_timer_heap_t dth = dwl->dwl_timer_heap;
+		if (dth && dth[0].dth_dirty_bits) {
+			_dispatch_event_loop_drain_timers(dth, DISPATCH_TIMER_WLH_COUNT);
+		}
+	}
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 
 	if ((flags & KEVENT_FLAG_IMMEDIATE) &&
 			!(flags & KEVENT_FLAG_ERROR_EVENTS) &&
@@ -1277,38 +1994,238 @@ _dispatch_event_loop_merge(dispatch_kevent_t events, int nevents)
 			_dispatch_event_loop_drain(KEVENT_FLAG_IMMEDIATE |
 					KEVENT_FLAG_ERROR_EVENTS);
 		}
+#if DISPATCH_USE_KEVENT_WORKLOOP
+	} else if (dx_metatype((dispatch_queue_t)wlh) == _DISPATCH_WORKLOOP_TYPE) {
+		dispatch_timer_heap_t dth = ((dispatch_workloop_t)wlh)->dwl_timer_heap;
+		if (dth && dth[0].dth_dirty_bits) {
+			_dispatch_event_loop_drain_timers(dth, DISPATCH_TIMER_WLH_COUNT);
+		}
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 	}
 }
 
 void
 _dispatch_event_loop_leave_immediate(uint64_t dq_state)
 {
+#if DISPATCH_USE_KEVENT_WORKLOOP
+	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
+	dispatch_wlh_t wlh = ddi->ddi_wlh;
+	uint32_t kev_flags = KEVENT_FLAG_IMMEDIATE | KEVENT_FLAG_ERROR_EVENTS |
+			KEVENT_FLAG_DYNAMIC_KQ_MUST_EXIST;
+	dispatch_kevent_s ke;
+	dispatch_assert(!_dq_state_is_base_wlh(dq_state));
+
+	//
+	// A workloop is being retargeted, we need to synchronously destroy
+	// the thread request as delivering it later would confuse the workloop
+	// thread into trying to drain this queue as a bottom one.
+	//
+	// Doing it synchronously prevents races where the queue is retargeted
+	// again, and becomes a workloop again
+	//
+	dispatch_assert(ddi->ddi_wlh_needs_delete);
+	ddi->ddi_wlh_needs_delete = false;
+	ddi->ddi_wlh_needs_update = false;
+	_dispatch_kq_fill_workloop_event(&ke,
+			DISPATCH_WORKLOOP_RETARGET, wlh, dq_state);
+	if (_dispatch_kq_poll(wlh, &ke, 1, &ke, 1, NULL, NULL, kev_flags)) {
+		_dispatch_kevent_workloop_drain_error(&ke, 0);
+		__builtin_unreachable();
+	}
+#else
 	(void)dq_state;
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 }
 
 void
 _dispatch_event_loop_leave_deferred(dispatch_deferred_items_t ddi,
 		uint64_t dq_state)
 {
+#if DISPATCH_USE_KEVENT_WORKLOOP
+	int action = _dispatch_event_loop_get_action_for_state(dq_state);
+	dispatch_assert(ddi->ddi_wlh_needs_delete);
+	ddi->ddi_wlh_needs_delete = false;
+	ddi->ddi_wlh_needs_update = false;
+	_dispatch_kq_fill_ddi_workloop_event(ddi, action, ddi->ddi_wlh, dq_state);
+#else
 	(void)ddi; (void)dq_state;
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 }
 
 void
 _dispatch_event_loop_cancel_waiter(dispatch_sync_context_t dsc)
 {
+#if DISPATCH_USE_KEVENT_WORKLOOP
+	dispatch_wlh_t wlh = dsc->dc_data;
+	uint32_t kev_flags = KEVENT_FLAG_IMMEDIATE | KEVENT_FLAG_ERROR_EVENTS;
+	dispatch_kevent_s ke;
+
+	_dispatch_kq_fill_workloop_sync_event(&ke, DISPATCH_WORKLOOP_SYNC_END,
+			wlh, 0, dsc->dsc_waiter);
+	if (_dispatch_kq_poll(wlh, &ke, 1, &ke, 1, NULL, NULL, kev_flags)) {
+		_dispatch_kevent_workloop_drain_error(&ke, dsc->dsc_waiter_needs_cancel ?
+				0 : DISPATCH_KEVENT_WORKLOOP_ALLOW_ENOENT);
+		//
+		// Our deletion attempt is opportunistic as in most cases we will find
+		// the matching knote and break the waiter out.
+		//
+		// However, if the waiter hasn't had a chance to make the syscall
+		// to wait yet, we get ENOENT. In this case, pre-post the WAKE,
+		// and transfer the responsibility to delete the knote to the waiter.
+		//
+		dsc->dsc_waiter_needs_cancel = true;
+		_dispatch_kq_fill_workloop_sync_event(&ke,
+				DISPATCH_WORKLOOP_SYNC_FAKE, wlh, 0, dsc->dsc_waiter);
+		if (_dispatch_kq_poll(wlh, &ke, 1, &ke, 1, NULL, NULL, kev_flags)) {
+			_dispatch_kevent_workloop_drain_error(&ke, 0);
+			__builtin_unreachable();
+		}
+	}
+#else
 	(void)dsc;
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 }
 
 void
 _dispatch_event_loop_wake_owner(dispatch_sync_context_t dsc,
 		dispatch_wlh_t wlh, uint64_t old_state, uint64_t new_state)
 {
+#if DISPATCH_USE_KEVENT_WORKLOOP
+	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
+	dispatch_wlh_t waiter_wlh = dsc->dc_data;
+	uint32_t kev_flags = KEVENT_FLAG_IMMEDIATE | KEVENT_FLAG_ERROR_EVENTS;
+	dispatch_kevent_s ke[3];
+	int action, n = 0;
+
+	dispatch_assert(_dq_state_drain_locked_by(new_state, dsc->dsc_waiter));
+
+	if (wlh != DISPATCH_WLH_ANON && ddi && ddi->ddi_wlh == wlh) {
+		dispatch_assert(ddi->ddi_wlh_needs_delete);
+		ddi->ddi_wlh_needs_delete = false;
+		ddi->ddi_wlh_needs_update = false;
+
+		if (wlh == waiter_wlh) { // async -> sync handoff
+			dispatch_assert(_dq_state_is_enqueued_on_target(old_state));
+			dispatch_assert(!_dq_state_in_sync_transfer(old_state));
+			dispatch_assert(_dq_state_in_sync_transfer(new_state));
+
+			if (_dq_state_is_enqueued_on_target(new_state)) {
+				action = DISPATCH_WORKLOOP_ASYNC_QOS_UPDATE;
+			} else {
+				action = DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_TRANSFER;
+			}
+			_dispatch_kq_fill_ddi_workloop_event(ddi, action, wlh, new_state);
+
+			int slot = _dispatch_kq_deferred_find_slot(ddi, EVFILT_WORKLOOP,
+					(uint64_t)wlh, dsc->dsc_waiter);
+			if (slot == ddi->ddi_nevents) {
+				dispatch_assert(slot < DISPATCH_DEFERRED_ITEMS_EVENT_COUNT);
+				ddi->ddi_nevents++;
+			}
+			_dispatch_kq_fill_workloop_sync_event(&ddi->ddi_eventlist[slot],
+					DISPATCH_WORKLOOP_SYNC_WAKE, wlh, new_state, dsc->dsc_waiter);
+			return;
+		}
+	}
+
+	if ((old_state ^ new_state) & DISPATCH_QUEUE_ENQUEUED) {
+		dispatch_assert(_dq_state_is_enqueued_on_target(old_state));
+		dispatch_assert(_dq_state_in_sync_transfer(new_state));
+		// During the handoff, the waiter noticed there was no work *after*
+		// that last work item, so we want to kill the thread request while
+		// there's an owner around to avoid races betwen knote_process() and
+		// knote_drop() in the kernel.
+		_dispatch_kq_fill_workloop_event(&ke[n++],
+				DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_TRANSFER, wlh, new_state);
+	}
+	if (_dq_state_in_sync_transfer(new_state)) {
+		// Even when waiter_wlh != wlh we can pretend we got woken up
+		// which is a knote we will be able to delete later with a SYNC_END.
+		// This allows rectifying incorrect ownership sooner, and also happens
+		// on resume if the first item is a sync waiter.
+		_dispatch_kq_fill_workloop_sync_event(&ke[n++],
+				DISPATCH_WORKLOOP_SYNC_WAKE, wlh, new_state, dsc->dsc_waiter);
+	}
+	if (_dq_state_in_sync_transfer(old_state)) {
+		dispatch_tid tid = _dispatch_tid_self();
+		_dispatch_kq_fill_workloop_sync_event(&ke[n++],
+				DISPATCH_WORKLOOP_SYNC_END, wlh, new_state, tid);
+	}
+	//
+	// Past this call it is not safe to look at `wlh` anymore as the callers
+	// sometimes borrow the refcount of the waiter which we will wake up.
+	//
+	if (_dispatch_kq_poll(wlh, ke, n, ke, n, NULL, NULL, kev_flags)) {
+		_dispatch_kevent_workloop_drain_error(&ke[0], 0);
+		__builtin_unreachable();
+	}
+
+	if (unlikely(waiter_wlh != DISPATCH_WLH_ANON && waiter_wlh != wlh)) {
+		_dispatch_bug_deprecated("Changing target queue hierarchy "
+				"with a dispatch_sync in flight");
+		_dispatch_event_loop_cancel_waiter(dsc);
+	}
+#else
 	(void)dsc; (void)wlh; (void)old_state; (void)new_state;
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 }
 
 void
 _dispatch_event_loop_wait_for_ownership(dispatch_sync_context_t dsc)
 {
+#if DISPATCH_USE_KEVENT_WORKLOOP
+	dispatch_wlh_t wlh = dsc->dc_data;
+	dispatch_kevent_s ke[2];
+	uint32_t kev_flags = KEVENT_FLAG_IMMEDIATE | KEVENT_FLAG_ERROR_EVENTS;
+	uint64_t dq_state;
+	int i, n = 0;
+
+	dq_state = os_atomic_load2o((dispatch_queue_t)wlh, dq_state, relaxed);
+	if (dsc->dsc_wlh_was_first && !_dq_state_drain_locked(dq_state) &&
+			_dq_state_is_enqueued_on_target(dq_state)) {
+		//
+		// <rdar://problem/32123779>
+		//
+		// When an enqueuer is racing with the servicer draining the item that
+		// is being enqueued and going away, it is possible for the enqueuer to
+		// mark an empty queue as enqueued and make a thread request for it.
+		//
+		// If then a thread is selected to deliver this event, but doesn't make
+		// it to userland to take the drain lock, any sync waiter will
+		// nevertheless have to wait for that servicer to consume the thread
+		// request, trying to delete it will be no good. This is why
+		// _dispatch_push_sync_waiter() for workloops will not try to "save
+		// itself" if the enqueued bit is set.
+		//
+		// However, we don't know whether this thread request exists, it may
+		// have bounced, or still be in the process of being added by a much
+		// lower priority thread, so we need to drive it once to avoid priority
+		// inversions.
+		//
+		_dispatch_kq_fill_workloop_event(&ke[n++], DISPATCH_WORKLOOP_ASYNC,
+				wlh, dq_state);
+	}
+
+again:
+	_dispatch_kq_fill_workloop_sync_event(&ke[n++], DISPATCH_WORKLOOP_SYNC_WAIT,
+			wlh, dq_state, dsc->dsc_waiter);
+	n = _dispatch_kq_poll(wlh, ke, n, ke, n, NULL, NULL, kev_flags);
+	for (i = 0; i < n; i++) {
+		long flags = 0;
+		if (ke[i].fflags & NOTE_WL_SYNC_WAIT) {
+			flags = DISPATCH_KEVENT_WORKLOOP_ALLOW_EINTR |
+					DISPATCH_KEVENT_WORKLOOP_ALLOW_ESTALE;
+		}
+		_dispatch_kevent_workloop_drain_error(&ke[i], flags);
+	}
+	if (n) {
+		dispatch_assert(n == 1 && (ke[0].fflags & NOTE_WL_SYNC_WAIT));
+		_dispatch_kevent_wlh_debug("restarting", &ke[0]);
+		dq_state = ke[0].ext[EV_EXTIDX_WL_VALUE];
+		n = 0;
+		goto again;
+	}
+#endif
 	if (dsc->dsc_waiter_needs_cancel) {
 		_dispatch_event_loop_cancel_waiter(dsc);
 		dsc->dsc_waiter_needs_cancel = false;
@@ -1322,14 +2239,94 @@ void
 _dispatch_event_loop_end_ownership(dispatch_wlh_t wlh, uint64_t old_state,
 		uint64_t new_state, uint32_t flags)
 {
+#if DISPATCH_USE_KEVENT_WORKLOOP
+	uint32_t kev_flags = KEVENT_FLAG_IMMEDIATE | KEVENT_FLAG_ERROR_EVENTS;
+	dispatch_kevent_s ke[2];
+	bool needs_forceful_end_ownership = false;
+	int n = 0;
+
+	dispatch_assert(_dq_state_is_base_wlh(new_state));
+	if (_dq_state_is_enqueued_on_target(new_state)) {
+		_dispatch_kq_fill_workloop_event(&ke[n++],
+				DISPATCH_WORKLOOP_ASYNC_FROM_SYNC, wlh, new_state);
+	} else if (_dq_state_is_enqueued_on_target(old_state)) {
+		//
+		// <rdar://problem/41389180> Because the thread request knote may not
+		// have made it, DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_SYNC may silently
+		// turn into a no-op.
+		//
+		// However, the kernel may know about our ownership anyway, so we need
+		// to make sure it is forcefully ended.
+		//
+		needs_forceful_end_ownership = true;
+		dispatch_assert(_dq_state_is_suspended(new_state));
+		_dispatch_kq_fill_workloop_event(&ke[n++],
+				DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_SYNC, wlh, new_state);
+	} else if (_dq_state_received_sync_wait(old_state)) {
+		//
+		// This case happens when the current workloop got waited on by some
+		// thread calling _dispatch_event_loop_wait_for_ownership.
+		//
+		// When the workloop became IDLE, it didn't find the sync waiter
+		// continuation, didn't have a thread request to cancel either, and so
+		// we need the kernel to forget about the current thread ownership
+		// of the workloop.
+		//
+		// To forget this ownership, we create a fake WAKE knote that can not
+		// coalesce with any meaningful one, just so that we can EV_DELETE it
+		// with the NOTE_WL_END_OWNERSHIP.
+		//
+		// This is a gross hack, but this will really only ever happen for
+		// cases where a sync waiter started to wait on a workloop, but his part
+		// of the graph got mutated and retargeted onto a different workloop.
+		// In doing so, that sync waiter has snitched to the kernel about
+		// ownership, and the workloop he's bogusly waiting on will go through
+		// this codepath.
+		//
+		needs_forceful_end_ownership = true;
+	}
+
+	if (_dq_state_in_sync_transfer(old_state)) {
+		dispatch_tid tid = _dispatch_tid_self();
+		_dispatch_kq_fill_workloop_sync_event(&ke[n++],
+				DISPATCH_WORKLOOP_SYNC_END, wlh, new_state, tid);
+	} else if (needs_forceful_end_ownership) {
+		kev_flags |= KEVENT_FLAG_DYNAMIC_KQ_MUST_EXIST;
+		_dispatch_kq_fill_workloop_event(&ke[n++],
+				DISPATCH_WORKLOOP_ASYNC_FORCE_END_OWNERSHIP, wlh, new_state);
+	}
+
+	if (_dispatch_kq_poll(wlh, ke, n, ke, n, NULL, NULL, kev_flags)) {
+		_dispatch_kevent_workloop_drain_error(&ke[0], 0);
+		__builtin_unreachable();
+	}
+
+	_dispatch_event_loop_assert_not_owned(wlh);
+
+	int extra_refs = (flags & DISPATCH_EVENT_LOOP_CONSUME_2) ? 2 : 0;
+	if (_dq_state_is_enqueued_on_target(old_state)) extra_refs++;
+	if (_dq_state_is_enqueued_on_target(new_state)) extra_refs--;
+	dispatch_assert(extra_refs >= 0);
+	if (extra_refs > 0) _dispatch_release_n((dispatch_queue_t)wlh, extra_refs);
+#else
 	(void)wlh; (void)old_state; (void)new_state; (void)flags;
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 }
 
 #if DISPATCH_WLH_DEBUG
 void
 _dispatch_event_loop_assert_not_owned(dispatch_wlh_t wlh)
 {
+#if DISPATCH_USE_KEVENT_WORKLOOP
+	if (wlh != DISPATCH_WLH_ANON) {
+		dispatch_kevent_s ke;
+		if (_dispatch_kevent_workloop_get_info(wlh, &ke)) {
+			dispatch_assert(ke.ext[0] != _pthread_threadid_self_np_direct());
+		}
+	}
+#else
 	(void)wlh;
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 }
 #endif // DISPATCH_WLH_DEBUG
 
@@ -1356,14 +2353,15 @@ _dispatch_event_loop_timer_program(dispatch_timer_heap_t dth, uint32_t tidx,
 		.flags = action | EV_ONESHOT,
 		.fflags = _dispatch_timer_index_to_fflags[tidx],
 		.data = (int64_t)target,
-		.udata = (uintptr_t)dth,
+		.udata = (dispatch_kevent_udata_t)dth,
 #if DISPATCH_HAVE_TIMER_COALESCING
 		.ext[1] = leeway,
 #endif
 #if DISPATCH_USE_KEVENT_QOS
-		.qos = (typeof(ke.qos))pp,
+		.qos = (__typeof__(ke.qos))pp,
 #endif
 	};
+	(void)leeway; // if !DISPATCH_HAVE_TIMER_COALESCING
 
 	_dispatch_kq_deferred_update(wlh, &ke);
 }
@@ -1487,6 +2485,9 @@ const dispatch_source_type_s _dispatch_source_type_vfs = {
 #if HAVE_DECL_VQ_DESIRED_DISK
 			|VQ_DESIRED_DISK
 #endif
+#if HAVE_DECL_VQ_FREE_SPACE_CHANGE
+			|VQ_FREE_SPACE_CHANGE
+#endif
 			,
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
@@ -1528,7 +2529,7 @@ const dispatch_source_type_s _dispatch_source_type_nw_channel = {
 	.dst_kind       = "nw_channel",
 	.dst_filter     = EVFILT_NW_CHANNEL,
 	.dst_flags      = DISPATCH_EV_DIRECT|EV_CLEAR|EV_VANISHED,
-	.dst_mask       = NOTE_FLOW_ADV_UPDATE,
+	.dst_mask       = NOTE_FLOW_ADV_UPDATE|NOTE_CHANNEL_EVENT|NOTE_IF_ADV_UPD,
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
 	.dst_strict     = false,
@@ -1731,6 +2732,18 @@ _dispatch_mach_msg_get_audit_trailer(mach_msg_header_t *hdr)
 	return audit_tlr;
 }
 
+bool
+_dispatch_mach_msg_sender_is_kernel(mach_msg_header_t *hdr)
+{
+	mach_msg_audit_trailer_t *tlr;
+	tlr = _dispatch_mach_msg_get_audit_trailer(hdr);
+	if (!tlr) {
+		DISPATCH_INTERNAL_CRASH(0, "message received without expected trailer");
+	}
+
+	return tlr->msgh_audit.val[DISPATCH_MACH_AUDIT_TOKEN_PID] == 0;
+}
+
 DISPATCH_NOINLINE
 static void
 _dispatch_mach_notification_merge_msg(dispatch_unote_t du, uint32_t flags,
@@ -1739,18 +2752,12 @@ _dispatch_mach_notification_merge_msg(dispatch_unote_t du, uint32_t flags,
 		pthread_priority_t ovr_pp DISPATCH_UNUSED)
 {
 	mig_reply_error_t reply;
-	mach_msg_audit_trailer_t *tlr = NULL;
 	dispatch_assert(sizeof(mig_reply_error_t) == sizeof(union
 		__ReplyUnion___dispatch_libdispatch_internal_protocol_subsystem));
 	dispatch_assert(sizeof(mig_reply_error_t) <
 			DISPATCH_MACH_RECEIVE_MAX_INLINE_MESSAGE_SIZE);
-	tlr = _dispatch_mach_msg_get_audit_trailer(hdr);
-	if (!tlr) {
-		DISPATCH_INTERNAL_CRASH(0, "message received without expected trailer");
-	}
 	if (hdr->msgh_id <= MACH_NOTIFY_LAST &&
-			dispatch_assume_zero(tlr->msgh_audit.val[
-			DISPATCH_MACH_AUDIT_TOKEN_PID])) {
+			!dispatch_assume(_dispatch_mach_msg_sender_is_kernel(hdr))) {
 		mach_msg_destroy(hdr);
 		goto out;
 	}
@@ -1869,7 +2876,7 @@ _dispatch_mach_notify_update(dispatch_muxnote_t dmn, uint32_t new_flags,
 		mach_port_mscount_t notify_sync)
 {
 	mach_port_t previous, port = (mach_port_t)dmn->dmn_kev.ident;
-	typeof(dmn->dmn_kev.data) prev = dmn->dmn_kev.data;
+	__typeof__(dmn->dmn_kev.data) prev = dmn->dmn_kev.data;
 	kern_return_t kr, krr = 0;
 
 	// Update notification registration state.
@@ -2051,6 +3058,7 @@ _dispatch_mach_notification_set_armed(dispatch_mach_send_refs_t dmsr)
 	dispatch_muxnote_t dmn = _dispatch_unote_get_linkage(dmsr)->du_muxnote;
 	dispatch_unote_linkage_t dul;
 	if (dmn) {
+#if HAVE_MACH
 		os_atomic_store(&DISPATCH_MACH_NOTIFICATION_ARMED(dmn), 1, relaxed);
 		LIST_FOREACH(dul, &dmn->dmn_unotes_head, du_link) {
 			dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
@@ -2058,6 +3066,7 @@ _dispatch_mach_notification_set_armed(dispatch_mach_send_refs_t dmsr)
 		}
 		_dispatch_debug("machport[0x%08x]: send-possible notification armed",
 				(mach_port_name_t)dmn->dmn_kev.ident);
+#endif
 	}
 }
 
@@ -2159,20 +3168,27 @@ static void
 _dispatch_kevent_mach_msg_drain(dispatch_kevent_t ke)
 {
 	mach_msg_header_t *hdr = _dispatch_kevent_mach_msg_buf(ke);
+	mach_msg_size_t siz = _dispatch_kevent_mach_msg_size(ke);
 	dispatch_unote_t du = _dispatch_kevent_get_unote(ke);
 	pthread_priority_t msg_pp = (pthread_priority_t)(ke->ext[2] >> 32);
 	pthread_priority_t ovr_pp = (pthread_priority_t)ke->qos;
 	uint32_t flags = ke->flags;
-	mach_msg_size_t siz;
 	mach_msg_return_t kr = (mach_msg_return_t)ke->fflags;
 
-	if (unlikely(!hdr)) {
-		DISPATCH_INTERNAL_CRASH(kr, "EVFILT_MACHPORT with no message");
-	}
-	if (likely(!kr)) {
-		return _dispatch_kevent_mach_msg_recv(du, flags, hdr, msg_pp, ovr_pp);
-	}
-	if (kr != MACH_RCV_TOO_LARGE) {
+	if (unlikely(kr == MACH_RCV_TOO_LARGE)) {
+		if (unlikely(!siz)) {
+			DISPATCH_INTERNAL_CRASH(kr, "EVFILT_MACHPORT with no message size");
+		}
+	} else if (unlikely(kr == MACH_RCV_INVALID_DATA)) {
+		dispatch_assert(siz == 0);
+		DISPATCH_CLIENT_CRASH(kr, "Unable to copyout msg, possible port leak");
+	} else {
+		if (unlikely(!hdr)) {
+			DISPATCH_INTERNAL_CRASH(kr, "EVFILT_MACHPORT with no message");
+		}
+		if (likely(!kr)) {
+			return _dispatch_kevent_mach_msg_recv(du, flags, hdr, msg_pp, ovr_pp);
+		}
 		goto out;
 	}
 
@@ -2183,9 +3199,14 @@ _dispatch_kevent_mach_msg_drain(dispatch_kevent_t ke)
 		DISPATCH_INTERNAL_CRASH(ke->ext[1],
 				"EVFILT_MACHPORT with overlarge message");
 	}
+
+	mach_msg_options_t extra_options = 0;
+	if (du._du->du_fflags & MACH_MSG_STRICT_REPLY) {
+		extra_options |= MACH_MSG_STRICT_REPLY;
+	}
 	const mach_msg_option_t options = ((DISPATCH_MACH_RCV_OPTIONS |
-			MACH_RCV_TIMEOUT) & ~MACH_RCV_LARGE);
-	siz = _dispatch_kevent_mach_msg_size(ke) + DISPATCH_MACH_TRAILER_SIZE;
+			MACH_RCV_TIMEOUT | extra_options) & ~MACH_RCV_LARGE);
+	siz += DISPATCH_MACH_TRAILER_SIZE;
 	hdr = malloc(siz); // mach_msg will return TOO_LARGE if hdr/siz is NULL/0
 	kr = mach_msg(hdr, options, 0, dispatch_assume(hdr) ? siz : 0,
 			(mach_port_name_t)ke->data, MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL);
@@ -2215,6 +3236,11 @@ const dispatch_source_type_s _dispatch_source_type_mach_recv = {
 	.dst_filter     = EVFILT_MACHPORT,
 	.dst_flags      = EV_UDATA_SPECIFIC|EV_DISPATCH|EV_VANISHED,
 	.dst_fflags     = 0,
+	.dst_mask       = 0
+#ifdef MACH_RCV_SYNC_PEEK
+			| MACH_RCV_SYNC_PEEK
+#endif
+			,
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
 	.dst_strict     = false,
@@ -2224,6 +3250,7 @@ const dispatch_source_type_s _dispatch_source_type_mach_recv = {
 	.dst_merge_msg  = NULL, // never receives messages directly
 
 	.dst_per_trigger_qos = true,
+	.dst_allow_empty_mask = true,
 };
 
 static void
@@ -2237,7 +3264,7 @@ const dispatch_source_type_s _dispatch_mach_type_notification = {
 	.dst_kind       = "mach_notification",
 	.dst_filter     = EVFILT_MACHPORT,
 	.dst_flags      = EV_UDATA_SPECIFIC|EV_DISPATCH|EV_VANISHED,
-	.dst_fflags     = DISPATCH_MACH_RCV_OPTIONS,
+	.dst_fflags     = DISPATCH_MACH_RCV_OPTIONS & ~MACH_RCV_VOUCHER,
 	.dst_action     = DISPATCH_UNOTE_ACTION_PASS_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_unote_class_s),
 	.dst_strict     = false,
@@ -2254,7 +3281,7 @@ _dispatch_mach_recv_direct_merge_evt(dispatch_unote_t du, uint32_t flags,
 		uintptr_t data, pthread_priority_t pp)
 {
 	if (flags & EV_VANISHED) {
-		DISPATCH_CLIENT_CRASH(du._du->du_ident,
+		DISPATCH_CLIENT_CRASH(0,
 				"Unexpected EV_VANISHED (do not destroy random mach ports)");
 	}
 	return _dispatch_source_merge_evt(du, flags, data, pp);
@@ -2279,18 +3306,22 @@ const dispatch_source_type_s _dispatch_mach_type_recv = {
 
 DISPATCH_NORETURN
 static void
-_dispatch_mach_reply_merge_evt(dispatch_unote_t du,
-		uint32_t flags DISPATCH_UNUSED, uintptr_t data DISPATCH_UNUSED,
+_dispatch_mach_reply_merge_evt(dispatch_unote_t du DISPATCH_UNUSED,
+		uint32_t flags, uintptr_t data DISPATCH_UNUSED,
 		pthread_priority_t pp DISPATCH_UNUSED)
 {
-	DISPATCH_INTERNAL_CRASH(du._du->du_ident, "Unexpected event");
+	if (flags & EV_VANISHED) {
+		DISPATCH_CLIENT_CRASH(0,
+				"Unexpected EV_VANISHED (do not destroy random mach ports)");
+	}
+	DISPATCH_INTERNAL_CRASH(flags, "Unexpected event");
 }
 
 const dispatch_source_type_s _dispatch_mach_type_reply = {
 	.dst_kind       = "mach reply",
 	.dst_filter     = EVFILT_MACHPORT,
 	.dst_flags      = EV_UDATA_SPECIFIC|EV_DISPATCH|EV_ONESHOT|EV_VANISHED,
-	.dst_fflags     = DISPATCH_MACH_RCV_OPTIONS,
+	.dst_fflags     = DISPATCH_MACH_RCV_OPTIONS & ~MACH_RCV_VOUCHER,
 	.dst_action     = DISPATCH_UNOTE_ACTION_PASS_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_mach_reply_refs_s),
 	.dst_strict     = false,

@@ -50,7 +50,7 @@
 // exchange at the tail and setting the head/prev pointer.
 #if DISPATCH_HW_CONFIG_UP
 #define _dispatch_wait_until(c) ({ \
-		typeof(c) _c; \
+		__typeof__(c) _c; \
 		int _spins = 0; \
 		for (;;) { \
 			if (likely(_c = (c))) break; \
@@ -59,11 +59,14 @@
 		} \
 		_c; })
 #else
+#ifndef DISPATCH_WAIT_SPINS_WFE
+#define DISPATCH_WAIT_SPINS_WFE 10
+#endif
 #ifndef DISPATCH_WAIT_SPINS // <rdar://problem/15440575>
 #define DISPATCH_WAIT_SPINS 1024
 #endif
 #define _dispatch_wait_until(c) ({ \
-		typeof(c) _c; \
+		__typeof__(c) _c; \
 		int _spins = -(DISPATCH_WAIT_SPINS); \
 		for (;;) { \
 			if (likely(_c = (c))) break; \
@@ -75,6 +78,9 @@
 		} \
 		_c; })
 #endif
+
+DISPATCH_NOT_TAIL_CALLED DISPATCH_EXPORT
+void *_dispatch_wait_for_enqueuer(void **ptr);
 
 #pragma mark -
 #pragma mark _dispatch_contention_wait_until
@@ -92,6 +98,11 @@
 #define _dispatch_contention_spins() \
 		((DISPATCH_CONTENTION_SPINS_MIN) + ((DISPATCH_CONTENTION_SPINS_MAX) - \
 		(DISPATCH_CONTENTION_SPINS_MIN)) / 2)
+#elif defined(_WIN32)
+#define _dispatch_contention_spins() ({                                        \
+		unsigned int _value;                                           \
+		rand_s(&_value);                                               \
+		(_value & DISPATCH_CONTENTION_SPINS_MAX) | DISPATCH_CONTENTION_SPINS_MIN; })
 #else
 // Use randomness to prevent threads from resonating at the same
 // frequency and permanently contending.
@@ -158,7 +169,24 @@
 		SWITCH_OPTION_WAIT, (((u)-1)/1000)+1)
 #endif
 #else
+#if defined(_WIN32)
+DISPATCH_INLINE void
+_dispatch_contention_usleep(uint64_t useconds) {
+	static BOOL bQPFExecuted = FALSE;
+	static LARGE_INTEGER liFreq;
+	LARGE_INTEGER liStart, liNow;
+
+	if (!bQPFExecuted)
+		bQPFExecuted = QueryPerformanceFrequency(&liFreq);
+
+	QueryPerformanceCounter(&liStart);
+	do {
+		QueryPerformanceCounter(&liNow);
+	} while ((liNow.QuadPart - liStart.QuadPart) / (float)liFreq.QuadPart * 1000 * 1000 < useconds);
+}
+#else
 #define _dispatch_contention_usleep(u) usleep((u))
+#endif
 #endif // HAVE_MACH
 
 #endif // __DISPATCH_SHIMS_YIELD__

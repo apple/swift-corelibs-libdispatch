@@ -86,18 +86,37 @@ _os_object_retain_with_resurrect(_os_object_t obj)
 	return obj;
 }
 
-DISPATCH_NOINLINE
-void
-_os_object_release(_os_object_t obj)
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_os_object_release_inline(_os_object_t obj)
 {
 	int xref_cnt = _os_object_xrefcnt_dec(obj);
 	if (likely(xref_cnt >= 0)) {
-		return;
+		return false;
 	}
 	if (unlikely(xref_cnt < -1)) {
 		_OS_OBJECT_CLIENT_CRASH("Over-release of an object");
 	}
-	return _os_object_xref_dispose(obj);
+	return true;
+}
+
+
+DISPATCH_NOINLINE
+void
+_os_object_release(_os_object_t obj)
+{
+	if (_os_object_release_inline(obj)) {
+		return _os_object_xref_dispose(obj);
+	}
+}
+
+DISPATCH_NOINLINE
+void
+_os_object_release_without_xref_dispose(_os_object_t obj)
+{
+	if (_os_object_release_inline(obj)) {
+		return _os_object_release_internal(obj);
+	}
 }
 
 bool
@@ -183,32 +202,37 @@ void
 dispatch_release(dispatch_object_t dou)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_release, dou);
-	_os_object_release(dou._os_obj);
+	if (_os_object_release_inline(dou._os_obj)) {
+		// bypass -_xref_dispose to avoid the dynamic dispatch
+		_os_object_xrefcnt_dispose_barrier(dou._os_obj);
+		_dispatch_xref_dispose(dou);
+	}
 }
 
-#if !USE_OBJC
 void
 _dispatch_xref_dispose(dispatch_object_t dou)
 {
 	if (dx_cluster(dou._do) == _DISPATCH_QUEUE_CLUSTER) {
 		_dispatch_queue_xref_dispose(dou._dq);
-	}
-	switch (dx_type(dou._do)) {
-	case DISPATCH_SOURCE_KEVENT_TYPE:
-		_dispatch_source_xref_dispose(dou._ds);
-		break;
+		switch (dx_type(dou._do)) {
+		case DISPATCH_SOURCE_KEVENT_TYPE:
+			_dispatch_source_xref_dispose(dou._ds);
+			break;
+		case DISPATCH_CHANNEL_TYPE:
+			_dispatch_channel_xref_dispose(dou._dch);
+			break;
 #if HAVE_MACH
-	case DISPATCH_MACH_CHANNEL_TYPE:
-		_dispatch_mach_xref_dispose(dou._dm);
-		break;
+		case DISPATCH_MACH_CHANNEL_TYPE:
+			_dispatch_mach_xref_dispose(dou._dm);
+			break;
 #endif
-	case DISPATCH_QUEUE_RUNLOOP_TYPE:
-		_dispatch_runloop_queue_xref_dispose(dou._dl);
-		break;
+		case DISPATCH_QUEUE_RUNLOOP_TYPE:
+			_dispatch_runloop_queue_xref_dispose(dou._dl);
+			break;
+		}
 	}
 	return _dispatch_release_tailcall(dou._os_obj);
 }
-#endif
 
 void
 _dispatch_dispose(dispatch_object_t dou)
@@ -303,7 +327,7 @@ dispatch_activate(dispatch_object_t dou)
 		return _dispatch_workloop_activate(dou._dwl);
 	}
 	if (dx_cluster(dou._do) == _DISPATCH_QUEUE_CLUSTER) {
-		return _dispatch_lane_resume(dou._dl, true);
+		return _dispatch_lane_resume(dou._dl, DISPATCH_ACTIVATE);
 	}
 }
 
@@ -329,7 +353,7 @@ dispatch_resume(dispatch_object_t dou)
 		return;
 	}
 	if (dx_cluster(dou._do) == _DISPATCH_QUEUE_CLUSTER) {
-		_dispatch_lane_resume(dou._dl, false);
+		_dispatch_lane_resume(dou._dl, DISPATCH_RESUME);
 	}
 }
 

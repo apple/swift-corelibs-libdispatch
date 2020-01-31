@@ -20,14 +20,6 @@
 
 #include "internal.h"
 
-#if !defined(VOUCHER_EXPORT_PERSONA_SPI)
-#if TARGET_OS_IPHONE
-#define VOUCHER_EXPORT_PERSONA_SPI 1
-#else
-#define VOUCHER_EXPORT_PERSONA_SPI 0
-#endif
-#endif
-
 #ifndef PERSONA_ID_NONE
 #define PERSONA_ID_NONE ((uid_t)-1)
 #endif
@@ -157,7 +149,7 @@ voucher_release(voucher_t voucher)
 	return _voucher_release(voucher);
 }
 
-void
+void DISPATCH_TSD_DTOR_CC
 _voucher_thread_cleanup(void *voucher)
 {
 	// when a thread exits and has a voucher left, the kernel
@@ -804,12 +796,9 @@ _voucher_dispose(voucher_t voucher)
 	voucher->v_recipe_extra_size = 0;
 	voucher->v_recipe_extra_offset = 0;
 #endif
+#if !USE_OBJC
 	return _os_object_dealloc((_os_object_t)voucher);
-}
-
-static void
-_voucher_activity_debug_channel_barrier_nop(void *ctxt DISPATCH_UNUSED)
-{
+#endif // !USE_OBJC
 }
 
 void
@@ -836,9 +825,6 @@ _voucher_activity_debug_channel_init(void)
 				DISPATCH_TARGET_QUEUE_DEFAULT, NULL, handler);
 		dm->dm_recv_refs->du_can_be_wlh = false; // 29906118
 		dispatch_mach_connect(dm, dbgp, MACH_PORT_NULL, NULL);
-		// will force the DISPATCH_MACH_CONNECTED event
-		dispatch_mach_send_barrier_f(dm, NULL,
-				_voucher_activity_debug_channel_barrier_nop);
 		_voucher_activity_debug_channel = dm;
 	}
 }
@@ -857,7 +843,142 @@ _voucher_atfork_child(void)
 	_firehose_task_buffer = NULL; // firehose buffer is VM_INHERIT_NONE
 }
 
-#if VOUCHER_EXPORT_PERSONA_SPI
+voucher_t
+voucher_copy_with_persona_mach_voucher(mach_voucher_t persona_mach_voucher)
+{
+#if !VOUCHER_USE_PERSONA
+	(void)persona_mach_voucher;
+	return voucher_copy();
+#else // !VOUCHER_USE_PERSONA
+	if (!persona_mach_voucher) return voucher_copy();
+	kern_return_t kr;
+	mach_voucher_t okv = MACH_VOUCHER_NULL, kv;
+	voucher_t ov = _voucher_get();
+	if (ov) {
+		okv = ov->v_ipc_kvoucher ? ov->v_ipc_kvoucher : ov->v_kvoucher;
+	}
+	const mach_voucher_attr_recipe_data_t bank_redeem_recipe[] = {
+		[0] = {
+			.key = MACH_VOUCHER_ATTR_KEY_ALL,
+			.command = MACH_VOUCHER_ATTR_COPY,
+			.previous_voucher = okv,
+		},
+		[1] = {
+			.key = MACH_VOUCHER_ATTR_KEY_BANK,
+			.command = MACH_VOUCHER_ATTR_REDEEM,
+			.previous_voucher = persona_mach_voucher,
+		},
+	};
+	kr = _voucher_create_mach_voucher(bank_redeem_recipe,
+			sizeof(bank_redeem_recipe), &kv);
+	if (dispatch_assume_zero(kr)) {
+		if (kr == KERN_INVALID_CAPABILITY) {
+			// bank attribute redeem failed
+			return VOUCHER_INVALID;
+		}
+		kv = MACH_VOUCHER_NULL;
+	}
+	if (kv == okv) {
+		if (kv) _voucher_dealloc_mach_voucher(kv);
+		return _voucher_retain(ov);
+	}
+	voucher_t v = _voucher_find_and_retain(kv);
+	if (v && (!ov || ov->v_ipc_kvoucher)) {
+		_dispatch_voucher_debug("kvoucher[0x%08x] find with persona "
+				"from voucher[%p]", v, kv, ov);
+		_voucher_dealloc_mach_voucher(kv);
+		return v;
+	}
+	voucher_t kvbase = v;
+	voucher_fields_t ignore_fields = VOUCHER_FIELD_KVOUCHER;
+	v = _voucher_clone(ov, ignore_fields);
+	v->v_kvoucher = kv;
+	if (!ov || ov->v_ipc_kvoucher) {
+		v->v_ipc_kvoucher = kv;
+		_voucher_insert(v);
+	} else if (kvbase) {
+		v->v_kvbase = kvbase;
+		_voucher_dealloc_mach_voucher(kv); // borrow base reference
+	}
+	if (!kvbase) {
+		_dispatch_voucher_debug("kvoucher[0x%08x] create with persona "
+				"from voucher[%p]", v, kv, ov);
+	}
+	_voucher_trace(CREATE, v, v->v_kvoucher, v->v_activity);
+	return v;
+#endif // VOUCHER_USE_PERSONA
+}
+
+kern_return_t
+mach_voucher_persona_self(mach_voucher_t *persona_mach_voucher)
+{
+	mach_voucher_t bkv = MACH_VOUCHER_NULL;
+	kern_return_t kr = KERN_NOT_SUPPORTED;
+#if VOUCHER_USE_PERSONA
+	const mach_voucher_attr_recipe_data_t bank_send_recipe[] = {
+		[0] = {
+			.key = MACH_VOUCHER_ATTR_KEY_BANK,
+			.command = MACH_VOUCHER_ATTR_BANK_CREATE,
+		},
+		[1] = {
+			.key = MACH_VOUCHER_ATTR_KEY_BANK,
+			.command = MACH_VOUCHER_ATTR_SEND_PREPROCESS,
+		},
+	};
+	kr = _voucher_create_mach_voucher(bank_send_recipe,
+			sizeof(bank_send_recipe), &bkv);
+	if (dispatch_assume_zero(kr)) {
+		bkv = MACH_VOUCHER_NULL;
+	}
+#endif // VOUCHER_USE_PERSONA
+	*persona_mach_voucher = bkv;
+	return kr;
+}
+
+kern_return_t
+mach_voucher_persona_for_originator(uid_t persona_id,
+	mach_voucher_t originator_persona_mach_voucher,
+	uint64_t originator_unique_pid, mach_voucher_t *persona_mach_voucher)
+{
+	mach_voucher_t bkv = MACH_VOUCHER_NULL;
+	kern_return_t kr = KERN_NOT_SUPPORTED;
+#if VOUCHER_USE_PERSONA
+	struct persona_modify_info modify_info = {
+		.persona_id = persona_id,
+		.unique_pid = originator_unique_pid,
+	};
+	size_t bank_modify_recipe_size = _voucher_mach_recipe_size(0) +
+			_voucher_mach_recipe_size(sizeof(modify_info));
+	mach_voucher_attr_recipe_t bank_modify_recipe =
+			(mach_voucher_attr_recipe_t)alloca(bank_modify_recipe_size);
+
+	bzero((void *)bank_modify_recipe, bank_modify_recipe_size);
+
+	bank_modify_recipe[0] = (mach_voucher_attr_recipe_data_t){
+		.key = MACH_VOUCHER_ATTR_KEY_BANK,
+		.command = MACH_VOUCHER_ATTR_COPY,
+		.previous_voucher = originator_persona_mach_voucher,
+	};
+	bank_modify_recipe[1] = (mach_voucher_attr_recipe_data_t){
+		.key = MACH_VOUCHER_ATTR_KEY_BANK,
+		.command = MACH_VOUCHER_ATTR_BANK_MODIFY_PERSONA,
+		.content_size = sizeof(modify_info),
+	};
+	_dispatch_memappend(bank_modify_recipe[1].content, &modify_info);
+	kr = _voucher_create_mach_voucher(bank_modify_recipe,
+			bank_modify_recipe_size, &bkv);
+	if (dispatch_assume_zero(kr)) {
+		bkv = MACH_VOUCHER_NULL;
+	}
+#else // VOUCHER_USE_PERSONA
+	(void)persona_id;
+	(void)originator_persona_mach_voucher;
+	(void)originator_unique_pid;
+#endif // VOUCHER_USE_PERSONA
+	*persona_mach_voucher = bkv;
+	return kr;
+}
+
 #if VOUCHER_USE_PERSONA
 static kern_return_t
 _voucher_get_current_persona_token(struct persona_token *token)
@@ -886,7 +1007,35 @@ _voucher_get_current_persona_token(struct persona_token *token)
 	}
 	return kr;
 }
-#endif
+
+static kern_return_t
+_voucher_get_current_persona_id(uid_t *persona_id)
+{
+	kern_return_t kr = KERN_FAILURE;
+	voucher_t v = _voucher_get();
+
+	if (v && v->v_kvoucher) {
+		mach_voucher_t kv = v->v_ipc_kvoucher ?: v->v_kvoucher;
+		mach_voucher_attr_content_t kvc_in = NULL;
+		mach_voucher_attr_content_size_t kvc_in_size = 0;
+		mach_voucher_attr_content_t kvc_out =
+			(mach_voucher_attr_content_t)persona_id;
+		mach_voucher_attr_content_size_t kvc_out_size = sizeof(*persona_id);
+
+		kr = mach_voucher_attr_command(kv, MACH_VOUCHER_ATTR_KEY_BANK,
+				BANK_PERSONA_ID, kvc_in, kvc_in_size,
+				kvc_out, &kvc_out_size);
+		if (kr != KERN_NOT_SUPPORTED
+				// Voucher doesn't have a persona id
+				&& kr != KERN_INVALID_VALUE
+				// Kernel doesn't understand BANK_PERSONA_ID
+				&& kr != KERN_INVALID_ARGUMENT) {
+			(void)dispatch_assume_zero(kr);
+		}
+	}
+	return kr;
+}
+#endif // VOUCHER_USE_PERSONA
 
 uid_t
 voucher_get_current_persona(void)
@@ -894,11 +1043,10 @@ voucher_get_current_persona(void)
 	uid_t persona_id = PERSONA_ID_NONE;
 
 #if VOUCHER_USE_PERSONA
-	struct persona_token token;
 	int err;
 
-	if (_voucher_get_current_persona_token(&token) == KERN_SUCCESS) {
-		return token.originator.persona_id;
+	if (_voucher_get_current_persona_id(&persona_id) == KERN_SUCCESS) {
+		return persona_id;
 	}
 
 	// falling back to the process persona if there is no adopted voucher
@@ -908,7 +1056,7 @@ voucher_get_current_persona(void)
 			(void)dispatch_assume_zero(err);
 		}
 	}
-#endif
+#endif // VOUCHER_USE_PERSONA
 	return persona_id;
 }
 
@@ -921,9 +1069,9 @@ voucher_get_current_persona_originator_info(struct proc_persona_info *persona_in
 		*persona_info = token.originator;
 		return 0;
 	}
-#else
+#else // VOUCHER_USE_PERSONA
 	(void)persona_info;
-#endif
+#endif // VOUCHER_USE_PERSONA
 	return -1;
 }
 
@@ -936,12 +1084,11 @@ voucher_get_current_persona_proximate_info(struct proc_persona_info *persona_inf
 		*persona_info = token.proximate;
 		return 0;
 	}
-#else
+#else // VOUCHER_USE_PERSONA
 	(void)persona_info;
-#endif
+#endif // VOUCHER_USE_PERSONA
 	return -1;
 }
-#endif
 
 #pragma mark -
 #pragma mark _voucher_init
@@ -1143,6 +1290,16 @@ voucher_activity_get_logging_preferences(size_t *length)
 	}
 
 	return firehose_buffer_get_logging_prefs(_firehose_task_buffer, length);
+}
+
+bool
+voucher_activity_should_send_strings(void)
+{
+	if (unlikely(_voucher_activity_disabled())) {
+		return false;
+	}
+
+	return firehose_buffer_should_send_strings(_firehose_task_buffer);
 }
 
 void *
@@ -1643,7 +1800,7 @@ voucher_decrement_importance_count4CF(voucher_t v)
 	(void)v;
 }
 
-void
+void DISPATCH_TSD_DTOR_CC
 _voucher_thread_cleanup(void *voucher)
 {
 	(void)voucher;
@@ -1715,7 +1872,30 @@ _voucher_dispose(voucher_t voucher)
 	(void)voucher;
 }
 
-#if VOUCHER_EXPORT_PERSONA_SPI
+voucher_t
+voucher_copy_with_persona_mach_voucher(mach_voucher_t persona_mach_voucher)
+{
+	(void)persona_mach_voucher;
+	return NULL;
+}
+
+kern_return_t
+mach_voucher_persona_self(mach_voucher_t *persona_mach_voucher)
+{
+	(void)persona_mach_voucher;
+	return KERN_NOT_SUPPORTED;
+}
+
+kern_return_t
+mach_voucher_persona_for_originator(uid_t persona_id,
+	mach_voucher_t originator_persona_mach_voucher,
+	uint64_t originator_unique_pid, mach_voucher_t *persona_mach_voucher)
+{
+	(void)persona_id; (void)originator_persona_mach_voucher;
+	(void)originator_unique_pid; (void)persona_mach_voucher;
+	return KERN_NOT_SUPPORTED;
+}
+
 uid_t
 voucher_get_current_persona(void)
 {
@@ -1735,7 +1915,6 @@ voucher_get_current_persona_proximate_info(struct proc_persona_info *persona_inf
 	(void)persona_info;
 	return -1;
 }
-#endif // VOUCHER_EXPORT_PERSONA_SPI
 
 void
 _voucher_activity_debug_channel_init(void)

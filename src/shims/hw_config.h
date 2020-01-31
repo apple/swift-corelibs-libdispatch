@@ -50,8 +50,6 @@
 #define DISPATCH_CACHELINE_ALIGN \
 		__attribute__((__aligned__(DISPATCH_CACHELINE_SIZE)))
 
-#if !TARGET_OS_WIN32
-
 typedef enum {
 	_dispatch_hw_config_logical_cpus,
 	_dispatch_hw_config_physical_cpus,
@@ -122,6 +120,64 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 			return (uint32_t)sysconf(_SC_NPROCESSORS_ONLN);
 		}
 	}
+#elif defined(_WIN32)
+	PSYSTEM_LOGICAL_PROCESSOR_INFORMATION slpiInfo = NULL;
+	PSYSTEM_LOGICAL_PROCESSOR_INFORMATION slpiCurrent = NULL;
+	DWORD dwProcessorLogicalCount = 0;
+	DWORD dwProcessorPackageCount = 0;
+	DWORD dwProcessorCoreCount = 0;
+	DWORD dwSize = 0;
+
+	while (true) {
+		DWORD dwResult;
+
+		if (GetLogicalProcessorInformation(slpiInfo, &dwSize))
+			break;
+
+		dwResult = GetLastError();
+
+		if (slpiInfo)
+			free(slpiInfo);
+
+		if (dwResult == ERROR_INSUFFICIENT_BUFFER) {
+			slpiInfo = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION)malloc(dwSize);
+			dispatch_assert(slpiInfo);
+		} else {
+			slpiInfo = NULL;
+			dwSize = 0;
+			break;
+		}
+	}
+
+	for (slpiCurrent = slpiInfo;
+	     dwSize >= sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+	     slpiCurrent++, dwSize -= sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION)) {
+		switch (slpiCurrent->Relationship) {
+		case RelationProcessorCore:
+			++dwProcessorCoreCount;
+			dwProcessorLogicalCount += __popcnt64(slpiCurrent->ProcessorMask);
+			break;
+		case RelationProcessorPackage:
+			++dwProcessorPackageCount;
+			break;
+		case RelationNumaNode:
+		case RelationCache:
+		case RelationGroup:
+		case RelationAll:
+			break;
+		}
+	}
+
+	free(slpiInfo);
+
+	switch (c) {
+	case _dispatch_hw_config_logical_cpus:
+		return dwProcessorLogicalCount;
+	case _dispatch_hw_config_physical_cpus:
+		return dwProcessorPackageCount;
+	case _dispatch_hw_config_active_cpus:
+		return dwProcessorCoreCount;
+	}
 #else
 	const char *name = NULL;
 	int r;
@@ -166,32 +222,5 @@ _dispatch_hw_config_init(void)
 #undef dispatch_hw_config_init
 
 #endif // DISPATCH_HAVE_HW_CONFIG_COMMPAGE
-
-#else // TARGET_OS_WIN32
-
-static inline long
-_dispatch_count_bits(unsigned long value)
-{
-	long bits = 0;
-	while (value) {
-		bits += (value & 1);
-		value = value >> 1;
-	}
-	return bits;
-}
-
-static inline uint32_t
-_dispatch_get_ncpus(void)
-{
-	uint32_t val;
-	DWORD_PTR procmask, sysmask;
-	if (GetProcessAffinityMask(GetCurrentProcess(), &procmask, &sysmask)) {
-		val = _dispatch_count_bits(procmask);
-	} else {
-		val = 1;
-	}
-	return val;
-}
-#endif // TARGET_OS_WIN32
 
 #endif /* __DISPATCH_SHIMS_HW_CONFIG__ */

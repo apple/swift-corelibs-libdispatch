@@ -61,6 +61,9 @@
 #if !defined(DISPATCH_LAYOUT_SPI) && TARGET_OS_MAC
 #define DISPATCH_LAYOUT_SPI 1
 #endif
+#if !defined(DISPATCH_CHANNEL_SPI)
+#define DISPATCH_CHANNEL_SPI 1
+#endif
 
 #if __has_include(<mach-o/dyld_priv.h>)
 #include <mach-o/dyld_priv.h>
@@ -138,6 +141,7 @@ typedef union {
 	struct dispatch_queue_global_s *_dgq;
 	struct dispatch_queue_pthread_root_s *_dpq;
 	struct dispatch_source_s *_ds;
+	struct dispatch_channel_s *_dch;
 	struct dispatch_mach_s *_dm;
 #ifdef __OBJC__
 	id<OS_dispatch_queue> _objc_dq; // unsafe cast for the sake of object.m
@@ -153,6 +157,7 @@ typedef union {
 	struct dispatch_queue_global_s *_dgq;
 	struct dispatch_queue_pthread_root_s *_dpq;
 	struct dispatch_source_s *_ds;
+	struct dispatch_channel_s *_dch;
 	struct dispatch_mach_s *_dm;
 	dispatch_lane_class_t _dlu;
 #ifdef __OBJC__
@@ -168,6 +173,7 @@ typedef union {
 	struct dispatch_queue_attr_s *_dqa;
 	struct dispatch_group_s *_dg;
 	struct dispatch_source_s *_ds;
+	struct dispatch_channel_s *_dch;
 	struct dispatch_mach_s *_dm;
 	struct dispatch_mach_msg_s *_dmsg;
 	struct dispatch_semaphore_s *_dsema;
@@ -206,23 +212,23 @@ upcast(dispatch_object_t dou)
 #include <dispatch/semaphore.h>
 #include <dispatch/once.h>
 #include <dispatch/data.h>
-#if !TARGET_OS_WIN32
 #include <dispatch/io.h>
-#endif
+#include <dispatch/workloop.h>
 
 /* private.h must be included last to avoid picking up installed headers. */
+#if !defined(_WIN32)
 #include <pthread.h>
+#endif
 #include "os/object_private.h"
 #include "queue_private.h"
+#include "channel_private.h"
 #include "workloop_private.h"
 #include "source_private.h"
 #include "mach_private.h"
 #include "data_private.h"
 #include "os/voucher_private.h"
 #include "os/voucher_activity_private.h"
-#if !TARGET_OS_WIN32
 #include "io_private.h"
-#endif
 #include "layout_private.h"
 #include "benchmark.h"
 #include "private.h"
@@ -255,7 +261,7 @@ upcast(dispatch_object_t dou)
 #include <mach/mach_sync_ipc.h>
 #endif
 #endif /* HAVE_MACH */
-#if __has_include(<os/reason_private.h>)
+#if __has_include(<os/reason_private.h>) && __has_include(<os/variant_private.h>)
 #define HAVE_OS_FAULT_WITH_PAYLOAD 1
 #include <os/reason_private.h>
 #include <os/variant_private.h>
@@ -268,9 +274,11 @@ upcast(dispatch_object_t dou)
 
 #include <sys/stat.h>
 
-#if !TARGET_OS_WIN32
-#include <sys/mount.h>
+#if defined(_WIN32)
+#include <time.h>
+#else
 #include <sys/queue.h>
+#include <sys/mount.h>
 #ifdef __ANDROID__
 #include <linux/sysctl.h>
 #else
@@ -306,10 +314,17 @@ upcast(dispatch_object_t dou)
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#if defined(_WIN32)
+#define _CRT_RAND_S
+#endif
 #include <stdlib.h>
 #include <string.h>
-#if HAVE_UNISTD_H
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
+#endif
+#if defined(_WIN32)
+#include <io.h>
+#include <crtdbg.h>
 #endif
 
 /* More #includes at EOF (dependent on the contents of internal.h) ... */
@@ -318,7 +333,7 @@ __BEGIN_DECLS
 
 /* SPI for Libsystem-internal use */
 DISPATCH_EXPORT DISPATCH_NOTHROW void libdispatch_init(void);
-#if !TARGET_OS_WIN32
+#if !defined(_WIN32)
 DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_prepare(void);
 DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_parent(void);
 DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
@@ -354,14 +369,14 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #define DISPATCH_DEBUG_QOS DISPATCH_DEBUG
 #endif
 
-#if __GNUC__
+#if defined(__GNUC__) || defined(__clang__)
 #define DISPATCH_NOINLINE __attribute__((__noinline__))
 #define DISPATCH_USED __attribute__((__used__))
 #define DISPATCH_UNUSED __attribute__((__unused__))
 #define DISPATCH_WEAK __attribute__((__weak__))
 #define DISPATCH_OVERLOADABLE __attribute__((__overloadable__))
-#define DISPATCH_PACKED __attribute__((__packed__))
 #if DISPATCH_DEBUG
+#define DISPATCH_PACKED __attribute__((__packed__))
 #define DISPATCH_ALWAYS_INLINE_NDEBUG
 #else
 #define DISPATCH_ALWAYS_INLINE_NDEBUG __attribute__((__always_inline__))
@@ -435,11 +450,11 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 
 #if DISPATCH_DEBUG
 // sys/queue.h debugging
-#if defined(__linux__)
-#define QUEUE_MACRO_DEBUG 1
-#else
 #undef TRASHIT
 #define TRASHIT(x) do {(x) = (void *)-1;} while (0)
+#else // DISPATCH_DEBUG
+#ifndef TRASHIT
+#define TRASHIT(x)
 #endif
 #endif // DISPATCH_DEBUG
 #define _LIST_TRASH_ENTRY(elm, field) do { \
@@ -459,32 +474,32 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #define DISPATCH_MODE_NO_FAULTS (1U << 1)
 extern uint8_t _dispatch_mode;
 
-DISPATCH_EXPORT DISPATCH_NOINLINE
+DISPATCH_EXPORT DISPATCH_NOINLINE DISPATCH_COLD
 void _dispatch_bug(size_t line, long val);
 
 #if HAVE_MACH
-DISPATCH_NOINLINE
+DISPATCH_NOINLINE DISPATCH_COLD
 void _dispatch_bug_mach_client(const char *msg, mach_msg_return_t kr);
 #endif // HAVE_MACH
 
 struct dispatch_unote_class_s;
 
-DISPATCH_NOINLINE
+DISPATCH_NOINLINE DISPATCH_COLD
 void _dispatch_bug_kevent_client(const char *msg, const char *filter,
 		const char *operation, int err, uint64_t ident, uint64_t udata,
 		struct dispatch_unote_class_s *du);
 
-DISPATCH_NOINLINE
+DISPATCH_NOINLINE DISPATCH_COLD
 void _dispatch_bug_kevent_vanished(struct dispatch_unote_class_s *du);
 
-DISPATCH_NOINLINE
+DISPATCH_NOINLINE DISPATCH_COLD
 void _dispatch_bug_deprecated(const char *msg);
 
-DISPATCH_NOINLINE DISPATCH_NORETURN
+DISPATCH_NOINLINE DISPATCH_NORETURN DISPATCH_COLD
 void _dispatch_abort(size_t line, long val);
 
 #if !defined(DISPATCH_USE_OS_DEBUG_LOG) && DISPATCH_DEBUG
-#if __has_include(<os/debug_private.h>)
+#if __has_include(<os/debug_private.h>) && !TARGET_OS_DRIVERKIT
 #define DISPATCH_USE_OS_DEBUG_LOG 1
 #include <os/debug_private.h>
 #endif
@@ -497,7 +512,7 @@ void _dispatch_abort(size_t line, long val);
 #endif
 #endif // DISPATCH_USE_SIMPLE_ASL
 
-#if !DISPATCH_USE_SIMPLE_ASL && !DISPATCH_USE_OS_DEBUG_LOG && !TARGET_OS_WIN32
+#if !DISPATCH_USE_SIMPLE_ASL && !DISPATCH_USE_OS_DEBUG_LOG && !defined(_WIN32)
 #include <syslog.h>
 #endif
 
@@ -514,7 +529,8 @@ void _dispatch_abort(size_t line, long val);
 #if DISPATCH_USE_OS_DEBUG_LOG
 #define _dispatch_log(msg, ...) os_debug_log("libdispatch", msg, ## __VA_ARGS__)
 #else
-DISPATCH_EXPORT DISPATCH_NOINLINE __attribute__((__format__(__printf__,1,2)))
+DISPATCH_EXPORT DISPATCH_NOINLINE DISPATCH_COLD
+__attribute__((__format__(__printf__,1,2)))
 void _dispatch_log(const char *msg, ...);
 #endif // DISPATCH_USE_OS_DEBUG_LOG
 
@@ -571,7 +587,7 @@ _dispatch_assume(long e, size_t line) DISPATCH_STATIC_ASSERT_IF(!e)
 	if (unlikely(!e)) _dispatch_bug(line, e);
 }
 #define dispatch_assume(e) \
-		({ typeof(e) _e = (e); _dispatch_assume((long)_e, __LINE__); _e; })
+		({ __typeof__(e) _e = (e); _dispatch_assume((long)_e, __LINE__); _e; })
 
 /*
  * A lot of API return zero upon success and not-zero on fail. Let's capture
@@ -584,7 +600,7 @@ _dispatch_assume_zero(long e, size_t line) DISPATCH_STATIC_ASSERT_IF(e)
 	if (unlikely(e)) _dispatch_bug(line, e);
 }
 #define dispatch_assume_zero(e) \
-		({ typeof(e) _e = (e); _dispatch_assume_zero((long)_e, __LINE__); _e; })
+		({ __typeof__(e) _e = (e); _dispatch_assume_zero((long)_e, __LINE__); _e; })
 
 /* Make sure the debug statments don't get too stale */
 #define _dispatch_debug(x, args...) do { \
@@ -610,7 +626,7 @@ _dispatch_object_debug(dispatch_object_t object, const char *message, ...);
 
 void *_dispatch_Block_copy(void *block);
 #if __GNUC__
-#define _dispatch_Block_copy(x) ((typeof(x))_dispatch_Block_copy(x))
+#define _dispatch_Block_copy(x) ((__typeof__(x))_dispatch_Block_copy(x))
 #endif
 void _dispatch_call_block_and_release(void *block);
 #endif /* __BLOCKS__ */
@@ -622,7 +638,9 @@ void *_dispatch_calloc(size_t num_items, size_t size);
 const char *_dispatch_strdup_if_mutable(const char *str);
 void _dispatch_vtable_init(void);
 char *_dispatch_get_build(void);
+#if !defined(_WIN32)
 int _dispatch_sigmask(void);
+#endif
 
 uint64_t _dispatch_timeout(dispatch_time_t when);
 uint64_t _dispatch_time_nanoseconds_since_epoch(dispatch_time_t when);
@@ -675,9 +693,18 @@ _dispatch_fork_becomes_unsafe(void)
 #endif
 #endif // !defined(HAVE_PTHREAD_WORKQUEUE_KEVENT)
 
+#ifndef HAVE_PTHREAD_WORKQUEUE_WORKLOOP
+#if HAVE_PTHREAD_WORKQUEUE_KEVENT && defined(WORKQ_FEATURE_WORKLOOP) && \
+		defined(KEVENT_FLAG_WORKLOOP) && \
+		DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101300)
+#define HAVE_PTHREAD_WORKQUEUE_WORKLOOP 1
+#else
+#define HAVE_PTHREAD_WORKQUEUE_WORKLOOP 0
+#endif
+#endif // !defined(HAVE_PTHREAD_WORKQUEUE_WORKLOOP)
 
 #ifndef DISPATCH_USE_WORKQUEUE_NARROWING
-#if HAVE_PTHREAD_WORKQUEUES && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(109900)
+#if HAVE_PTHREAD_WORKQUEUES && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101300)
 #define DISPATCH_USE_WORKQUEUE_NARROWING 1
 #else
 #define DISPATCH_USE_WORKQUEUE_NARROWING 0
@@ -722,6 +749,29 @@ _dispatch_fork_becomes_unsafe(void)
 #endif
 #endif // !defined(DISPATCH_USE_MGR_THREAD)
 
+#ifndef DISPATCH_USE_KEVENT_WORKLOOP
+#if HAVE_PTHREAD_WORKQUEUE_WORKLOOP
+#define DISPATCH_USE_KEVENT_WORKLOOP 1
+#else
+#define DISPATCH_USE_KEVENT_WORKLOOP 0
+#endif
+#endif // !defined(DISPATCH_USE_KEVENT_WORKLOOP)
+
+#ifndef DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+#if DISPATCH_USE_KEVENT_WORKLOOP && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(109900)
+#define DISPATCH_USE_WL_SYNC_IPC_HANDOFF 1
+#else
+#define DISPATCH_USE_WL_SYNC_IPC_HANDOFF 0
+#endif
+#endif // !defined DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+
+#ifndef DISPATCH_USE_KEVENT_SETUP
+#if DISPATCH_USE_KEVENT_WORKLOOP && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(109900)
+#define DISPATCH_USE_KEVENT_SETUP 1
+#else
+#define DISPATCH_USE_KEVENT_SETUP 0
+#endif
+#endif // !defined(DISPATCH_USE_KEVENT_SETUP)
 
 #ifdef EVFILT_MEMORYSTATUS
 #ifndef DISPATCH_USE_MEMORYSTATUS
@@ -748,7 +798,7 @@ extern bool _dispatch_memory_warn;
 #endif
 
 #if defined(MACH_SEND_SYNC_OVERRIDE) && defined(MACH_RCV_SYNC_WAIT) && \
-		DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(109900) && \
+		DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101300) && \
 		!defined(DISPATCH_USE_MACH_SEND_SYNC_OVERRIDE)
 #define DISPATCH_USE_MACH_SEND_SYNC_OVERRIDE 1
 #endif
@@ -939,7 +989,7 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 
 #ifndef VOUCHER_USE_PERSONA
 #if VOUCHER_USE_MACH_VOUCHER && defined(BANK_PERSONA_TOKEN) && \
-		TARGET_OS_IOS && !TARGET_OS_SIMULATOR
+		!TARGET_OS_SIMULATOR
 #define VOUCHER_USE_PERSONA 1
 #else
 #define VOUCHER_USE_PERSONA 0
@@ -958,9 +1008,19 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 #define _dispatch_hardware_crash() \
 		__asm__(""); __builtin_trap() // <rdar://problem/17464981>
 
+#ifdef _WIN32
+#define _dispatch_set_crash_log_cause_and_message(ac, msg) do { \
+		(void)(ac); \
+		_dispatch_set_crash_log_message_dynamic((msg)); \
+	} while (0)
+#define _dispatch_set_crash_log_message(msg) \
+		_dispatch_set_crash_log_message_dynamic((msg))
+#define _dispatch_set_crash_log_message_dynamic(msg) _RPTF0(_CRT_ASSERT, (msg))
+#else  // _WIN32
 #define _dispatch_set_crash_log_cause_and_message(ac, msg) ((void)(ac))
 #define _dispatch_set_crash_log_message(msg)
 #define _dispatch_set_crash_log_message_dynamic(msg)
+#endif // _WIN32
 
 #if HAVE_MACH
 // MIG_REPLY_MISMATCH means either:
@@ -1003,6 +1063,18 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 		_dispatch_hardware_crash(); \
 	} while (0)
 
+#if defined(_WIN32)
+#define _dispatch_client_assert_fail(fmt, ...)  do { \
+		char *_msg = NULL; \
+		int _length = _scprintf("%s" fmt, DISPATCH_ASSERTION_FAILED_MESSAGE, ##__VA_ARGS__); \
+		dispatch_assert(_length != -1); \
+		_msg = (char *)malloc((unsigned)_length + 1); \
+		dispatch_assert(_msg); \
+		snprintf(_msg, (unsigned)_length + 1, "%s" fmt, DISPATCH_ASSERTION_FAILED_MESSAGE, ##__VA_ARGS__); \
+		_dispatch_assert_crash(_msg); \
+		free(_msg); \
+	} while (0)
+#else
 #define _dispatch_client_assert_fail(fmt, ...)  do { \
 		char *_msg = NULL; \
 		asprintf(&_msg, "%s" fmt, DISPATCH_ASSERTION_FAILED_MESSAGE, \
@@ -1010,10 +1082,11 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 		_dispatch_assert_crash(_msg); \
 		free(_msg); \
 	} while (0)
+#endif
 
 #define DISPATCH_NO_VOUCHER ((voucher_t)(void*)~0ul)
 #define DISPATCH_NO_PRIORITY ((pthread_priority_t)~0ul)
-DISPATCH_ENUM(dispatch_thread_set_self, unsigned long,
+DISPATCH_OPTIONS(dispatch_thread_set_self, unsigned long,
 	DISPATCH_PRIORITY_ENFORCE = 0x1,
 	DISPATCH_VOUCHER_REPLACE = 0x2,
 	DISPATCH_VOUCHER_CONSUME = 0x4,
@@ -1025,6 +1098,7 @@ static inline voucher_t _dispatch_adopt_priority_and_set_voucher(
 		dispatch_thread_set_self_t flags);
 #if HAVE_MACH
 mach_port_t _dispatch_get_mach_host_port(void);
+bool _dispatch_mach_msg_sender_is_kernel(mach_msg_header_t *hdr);
 #endif
 
 #if HAVE_PTHREAD_WORKQUEUE_QOS
@@ -1044,6 +1118,11 @@ extern bool _dispatch_kevent_workqueue_enabled;
 #define _dispatch_kevent_workqueue_enabled (0)
 #endif // DISPATCH_USE_KEVENT_WORKQUEUE
 
+#if DISPATCH_USE_KEVENT_WORKLOOP
+#if !DISPATCH_USE_KEVENT_WORKQUEUE || !DISPATCH_USE_KEVENT_QOS
+#error Invalid build configuration
+#endif
+#endif
 
 /* #includes dependent on internal.h */
 #include "object_internal.h"
@@ -1054,9 +1133,7 @@ extern bool _dispatch_kevent_workqueue_enabled;
 #include "mach_internal.h"
 #include "voucher_internal.h"
 #include "data_internal.h"
-#if !TARGET_OS_WIN32
 #include "io_internal.h"
-#endif
 #include "inline_internal.h"
 #include "firehose/firehose_internal.h"
 

@@ -182,15 +182,9 @@ dispatch_data_make_memory_entry(dispatch_data_t data);
  */
 typedef const struct dispatch_data_format_type_s *dispatch_data_format_type_t;
 
-#if !TARGET_OS_WIN32
 #define DISPATCH_DATA_FORMAT_TYPE_DECL(name) \
 	DISPATCH_EXPORT const struct dispatch_data_format_type_s \
 	_dispatch_data_format_type_##name
-#else
-#define DISPATCH_DATA_FORMAT_TYPE_DECL(name) \
-	DISPATCH_EXPORT struct dispatch_data_format_type_s \
-	_dispatch_data_format_type_##name
-#endif
 
 /*!
  * @const DISPATCH_DATA_FORMAT_TYPE_NONE
@@ -294,7 +288,6 @@ DISPATCH_DATA_FORMAT_TYPE_DECL(utf_any);
  * A newly created dispatch data object, dispatch_data_empty if no has been
  * produced, or NULL if an error occurred.
  */
-
 API_AVAILABLE(macos(10.8), ios(6.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
@@ -302,6 +295,28 @@ dispatch_data_t
 dispatch_data_create_with_transform(dispatch_data_t data,
 	dispatch_data_format_type_t input_type,
 	dispatch_data_format_type_t output_type);
+
+/*!
+ * @function dispatch_data_get_flattened_bytes_4libxpc
+ *
+ * Similar to dispatch_data_create_map() but attaches it to the passed in
+ * dispatch data.
+ *
+ * The returned mapping, if not NULL, has the size returned by
+ * dispatch_data_get_size() for the specified object, and its lifetime is tied
+ * to the one of the dispatch data itself.
+ *
+ * @discussion
+ * This interface is reserved for XPC usage and is not considered stable ABI.
+ *
+ *
+ * @result
+ * A newly created linear mapping for this data object, may return NULL if
+ * making the dispatch data contiguous failed to allocate memory.
+ */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(4.0))
+const void *_Nullable
+dispatch_data_get_flattened_bytes_4libxpc(dispatch_data_t data);
 
 __END_DECLS
 
