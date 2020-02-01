@@ -21,7 +21,7 @@
 #include <stdbool.h>
 #include <dispatch/dispatch.h>
 
-#if defined(__linux__) || defined(__FreeBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__)
 #include <generic_unix_port.h>
 #elif defined(_WIN32)
 #include <generic_win_port.h>

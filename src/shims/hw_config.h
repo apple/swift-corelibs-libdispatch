@@ -187,12 +187,16 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 		name = "hw.activecpu"; break;
 	}
 #elif defined(__FreeBSD__)
-	 (void)c; name = "kern.smp.cpus";
+	(void)c; name = "kern.smp.cpus";
+#elif defined(__OpenBSD__)
+	(void)c;
 #endif
 	if (name) {
 		size_t valsz = sizeof(val);
+#if !defined(__OpenBSD__)
 		r = sysctlbyname(name, &val, &valsz, NULL, 0);
 		(void)dispatch_assume_zero(r);
+#endif
 		dispatch_assert(valsz == sizeof(uint32_t));
 	} else {
 #if HAVE_SYSCONF && defined(_SC_NPROCESSORS_ONLN)

@@ -55,7 +55,7 @@ extern char **environ;
 #endif
 #endif
 
-#if defined(__linux__) || defined(__FreeBSD__) || defined(_WIN32)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(_WIN32) || defined(__OpenBSD__)
 #define _NSGetExecutablePath(ef,bs) (*(bs)=(size_t)snprintf(ef,*(bs),"%s",argv[0]),0)
 #endif
 
