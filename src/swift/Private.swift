@@ -27,7 +27,7 @@ public func dispatch_queue_create_with_target(_ label: UnsafePointer<Int8>?, _ a
 }
 
 @available(*, unavailable, renamed:"DispatchIO.init(type:fileDescriptor:queue:cleanupHandler:)")
-public func dispatch_io_create(_ type: UInt, _ fd: Int32, _ queue: DispatchQueue, _ cleanup_handler: @escaping (Int32) -> Void) -> DispatchIO
+public func dispatch_io_create(_ type: UInt, _ fd: dispatch_fd_t, _ queue: DispatchQueue, _ cleanup_handler: @escaping (Int32) -> Void) -> DispatchIO
 {
 	fatalError()
 }
