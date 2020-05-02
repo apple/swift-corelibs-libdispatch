@@ -347,8 +347,8 @@ _test_errno(const char* file, long line, const char* desc, int actual, int expec
 {
 	char* actual_str;
 	char* expected_str;
-	asprintf(&actual_str, "%d\t%s", actual, actual ? strerror(actual) : "");
-	asprintf(&expected_str, "%d\t%s", expected, expected ? strerror(expected) : "");
+	(void)asprintf(&actual_str, "%d\t%s", actual, actual ? strerror(actual) : "");
+	(void)asprintf(&expected_str, "%d\t%s", expected, expected ? strerror(expected) : "");
 	_test_print(file, line, desc,
 		(actual == expected), "%s", actual_str, "%s", expected_str);
 	free(actual_str);
@@ -369,8 +369,8 @@ _test_mach_error(const char* file, long line, const char* desc,
 {
 	char* actual_str;
 	char* expected_str;
-	asprintf(&actual_str, "%d %s", actual, actual ? mach_error_string(actual) : "");
-	asprintf(&expected_str, "%d %s", expected, expected ? mach_error_string(expected) : "");
+	(void)asprintf(&actual_str, "%d %s", actual, actual ? mach_error_string(actual) : "");
+	(void)asprintf(&expected_str, "%d %s", expected, expected ? mach_error_string(expected) : "");
 	_test_print(file, line, desc,
 		(actual == expected), "%s", actual_str, "%s", expected_str);
 	free(actual_str);
@@ -416,12 +416,12 @@ test_cferror(const char *desc, CFErrorRef actual, CFIndex expectedCode)
 		if (code != expectedCode) {
 			char buffer[BUFSIZ];
 			CFStringGetCString(errDesc, buffer, sizeof(buffer), kCFStringEncodingUTF8);
-			asprintf(&actual_str, "%ld\t%s", code, buffer);
+			(void)asprintf(&actual_str, "%ld\t%s", code, buffer);
 		} else {
-			asprintf(&actual_str, "%ld", code);
+			(void)asprintf(&actual_str, "%ld", code);
 		}
 
-		asprintf(&expected_str, "%ld", expectedCode);
+		(void)asprintf(&expected_str, "%ld", expectedCode);
 		_test_print("", (long) 0, desc,
 					(code == expectedCode), "%s", actual_str, "%s", expected_str);
 

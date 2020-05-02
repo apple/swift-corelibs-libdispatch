@@ -48,7 +48,7 @@ main(void)
 	int i;
 	for (i = 0; i < final; ++i) {
 		char* name;
-		asprintf(&name, "test.overcommit.%d", i);
+		(void)asprintf(&name, "test.overcommit.%d", i);
 
 		dispatch_queue_t queue = dispatch_queue_create(name, NULL);
 		test_ptr_notnull("dispatch_queue_create", queue);
