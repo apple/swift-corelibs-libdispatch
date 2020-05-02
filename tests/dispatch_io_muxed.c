@@ -64,7 +64,7 @@ test_file_muxed(void)
 	const char *path_separator = "/";
 #endif
 	char *path = NULL;
-	asprintf(&path, "%s%sdispatchtest_io.XXXXXX", temp_dir, path_separator);
+	(void)asprintf(&path, "%s%sdispatchtest_io.XXXXXX", temp_dir, path_separator);
 	dispatch_fd_t fd = mkstemp(path);
 	if (fd == -1) {
 		test_errno("mkstemp", errno, 0);
