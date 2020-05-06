@@ -59,4 +59,7 @@ if(NOT BUILD_SHARED_LIBS)
   install(TARGETS DispatchStubs
     EXPORT dispatchExports
     DESTINATION ${INSTALL_TARGET_DIR})
+elseif(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin|Windows")
+  target_link_options(swiftDispatch PRIVATE "SHELL:-no-toolchain-stdlib-rpath")
+  set_target_properties(swiftDispatch PROPERTIES INSTALL_RPATH "$ORIGIN")
 endif()
