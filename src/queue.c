@@ -7057,7 +7057,7 @@ _dispatch_runloop_queue_handle_init(void *ctxt)
 	handle = fd;
 #elif defined(_WIN32)
 	HANDLE hEvent;
-	hEvent = CreateEventW(NULL, /*bManualReset=*/TRUE,
+	hEvent = CreateEventW(NULL, /*bManualReset=*/FALSE,
 		/*bInitialState=*/FALSE, NULL);
 	if (hEvent == NULL) {
 		DISPATCH_INTERNAL_CRASH(GetLastError(), "CreateEventW");
