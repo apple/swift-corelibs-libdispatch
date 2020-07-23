@@ -63,8 +63,13 @@
 #define DISPATCH_WARN_RESULT __attribute__((__warn_unused_result__))
 #define DISPATCH_MALLOC __attribute__((__malloc__))
 #define DISPATCH_ALWAYS_INLINE __attribute__((__always_inline__))
+#if __has_attribute(unavailable)
 #define DISPATCH_UNAVAILABLE __attribute__((__unavailable__))
 #define DISPATCH_UNAVAILABLE_MSG(msg) __attribute__((__unavailable__(msg)))
+#else
+#define DISPATCH_UNAVAILABLE
+#define DISPATCH_UNAVAILABLE_MSG(msg)
+#endif
 #elif defined(_MSC_VER)
 #define DISPATCH_NORETURN __declspec(noreturn)
 #define DISPATCH_NOTHROW __declspec(nothrow)
