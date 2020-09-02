@@ -155,6 +155,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
     "-Xlinker -alias_list -Xlinker ${PROJECT_SOURCE_DIR}/xcodeconfig/libdispatch.aliases")
 endif()
 
+if(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin|Windows")
+  set_target_properties(dispatch PROPERTIES INSTALL_RPATH "$ORIGIN")
+endif()
+
 if(ENABLE_SWIFT)
   add_subdirectory(swift)
 endif()
