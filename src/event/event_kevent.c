@@ -2363,6 +2363,12 @@ _dispatch_event_loop_timer_arm(dispatch_timer_heap_t dth, uint32_t tidx,
 		target += range.leeway;
 		range.leeway = 0;
 	}
+#if !NOTE_ABSOLUTE
+	target = range.delay;
+#if defined(__OpenBSD__)
+	target /= 1000000;
+#endif
+#endif
 
 	_dispatch_event_loop_timer_program(dth, tidx, target, range.leeway,
 			EV_ADD | EV_ENABLE);
