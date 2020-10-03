@@ -104,7 +104,9 @@ _evfiltstr(short filt)
 #ifdef EVFILT_FS
 	_evfilt2(EVFILT_FS);
 #endif
+#ifdef EVFILT_USER
 	_evfilt2(EVFILT_USER);
+#endif
 #ifdef EVFILT_SOCK
 	_evfilt2(EVFILT_SOCK);
 #endif
@@ -532,11 +534,17 @@ _dispatch_kevent_merge_muxed(dispatch_kevent_t ke)
 	}
 }
 
+#define DISPATCH_KEVENT_ERSATZ_EVFILT_USER_IDENT 0xfffffe00
+
 DISPATCH_NOINLINE
 static void
 _dispatch_kevent_drain(dispatch_kevent_t ke)
 {
+#ifdef EVFILT_USER
 	if (ke->filter == EVFILT_USER) {
+#else
+	if (ke->filter == EVFILT_TIMER && ke->ident == DISPATCH_KEVENT_ERSATZ_EVFILT_USER_IDENT) {
+#endif
 		_dispatch_kevent_mgr_debug("received", ke);
 		return;
 	}
@@ -583,10 +591,17 @@ static void
 _dispatch_kq_create(intptr_t *fd_ptr)
 {
 	static const dispatch_kevent_s kev = {
+#ifdef EVFILT_USER
 		.ident = 1,
 		.filter = EVFILT_USER,
 		.flags = EV_ADD|EV_CLEAR,
 		.udata = (dispatch_kevent_udata_t)DISPATCH_WLH_MANAGER,
+#else
+		.ident = DISPATCH_KEVENT_ERSATZ_EVFILT_USER_IDENT,
+		.filter = EVFILT_TIMER,
+		.flags = EV_ADD|EV_DISABLE|EV_ONESHOT,
+		.data = 1,
+#endif
 	};
 	int kqfd;
 
@@ -789,9 +804,15 @@ _dispatch_kq_drain(dispatch_wlh_t wlh, dispatch_kevent_t ke, int n,
 
 #if DISPATCH_DEBUG
 	for (r = 0; r < n; r++) {
+#ifdef EVFILT_USER
 		if (ke[r].filter != EVFILT_USER || DISPATCH_MGR_QUEUE_DEBUG) {
 			_dispatch_kevent_debug_n(NULL, ke + r, r, n);
 		}
+#else
+		if (DISPATCH_MGR_QUEUE_DEBUG) {
+			_dispatch_kevent_debug_n(NULL, ke + r, r, n);
+		}
+#endif
 	}
 #endif
 
@@ -923,9 +944,13 @@ _dispatch_kq_deferred_update(dispatch_wlh_t wlh, dispatch_kevent_t ke)
 				ke->udata);
 		dispatch_kevent_t dk = _dispatch_kq_deferred_reuse_slot(wlh, ddi, slot);
 		*dk = *ke;
+#ifdef EVFILT_USER
 		if (ke->filter != EVFILT_USER) {
 			_dispatch_kevent_mgr_debug("deferred", ke);
 		}
+#else
+		_dispatch_kevent_mgr_debug("deferred", ke);
+#endif
 	} else {
 		_dispatch_kq_update_one(wlh, ke);
 	}
@@ -1887,10 +1912,17 @@ _dispatch_event_loop_poke(dispatch_wlh_t wlh, uint64_t dq_state, uint32_t flags)
 {
 	if (wlh == DISPATCH_WLH_MANAGER) {
 		dispatch_kevent_s ke = (dispatch_kevent_s){
+#ifdef EVFILT_USER
 			.ident  = 1,
 			.filter = EVFILT_USER,
 			.fflags = NOTE_TRIGGER,
 			.udata = (dispatch_kevent_udata_t)DISPATCH_WLH_MANAGER,
+#else
+			.ident = DISPATCH_KEVENT_ERSATZ_EVFILT_USER_IDENT,
+			.filter = EVFILT_TIMER,
+			.flags = EV_ADD|EV_ENABLE|EV_ONESHOT,
+			.data = 1
+#endif
 		};
 		return _dispatch_kq_deferred_update(DISPATCH_WLH_ANON, &ke);
 	} else if (wlh && wlh != DISPATCH_WLH_ANON) {
