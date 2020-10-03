@@ -101,7 +101,9 @@ _evfiltstr(short filt)
 	_evfilt2(EVFILT_MACHPORT);
 	_evfilt2(DISPATCH_EVFILT_MACH_NOTIFICATION);
 #endif
+#ifdef EVFILT_FS
 	_evfilt2(EVFILT_FS);
+#endif
 	_evfilt2(EVFILT_USER);
 #ifdef EVFILT_SOCK
 	_evfilt2(EVFILT_SOCK);
@@ -388,8 +390,10 @@ _dispatch_kevent_print_error(dispatch_kevent_t ke)
 	switch (ke->data) {
 	case 0:
 		return;
+#if DISPATCH_USE_KEVENT_QOS
 	case ERANGE: /* A broken QoS was passed to kevent_id() */
 		DISPATCH_INTERNAL_CRASH(ke->qos, "Invalid kevent priority");
+#endif
 	default:
 		// log the unexpected error
 		_dispatch_bug_kevent_client("kevent", _evfiltstr(ke->filter),
@@ -397,7 +401,7 @@ _dispatch_kevent_print_error(dispatch_kevent_t ke)
 				ke->flags & EV_DELETE ? "delete" :
 				ke->flags & EV_ADD ? "add" :
 				ke->flags & EV_ENABLE ? "enable" : "monitor",
-				(int)ke->data, ke->ident, ke->udata, du);
+				(int)ke->data, ke->ident, (uint64_t)ke->udata, du);
 	}
 }
 
@@ -591,7 +595,6 @@ _dispatch_kq_create(intptr_t *fd_ptr)
 	guardid_t guard = (uintptr_t)fd_ptr;
 	kqfd = guarded_kqueue_np(&guard, GUARD_CLOSE | GUARD_DUP);
 #else
-	(void)guard_ptr;
 	kqfd = kqueue();
 #endif
 	if (kqfd == -1) {
@@ -860,7 +863,6 @@ _dispatch_kq_unote_set_kevent(dispatch_unote_t _du, dispatch_kevent_t dk,
 				du->du_priority),
 #endif
 	};
-	(void)pp; // if DISPATCH_USE_KEVENT_QOS == 0
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -985,6 +987,7 @@ _dispatch_sync_ipc_handoff_end(dispatch_wlh_t wlh, mach_port_t port)
 }
 #endif
 
+#if DISPATCH_HAVE_DIRECT_KNOTES
 DISPATCH_NOINLINE
 static bool
 _dispatch_kq_unote_update(dispatch_wlh_t wlh, dispatch_unote_t _du,
@@ -1055,6 +1058,7 @@ done:
 	dispatch_assume_zero(r);
 	return true;
 }
+#endif
 
 #pragma mark dispatch_muxnote_t
 
@@ -1283,6 +1287,7 @@ _dispatch_unote_unregister_direct(dispatch_unote_t du, uint32_t flags)
 #pragma mark -
 #pragma mark dispatch_event_loop
 
+#if DISPATCH_USE_KEVENT_WORKLOOP
 enum {
 	DISPATCH_WORKLOOP_ASYNC,
 	DISPATCH_WORKLOOP_ASYNC_FROM_SYNC,
@@ -1316,6 +1321,7 @@ static char const * const _dispatch_workloop_actions[] = {
 	[DISPATCH_WORKLOOP_SYNC_WAKE]                   = "sync-wake",
 	[DISPATCH_WORKLOOP_SYNC_END]                    = "sync-end",
 };
+#endif
 
 void
 _dispatch_event_loop_atfork_child(void)
@@ -2445,6 +2451,7 @@ const dispatch_source_type_s _dispatch_source_type_vnode = {
 	.dst_merge_evt  = _dispatch_source_merge_evt,
 };
 
+#ifdef EVFILT_FS
 const dispatch_source_type_s _dispatch_source_type_vfs = {
 	.dst_kind       = "vfs",
 	.dst_filter     = EVFILT_FS,
@@ -2477,6 +2484,7 @@ const dispatch_source_type_s _dispatch_source_type_vfs = {
 	.dst_create     = _dispatch_unote_create_without_handle,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
 };
+#endif
 
 #ifdef EVFILT_SOCK
 const dispatch_source_type_s _dispatch_source_type_sock = {
