@@ -964,7 +964,6 @@ _dispatch_continuation_get_function_symbol(dispatch_continuation_t dc)
 	return dc->dc_func;
 }
 
-#if HAVE_MACH
 void
 _dispatch_bug_kevent_client(const char *msg, const char *filter,
 		const char *operation, int err, uint64_t ident, uint64_t udata,
@@ -1008,7 +1007,6 @@ _dispatch_bug_kevent_client(const char *msg, const char *filter,
 				msg, strerror(err), err, udata, filter, ident, ident, func);
 	}
 }
-#endif // HAVE_MACH
 
 #if RDAR_49023449
 
