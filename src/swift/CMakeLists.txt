@@ -14,7 +14,9 @@
 add_library(DispatchStubs STATIC
   DispatchStubs.cc)
 target_include_directories(DispatchStubs PRIVATE
-  ${PROJECT_SOURCE_DIR})
+   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
+   $<INSTALL_INTERFACE:${INSTALL_SWIFT_DIR}>
+   )
 set_target_properties(DispatchStubs PROPERTIES
   POSITION_INDEPENDENT_CODE YES)
 
@@ -34,8 +36,10 @@ target_compile_options(swiftDispatch PRIVATE
   "SHELL:-Xcc -I${PROJECT_SOURCE_DIR}")
 set_target_properties(swiftDispatch PROPERTIES
   Swift_MODULE_NAME Dispatch
-  Swift_MODULE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/swift
-  INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_BINARY_DIR}/swift)
+  Swift_MODULE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/swift)
+target_include_directories(swiftDispatch INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/swift>
+  $<INSTALL_INTERFACE:${INSTALL_SWIFT_DIR}>)
 target_link_libraries(swiftDispatch PRIVATE
   DispatchStubs
   BlocksRuntime::BlocksRuntime)
@@ -54,6 +58,9 @@ install(TARGETS swiftDispatch
   ARCHIVE DESTINATION ${INSTALL_TARGET_DIR}
   LIBRARY DESTINATION ${INSTALL_TARGET_DIR}
   RUNTIME DESTINATION bin)
+install(EXPORT dispatchExports
+  FILE dispatchConfig.cmake
+  DESTINATION ${INSTALL_TARGET_DIR})
 if(NOT BUILD_SHARED_LIBS)
   set_property(GLOBAL APPEND PROPERTY DISPATCH_EXPORTS DispatchStubs)
   install(TARGETS DispatchStubs
