@@ -124,8 +124,10 @@ else()
   target_compile_options(dispatch PRIVATE -Wall)
 endif()
 
-# FIXME(compnerd) add check for -fblocks?
-target_compile_options(dispatch PRIVATE -fblocks)
+check_c_compiler_flag("-fblocks -Werror -Wall -O3" C_SUPPORTS_BLOCKS)
+if (C_SUPPORTS_BLOCKS)
+  target_compile_options(dispatch PRIVATE -fblocks)
+endif()
 
 check_c_compiler_flag("-momit-leaf-frame-pointer -Werror -Wall -O3" C_SUPPORTS_OMIT_LEAF_FRAME_POINTER)
 if (C_SUPPORTS_OMIT_LEAF_FRAME_POINTER)
