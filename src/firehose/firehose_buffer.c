@@ -18,7 +18,19 @@
  * @APPLE_APACHE_LICENSE_HEADER_END@
  */
 
+#include <os/atomic_private.h>
 #include <mach/vm_statistics.h> // VM_MEMORY_GENEALOGY
+
+#ifndef __LP64__
+// libdispatch has too many Double-Wide loads for this to be practical
+// so just rename everything to the wide variants
+#undef os_atomic_load
+#define os_atomic_load os_atomic_load_wide
+
+#undef os_atomic_store
+#define os_atomic_store os_atomic_store_wide
+#endif
+
 #ifdef KERNEL
 
 #define OS_VOUCHER_ACTIVITY_SPI_TYPES 1
@@ -26,8 +38,12 @@
 #define __OS_EXPOSE_INTERNALS_INDIRECT__ 1
 
 #define DISPATCH_PURE_C 1
+#ifndef os_likely
 #define os_likely(x) __builtin_expect(!!(x), 1)
+#endif
+#ifndef os_unlikely
 #define os_unlikely(x) __builtin_expect(!!(x), 0)
+#endif
 #define likely(x)   __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
@@ -74,7 +90,6 @@ static void _dispatch_firehose_gate_wait(dispatch_gate_t l, uint32_t flags);
 #include <sys/param.h>
 #include <sys/types.h>
 #include <vm/vm_kern.h>
-#include <internal/atomic.h> // os/internal/atomic.h
 #include <firehose_types_private.h> // <firehose/firehose_types_private.h>
 #include <tracepoint_private.h> // <firehose/tracepoint_private.h>
 #include <chunk_private.h> // <firehose/chunk_private.h>
@@ -295,7 +310,7 @@ firehose_buffer_update_limits_unlocked(firehose_buffer_t fb)
 	if (old.fbs_atomic_state == new.fbs_atomic_state) {
 		return;
 	}
-	os_atomic_add2o(&fb->fb_header, fbh_bank.fbb_state.fbs_atomic_state,
+	os_atomic_add(&fb->fb_header.fbh_bank.fbb_state.fbs_atomic_state,
 			new.fbs_atomic_state - old.fbs_atomic_state, relaxed);
 }
 #endif // !KERNEL
@@ -511,11 +526,11 @@ firehose_client_merge_updates(firehose_buffer_t fb, bool async_notif,
 #endif
 	}
 
-	if (firehose_atomic_maxv2o(fbh, fbh_bank.fbb_mem_flushed,
+	if (firehose_atomic_maxv(&fbh->fbh_bank.fbb_mem_flushed,
 			reply.fpr_mem_flushed_pos, &old_flushed_pos, relaxed)) {
 		mem_delta = (uint16_t)(reply.fpr_mem_flushed_pos - old_flushed_pos);
 	}
-	if (firehose_atomic_maxv2o(fbh, fbh_bank.fbb_io_flushed,
+	if (firehose_atomic_maxv(&fbh->fbh_bank.fbb_io_flushed,
 			reply.fpr_io_flushed_pos, &old_flushed_pos, relaxed)) {
 		io_delta = (uint16_t)(reply.fpr_io_flushed_pos - old_flushed_pos);
 	}
@@ -527,14 +542,14 @@ firehose_client_merge_updates(firehose_buffer_t fb, bool async_notif,
 
 	if (!mem_delta && !io_delta) {
 		if (state_out) {
-			state_out->fbs_atomic_state = os_atomic_load2o(fbh,
-					fbh_bank.fbb_state.fbs_atomic_state, relaxed);
+			state_out->fbs_atomic_state = os_atomic_load(
+					&fbh->fbh_bank.fbb_state.fbs_atomic_state, relaxed);
 		}
 		return;
 	}
 
 	__firehose_critical_region_enter();
-	os_atomic_rmw_loop2o(fbh, fbh_ring_tail.frp_atomic_tail,
+	os_atomic_rmw_loop(&fbh->fbh_ring_tail.frp_atomic_tail,
 			otail.frp_atomic_tail, ntail.frp_atomic_tail, relaxed, {
 		ntail = otail;
 		// overflow handles the generation wraps
@@ -544,18 +559,18 @@ firehose_client_merge_updates(firehose_buffer_t fb, bool async_notif,
 
 	bank_updates = ((uint64_t)mem_delta << FIREHOSE_BANK_SHIFT(0)) |
 			((uint64_t)io_delta << FIREHOSE_BANK_SHIFT(1));
-	state.fbs_atomic_state = os_atomic_add2o(fbh,
-			fbh_bank.fbb_state.fbs_atomic_state, bank_updates, release);
+	state.fbs_atomic_state = os_atomic_add(
+			&fbh->fbh_bank.fbb_state.fbs_atomic_state, bank_updates, release);
 	__firehose_critical_region_leave();
 
 	if (state_out) *state_out = state;
 
 	if (async_notif) {
 		if (io_delta) {
-			os_atomic_inc2o(fbh, fbh_bank.fbb_io_notifs, relaxed);
+			os_atomic_add(&fbh->fbh_bank.fbb_io_notifs, 1u, relaxed);
 		}
 		if (mem_delta) {
-			os_atomic_inc2o(fbh, fbh_bank.fbb_mem_notifs, relaxed);
+			os_atomic_add(&fbh->fbh_bank.fbb_mem_notifs, 1u, relaxed);
 		}
 	}
 }
@@ -676,8 +691,8 @@ firehose_client_send_push_and_wait(firehose_buffer_t fb, bool for_io,
 	}
 
 	if (state_out) {
-		state_out->fbs_atomic_state = os_atomic_load2o(&fb->fb_header,
-				fbh_bank.fbb_state.fbs_atomic_state, relaxed);
+		state_out->fbs_atomic_state = os_atomic_load(
+				&fb->fb_header.fbh_bank.fbb_state.fbs_atomic_state, relaxed);
 	}
 	return;
 
@@ -689,9 +704,9 @@ success:
 	}
 
 	if (for_io) {
-		os_atomic_inc2o(&fb->fb_header, fbh_bank.fbb_io_sync_pushes, relaxed);
+		os_atomic_inc(&fb->fb_header.fbh_bank.fbb_io_sync_pushes, relaxed);
 	} else {
-		os_atomic_inc2o(&fb->fb_header, fbh_bank.fbb_mem_sync_pushes, relaxed);
+		os_atomic_inc(&fb->fb_header.fbh_bank.fbb_mem_sync_pushes, relaxed);
 	}
 	// TODO <rdar://problem/22963876>
 	//
@@ -808,7 +823,7 @@ firehose_buffer_chunk_init(firehose_chunk_t fc,
 
 		stamp_and_len = stamp - fc->fc_timestamp;
 		stamp_and_len |= (uint64_t)flp_size << 48;
-		os_atomic_store2o(*lft, ft_stamp_and_length, stamp_and_len, relaxed);
+		os_atomic_store(&(*lft)->ft_stamp_and_length, stamp_and_len, relaxed);
 
 		(*lft)->ft_thread = thread; // not really meaningful
 
@@ -828,7 +843,7 @@ firehose_buffer_chunk_init(firehose_chunk_t fc,
 	// write the length before making the chunk visible
 	stamp_and_len = ask->stamp - fc->fc_timestamp;
 	stamp_and_len |= (uint64_t)ask->pubsize << 48;
-	os_atomic_store2o(ft, ft_stamp_and_length, stamp_and_len, relaxed);
+	os_atomic_store(&ft->ft_stamp_and_length, stamp_and_len, relaxed);
 
 	ft->ft_thread = thread;
 
@@ -880,7 +895,7 @@ firehose_buffer_stream_chunk_install(firehose_buffer_t fb,
 		dispatch_compiler_barrier();
 
 		if (ask->stream == firehose_stream_metadata) {
-			os_atomic_or2o(fbh, fbh_bank.fbb_metadata_bitmap, 1ULL << ref,
+			os_atomic_or(&fbh->fbh_bank.fbb_metadata_bitmap, 1ULL << ref,
 					relaxed);
 		}
 
@@ -898,13 +913,13 @@ firehose_buffer_stream_chunk_install(firehose_buffer_t fb,
 		// event needs to be placed at the beginning of the chunk in addition to
 		// the first actual tracepoint.
 		state.fss_atomic_state =
-				os_atomic_load2o(fbs, fbs_state.fss_atomic_state, relaxed);
+				os_atomic_load(&fbs->fbs_state.fss_atomic_state, relaxed);
 
 		if (likely(!state.fss_loss)) {
 			ft = firehose_buffer_chunk_init(fc, ask, privptr, thread, NULL, 0);
 
 			// release to publish the chunk init
-			installed = os_atomic_rmw_loop2o(fbs, fbs_state.fss_atomic_state,
+			installed = os_atomic_rmw_loop(&fbs->fbs_state.fss_atomic_state,
 					state.fss_atomic_state, new_state.fss_atomic_state, release, {
 				if (state.fss_loss) {
 					os_atomic_rmw_loop_give_up(break);
@@ -921,14 +936,14 @@ firehose_buffer_stream_chunk_install(firehose_buffer_t fb,
 			uint64_t loss_start, loss_end;
 
 			// ensure we can see the start stamp
-			(void)os_atomic_load2o(fbs, fbs_state.fss_atomic_state, acquire);
+			(void)os_atomic_load(&fbs->fbs_state.fss_atomic_state, acquire);
 			loss_start = fbs->fbs_loss_start;
 			fbs->fbs_loss_start = 0; // reset under fss_gate
 			loss_end = mach_continuous_time();
 
 			ft = firehose_buffer_chunk_init(fc, ask, privptr, thread, &lft,
 					loss_start);
-			os_atomic_rmw_loop2o(fbs, fbs_state.fss_atomic_state,
+			os_atomic_rmw_loop(&fbs->fbs_state.fss_atomic_state,
 					state.fss_atomic_state, new_state.fss_atomic_state, release, {
 				// no giving up this time!
 				new_state = (firehose_stream_state_u){
@@ -952,19 +967,19 @@ firehose_buffer_stream_chunk_install(firehose_buffer_t fb,
 			} };
 
 			// publish the contents of the loss tracepoint
-			os_atomic_store2o(lft, ft_id.ftid_atomic_value, ftid.ftid_value,
+			os_atomic_store(&lft->ft_id.ftid_atomic_value, ftid.ftid_value,
 					release);
 		}
 	} else {
 		// the allocator gave up - just clear the allocator and waiter bits and
 		// increment the loss count
 		state.fss_atomic_state =
-				os_atomic_load2o(fbs, fbs_state.fss_atomic_state, relaxed);
+				os_atomic_load(&fbs->fbs_state.fss_atomic_state, relaxed);
 		if (!state.fss_timestamped) {
 			fbs->fbs_loss_start = mach_continuous_time();
 
 			// release to publish the timestamp
-			os_atomic_rmw_loop2o(fbs, fbs_state.fss_atomic_state,
+			os_atomic_rmw_loop(&fbs->fbs_state.fss_atomic_state,
 					state.fss_atomic_state, new_state.fss_atomic_state,
 					release, {
 				new_state = (firehose_stream_state_u){
@@ -975,7 +990,7 @@ firehose_buffer_stream_chunk_install(firehose_buffer_t fb,
 				};
 			});
 		} else {
-			os_atomic_rmw_loop2o(fbs, fbs_state.fss_atomic_state,
+			os_atomic_rmw_loop(&fbs->fbs_state.fss_atomic_state,
 					state.fss_atomic_state, new_state.fss_atomic_state,
 					relaxed, {
 				new_state = (firehose_stream_state_u){
@@ -1004,9 +1019,9 @@ firehose_buffer_stream_chunk_install(firehose_buffer_t fb,
 		firehose_buffer_update_limits(fb);
 	}
 
-	if (unlikely(os_atomic_load2o(fbh, fbh_quarantined_state, relaxed) ==
+	if (unlikely(os_atomic_load(&fbh->fbh_quarantined_state, relaxed) ==
 			FBH_QUARANTINE_PENDING)) {
-		if (os_atomic_cmpxchg2o(fbh, fbh_quarantined_state,
+		if (os_atomic_cmpxchg(&fbh->fbh_quarantined_state,
 				FBH_QUARANTINE_PENDING, FBH_QUARANTINE_STARTED, relaxed)) {
 			firehose_client_start_quarantine(fb);
 		}
@@ -1190,7 +1205,7 @@ firehose_buffer_ring_try_recycle(firehose_buffer_t fb)
 	firehose_chunk_t fc;
 	bool for_io;
 
-	os_atomic_rmw_loop2o(&fb->fb_header, fbh_ring_tail.frp_atomic_tail,
+	os_atomic_rmw_loop(&fb->fb_header.fbh_ring_tail.frp_atomic_tail,
 			old.frp_atomic_tail, pos.frp_atomic_tail, relaxed, {
 		pos = old;
 		if (likely(old.frp_mem_tail != old.frp_mem_flushed)) {
@@ -1228,13 +1243,13 @@ firehose_buffer_ring_try_recycle(firehose_buffer_t fb)
 	fc = firehose_buffer_ref_to_chunk(fb, ref);
 
 	if (!for_io && fc->fc_pos.fcp_stream == firehose_stream_metadata) {
-		os_atomic_and2o(fb, fb_header.fbh_bank.fbb_metadata_bitmap,
+		os_atomic_and(&fb->fb_header.fbh_bank.fbb_metadata_bitmap,
 				~(1ULL << ref), relaxed);
 	}
-	os_atomic_store2o(fc, fc_pos.fcp_atomic_pos,
+	os_atomic_store(&fc->fc_pos.fcp_atomic_pos,
 			FIREHOSE_CHUNK_POS_FULL_BIT, relaxed);
 	dispatch_compiler_barrier();
-	os_atomic_store(&fbh_ring[tail], gen | 0, relaxed);
+	os_atomic_store(&fbh_ring[tail], gen, relaxed);
 	return ref;
 }
 
@@ -1256,7 +1271,7 @@ firehose_buffer_tracepoint_reserve_wait_for_chunks_from_logd(firehose_buffer_t f
 	// first wait for our bank to have space, if needed
 	if (unlikely(!ask->is_bank_ok)) {
 		state.fbs_atomic_state =
-				os_atomic_load2o(fbb, fbb_state.fbs_atomic_state, relaxed);
+				os_atomic_load(&fbb->fbb_state.fbs_atomic_state, relaxed);
 		while (!firehose_buffer_bank_try_reserve_slot(fb, for_io, &state)) {
 			if (ask->quarantined) {
 				__FIREHOSE_CLIENT_THROTTLED_DUE_TO_HEAVY_LOGGING__(fb, for_io,
@@ -1334,7 +1349,7 @@ firehose_buffer_tracepoint_reserve_slow(firehose_buffer_t fb,
 #endif // KERNEL
 
 	state.fbs_atomic_state =
-			os_atomic_load2o(fbb, fbb_state.fbs_atomic_state, relaxed);
+			os_atomic_load(&fbb->fbb_state.fbs_atomic_state, relaxed);
 	reserved = firehose_buffer_bank_try_reserve_slot(fb, for_io, &state);
 
 #ifndef KERNEL
@@ -1415,13 +1430,26 @@ __firehose_buffer_tracepoint_flush(firehose_tracepoint_t ft,
 	return firehose_buffer_tracepoint_flush(kernel_firehose_buffer, ft, ftid);
 }
 
-void
+bool
 __firehose_merge_updates(firehose_push_reply_t update)
 {
 	firehose_buffer_t fb = kernel_firehose_buffer;
+	bool has_more = false;
+	uint16_t head;
+
 	if (likely(fb)) {
+		firehose_buffer_header_t fbh = &fb->fb_header;
 		firehose_client_merge_updates(fb, true, update, false, NULL);
+		head = os_atomic_load(&fbh->fbh_ring_io_head, relaxed);
+		if (head != (uint16_t)os_atomic_load(&fbh->fbh_bank.fbb_io_flushed, relaxed)) {
+			has_more = true;
+		}
+		head = os_atomic_load(&fbh->fbh_ring_mem_head, relaxed);
+		if (head != (uint16_t)os_atomic_load(&fbh->fbh_bank.fbb_mem_flushed, relaxed)) {
+			has_more = true;
+		}
 	}
+	return has_more;
 }
 
 int

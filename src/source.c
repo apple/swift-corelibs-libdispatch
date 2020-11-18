@@ -40,7 +40,7 @@ _dispatch_source_get_handler(dispatch_source_refs_t dr, long kind)
 
 dispatch_source_t
 dispatch_source_create(dispatch_source_type_t dst, uintptr_t handle,
-		unsigned long mask, dispatch_queue_t dq)
+		uintptr_t mask, dispatch_queue_t dq)
 {
 	dispatch_source_refs_t dr;
 	dispatch_source_t ds;
@@ -90,19 +90,19 @@ _dispatch_source_xref_dispose(dispatch_source_t ds)
 	dispatch_queue_flags_t dqf = _dispatch_queue_atomic_flags(ds);
 	if (unlikely((dqf & DSF_STRICT) && !(dqf & DSF_CANCELED) &&
 			_dispatch_source_get_cancel_handler(ds->ds_refs))) {
-		DISPATCH_CLIENT_CRASH(ds, "Release of a source that has not been "
+		DISPATCH_CLIENT_CRASH(dqf, "Release of a source that has not been "
 				"cancelled, but has a mandatory cancel handler");
 	}
 	dx_wakeup(ds, 0, DISPATCH_WAKEUP_MAKE_DIRTY);
 }
 
-long
+intptr_t
 dispatch_source_testcancel(dispatch_source_t ds)
 {
 	return (bool)(ds->dq_atomic_flags & DSF_CANCELED);
 }
 
-unsigned long
+uintptr_t
 dispatch_source_get_mask(dispatch_source_t ds)
 {
 	dispatch_source_refs_t dr = ds->ds_refs;
@@ -144,11 +144,11 @@ dispatch_source_get_handle(dispatch_source_t ds)
 	return dr->du_ident;
 }
 
-unsigned long
+uintptr_t
 dispatch_source_get_data(dispatch_source_t ds)
 {
-#if DISPATCH_USE_MEMORYSTATUS
 	dispatch_source_refs_t dr = ds->ds_refs;
+#if DISPATCH_USE_MEMORYSTATUS
 	if (dr->du_vmpressure_override) {
 		return NOTE_VM_PRESSURE;
 	}
@@ -197,7 +197,7 @@ dispatch_source_get_extended_data(dispatch_source_t ds,
 }
 
 void
-dispatch_source_merge_data(dispatch_source_t ds, unsigned long val)
+dispatch_source_merge_data(dispatch_source_t ds, uintptr_t val)
 {
 	dispatch_queue_flags_t dqf = _dispatch_queue_atomic_flags(ds);
 	dispatch_source_refs_t dr = ds->ds_refs;
@@ -418,6 +418,7 @@ dispatch_source_set_registration_handler_f(dispatch_source_t ds,
 #pragma mark -
 #pragma mark dispatch_source_invoke
 
+#if TARGET_OS_MAC
 bool
 _dispatch_source_will_reenable_kevent_4NW(dispatch_source_t ds)
 {
@@ -429,6 +430,7 @@ _dispatch_source_will_reenable_kevent_4NW(dispatch_source_t ds)
 	}
 	return _dispatch_unote_needs_rearm(ds->ds_refs);
 }
+#endif // TARGET_OS_MAC
 
 static void
 _dispatch_source_registration_callout(dispatch_source_t ds, dispatch_queue_t cq,
@@ -511,7 +513,7 @@ _dispatch_source_timer_data(dispatch_timer_source_refs_t dr, uint64_t prev)
 	// We hence need dependency ordering to pair with the release barrier
 	// done by _dispatch_timers_run2() when setting the DISARMED_MARKER bit.
 	os_atomic_thread_fence(dependency);
-	dr = os_atomic_force_dependency_on(dr, data);
+	dr = os_atomic_inject_dependency(dr, data);
 
 	if (dr->dt_timer.target < INT64_MAX) {
 		uint64_t now = _dispatch_time_now(DISPATCH_TIMER_CLOCK(dr->du_ident));
@@ -1230,15 +1232,7 @@ _dispatch_timer_config_create(dispatch_time_t start,
 		// future, this will default to UPTIME if no clock was set.
 		clock = _dispatch_timer_flags_to_clock(dt->du_timer_flags);
 	} else {
-		_dispatch_time_to_clock_and_value(start, &clock, &target);
-		if (target == DISPATCH_TIME_NOW) {
-			if (clock == DISPATCH_CLOCK_UPTIME) {
-				target = _dispatch_uptime();
-			} else {
-				dispatch_assert(clock == DISPATCH_CLOCK_MONOTONIC);
-				target = _dispatch_monotonic_time();
-			}
-		}
+		_dispatch_time_to_clock_and_value(start, true, &clock, &target);
 	}
 
 	if (clock != DISPATCH_CLOCK_WALL) {
@@ -1397,7 +1391,7 @@ _dispatch_after(dispatch_time_t when, dispatch_queue_t dq,
 
 	dispatch_clock_t clock;
 	uint64_t target;
-	_dispatch_time_to_clock_and_value(when, &clock, &target);
+	_dispatch_time_to_clock_and_value(when, false, &clock, &target);
 	if (clock != DISPATCH_CLOCK_WALL) {
 		leeway = _dispatch_time_nano2mach(leeway);
 	}

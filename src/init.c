@@ -29,6 +29,14 @@
 #include "protocolServer.h"
 #endif
 
+#ifdef __linux__
+// The clang compiler in Ubuntu 18.04 has a bug that causes it to crash
+// when compiling _dispatch_bug_kevent_vanished(). As a workaround, use a
+// less capable version of this function on Linux until a fixed version
+// of the compiler is available.
+#define RDAR_49023449 1
+#endif // __linux__
+
 #pragma mark -
 #pragma mark dispatch_init
 
@@ -135,6 +143,8 @@ pthread_key_t dispatch_voucher_key;
 pthread_key_t dispatch_deferred_items_key;
 #endif // !DISPATCH_USE_DIRECT_TSD && !DISPATCH_USE_THREAD_LOCAL_STORAGE
 
+pthread_key_t _os_workgroup_key;
+
 #if VOUCHER_USE_MACH_VOUCHER
 dispatch_once_t _voucher_task_mach_voucher_pred;
 mach_voucher_t _voucher_task_mach_voucher;
@@ -157,7 +167,7 @@ bool _dispatch_kevent_workqueue_enabled = 1;
 
 DISPATCH_HW_CONFIG();
 uint8_t _dispatch_unsafe_fork;
-uint8_t _dispatch_mode;
+uint8_t _dispatch_mode = DISPATCH_MODE_NO_FAULTS;
 bool _dispatch_child_of_unsafe_fork;
 #if DISPATCH_USE_MEMORYPRESSURE_SOURCE
 bool _dispatch_memory_warn;
@@ -361,7 +371,7 @@ unsigned long volatile _dispatch_queue_serial_numbers =
 
 
 dispatch_queue_global_t
-dispatch_get_global_queue(long priority, unsigned long flags)
+dispatch_get_global_queue(intptr_t priority, uintptr_t flags)
 {
 	dispatch_assert(countof(_dispatch_root_queues) ==
 			DISPATCH_ROOT_QUEUE_COUNT);
@@ -431,6 +441,12 @@ _dispatch_queue_attr_to_info(dispatch_queue_attr_t dqa)
 
 	if (dqa < _dispatch_queue_attrs ||
 			dqa >= &_dispatch_queue_attrs[DISPATCH_QUEUE_ATTR_COUNT]) {
+#ifndef __APPLE__
+		if (memcmp(dqa, &_dispatch_queue_attrs[0],
+				sizeof(struct dispatch_queue_attr_s)) == 0) {
+			dqa = (dispatch_queue_attr_t)&_dispatch_queue_attrs[0];
+		} else
+#endif // __APPLE__
 		DISPATCH_CLIENT_CRASH(dqa->do_vtable, "Invalid queue attribute");
 	}
 
@@ -527,8 +543,6 @@ dispatch_queue_attr_make_with_autorelease_frequency(dispatch_queue_attr_t dqa,
 	case DISPATCH_AUTORELEASE_FREQUENCY_WORK_ITEM:
 	case DISPATCH_AUTORELEASE_FREQUENCY_NEVER:
 		break;
-	default:
-		return (dispatch_queue_attr_t)dqa;
 	}
 	dispatch_queue_attr_info_t dqai = _dispatch_queue_attr_to_info(dqa);
 	dqai.dqai_autorelease_frequency = (uint16_t)frequency;
@@ -958,6 +972,7 @@ _dispatch_continuation_get_function_symbol(dispatch_continuation_t dc)
 	return dc->dc_func;
 }
 
+#if HAVE_MACH
 void
 _dispatch_bug_kevent_client(const char *msg, const char *filter,
 		const char *operation, int err, uint64_t ident, uint64_t udata,
@@ -974,9 +989,11 @@ _dispatch_bug_kevent_client(const char *msg, const char *filter,
 			dc = du._dr->ds_handler[DS_EVENT_HANDLER];
 			if (dc) func = _dispatch_continuation_get_function_symbol(dc);
 			break;
+#if HAVE_MACH
 		case DISPATCH_MACH_CHANNEL_TYPE:
 			func = du._dmrr->dmrr_handler_func;
 			break;
+#endif // HAVE_MACH
 		}
 		filter = dux_type(du._du)->dst_kind;
 	}
@@ -984,21 +1001,38 @@ _dispatch_bug_kevent_client(const char *msg, const char *filter,
 	if (operation && err) {
 		_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_kevent_client",
 				"BUG in libdispatch client: %s %s: \"%s\" - 0x%x "
-				"{ 0x%llx[%s], ident: %lld / 0x%llx, handler: %p }",
+				"{ 0x%"PRIx64"[%s], ident: %"PRId64" / 0x%"PRIx64", handler: %p }",
 				msg, operation, strerror(err), err,
 				udata, filter, ident, ident, func);
 	} else if (operation) {
 		_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_kevent_client",
 				"BUG in libdispatch client: %s %s"
-				"{ 0x%llx[%s], ident: %lld / 0x%llx, handler: %p }",
+				"{ 0x%"PRIx64"[%s], ident: %"PRId64" / 0x%"PRIx64", handler: %p }",
 				msg, operation, udata, filter, ident, ident, func);
 	} else {
 		_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_kevent_client",
 				"BUG in libdispatch: %s: \"%s\" - 0x%x"
-				"{ 0x%llx[%s], ident: %lld / 0x%llx, handler: %p }",
+				"{ 0x%"PRIx64"[%s], ident: %"PRId64" / 0x%"PRIx64", handler: %p }",
 				msg, strerror(err), err, udata, filter, ident, ident, func);
 	}
 }
+#endif // HAVE_MACH
+
+#if RDAR_49023449
+
+// The clang compiler on Ubuntu18.04 crashes when compiling the full version of
+// this function. This reduced version avoids the crash but logs less useful
+// information.
+void
+_dispatch_bug_kevent_vanished(dispatch_unote_t du)
+{
+	_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_kevent_vanished",
+			"BUG in libdispatch client: %s, monitored resource vanished before "
+			"the source cancel handler was invoked",
+			dux_type(du._du)->dst_kind);
+}
+
+#else // RDAR_49023449
 
 void
 _dispatch_bug_kevent_vanished(dispatch_unote_t du)
@@ -1013,18 +1047,26 @@ _dispatch_bug_kevent_vanished(dispatch_unote_t du)
 		dc = du._dr->ds_handler[DS_EVENT_HANDLER];
 		if (dc) func = _dispatch_continuation_get_function_symbol(dc);
 		break;
+#if HAVE_MACH
 	case DISPATCH_MACH_CHANNEL_TYPE:
 		func = du._dmrr->dmrr_handler_func;
 		break;
+#endif // MACH
 	}
 	_dispatch_log_fault("LIBDISPATCH_STRICT: _dispatch_bug_kevent_vanished",
 			"BUG in libdispatch client: %s, monitored resource vanished before "
 			"the source cancel handler was invoked "
+#if !defined(_WIN32)
 			"{ %p[%s], ident: %d / 0x%x, handler: %p }",
+#else // !defined(_WIN32)
+			"{ %p[%s], ident: %" PRIdPTR " / 0x%" PRIxPTR ", handler: %p }",
+#endif // !defined(_WIN32)
 			dux_type(du._du)->dst_kind, dou._dq,
 			dou._dq->dq_label ? dou._dq->dq_label : "<unknown>",
 			du._du->du_ident, du._du->du_ident, func);
 }
+
+#endif // RDAR_49023449
 
 DISPATCH_NOINLINE DISPATCH_WEAK
 void
@@ -1087,7 +1129,7 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 			char path[MAX_PATH + 1] = {0};
 			DWORD dwLength = GetTempPathA(MAX_PATH, path);
 			dispatch_assert(dwLength <= MAX_PATH + 1);
-			snprintf(&path[dwLength], MAX_PATH - dwLength, "libdispatch.%d.log",
+			snprintf(&path[dwLength], MAX_PATH - dwLength, "libdispatch.%lu.log",
 					GetCurrentProcessId());
 			dispatch_logfile = _open(path, O_WRONLY | O_APPEND | O_CREAT, 0666);
 #else
@@ -1111,15 +1153,19 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 			dispatch_log_basetime = _dispatch_uptime();
 #endif
 #if defined(_WIN32)
-			FILE *pLogFile = _fdopen(dispatch_logfile, "w");
-
 			char szProgramName[MAX_PATH + 1] = {0};
 			GetModuleFileNameA(NULL, szProgramName, MAX_PATH);
 
-			fprintf(pLogFile, "=== log file opened for %s[%lu] at "
-					"%ld.%06u ===\n", szProgramName, GetCurrentProcessId(),
-					tv.tv_sec, (int)tv.tv_usec);
-			fclose(pLogFile);
+			char szMessage[512];
+			int len = snprintf(szMessage, sizeof(szMessage),
+					"=== log file opened for %s[%lu] at %ld.%06u ===",
+					szProgramName, GetCurrentProcessId(), tv.tv_sec,
+					(int)tv.tv_usec);
+			if (len > 0) {
+				len = MIN(len, sizeof(szMessage) - 1);
+				_write(dispatch_logfile, szMessage, len);
+				_write(dispatch_logfile, "\n", 1);
+			}
 #else
 			dprintf(dispatch_logfile, "=== log file opened for %s[%u] at "
 					"%ld.%06u ===\n", getprogname() ?: "", getpid(),
@@ -1514,7 +1560,7 @@ _os_object_t
 _os_object_alloc(const void *cls, size_t size)
 {
 	if (!cls) cls = &_os_object_vtable;
-	return _os_object_alloc_realized(cls, size);
+	return _os_object_alloc_realized((const void * _Nonnull) cls, size);
 }
 
 void

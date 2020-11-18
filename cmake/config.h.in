@@ -136,14 +136,26 @@
 /* Define if you have the Objective-C runtime */
 #cmakedefine HAVE_OBJC
 
+/* Define to 1 if you have the `posix_fadvise' function. */
+#cmakedefine HAVE_POSIX_FADVISE
+
+/* Define to 1 if you have the `posix_spawnp' function. */
+#cmakedefine HAVE_POSIX_SPAWNP
+
 /* Define to 1 if you have the `pthread_key_init_np' function. */
 #cmakedefine HAVE_PTHREAD_KEY_INIT_NP
+
+/* Define to 1 if you have the `pthread_attr_setcpupercent_np' function. */
+#cmakedefine HAVE_PTHREAD_ATTR_SETCPUPERCENT_NP
 
 /* Define to 1 if you have the <pthread_machdep.h> header file. */
 #cmakedefine HAVE_PTHREAD_MACHDEP_H
 
 /* Define to 1 if you have the `pthread_main_np' function. */
 #cmakedefine01 HAVE_PTHREAD_MAIN_NP
+
+/* Define to 1 if you have the `pthread_yield_np' function. */
+#cmakedefine01 HAVE_PTHREAD_YIELD_NP
 
 /* Define to 1 if you have the <pthread_np.h> header file. */
 #cmakedefine01 HAVE_PTHREAD_NP_H

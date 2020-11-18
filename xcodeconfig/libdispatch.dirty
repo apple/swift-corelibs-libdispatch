@@ -63,6 +63,10 @@ __OS_dispatch_disk_vtable
 # os_object_t classes
 _OBJC_CLASS_$_OS_object
 _OBJC_CLASS_$_OS_voucher
+_OBJC_CLASS_$_OS_os_eventlink
+_OBJC_CLASS_$_OS_os_workgroup
+_OBJC_CLASS_$_OS_os_workgroup_interval
+_OBJC_CLASS_$_OS_os_workgroup_parallel
 #_OBJC_CLASS_$_OS_voucher_recipe
 # non-os_object_t classes
 _OBJC_CLASS_$_OS_dispatch_data
@@ -90,6 +94,10 @@ _OBJC_METACLASS_$_OS_dispatch_operation
 _OBJC_METACLASS_$_OS_dispatch_disk
 _OBJC_METACLASS_$_OS_object
 _OBJC_METACLASS_$_OS_voucher
+_OBJC_METACLASS_$_OS_os_eventlink
+_OBJC_METACLASS_$_OS_os_workgroup
+_OBJC_METACLASS_$_OS_os_workgroup_interval
+_OBJC_METACLASS_$_OS_os_workgroup_parallel
 #_OBJC_METACLASS_$_OS_voucher_recipe
 _OBJC_METACLASS_$_OS_dispatch_data
 _OBJC_METACLASS_$_OS_dispatch_data_empty
@@ -121,9 +129,11 @@ __dispatch_logv_pred
 __dispatch_mach_calendar_pred
 __dispatch_mach_host_port_pred
 __dispatch_mach_notify_port_pred
+__dispatch_mach_notify_unote
 __dispatch_mach_xpc_hooks
 __dispatch_main_heap
 __dispatch_main_q_handle_pred
+__dispatch_memorypressure_source
 __dispatch_mgr_sched_pred
 __dispatch_queue_serial_numbers
 __dispatch_root_queues_pred
@@ -140,6 +150,7 @@ __dispatch_mach_notify_port
 __voucher_default_task_mach_voucher
 __voucher_hash_lock
 __voucher_task_mach_voucher
+__os_workgroup_key
 
 # byte-sized
 __dispatch_is_daemon
@@ -154,3 +165,5 @@ __dispatch_io_fds
 __dispatch_io_devs_lockq
 __dispatch_io_fds_lockq
 __dispatch_io_init_pred
+
+__voucher_activity_disabled.disabled

@@ -26,14 +26,14 @@
 		__typeof__(atomic_load_explicit(_os_atomic_c11_atomic(p), memory_order_relaxed))
 #endif
 
-#define firehose_atomic_maxv2o(p, f, v, o, m) \
-		os_atomic_rmw_loop2o(p, f, *(o), (v), m, { \
+#define firehose_atomic_maxv(p, v, o, m) \
+		os_atomic_rmw_loop(p, *(o), (v), m, { \
 			if (*(o) >= (v)) os_atomic_rmw_loop_give_up(break); \
 		})
 
-#define firehose_atomic_max2o(p, f, v, m)   ({ \
-		_os_atomic_basetypeof(&(p)->f) _old; \
-		firehose_atomic_maxv2o(p, f, v, &_old, m); \
+#define firehose_atomic_max(p, v, m)   ({ \
+		_os_atomic_basetypeof(p) _old; \
+		firehose_atomic_maxv(p, v, &_old, m); \
 	})
 
 #ifndef KERNEL
@@ -169,6 +169,7 @@ firehose_buffer_ref_to_chunk(firehose_buffer_t fb, firehose_chunk_ref_t ref)
 #ifndef FIREHOSE_SERVER
 #if DISPATCH_PURE_C
 
+#if OS_ATOMIC_HAS_STARVATION_FREE_RMW || !OS_ATOMIC_CONFIG_STARVATION_FREE_ONLY
 OS_ALWAYS_INLINE
 static inline void
 firehose_buffer_stream_flush(firehose_buffer_t fb, firehose_stream_t stream)
@@ -181,7 +182,7 @@ firehose_buffer_stream_flush(firehose_buffer_t fb, firehose_stream_t stream)
 	long result;
 
 	old_state.fss_atomic_state =
-			os_atomic_load2o(fbs, fbs_state.fss_atomic_state, relaxed);
+			os_atomic_load(&fbs->fbs_state.fss_atomic_state, relaxed);
 	ref = old_state.fss_current;
 	if (!ref || ref == FIREHOSE_STREAM_STATE_PRISTINE) {
 		// there is no installed page, nothing to flush, go away
@@ -207,7 +208,7 @@ firehose_buffer_stream_flush(firehose_buffer_t fb, firehose_stream_t stream)
 	// allocators know how to handle in the first place
 	new_state = old_state;
 	new_state.fss_current = 0;
-	(void)os_atomic_cmpxchg2o(fbs, fbs_state.fss_atomic_state,
+	(void)os_atomic_cmpxchg(&fbs->fbs_state.fss_atomic_state,
 			old_state.fss_atomic_state, new_state.fss_atomic_state, relaxed);
 }
 
@@ -263,9 +264,9 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 	long result;
 	firehose_chunk_ref_t ref;
 
-	// cannot use os_atomic_rmw_loop2o, _page_try_reserve does a store
+	// cannot use os_atomic_rmw_loop, _page_try_reserve does a store
 	old_state.fss_atomic_state =
-			os_atomic_load2o(fbs, fbs_state.fss_atomic_state, relaxed);
+			os_atomic_load(&fbs->fbs_state.fss_atomic_state, relaxed);
 	for (;;) {
 		new_state = old_state;
 
@@ -298,7 +299,7 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 			new_state.fss_loss =
 					MIN(old_state.fss_loss + 1, FIREHOSE_LOSS_COUNT_MAX);
 
-			success = os_atomic_cmpxchgv2o(fbs, fbs_state.fss_atomic_state,
+			success = os_atomic_cmpxchgv(&fbs->fbs_state.fss_atomic_state,
 					old_state.fss_atomic_state, new_state.fss_atomic_state,
 					&old_state.fss_atomic_state, relaxed);
 			if (success) {
@@ -319,7 +320,7 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 			waited = true;
 
 			old_state.fss_atomic_state =
-					os_atomic_load2o(fbs, fbs_state.fss_atomic_state, relaxed);
+					os_atomic_load(&fbs->fbs_state.fss_atomic_state, relaxed);
 #else
 			if (likely(reliable)) {
 				new_state.fss_allocator |= FIREHOSE_GATE_RELIABLE_WAITERS_BIT;
@@ -329,8 +330,8 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 
 			bool already_equal = (new_state.fss_atomic_state ==
 					old_state.fss_atomic_state);
-			success = already_equal || os_atomic_cmpxchgv2o(fbs,
-					fbs_state.fss_atomic_state, old_state.fss_atomic_state,
+			success = already_equal || os_atomic_cmpxchgv(
+					&fbs->fbs_state.fss_atomic_state, old_state.fss_atomic_state,
 					new_state.fss_atomic_state, &old_state.fss_atomic_state,
 					relaxed);
 			if (success) {
@@ -342,8 +343,8 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 						DLOCK_LOCK_DATA_CONTENTION);
 				waited = true;
 
-				old_state.fss_atomic_state = os_atomic_load2o(fbs,
-						fbs_state.fss_atomic_state, relaxed);
+				old_state.fss_atomic_state = os_atomic_load(
+						&fbs->fbs_state.fss_atomic_state, relaxed);
 			}
 #endif
 			continue;
@@ -359,7 +360,7 @@ firehose_buffer_tracepoint_reserve(firehose_buffer_t fb, uint64_t stamp,
 #else
 		new_state.fss_allocator = _dispatch_lock_value_for_self();
 #endif
-		success = os_atomic_cmpxchgv2o(fbs, fbs_state.fss_atomic_state,
+		success = os_atomic_cmpxchgv(&fbs->fbs_state.fss_atomic_state,
 				old_state.fss_atomic_state, new_state.fss_atomic_state,
 				&old_state.fss_atomic_state, relaxed);
 		if (likely(success)) {
@@ -441,7 +442,7 @@ firehose_buffer_bank_try_reserve_slot(firehose_buffer_t fb, bool for_io,
 		new_state = old_state;
 		new_state.fbs_banks[for_io]--;
 
-		success = os_atomic_cmpxchgvw(&fbb->fbb_state.fbs_atomic_state,
+		success = os_atomic_cmpxchgv(&fbb->fbb_state.fbs_atomic_state,
 				old_state.fbs_atomic_state, new_state.fbs_atomic_state,
 				&old_state.fbs_atomic_state, acquire);
 	} while (unlikely(!success));
@@ -449,6 +450,7 @@ firehose_buffer_bank_try_reserve_slot(firehose_buffer_t fb, bool for_io,
 	*state_in_out = new_state;
 	return true;
 }
+#endif // OS_ATOMIC_HAS_STARVATION_FREE_RMW || !OS_ATOMIC_CONFIG_STARVATION_FREE_ONLY
 
 #ifndef KERNEL
 OS_ALWAYS_INLINE
@@ -460,17 +462,18 @@ firehose_buffer_stream_signal_waiting_for_logd(firehose_buffer_t fb,
 	firehose_buffer_stream_t fbs = &fb->fb_header.fbh_stream[stream];
 
 	state.fss_atomic_state =
-			os_atomic_load2o(fbs, fbs_state.fss_atomic_state, relaxed);
+			os_atomic_load(&fbs->fbs_state.fss_atomic_state, relaxed);
 	if (!state.fss_timestamped) {
 		fbs->fbs_loss_start = mach_continuous_time();
 
 		// release to publish the timestamp
-		os_atomic_rmw_loop2o(fbs, fbs_state.fss_atomic_state,
+		os_atomic_rmw_loop(&fbs->fbs_state.fss_atomic_state,
 				state.fss_atomic_state, new_state.fss_atomic_state,
 				release, {
 			new_state = (firehose_stream_state_u){
 				.fss_allocator = (state.fss_allocator &
 						~FIREHOSE_GATE_UNRELIABLE_WAITERS_BIT),
+				.fss_current = state.fss_current,
 				.fss_loss = state.fss_loss,
 				.fss_timestamped = true,
 				.fss_waiting_for_logd = true,
@@ -478,12 +481,13 @@ firehose_buffer_stream_signal_waiting_for_logd(firehose_buffer_t fb,
 			};
 		});
 	} else {
-		os_atomic_rmw_loop2o(fbs, fbs_state.fss_atomic_state,
+		os_atomic_rmw_loop(&fbs->fbs_state.fss_atomic_state,
 				state.fss_atomic_state, new_state.fss_atomic_state,
 				relaxed, {
 			new_state = (firehose_stream_state_u){
 				.fss_allocator = (state.fss_allocator &
 						~FIREHOSE_GATE_UNRELIABLE_WAITERS_BIT),
+				.fss_current = state.fss_current,
 				.fss_loss = state.fss_loss,
 				.fss_timestamped = true,
 				.fss_waiting_for_logd = true,
@@ -507,7 +511,7 @@ firehose_buffer_clear_bank_flags(firehose_buffer_t fb, unsigned long bits)
 	firehose_buffer_bank_t fbb = &fb->fb_header.fbh_bank;
 	unsigned long orig_flags;
 
-	orig_flags = os_atomic_and_orig2o(fbb, fbb_flags, ~bits, relaxed);
+	orig_flags = os_atomic_and_orig(&fbb->fbb_flags, ~bits, relaxed);
 	if (orig_flags != (orig_flags & ~bits)) {
 		firehose_buffer_update_limits(fb);
 	}
@@ -520,7 +524,7 @@ firehose_buffer_set_bank_flags(firehose_buffer_t fb, unsigned long bits)
 	firehose_buffer_bank_t fbb = &fb->fb_header.fbh_bank;
 	unsigned long orig_flags;
 
-	orig_flags = os_atomic_or_orig2o(fbb, fbb_flags, bits, relaxed);
+	orig_flags = os_atomic_or_orig(&fbb->fbb_flags, bits, relaxed);
 	if (orig_flags != (orig_flags | bits)) {
 		firehose_buffer_update_limits(fb);
 	}
@@ -531,7 +535,7 @@ static inline void
 firehose_buffer_bank_relinquish_slot(firehose_buffer_t fb, bool for_io)
 {
 	firehose_buffer_bank_t fbb = &fb->fb_header.fbh_bank;
-	os_atomic_add2o(fbb, fbb_state.fbs_atomic_state, FIREHOSE_BANK_INC(for_io),
+	os_atomic_add(&fbb->fbb_state.fbs_atomic_state, FIREHOSE_BANK_INC(for_io),
 			relaxed);
 }
 #endif // !KERNEL

@@ -36,6 +36,9 @@ static inline void _dispatch_queue_wakeup_with_override(
 static void _dispatch_workloop_drain_barrier_waiter(dispatch_workloop_t dwl,
 		struct dispatch_object_s *dc, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags, uint64_t owned);
+static inline bool
+_dispatch_async_and_wait_should_always_async(dispatch_queue_class_t dqu,
+		uint64_t dq_state);
 
 #pragma mark -
 #pragma mark dispatch_assert_queue
@@ -201,10 +204,12 @@ _dispatch_set_priority_and_voucher_slow(pthread_priority_t priority,
 
 static void _dispatch_async_redirect_invoke(dispatch_continuation_t dc,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
+#if HAVE_PTHREAD_WORKQUEUE_QOS
 static void _dispatch_queue_override_invoke(dispatch_continuation_t dc,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 static void _dispatch_workloop_stealer_invoke(dispatch_continuation_t dc,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
+#endif // HAVE_PTHREAD_WORKQUEUE_QOS
 
 const struct dispatch_continuation_vtable_s _dispatch_continuation_vtables[] = {
 	DC_VTABLE_ENTRY(ASYNC_REDIRECT,
@@ -558,7 +563,7 @@ dispatch_block_cancel(dispatch_block_t db)
 	(void)os_atomic_or2o(dbpd, dbpd_atomic_flags, DBF_CANCELED, relaxed);
 }
 
-long
+intptr_t
 dispatch_block_testcancel(dispatch_block_t db)
 {
 	dispatch_block_private_data_t dbpd = _dispatch_block_get_data(db);
@@ -569,7 +574,7 @@ dispatch_block_testcancel(dispatch_block_t db)
 	return (bool)(dbpd->dbpd_atomic_flags & DBF_CANCELED);
 }
 
-long
+intptr_t
 dispatch_block_wait(dispatch_block_t db, dispatch_time_t timeout)
 {
 	dispatch_block_private_data_t dbpd = _dispatch_block_get_data(db);
@@ -937,7 +942,7 @@ _dispatch_lane_non_barrier_complete_finish(dispatch_lane_t dq,
 			// dependency ordering for dq state changes that were flushed
 			// and not acted upon
 			os_atomic_thread_fence(dependency);
-			dq = os_atomic_force_dependency_on(dq, old_state);
+			dq = os_atomic_inject_dependency(dq, (unsigned long)old_state);
 		}
 		return _dispatch_lane_barrier_complete(dq, 0, flags);
 	}
@@ -1061,9 +1066,10 @@ _dispatch_lane_barrier_sync_invoke_and_complete(dispatch_lane_t dq,
 	// these bits should be set if the lock was never contended/discovered.
 	const uint64_t fail_unlock_mask = DISPATCH_QUEUE_SUSPEND_BITS_MASK |
 			DISPATCH_QUEUE_ENQUEUED | DISPATCH_QUEUE_DIRTY |
-			DISPATCH_QUEUE_RECEIVED_OVERRIDE | DISPATCH_QUEUE_SYNC_TRANSFER |
+			DISPATCH_QUEUE_RECEIVED_OVERRIDE |
 			DISPATCH_QUEUE_RECEIVED_SYNC_WAIT;
 	uint64_t old_state, new_state;
+	dispatch_wakeup_flags_t flags = 0;
 
 	// similar to _dispatch_queue_drain_try_unlock
 	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, release, {
@@ -1072,7 +1078,7 @@ _dispatch_lane_barrier_sync_invoke_and_complete(dispatch_lane_t dq,
 		new_state &= ~DISPATCH_QUEUE_MAX_QOS_MASK;
 		if (unlikely(old_state & fail_unlock_mask)) {
 			os_atomic_rmw_loop_give_up({
-				return _dispatch_lane_barrier_complete(dq, 0, 0);
+				return _dispatch_lane_barrier_complete(dq, 0, flags);
 			});
 		}
 	});
@@ -1102,7 +1108,6 @@ _dispatch_waiter_wake(dispatch_sync_context_t dsc, dispatch_wlh_t wlh,
 {
 	dispatch_wlh_t waiter_wlh = dsc->dc_data;
 
-#if DISPATCH_USE_KEVENT_WORKLOOP
 	//
 	// We need to interact with a workloop if any of the following 3 cases:
 	// 1. the current owner of the lock has a SYNC_WAIT knote to destroy
@@ -1115,10 +1120,9 @@ _dispatch_waiter_wake(dispatch_sync_context_t dsc, dispatch_wlh_t wlh,
 	// without pushing (waiter_wlh == DISPATCH_WLH_ANON), in which case the next
 	// owner is really woken up when the thread event is signaled.
 	//
-#endif
-	if (_dq_state_in_sync_transfer(old_state) ||
-			_dq_state_in_sync_transfer(new_state) ||
-			(waiter_wlh != DISPATCH_WLH_ANON)) {
+	if ((_dq_state_is_base_wlh(old_state) && !dsc->dsc_from_async) ||
+			_dq_state_is_base_wlh(new_state) ||
+			waiter_wlh != DISPATCH_WLH_ANON) {
 		_dispatch_event_loop_wake_owner(dsc, wlh, old_state, new_state);
 	}
 	if (unlikely(waiter_wlh == DISPATCH_WLH_ANON)) {
@@ -1183,8 +1187,8 @@ again:
 	}
 
 	if (dsc->dc_flags & DC_FLAG_ASYNC_AND_WAIT) {
-		// _dispatch_barrier_async_and_wait_f_slow() expects dc_other to be the
-		// bottom queue of the graph
+		// We're in case (2) of _dispatch_async_and_wait_f_slow() which expects
+		// dc_other to be the bottom queue of the graph
 		dsc->dc_other = dq;
 	}
 	return _dispatch_waiter_wake_wlh_anon(dsc);
@@ -1248,17 +1252,10 @@ _dispatch_barrier_waiter_redirect_or_wake(dispatch_queue_class_t dqu,
 		}
 		// passing the QoS of `dq` helps pushing on low priority waiters with
 		// legacy workloops.
-#if DISPATCH_INTROSPECTION
 		dsc->dsc_from_async = false;
-#endif
 		return dx_push(tq, dsc, _dq_state_max_qos(old_state));
 	}
 
-	if (dsc->dc_flags & DC_FLAG_ASYNC_AND_WAIT) {
-		// _dispatch_async_and_wait_f_slow() expects dc_other to be the
-		// bottom queue of the graph
-		dsc->dc_other = dq;
-	}
 #if DISPATCH_INTROSPECTION
 	if (dsc->dsc_from_async) {
 		_dispatch_trace_runtime_event(async_sync_handoff, dq, 0);
@@ -1266,6 +1263,12 @@ _dispatch_barrier_waiter_redirect_or_wake(dispatch_queue_class_t dqu,
 		_dispatch_trace_runtime_event(sync_sync_handoff, dq, 0);
 	}
 #endif // DISPATCH_INTROSPECTION
+
+	if (dsc->dc_flags & DC_FLAG_ASYNC_AND_WAIT) {
+		// Falling into case (2) of _dispatch_async_and_wait_f_slow, dc_other is
+		// the bottom queue
+		dsc->dc_other = dq;
+	}
 	return _dispatch_waiter_wake(dsc, wlh, old_state, new_state);
 }
 
@@ -1284,13 +1287,18 @@ _dispatch_lane_drain_barrier_waiter(dispatch_lane_t dq,
 
 transfer_lock_again:
 	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, release, {
+		if (unlikely(_dq_state_needs_ensure_ownership(old_state))) {
+			_dispatch_event_loop_ensure_ownership((dispatch_wlh_t)dq);
+			_dispatch_queue_move_to_contended_sync(dq->_as_dq);
+			os_atomic_rmw_loop_give_up(goto transfer_lock_again);
+		}
+
 		new_state  = old_state;
 		new_state &= ~DISPATCH_QUEUE_DRAIN_UNLOCK_MASK;
 		new_state &= ~DISPATCH_QUEUE_DIRTY;
 		new_state |= next_owner;
 
 		if (_dq_state_is_base_wlh(old_state)) {
-			new_state |= DISPATCH_QUEUE_SYNC_TRANSFER;
 			if (next_dc) {
 				// we know there's a next item, keep the enqueued bit if any
 			} else if (unlikely(_dq_state_is_dirty(old_state))) {
@@ -1332,7 +1340,13 @@ _dispatch_lane_class_barrier_complete(dispatch_lane_t dq, dispatch_qos_t qos,
 		enqueue = 0;
 	}
 
+again:
 	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, release, {
+		if (unlikely(_dq_state_needs_ensure_ownership(old_state))) {
+			_dispatch_event_loop_ensure_ownership((dispatch_wlh_t)dq);
+			_dispatch_queue_move_to_contended_sync(dq->_as_dq);
+			os_atomic_rmw_loop_give_up(goto again);
+		}
 		new_state  = _dq_state_merge_qos(old_state - owned, qos);
 		new_state &= ~DISPATCH_QUEUE_DRAIN_UNLOCK_MASK;
 		if (unlikely(_dq_state_is_suspended(old_state))) {
@@ -1379,8 +1393,7 @@ _dispatch_lane_class_barrier_complete(dispatch_lane_t dq, dispatch_qos_t qos,
 		dispatch_assert(!_dq_state_is_enqueued_on_manager(new_state));
 		if (_dq_state_is_enqueued_on_target(old_state) ||
 				_dq_state_is_enqueued_on_target(new_state) ||
-				_dq_state_received_sync_wait(old_state) ||
-				_dq_state_in_sync_transfer(old_state)) {
+				!_dq_state_in_uncontended_sync(old_state)) {
 			return _dispatch_event_loop_end_ownership((dispatch_wlh_t)dq,
 					old_state, new_state, flags);
 		}
@@ -1554,11 +1567,8 @@ _dispatch_wait_prepare(dispatch_queue_t dq)
 
 	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, relaxed, {
 		if (_dq_state_is_suspended(old_state) ||
-				!_dq_state_is_base_wlh(old_state)) {
-			os_atomic_rmw_loop_give_up(return old_state);
-		}
-		if (!_dq_state_drain_locked(old_state) ||
-				_dq_state_in_sync_transfer(old_state)) {
+				!_dq_state_is_base_wlh(old_state) ||
+				!_dq_state_in_uncontended_sync(old_state)) {
 			os_atomic_rmw_loop_give_up(return old_state);
 		}
 		new_state = old_state | DISPATCH_QUEUE_RECEIVED_SYNC_WAIT;
@@ -1639,7 +1649,7 @@ __DISPATCH_WAIT_FOR_QUEUE__(dispatch_sync_context_t dsc, dispatch_queue_t dq)
 	_dispatch_trace_runtime_event(sync_wait, dq, 0);
 	if (dsc->dc_data == DISPATCH_WLH_ANON) {
 		_dispatch_thread_event_wait(&dsc->dsc_event); // acquire
-	} else {
+	} else if (!dsc->dsc_wlh_self_wakeup) {
 		_dispatch_event_loop_wait_for_ownership(dsc);
 	}
 	if (dsc->dc_data == DISPATCH_WLH_ANON) {
@@ -1724,6 +1734,8 @@ _dispatch_sync_f_slow(dispatch_queue_class_t top_dqu, void *ctxt,
 	__DISPATCH_WAIT_FOR_QUEUE__(&dsc, dq);
 
 	if (dsc.dsc_func == NULL) {
+		// dsc_func being cleared means that the block ran on another thread ie.
+		// case (2) as listed in _dispatch_async_and_wait_f_slow.
 		dispatch_queue_t stop_dq = dsc.dc_other;
 		return _dispatch_sync_complete_recurse(top_dq, stop_dq, top_dc_flags);
 	}
@@ -1981,6 +1993,34 @@ static void
 _dispatch_async_and_wait_f_slow(dispatch_queue_t dq, uintptr_t top_dc_flags,
 		dispatch_sync_context_t dsc, dispatch_queue_t tq)
 {
+	/* dc_other is an in-out parameter.
+	 *
+	 * As an in-param, it specifies the top queue on which the blocking
+	 * primitive is called.
+	 *
+	 * As an out-param, it refers to the queue up till which we have the drain
+	 * lock. This is slightly different depending on how we come out of
+	 * _WAIT_FOR_QUEUE.
+	 *
+	 * Case 1:
+	 * If the continuation is to be invoked on another thread - for
+	 * async_and_wait, or we ran on a thread bound main queue - then someone
+	 * already called _dispatch_async_and_wait_invoke which invoked the block
+	 * already. dc_other as an outparam here tells the enqueuer the queue up
+	 * till which the enqueuer got the drain lock so that we know what to unlock
+	 * on the way out. This is the case whereby the enqueuer owns part of the
+	 * locks in the queue hierachy (but not all).
+	 *
+	 * Case 2:
+	 * If the continuation is to be invoked on the enqueuing thread -  because
+	 * we were contending with another sync or async_and_wait - then enqueuer
+	 * return from _WAIT_FOR_QUEUE without having invoked the block. The
+	 * enqueuer has had the locks for the rest of the queue hierachy handed off
+	 * to it so dc_other specifies the queue up till which it has the locks
+	 * which in this case, is up till the bottom queue in the hierachy. So it
+	 * needs to unlock everything up till the bottom queue, on the way out.
+	 */
+
 	__DISPATCH_WAIT_FOR_QUEUE__(dsc, tq);
 
 	if (unlikely(dsc->dsc_func == NULL)) {
@@ -2008,11 +2048,19 @@ _dispatch_async_and_wait_should_always_async(dispatch_queue_class_t dqu,
 
 DISPATCH_ALWAYS_INLINE
 static inline bool
-_dispatch_async_and_wait_recurse_one(dispatch_queue_t dq, dispatch_tid tid,
-		uintptr_t dc_flags)
+_dispatch_async_and_wait_recurse_one(dispatch_queue_t dq,
+		dispatch_sync_context_t dsc, dispatch_tid tid, uintptr_t dc_flags)
 {
 	uint64_t dq_state = os_atomic_load2o(dq, dq_state, relaxed);
 	if (unlikely(_dispatch_async_and_wait_should_always_async(dq, dq_state))) {
+		// Remove the async_and_wait flag but drive down the slow path so that
+		// we do the synchronous wait. We are guaranteed that dq is the base
+		// queue.
+		//
+		// We're falling down to case (1) of _dispatch_async_and_wait_f_slow so
+		// set dc_other to dq
+		dsc->dc_flags &= ~DC_FLAG_ASYNC_AND_WAIT;
+		dsc->dc_other = dq;
 		return false;
 	}
 	if (likely(dc_flags & DC_FLAG_BARRIER)) {
@@ -2032,7 +2080,8 @@ _dispatch_async_and_wait_recurse(dispatch_queue_t top_dq,
 	_dispatch_trace_item_push(top_dq, dsc);
 
 	for (;;) {
-		if (unlikely(!_dispatch_async_and_wait_recurse_one(dq, tid, dc_flags))){
+		if (unlikely(!_dispatch_async_and_wait_recurse_one(dq, dsc, tid,
+				dc_flags))) {
 			return _dispatch_async_and_wait_f_slow(top_dq, top_flags, dsc, dq);
 		}
 
@@ -2844,7 +2893,7 @@ _dispatch_lane_class_dispose(dispatch_lane_class_t dqu, bool *allow_free)
 			DISPATCH_CLIENT_CRASH((uintptr_t)orig_dq_state,
 					"Release of a locked queue");
 		}
-#ifndef __LP64__
+#if DISPATCH_SIZEOF_PTR == 4
 		orig_dq_state >>= 32;
 #endif
 		DISPATCH_CLIENT_CRASH((uintptr_t)orig_dq_state,
@@ -2993,7 +3042,7 @@ _dispatch_lane_resume(dispatch_lane_t dq, dispatch_resume_op_t op)
 			(dq->dq_width - 1) * DISPATCH_QUEUE_WIDTH_INTERVAL;
 	uint64_t set_owner_and_set_full_width_and_in_barrier =
 			_dispatch_lock_value_for_self() | DISPATCH_QUEUE_WIDTH_FULL_BIT |
-			DISPATCH_QUEUE_IN_BARRIER;
+			DISPATCH_QUEUE_IN_BARRIER | DISPATCH_QUEUE_UNCONTENDED_SYNC;
 
 	// backward compatibility: only dispatch sources can abuse
 	// dispatch_resume() to really mean dispatch_activate()
@@ -3137,7 +3186,7 @@ _dispatch_lane_resume(dispatch_lane_t dq, dispatch_resume_op_t op)
 		// dependency ordering for dq state changes that were flushed
 		// and not acted upon
 		os_atomic_thread_fence(dependency);
-		dq = os_atomic_force_dependency_on(dq, old_state);
+		dq = os_atomic_inject_dependency(dq, (unsigned long)old_state);
 	}
 	// Balancing the retain_2 done in suspend() for rdar://8181908
 	dispatch_wakeup_flags_t flags = DISPATCH_WAKEUP_CONSUME_2;
@@ -3149,8 +3198,6 @@ _dispatch_lane_resume(dispatch_lane_t dq, dispatch_resume_op_t op)
 		}
 		return _dispatch_release_2(dq);
 	}
-	dispatch_assert(!_dq_state_received_sync_wait(old_state));
-	dispatch_assert(!_dq_state_in_sync_transfer(old_state));
 	return dx_wakeup(dq, _dq_state_max_qos(old_state), flags);
 
 over_resume:
@@ -3509,7 +3556,7 @@ _dispatch_queue_drain_should_narrow_slow(uint64_t now,
 		if (unlikely(qos < DISPATCH_QOS_MIN || qos > DISPATCH_QOS_MAX)) {
 			DISPATCH_CLIENT_CRASH(pp, "Thread QoS corruption");
 		}
-		size_t idx = DISPATCH_QOS_BUCKET(qos);
+		int idx = DISPATCH_QOS_BUCKET(qos);
 		os_atomic(uint64_t) *deadline = &_dispatch_narrowing_deadlines[idx];
 		uint64_t oldval, newval = now + _dispatch_narrow_check_interval();
 
@@ -3738,13 +3785,11 @@ _dispatch_queue_invoke_finish(dispatch_queue_t dq,
 	struct dispatch_object_s *dc = dic->dic_barrier_waiter;
 	dispatch_qos_t qos = dic->dic_barrier_waiter_bucket;
 	if (dc) {
+		dispatch_sync_context_t dsc = (dispatch_sync_context_t)dc;
+		dsc->dsc_from_async = true;
 		dic->dic_barrier_waiter = NULL;
 		dic->dic_barrier_waiter_bucket = DISPATCH_QOS_UNSPECIFIED;
 		owned &= DISPATCH_QUEUE_ENQUEUED | DISPATCH_QUEUE_ENQUEUED_ON_MGR;
-#if DISPATCH_INTROSPECTION
-		dispatch_sync_context_t dsc = (dispatch_sync_context_t)dc;
-		dsc->dsc_from_async = true;
-#endif
 		if (qos) {
 			return _dispatch_workloop_drain_barrier_waiter(upcast(dq)._dwl,
 					dc, qos, DISPATCH_WAKEUP_CONSUME_2, owned);
@@ -3936,10 +3981,14 @@ static void
 _dispatch_workloop_attributes_dispose(dispatch_workloop_t dwl)
 {
 	if (dwl->dwl_attr) {
+		if (dwl->dwl_attr->workgroup) {
+			_os_object_release(dwl->dwl_attr->workgroup->_as_os_obj);
+		}
 		free(dwl->dwl_attr);
 	}
 }
 
+#if TARGET_OS_MAC
 DISPATCH_ALWAYS_INLINE
 static bool
 _dispatch_workloop_has_kernel_attributes(dispatch_workloop_t dwl)
@@ -3972,6 +4021,7 @@ dispatch_workloop_set_scheduler_priority(dispatch_workloop_t dwl, int priority,
 		dwl->dwl_attr->dwla_flags &= ~DISPATCH_WORKLOOP_ATTR_HAS_POLICY;
 	}
 }
+#endif // TARGET_OS_MAC
 
 void
 dispatch_workloop_set_qos_class_floor(dispatch_workloop_t dwl,
@@ -3990,12 +4040,32 @@ dispatch_workloop_set_qos_class_floor(dispatch_workloop_t dwl,
 		dwl->dwl_attr->dwla_flags &= ~DISPATCH_WORKLOOP_ATTR_HAS_QOS_CLASS;
 	}
 
+#if TARGET_OS_MAC
 	if (flags & DISPATCH_WORKLOOP_FIXED_PRIORITY) {
 		dwl->dwl_attr->dwla_policy = POLICY_RR;
 		dwl->dwl_attr->dwla_flags |= DISPATCH_WORKLOOP_ATTR_HAS_POLICY;
 	} else {
 		dwl->dwl_attr->dwla_flags &= ~DISPATCH_WORKLOOP_ATTR_HAS_POLICY;
 	}
+#else // TARGET_OS_MAC
+	(void)flags;
+#endif // TARGET_OS_MAC
+}
+
+void
+dispatch_workloop_set_os_workgroup(dispatch_workloop_t dwl, os_workgroup_t wg)
+{
+	_dispatch_queue_setter_assert_inactive(dwl);
+	_dispatch_workloop_attributes_alloc_if_needed(dwl);
+
+	os_workgroup_t old_wg = dwl->dwl_attr->workgroup;
+	if (old_wg) {
+		_os_object_release(old_wg->_as_os_obj);
+	}
+
+	/* Take an external ref count on the workgroup */
+	_os_object_retain(wg->_as_os_obj);
+	dwl->dwl_attr->workgroup = wg;
 }
 
 void
@@ -4036,6 +4106,7 @@ _dispatch_workloop_set_observer_hooks_4IOHID(dispatch_workloop_t dwl,
 }
 #endif
 
+#if TARGET_OS_MAC
 static void
 _dispatch_workloop_activate_simulator_fallback(dispatch_workloop_t dwl,
 		pthread_attr_t *attr)
@@ -4043,8 +4114,11 @@ _dispatch_workloop_activate_simulator_fallback(dispatch_workloop_t dwl,
 	uint64_t old_state, new_state;
 	dispatch_queue_global_t dprq;
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated"
 	dprq = dispatch_pthread_root_queue_create(
 			"com.apple.libdispatch.workloop_fallback", 0, attr, NULL);
+#pragma clang diagnostic pop
 
 	dwl->do_targetq = dprq->_as_dq;
 	_dispatch_retain(dprq);
@@ -4067,10 +4141,12 @@ static const struct dispatch_queue_global_s _dispatch_custom_workloop_root_queue
 	.dq_serialnum = DISPATCH_QUEUE_SERIAL_NUMBER_WLF,
 	.dgq_thread_pool_size = 1,
 };
+#endif // TARGET_OS_MAC
 
 static void
 _dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
 {
+#if defined(_POSIX_THREADS)
 	dispatch_workloop_attr_t dwla = dwl->dwl_attr;
 	pthread_attr_t attr;
 
@@ -4078,6 +4154,7 @@ _dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
 	if (dwla->dwla_flags & DISPATCH_WORKLOOP_ATTR_HAS_QOS_CLASS) {
 		dwl->dq_priority |= dwla->dwla_pri | DISPATCH_PRIORITY_FLAG_FLOOR;
 	}
+#if TARGET_OS_MAC
 	if (dwla->dwla_flags & DISPATCH_WORKLOOP_ATTR_HAS_SCHED) {
 		pthread_attr_setschedparam(&attr, &dwla->dwla_sched);
 		// _dispatch_async_and_wait_should_always_async detects when a queue
@@ -4087,13 +4164,28 @@ _dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
 		dwl->do_targetq =
 				(dispatch_queue_t)_dispatch_custom_workloop_root_queue._as_dq;
 	}
+
+	if (dwla->workgroup != NULL) {
+		// _dispatch_async_and_wait_should_always_async detects when a queue
+		// targets a root queue that is not part of the root queues array in
+		// order to force async_and_wait to async. We want this path to always
+		// be taken on workloops that have an associated workgroup with them
+		// because there is no easy way to join and leave a workgroup for just a
+		// single block
+		dwl->do_targetq =
+				(dispatch_queue_t)_dispatch_custom_workloop_root_queue._as_dq;
+	}
 	if (dwla->dwla_flags & DISPATCH_WORKLOOP_ATTR_HAS_POLICY) {
 		pthread_attr_setschedpolicy(&attr, dwla->dwla_policy);
 	}
+#endif // TARGET_OS_MAC
+#if HAVE_PTHREAD_ATTR_SETCPUPERCENT_NP
 	if (dwla->dwla_flags & DISPATCH_WORKLOOP_ATTR_HAS_CPUPERCENT) {
 		pthread_attr_setcpupercent_np(&attr, dwla->dwla_cpupercent.percent,
 				(unsigned long)dwla->dwla_cpupercent.refillms);
 	}
+#endif // HAVE_PTHREAD_ATTR_SETCPUPERCENT_NP
+#if TARGET_OS_MAC
 	if (_dispatch_workloop_has_kernel_attributes(dwl)) {
 		int rv = _pthread_workloop_create((uint64_t)dwl, 0, &attr);
 		switch (rv) {
@@ -4108,7 +4200,9 @@ _dispatch_workloop_activate_attributes(dispatch_workloop_t dwl)
 			dispatch_assert_zero(rv);
 		}
 	}
+#endif // TARGET_OS_MAC
 	pthread_attr_destroy(&attr);
+#endif // defined(_POSIX_THREADS)
 }
 
 void
@@ -4124,7 +4218,7 @@ _dispatch_workloop_dispose(dispatch_workloop_t dwl, bool *allow_free)
 			DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
 					"Release of a locked workloop");
 		}
-#ifndef __LP64__
+#if DISPATCH_SIZEOF_PTR == 4
 		dq_state >>= 32;
 #endif
 		DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
@@ -4152,10 +4246,12 @@ _dispatch_workloop_dispose(dispatch_workloop_t dwl, bool *allow_free)
 		dwl->dwl_timer_heap = NULL;
 	}
 
+#if TARGET_OS_MAC
 	if (dwl->dwl_attr && (dwl->dwl_attr->dwla_flags &
 			DISPATCH_WORKLOOP_ATTR_NEEDS_DESTROY)) {
 		(void)dispatch_assume_zero(_pthread_workloop_destroy((uint64_t)dwl));
 	}
+#endif // TARGET_OS_MAC
 	_dispatch_workloop_attributes_dispose(dwl);
 	_dispatch_queue_dispose(dwl, allow_free);
 }
@@ -4210,11 +4306,13 @@ _dispatch_workloop_try_lower_max_qos(dispatch_workloop_t dwl,
 		new_state |= qos_bits;
 	});
 
+#if DISPATCH_USE_KEVENT_WORKQUEUE
 	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
 	if (likely(ddi)) {
 		ddi->ddi_wlh_needs_update = true;
 		_dispatch_return_to_kernel();
 	}
+#endif // DISPATCH_USE_KEVENT_WORKQUEUE
 	return true;
 }
 
@@ -4284,7 +4382,7 @@ _dispatch_workloop_invoke(dispatch_workloop_t dwl,
 {
 	flags &= ~(dispatch_invoke_flags_t)DISPATCH_INVOKE_REDIRECTING_DRAIN;
 	flags |= DISPATCH_INVOKE_WORKLOOP_DRAIN;
-	_dispatch_queue_class_invoke(dwl, dic, flags, 0,_dispatch_workloop_invoke2);
+	_dispatch_queue_class_invoke(dwl, dic, flags, 0, _dispatch_workloop_invoke2);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -4317,13 +4415,17 @@ transfer_lock_again:
 	}
 
 	os_atomic_rmw_loop2o(dwl, dq_state, old_state, new_state, release, {
+		if (unlikely(_dq_state_needs_ensure_ownership(old_state))) {
+			_dispatch_event_loop_ensure_ownership((dispatch_wlh_t)dwl);
+			_dispatch_queue_move_to_contended_sync(dwl->_as_dq);
+			os_atomic_rmw_loop_give_up(goto transfer_lock_again);
+		}
 		new_state  = old_state;
 		new_state &= ~DISPATCH_QUEUE_DRAIN_UNLOCK_MASK;
 		new_state &= ~DISPATCH_QUEUE_DIRTY;
 		new_state |= next_owner;
 
 		if (likely(_dq_state_is_base_wlh(old_state))) {
-			new_state |= DISPATCH_QUEUE_SYNC_TRANSFER;
 			if (has_more_work) {
 				// we know there's a next item, keep the enqueued bit if any
 			} else if (unlikely(_dq_state_is_dirty(old_state))) {
@@ -4374,7 +4476,13 @@ again:
 
 	uint64_t old_state, new_state;
 
+transfer_lock_again:
 	os_atomic_rmw_loop2o(dwl, dq_state, old_state, new_state, release, {
+		if (unlikely(_dq_state_needs_ensure_ownership(old_state))) {
+			_dispatch_event_loop_ensure_ownership((dispatch_wlh_t)dwl);
+			_dispatch_queue_move_to_contended_sync(dwl->_as_dq);
+			os_atomic_rmw_loop_give_up(goto transfer_lock_again);
+		}
 		new_state  = _dq_state_merge_qos(old_state, qos);
 		new_state -= DISPATCH_QUEUE_IN_BARRIER;
 		new_state -= DISPATCH_QUEUE_WIDTH_INTERVAL;
@@ -4418,8 +4526,7 @@ again:
 		dispatch_assert(!_dq_state_is_enqueued_on_manager(new_state));
 		if (_dq_state_is_enqueued_on_target(old_state) ||
 				_dq_state_is_enqueued_on_target(new_state) ||
-				_dq_state_received_sync_wait(old_state) ||
-				_dq_state_in_sync_transfer(old_state)) {
+				!_dq_state_in_uncontended_sync(old_state)) {
 			return _dispatch_event_loop_end_ownership((dispatch_wlh_t)dwl,
 					old_state, new_state, flags);
 		}
@@ -4510,6 +4617,9 @@ _dispatch_workloop_wakeup(dispatch_workloop_t dwl, dispatch_qos_t qos,
 	os_atomic_rmw_loop2o(dwl, dq_state, old_state, new_state, release, {
 		new_state = _dq_state_merge_qos(old_state, qos);
 		if (_dq_state_max_qos(new_state)) {
+			// We need to make sure we have the enqueued bit when we are making
+			// the syscall to update QoS and we know that we will do it since
+			// we're at the base anyways
 			new_state |= DISPATCH_QUEUE_ENQUEUED;
 		}
 		if (flags & DISPATCH_WAKEUP_MAKE_DIRTY) {
@@ -4520,7 +4630,7 @@ _dispatch_workloop_wakeup(dispatch_workloop_t dwl, dispatch_qos_t qos,
 	});
 
 	if (unlikely(_dq_state_is_suspended(old_state))) {
-#ifndef __LP64__
+#if DISPATCH_SIZEOF_PTR == 4
 		old_state >>= 32;
 #endif
 		DISPATCH_CLIENT_CRASH(old_state, "Waking up an inactive workloop");
@@ -4558,11 +4668,12 @@ _dispatch_workloop_push_waiter(dispatch_workloop_t dwl,
 
 	uint64_t set_owner_and_set_full_width_and_in_barrier =
 			_dispatch_lock_value_for_self() |
-			DISPATCH_QUEUE_WIDTH_FULL_BIT | DISPATCH_QUEUE_IN_BARRIER;
+			DISPATCH_QUEUE_WIDTH_FULL_BIT | DISPATCH_QUEUE_IN_BARRIER |
+			DISPATCH_QUEUE_UNCONTENDED_SYNC;
 	uint64_t old_state, new_state;
 
 	os_atomic_rmw_loop2o(dwl, dq_state, old_state, new_state, release, {
-		new_state  = _dq_state_merge_qos(old_state, qos);
+		new_state = _dq_state_merge_qos(old_state, qos);
 		new_state |= DISPATCH_QUEUE_DIRTY;
 		if (unlikely(_dq_state_drain_locked(old_state))) {
 			// not runnable, so we should just handle overrides
@@ -4575,14 +4686,36 @@ _dispatch_workloop_push_waiter(dispatch_workloop_t dwl,
 		}
 	});
 
-	dsc->dsc_wlh_was_first = (dsc->dsc_waiter == _dispatch_tid_self());
+	if ((dsc->dc_flags & DC_FLAG_ASYNC_AND_WAIT) &&
+		_dispatch_async_and_wait_should_always_async(dwl, new_state)) {
+		dsc->dc_other = dwl;
+		dsc->dc_flags &= ~DC_FLAG_ASYNC_AND_WAIT;
+	}
+
+	if (_dq_state_is_base_wlh(new_state) && dsc->dc_data != DISPATCH_WLH_ANON) {
+		dsc->dsc_wlh_was_first = (dsc->dsc_waiter == _dispatch_tid_self());
+	}
 
 	if ((old_state ^ new_state) & DISPATCH_QUEUE_IN_BARRIER) {
-		return _dispatch_workloop_barrier_complete(dwl, qos, 0);
+		dispatch_wakeup_flags_t flags = 0;
+		// We came here from __DISPATCH_WAIT_FOR_QUEUE__, if the element
+		// we pushed is still at the head, we can cheat, dequeue everything,
+		// and keep pretending we weren't contended.
+		if (dsc->dsc_wlh_was_first && _dispatch_workloop_get_head(dwl, qos) == dc) {
+			dsc->dsc_wlh_self_wakeup = true;
+			if (dsc->dc_flags & DC_FLAG_ASYNC_AND_WAIT) {
+				// We're in case (2) of _dispatch_async_and_wait_f_slow() which expects
+				// dc_other to be the bottom queue of the graph
+				dsc->dc_other = dwl;
+			}
+			_dispatch_workloop_pop_head(dwl, qos, dc);
+			return;
+		}
+		return _dispatch_workloop_barrier_complete(dwl, qos, flags);
 	}
 #if HAVE_PTHREAD_WORKQUEUE_QOS
 	if (unlikely((old_state ^ new_state) & DISPATCH_QUEUE_MAX_QOS_MASK)) {
-		if (_dq_state_should_override(new_state)) {
+		if (_dq_state_should_override_for_waiter(new_state)) {
 			return _dispatch_queue_wakeup_with_override(dwl, new_state, 0);
 		}
 	}
@@ -4840,6 +4973,7 @@ _dispatch_queue_wakeup(dispatch_queue_class_t dqu, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags, dispatch_queue_wakeup_target_t target)
 {
 	dispatch_queue_t dq = dqu._dq;
+	uint64_t old_state, new_state, enqueue = DISPATCH_QUEUE_ENQUEUED;
 	dispatch_assert(target != DISPATCH_QUEUE_WAKEUP_WAIT_FOR_EVENT);
 
 	if (target && !(flags & DISPATCH_WAKEUP_CONSUME_2)) {
@@ -4865,7 +4999,6 @@ _dispatch_queue_wakeup(dispatch_queue_class_t dqu, dispatch_qos_t qos,
 	}
 
 	if (target) {
-		uint64_t old_state, new_state, enqueue = DISPATCH_QUEUE_ENQUEUED;
 		if (target == DISPATCH_QUEUE_WAKEUP_MGR) {
 			enqueue = DISPATCH_QUEUE_ENQUEUED_ON_MGR;
 		}
@@ -4887,8 +5020,9 @@ _dispatch_queue_wakeup(dispatch_queue_class_t dqu, dispatch_qos_t qos,
 			if (likely(!_dq_state_is_suspended(new_state) &&
 					!_dq_state_is_enqueued(old_state) &&
 					(!_dq_state_drain_locked(old_state) ||
-					(enqueue != DISPATCH_QUEUE_ENQUEUED_ON_MGR &&
-					_dq_state_is_base_wlh(old_state))))) {
+					enqueue != DISPATCH_QUEUE_ENQUEUED_ON_MGR))) {
+				// Always set the enqueued bit for async enqueues on all queues
+				// in the hierachy
 				new_state |= enqueue;
 			}
 			if (flags & DISPATCH_WAKEUP_MAKE_DIRTY) {
@@ -4897,52 +5031,85 @@ _dispatch_queue_wakeup(dispatch_queue_class_t dqu, dispatch_qos_t qos,
 				os_atomic_rmw_loop_give_up(goto done);
 			}
 		});
-
-		if (likely((old_state ^ new_state) & enqueue)) {
-			dispatch_queue_t tq;
-			if (target == DISPATCH_QUEUE_WAKEUP_TARGET) {
-				// the rmw_loop above has no acquire barrier, as the last block
-				// of a queue asyncing to that queue is not an uncommon pattern
-				// and in that case the acquire would be completely useless
-				//
-				// so instead use depdendency ordering to read
-				// the targetq pointer.
-				os_atomic_thread_fence(dependency);
-				tq = os_atomic_load_with_dependency_on2o(dq, do_targetq,
-						(long)new_state);
-			} else {
-				tq = target;
-			}
-			dispatch_assert(_dq_state_is_enqueued(new_state));
-			return _dispatch_queue_push_queue(tq, dq, new_state);
-		}
 #if HAVE_PTHREAD_WORKQUEUE_QOS
-		if (unlikely((old_state ^ new_state) & DISPATCH_QUEUE_MAX_QOS_MASK)) {
-			if (_dq_state_should_override(new_state)) {
-				return _dispatch_queue_wakeup_with_override(dq, new_state,
-						flags);
-			}
-		}
 	} else if (qos) {
 		//
 		// Someone is trying to override the last work item of the queue.
 		//
-		uint64_t old_state, new_state;
 		os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, relaxed, {
-			if (!_dq_state_drain_locked(old_state) ||
-					!_dq_state_is_enqueued(old_state)) {
+			// Avoid spurious override if the item was drained before we could
+			// apply an override
+			if (!_dq_state_drain_locked(old_state) &&
+				!_dq_state_is_enqueued(old_state)) {
 				os_atomic_rmw_loop_give_up(goto done);
 			}
 			new_state = _dq_state_merge_qos(old_state, qos);
+			if (_dq_state_is_base_wlh(old_state) &&
+					!_dq_state_is_suspended(old_state) &&
+					/* <rdar://problem/63179930> */
+					!_dq_state_is_enqueued_on_manager(old_state)) {
+
+				// Always set the enqueued bit for async enqueues on all queues
+				// in the hierachy (rdar://62447289)
+				//
+				// Scenario:
+				// - mach channel DM
+				// - targetting TQ
+				//
+				// Thread 1:
+				// - has the lock on (TQ), uncontended sync
+				// - causes a wakeup at a low QoS on DM, causing it to have:
+				//   max_qos = UT, enqueued = 1
+				// - the enqueue of DM onto TQ hasn't happened yet.
+				//
+				// Thread 2:
+				// - an incoming IN IPC is being merged on the servicer
+				// - DM having qos=UT, enqueud=1, no further enqueue happens,
+				//   but we need an extra override and go through this code for
+				//   TQ.
+				// - this causes TQ to be "stashed", which requires the enqueued
+				//   bit set, else try_lock_wlh() will complain and the
+				//   wakeup refcounting will be off.
+				new_state |= enqueue;
+			}
+
 			if (new_state == old_state) {
 				os_atomic_rmw_loop_give_up(goto done);
 			}
 		});
-		if (_dq_state_should_override(new_state)) {
-			return _dispatch_queue_wakeup_with_override(dq, new_state, flags);
-		}
+
+		target = DISPATCH_QUEUE_WAKEUP_TARGET;
 #endif // HAVE_PTHREAD_WORKQUEUE_QOS
+	} else {
+		goto done;
 	}
+
+	if (likely((old_state ^ new_state) & enqueue)) {
+		dispatch_queue_t tq;
+		if (target == DISPATCH_QUEUE_WAKEUP_TARGET) {
+			// the rmw_loop above has no acquire barrier, as the last block
+			// of a queue asyncing to that queue is not an uncommon pattern
+			// and in that case the acquire would be completely useless
+			//
+			// so instead use depdendency ordering to read
+			// the targetq pointer.
+			os_atomic_thread_fence(dependency);
+			tq = os_atomic_load_with_dependency_on2o(dq, do_targetq,
+					(long)new_state);
+		} else {
+			tq = target;
+		}
+		dispatch_assert(_dq_state_is_enqueued(new_state));
+		return _dispatch_queue_push_queue(tq, dq, new_state);
+	}
+#if HAVE_PTHREAD_WORKQUEUE_QOS
+	if (unlikely((old_state ^ new_state) & DISPATCH_QUEUE_MAX_QOS_MASK)) {
+		if (_dq_state_should_override(new_state)) {
+			return _dispatch_queue_wakeup_with_override(dq, new_state,
+					flags);
+		}
+	}
+#endif // HAVE_PTHREAD_WORKQUEUE_QOS
 done:
 	if (likely(flags & DISPATCH_WAKEUP_CONSUME_2)) {
 		return _dispatch_release_2_tailcall(dq);
@@ -4994,6 +5161,10 @@ _dispatch_lane_push_waiter(dispatch_lane_t dq, dispatch_sync_context_t dsc,
 
 	if (unlikely(_dispatch_queue_push_item(dq, dsc))) {
 		if (unlikely(_dispatch_lane_push_waiter_should_wakeup(dq, dsc))) {
+			// If this returns true, we know that we are pushing onto the base
+			// queue
+			dsc->dc_flags &= ~DC_FLAG_ASYNC_AND_WAIT;
+			dsc->dc_other = dq;
 			return dx_wakeup(dq, qos, DISPATCH_WAKEUP_MAKE_DIRTY);
 		}
 
@@ -5001,7 +5172,8 @@ _dispatch_lane_push_waiter(dispatch_lane_t dq, dispatch_sync_context_t dsc,
 				(dq->dq_width - 1) * DISPATCH_QUEUE_WIDTH_INTERVAL;
 		uint64_t set_owner_and_set_full_width_and_in_barrier =
 				_dispatch_lock_value_for_self() |
-				DISPATCH_QUEUE_WIDTH_FULL_BIT | DISPATCH_QUEUE_IN_BARRIER;
+				DISPATCH_QUEUE_WIDTH_FULL_BIT | DISPATCH_QUEUE_IN_BARRIER |
+				DISPATCH_QUEUE_UNCONTENDED_SYNC;
 		os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, release, {
 			new_state  = _dq_state_merge_qos(old_state, qos);
 			new_state |= DISPATCH_QUEUE_DIRTY;
@@ -5020,16 +5192,30 @@ _dispatch_lane_push_waiter(dispatch_lane_t dq, dispatch_sync_context_t dsc,
 			}
 		});
 
-		if (_dq_state_is_base_wlh(old_state)) {
+		if (_dq_state_is_base_wlh(old_state) && dsc->dc_data != DISPATCH_WLH_ANON) {
 			dsc->dsc_wlh_was_first = (dsc->dsc_waiter == _dispatch_tid_self());
 		}
 
 		if ((old_state ^ new_state) & DISPATCH_QUEUE_IN_BARRIER) {
+			struct dispatch_object_s *dc = (struct dispatch_object_s *)dsc;
+			// We came here from __DISPATCH_WAIT_FOR_QUEUE__, if the element
+			// we pushed is still at the head, we can cheat, dequeue everything,
+			// and keep pretending we weren't contended.
+			if (dsc->dsc_wlh_was_first && dq->dq_items_head == dc) {
+				dsc->dsc_wlh_self_wakeup = true;
+				if (dsc->dc_flags & DC_FLAG_ASYNC_AND_WAIT) {
+					// We're in case (2) of _dispatch_async_and_wait_f_slow() which expects
+					// dc_other to be the bottom queue of the graph
+					dsc->dc_other = dq;
+				}
+				_dispatch_queue_pop_head(dq, dc);
+				return;
+			}
 			return _dispatch_lane_barrier_complete(dq, qos, 0);
 		}
 #if HAVE_PTHREAD_WORKQUEUE_QOS
 		if (unlikely((old_state ^ new_state) & DISPATCH_QUEUE_MAX_QOS_MASK)) {
-			if (_dq_state_should_override(new_state)) {
+			if (_dq_state_should_override_for_waiter(new_state)) {
 				return _dispatch_queue_wakeup_with_override(dq, new_state, 0);
 			}
 		}
@@ -5040,7 +5226,7 @@ _dispatch_lane_push_waiter(dispatch_lane_t dq, dispatch_sync_context_t dsc,
 				os_atomic_rmw_loop_give_up(return);
 			}
 		});
-		if (_dq_state_should_override(new_state)) {
+		if (_dq_state_should_override_for_waiter(new_state)) {
 			return _dispatch_queue_wakeup_with_override(dq, new_state, 0);
 		}
 #endif // HAVE_PTHREAD_WORKQUEUE_QOS
@@ -5726,6 +5912,7 @@ _dispatch_queue_mgr_lock(struct dispatch_queue_static_s *dq)
 	});
 }
 
+#if DISPATCH_USE_KEVENT_WORKQUEUE
 DISPATCH_ALWAYS_INLINE
 static inline bool
 _dispatch_queue_mgr_unlock(struct dispatch_queue_static_s *dq)
@@ -5738,6 +5925,7 @@ _dispatch_queue_mgr_unlock(struct dispatch_queue_static_s *dq)
 	});
 	return _dq_state_is_dirty(old_state);
 }
+#endif // DISPATCH_USE_KEVENT_WORKQUEUE
 
 static void
 _dispatch_mgr_queue_drain(void)
@@ -5954,6 +6142,21 @@ _dispatch_wlh_worker_thread_reset(void)
 	}
 }
 
+static inline os_workgroup_t
+_dispatch_wlh_get_workgroup(dispatch_wlh_t wlh)
+{
+	os_workgroup_t wg = NULL;
+	dispatch_queue_t dq = (dispatch_queue_t) wlh;
+	if (wlh != DISPATCH_WLH_ANON && (dx_type(dq) == DISPATCH_WORKLOOP_TYPE)) {
+		dispatch_workloop_t dwl = (dispatch_workloop_t) dq;
+		if (dwl->dwl_attr) {
+			wg = dwl->dwl_attr->workgroup;
+		}
+	}
+
+	return wg;
+}
+
 DISPATCH_ALWAYS_INLINE
 static void
 _dispatch_wlh_worker_thread(dispatch_wlh_t wlh, dispatch_kevent_t events,
@@ -5968,6 +6171,13 @@ _dispatch_wlh_worker_thread(dispatch_wlh_t wlh, dispatch_kevent_t events,
 		.ddi_eventlist = events,
 	};
 	bool is_manager;
+
+	os_workgroup_t wg = _dispatch_wlh_get_workgroup(wlh);
+	os_workgroup_join_token_s join_token = {0};
+	if (wg) {
+		int rv = os_workgroup_join(wg, &join_token);
+		dispatch_assert(rv == 0);
+	}
 
 	is_manager = _dispatch_wlh_worker_thread_init(&ddi);
 	if (!is_manager) {
@@ -6001,6 +6211,10 @@ _dispatch_wlh_worker_thread(dispatch_wlh_t wlh, dispatch_kevent_t events,
 			_dispatch_root_queue_drain_deferred_wlh(&ddi
 					DISPATCH_PERF_MON_ARGS);
 		}
+	}
+
+	if (wg) {
+		os_workgroup_leave(wg, &join_token);
 	}
 
 	_dispatch_deferred_items_set(NULL);
@@ -6086,7 +6300,9 @@ static void
 _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 {
 	int remaining = n;
+#if !defined(_WIN32)
 	int r = ENOSYS;
+#endif
 
 	_dispatch_root_queues_init();
 	_dispatch_debug_root_queue(dq, __func__);
@@ -6144,7 +6360,7 @@ _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 					"%p", dq);
 			return;
 		}
-	} while (!os_atomic_cmpxchgvw2o(dq, dgq_thread_pool_size, t_count,
+	} while (!os_atomic_cmpxchgv2o(dq, dgq_thread_pool_size, t_count,
 			t_count - remaining, &t_count, acquire));
 
 #if !defined(_WIN32)
@@ -6184,9 +6400,11 @@ _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 			}
 			_dispatch_temporary_resource_shortage();
 		}
+#if DISPATCH_USE_PTHREAD_ROOT_QUEUES
 		if (_dispatch_mgr_sched.prio > _dispatch_mgr_sched.default_prio) {
 			(void)dispatch_assume_zero(SetThreadPriority((HANDLE)hThread, _dispatch_mgr_sched.prio) == TRUE);
 		}
+#endif
 		CloseHandle((HANDLE)hThread);
 	} while (--remaining);
 #endif // defined(_WIN32)
@@ -6373,15 +6591,12 @@ retry:
 
 	if (_dispatch_queue_drain_try_lock_wlh(dq, &dq_state)) {
 		dx_invoke(dq, &dic, flags);
-#if DISPATCH_USE_KEVENT_WORKLOOP
 		//
 		// dx_invoke() will always return `dq` unlocked or locked by another
 		// thread, and either have consumed the +2 or transferred it to the
 		// other thread.
 		//
-#endif
 		if (!ddi->ddi_wlh_needs_delete) {
-#if DISPATCH_USE_KEVENT_WORKLOOP
 			//
 			// The fate of the workloop thread request has already been dealt
 			// with, which can happen for 4 reasons, for which we just want
@@ -6391,10 +6606,8 @@ retry:
 			// - the workloop has been re-enqueued on the manager queue
 			// - the workloop ownership has been handed off to a sync owner
 			//
-#endif
 			goto park;
 		}
-#if DISPATCH_USE_KEVENT_WORKLOOP
 		//
 		// The workloop has been drained to completion or suspended.
 		// dx_invoke() has cleared the enqueued bit before it returned.
@@ -6415,7 +6628,6 @@ retry:
 		// Take over that +1, and add our own to make the +2 this loop expects,
 		// and drain again.
 		//
-#endif // DISPATCH_USE_KEVENT_WORKLOOP
 		dq_state = os_atomic_load2o(dq, dq_state, relaxed);
 		if (unlikely(!_dq_state_is_base_wlh(dq_state))) { // rdar://32671286
 			goto park;
@@ -6426,18 +6638,17 @@ retry:
 			goto retry;
 		}
 	} else {
-#if DISPATCH_USE_KEVENT_WORKLOOP
 		//
 		// The workloop enters this function with a +2 refcount, however we
 		// couldn't acquire the lock due to suspension or discovering that
 		// the workloop was locked by a sync owner.
 		//
 		// We need to give up, and _dispatch_event_loop_leave_deferred()
-		// will do a DISPATCH_WORKLOOP_ASYNC_DISCOVER_SYNC transition to
+		// will do a DISPATCH_WORKLOOP_SYNC_DISCOVER and
+		// a DISPATCH_WORKLOOP_ASYNC_QOS_UPDATE transition to
 		// tell the kernel to stop driving this thread request. We leave
 		// a +1 with the thread request, and consume the extra +1 we have.
 		//
-#endif
 		if (_dq_state_is_suspended(dq_state)) {
 			dispatch_assert(!_dq_state_is_enqueued(dq_state));
 			_dispatch_release_2_no_dispose(dq);
@@ -6875,6 +7086,8 @@ _dispatch_runloop_handle_is_valid(dispatch_runloop_handle_t handle)
 	return MACH_PORT_VALID(handle);
 #elif defined(__linux__)
 	return handle >= 0;
+#elif defined(_WIN32)
+	return handle != NULL;
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6889,6 +7102,8 @@ _dispatch_runloop_queue_get_handle(dispatch_lane_t dq)
 #elif defined(__linux__)
 	// decode: 0 is a valid fd, so offset by 1 to distinguish from NULL
 	return ((dispatch_runloop_handle_t)(uintptr_t)dq->do_ctxt) - 1;
+#elif defined(_WIN32)
+	return ((dispatch_runloop_handle_t)(uintptr_t)dq->do_ctxt);
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6904,6 +7119,8 @@ _dispatch_runloop_queue_set_handle(dispatch_lane_t dq,
 #elif defined(__linux__)
 	// encode: 0 is a valid fd, so offset by 1 to distinguish from NULL
 	dq->do_ctxt = (void *)(uintptr_t)(handle + 1);
+#elif defined(_WIN32)
+	dq->do_ctxt = (void *)(uintptr_t)handle;
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6958,6 +7175,14 @@ _dispatch_runloop_queue_handle_init(void *ctxt)
 		}
 	}
 	handle = fd;
+#elif defined(_WIN32)
+	HANDLE hEvent;
+	hEvent = CreateEventW(NULL, /*bManualReset=*/TRUE,
+		/*bInitialState=*/FALSE, NULL);
+	if (hEvent == NULL) {
+		DISPATCH_INTERNAL_CRASH(GetLastError(), "CreateEventW");
+	}
+	handle = hEvent;
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -6984,6 +7209,10 @@ _dispatch_runloop_queue_handle_dispose(dispatch_lane_t dq)
 #elif defined(__linux__)
 	int rc = close(handle);
 	(void)dispatch_assume_zero(rc);
+#elif defined(_WIN32)
+	BOOL bSuccess;
+	bSuccess = CloseHandle(handle);
+	(void)dispatch_assume(bSuccess);
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -7016,6 +7245,10 @@ _dispatch_runloop_queue_class_poke(dispatch_lane_t dq)
 		result = eventfd_write(handle, 1);
 	} while (result == -1 && errno == EINTR);
 	(void)dispatch_assume_zero(result);
+#elif defined(_WIN32)
+	BOOL bSuccess;
+	bSuccess = SetEvent(handle);
+	(void)dispatch_assume(bSuccess);
 #else
 #error "runloop support not implemented on this platform"
 #endif
@@ -7299,7 +7532,7 @@ _dispatch_runloop_root_queue_wakeup_4CF(dispatch_queue_t dq)
 	_dispatch_runloop_queue_wakeup(upcast(dq)._dl, 0, false);
 }
 
-#if TARGET_OS_MAC
+#if TARGET_OS_MAC || defined(_WIN32)
 dispatch_runloop_handle_t
 _dispatch_runloop_root_queue_get_port_4CF(dispatch_queue_t dq)
 {
@@ -7324,13 +7557,11 @@ _dispatch_get_main_queue_handle_4CF(void)
 	return _dispatch_runloop_queue_get_handle(dq->_as_dl);
 }
 
-#if TARGET_OS_MAC
 dispatch_runloop_handle_t
 _dispatch_get_main_queue_port_4CF(void)
 {
 	return _dispatch_get_main_queue_handle_4CF();
 }
-#endif
 
 void
 _dispatch_main_queue_callback_4CF(
@@ -7397,7 +7628,9 @@ _dispatch_sig_thread(void *ctxt DISPATCH_UNUSED)
 {
 	// never returns, so burn bridges behind us
 	_dispatch_clear_stack(0);
-#if !defined(_WIN32)
+#if defined(_WIN32)
+	Sleep(INFINITE);
+#else
 	_dispatch_sigsuspend();
 #endif
 }
@@ -7535,6 +7768,7 @@ _dispatch_context_cleanup(void *ctxt)
 	DISPATCH_INTERNAL_CRASH(ctxt,
 			"Premature thread exit while a dispatch context is set");
 }
+
 #pragma mark -
 #pragma mark dispatch_init
 
@@ -7641,14 +7875,6 @@ libdispatch_init(void)
 	if (_dispatch_getenv_bool("LIBDISPATCH_STRICT", false)) {
 		_dispatch_mode |= DISPATCH_MODE_STRICT;
 	}
-#if HAVE_OS_FAULT_WITH_PAYLOAD && TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
-	if (_dispatch_getenv_bool("LIBDISPATCH_NO_FAULTS", false)) {
-		_dispatch_mode |= DISPATCH_MODE_NO_FAULTS;
-	} else if (getpid() == 1 ||
-			!os_variant_has_internal_diagnostics("com.apple.libdispatch")) {
-		_dispatch_mode |= DISPATCH_MODE_NO_FAULTS;
-	}
-#endif // HAVE_OS_FAULT_WITH_PAYLOAD && TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 
 
 #if DISPATCH_DEBUG || DISPATCH_PROFILE
@@ -7691,7 +7917,7 @@ libdispatch_init(void)
 	_dispatch_thread_key_create(&dispatch_deferred_items_key,
 			_dispatch_deferred_items_cleanup);
 #endif
-
+	pthread_key_create(&_os_workgroup_key, _os_workgroup_tsd_cleanup);
 #if DISPATCH_USE_RESOLVERS // rdar://problem/8541707
 	_dispatch_main_q.do_targetq = _dispatch_get_default_queue(true);
 #endif
@@ -7719,32 +7945,30 @@ libdispatch_init(void)
 #include <sys/syscall.h>
 #endif
 
-#ifndef __ANDROID__
 #ifdef SYS_gettid
 DISPATCH_ALWAYS_INLINE
 static inline pid_t
-gettid(void)
+_gettid(void)
 {
 	return (pid_t)syscall(SYS_gettid);
 }
 #elif defined(__FreeBSD__)
 DISPATCH_ALWAYS_INLINE
 static inline pid_t
-gettid(void)
+_gettid(void)
 {
 	return (pid_t)pthread_getthreadid_np();
 }
 #elif defined(_WIN32)
 DISPATCH_ALWAYS_INLINE
 static inline DWORD
-gettid(void)
+_gettid(void)
 {
 	return GetCurrentThreadId();
 }
 #else
 #error "SYS_gettid unavailable on this system"
 #endif /* SYS_gettid */
-#endif /* ! __ANDROID__ */
 
 #define _tsd_call_cleanup(k, f)  do { \
 		if ((f) && tsd->k) ((void(*)(void*))(f))(tsd->k); \
@@ -7754,7 +7978,7 @@ gettid(void)
 static void (*_dispatch_thread_detach_callback)(void);
 
 void
-_dispatch_install_thread_detach_callback(dispatch_function_t cb)
+_dispatch_install_thread_detach_callback(void (*cb)(void))
 {
 	if (os_atomic_xchg(&_dispatch_thread_detach_callback, cb, relaxed)) {
 		DISPATCH_CLIENT_CRASH(0, "Installing a thread detach callback twice");
@@ -7852,7 +8076,7 @@ libdispatch_tsd_init(void)
 #else
 	FlsSetValue(__dispatch_tsd_key, &__dispatch_tsd);
 #endif // defined(_WIN32)
-	__dispatch_tsd.tid = gettid();
+	__dispatch_tsd.tid = _gettid();
 }
 #endif
 
@@ -7886,7 +8110,7 @@ DISPATCH_NOINLINE
 void
 _dispatch_fork_becomes_unsafe_slow(void)
 {
-	uint8_t value = os_atomic_or(&_dispatch_unsafe_fork,
+	uint8_t value = (uint8_t)os_atomic_or(&_dispatch_unsafe_fork,
 			_DISPATCH_UNSAFE_FORK_MULTITHREADED, relaxed);
 	if (value & _DISPATCH_UNSAFE_FORK_PROHIBIT) {
 		DISPATCH_CLIENT_CRASH(0, "Transition to multithreaded is prohibited");
@@ -7898,7 +8122,7 @@ void
 _dispatch_prohibit_transition_to_multithreaded(bool prohibit)
 {
 	if (prohibit) {
-		uint8_t value = os_atomic_or(&_dispatch_unsafe_fork,
+		uint8_t value = (uint8_t)os_atomic_or(&_dispatch_unsafe_fork,
 				_DISPATCH_UNSAFE_FORK_PROHIBIT, relaxed);
 		if (value & _DISPATCH_UNSAFE_FORK_MULTITHREADED) {
 			DISPATCH_CLIENT_CRASH(0, "The executable is already multithreaded");

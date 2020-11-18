@@ -97,7 +97,6 @@ _dispatch_workq_worker_register(dispatch_queue_global_t root_q)
 	_dispatch_unfair_lock_unlock(&mon->registered_tid_lock);
 #else
 	(void)root_q;
-	(void)cls;
 #endif // HAVE_DISPATCH_WORKQ_MONITORING
 }
 
@@ -124,7 +123,6 @@ _dispatch_workq_worker_unregister(dispatch_queue_global_t root_q)
 	_dispatch_unfair_lock_unlock(&mon->registered_tid_lock);
 #else
 	(void)root_q;
-	(void)cls;
 #endif // HAVE_DISPATCH_WORKQ_MONITORING
 }
 
@@ -218,7 +216,7 @@ _dispatch_workq_monitor_pools(void *context DISPATCH_UNUSED)
 			int32_t floor = mon->target_runnable - WORKQ_MAX_TRACKED_TIDS;
 			_dispatch_debug("workq: %s has no runnable workers; poking with floor %d",
 					dq->dq_label, floor);
-			_dispatch_global_queue_poke(dq, 1, floor);
+			_dispatch_root_queue_poke(dq, 1, floor);
 			global_runnable += 1; // account for poke in global estimate
 		} else if (mon->num_runnable < mon->target_runnable &&
 				   global_runnable < global_soft_max) {
@@ -231,7 +229,7 @@ _dispatch_workq_monitor_pools(void *context DISPATCH_UNUSED)
 			floor = MAX(floor, floor2);
 			_dispatch_debug("workq: %s under utilization target; poking with floor %d",
 					dq->dq_label, floor);
-			_dispatch_global_queue_poke(dq, 1, floor);
+			_dispatch_root_queue_poke(dq, 1, floor);
 			global_runnable += 1; // account for poke in global estimate
 		}
 	}
@@ -245,7 +243,7 @@ _dispatch_workq_init_once(void *context DISPATCH_UNUSED)
 	int i, target_runnable = (int)dispatch_hw_config(active_cpus);
 	foreach_qos_bucket_reverse(i) {
 		dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[i];
-		mon->dq = _dispatch_get_root_queue(i, false);
+		mon->dq = _dispatch_get_root_queue(DISPATCH_QOS_FOR_BUCKET(i), false);
 		void *buf = _dispatch_calloc(WORKQ_MAX_TRACKED_TIDS, sizeof(dispatch_tid));
 		mon->registered_tids = buf;
 		mon->target_runnable = target_runnable;
@@ -253,7 +251,7 @@ _dispatch_workq_init_once(void *context DISPATCH_UNUSED)
 
 	// Create monitoring timer that will periodically run on dispatch_mgr_q
 	dispatch_source_t ds = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,
-			0, 0, &_dispatch_mgr_q);
+			0, 0, _dispatch_mgr_q._as_dq);
 	dispatch_source_set_timer(ds, dispatch_time(DISPATCH_TIME_NOW, 0),
 			NSEC_PER_SEC, 0);
 	dispatch_source_set_event_handler_f(ds, _dispatch_workq_monitor_pools);

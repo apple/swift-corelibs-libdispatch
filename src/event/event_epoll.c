@@ -260,7 +260,6 @@ _dispatch_unote_register_muxed(dispatch_unote_t du)
 	uint32_t events;
 
 	events = _dispatch_unote_required_events(du);
-	du._du->du_priority = pri;
 
 	dmb = _dispatch_unote_muxnote_bucket(du);
 	dmn = _dispatch_unote_muxnote_find(dmb, du);
@@ -429,8 +428,9 @@ _dispatch_timeout_program(uint32_t tidx, uint64_t target,
 }
 
 void
-_dispatch_event_loop_timer_arm(dispatch_timer_heap_t dth, uint32_t tidx,
-		dispatch_timer_delay_s range, dispatch_clock_now_cache_t nows)
+_dispatch_event_loop_timer_arm(dispatch_timer_heap_t dth DISPATCH_UNUSED,
+		uint32_t tidx, dispatch_timer_delay_s range,
+		dispatch_clock_now_cache_t nows)
 {
 	dispatch_clock_t clock = DISPATCH_TIMER_CLOCK(tidx);
 	uint64_t target = range.delay + _dispatch_time_now_cached(clock, nows);
@@ -438,7 +438,8 @@ _dispatch_event_loop_timer_arm(dispatch_timer_heap_t dth, uint32_t tidx,
 }
 
 void
-_dispatch_event_loop_timer_delete(dispatch_timer_heap_t dth, uint32_t tidx)
+_dispatch_event_loop_timer_delete(dispatch_timer_heap_t dth DISPATCH_UNUSED,
+		uint32_t tidx)
 {
 	_dispatch_timeout_program(tidx, UINT64_MAX, UINT64_MAX);
 }
@@ -510,7 +511,7 @@ _dispatch_event_merge_signal(dispatch_muxnote_t dmn)
 			// consumed by dux_merge_evt()
 			_dispatch_retain_unote_owner(du);
 			dispatch_assert(!dux_needs_rearm(du._du));
-			os_atomic_store2o(du._dr, ds_pending_data, 1, relaxed)
+			os_atomic_store2o(du._dr, ds_pending_data, 1, relaxed);
 			dux_merge_evt(du._du, EV_ADD|EV_ENABLE|EV_CLEAR, 1, 0);
 		}
 	} else {
@@ -549,6 +550,20 @@ _dispatch_get_buffer_size(dispatch_muxnote_t dmn, bool writer)
 }
 
 static void
+_dispatch_event_merge_hangup(dispatch_unote_t du)
+{
+	// consumed by dux_merge_evt()
+	_dispatch_retain_unote_owner(du);
+	dispatch_unote_state_t du_state = _dispatch_unote_state(du);
+	du_state |= DU_STATE_NEEDS_DELETE;
+	du_state &= ~DU_STATE_ARMED;
+	_dispatch_unote_state_set(du, du_state);
+	uintptr_t data = 0;  // EOF
+	os_atomic_store2o(du._dr, ds_pending_data, ~data, relaxed);
+	dux_merge_evt(du._du, EV_DELETE|EV_DISPATCH, data, 0);
+}
+
+static void
 _dispatch_event_merge_fd(dispatch_muxnote_t dmn, uint32_t events)
 {
 	dispatch_unote_linkage_t dul, dul_next;
@@ -564,8 +579,8 @@ _dispatch_event_merge_fd(dispatch_muxnote_t dmn, uint32_t events)
 			_dispatch_retain_unote_owner(du);
 			dispatch_assert(dux_needs_rearm(du._du));
 			_dispatch_unote_state_clear_bit(du, DU_STATE_ARMED);
-			os_atomic_store2o(du._dr, ds_pending_data, ~data, relaxed)
-			dux_merge_evt(du._du, EV_ADD|EV_ENABLE|EV_DISPATCH, data, 0, 0);
+			os_atomic_store2o(du._dr, ds_pending_data, ~data, relaxed);
+			dux_merge_evt(du._du, EV_ADD|EV_ENABLE|EV_DISPATCH, data, 0);
 		}
 	}
 
@@ -577,9 +592,23 @@ _dispatch_event_merge_fd(dispatch_muxnote_t dmn, uint32_t events)
 			_dispatch_retain_unote_owner(du);
 			dispatch_assert(dux_needs_rearm(du._du));
 			_dispatch_unote_state_clear_bit(du, DU_STATE_ARMED);
-			os_atomic_store2o(du._dr, ds_pending_data, ~data, relaxed)
-			dux_merge_evt(du._du, EV_ADD|EV_ENABLE|EV_DISPATCH, data, 0, 0);
+			os_atomic_store2o(du._dr, ds_pending_data, ~data, relaxed);
+			dux_merge_evt(du._du, EV_ADD|EV_ENABLE|EV_DISPATCH, data, 0);
 		}
+	}
+
+	// SR-9033: EPOLLHUP is an unmaskable event which we must respond to
+	if (events & EPOLLHUP) {
+		LIST_FOREACH_SAFE(dul, &dmn->dmn_readers_head, du_link, dul_next) {
+			dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
+			_dispatch_event_merge_hangup(du);
+		}
+		LIST_FOREACH_SAFE(dul, &dmn->dmn_writers_head, du_link, dul_next) {
+			dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
+			_dispatch_event_merge_hangup(du);
+		}
+		epoll_ctl(_dispatch_epfd, EPOLL_CTL_DEL, dmn->dmn_fd, NULL);
+		return;
 	}
 
 	events = _dispatch_muxnote_armed_events(dmn);
@@ -628,8 +657,12 @@ retry:
 			_dispatch_event_merge_timer(DISPATCH_CLOCK_WALL);
 			break;
 
-		case DISPATCH_EPOLL_CLOCK_MACH:
+		case DISPATCH_EPOLL_CLOCK_UPTIME:
 			_dispatch_event_merge_timer(DISPATCH_CLOCK_UPTIME);
+			break;
+
+		case DISPATCH_EPOLL_CLOCK_MONOTONIC:
+			_dispatch_event_merge_timer(DISPATCH_CLOCK_MONOTONIC);
 			break;
 
 		default:
@@ -666,6 +699,12 @@ _dispatch_event_loop_wait_for_ownership(dispatch_sync_context_t dsc)
 	if (dsc->dsc_release_storage) {
 		_dispatch_queue_release_storage(dsc->dc_data);
 	}
+}
+
+void
+_dispatch_event_loop_ensure_ownership(dispatch_wlh_t wlh)
+{
+	(void)wlh;
 }
 
 void

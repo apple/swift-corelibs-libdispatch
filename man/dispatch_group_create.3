@@ -68,7 +68,8 @@ has elapsed.
 If the
 .Fa group
 becomes empty within the specified amount of time, the function will return zero
-indicating success. Otherwise, a non-zero return code will be returned.
+indicating success.
+Otherwise, a non-zero return code will be returned.
 When
 .Va DISPATCH_TIME_FOREVER
 is passed as the
@@ -93,7 +94,8 @@ notification is pending, therefore it is valid to release the
 .Fa group
 after setting a notification block.
 The group will be empty at the time the notification block is submitted to the
-target queue. The group may either be released with
+target queue.
+The group may either be released with
 .Fn dispatch_release
 or reused for additional operations.
 .Pp
@@ -141,12 +143,19 @@ functions are wrappers around
 and
 .Fn dispatch_group_notify_f
 respectively.
+.Sh SEE ALSO
+.Xr dispatch 3 ,
+.Xr dispatch_async 3 ,
+.Xr dispatch_object 3 ,
+.Xr dispatch_queue_create 3 ,
+.Xr dispatch_semaphore_create 3 ,
+.Xr dispatch_time 3
 .Sh CAVEATS
 In order to ensure deterministic behavior, it is recommended to call
 .Fn dispatch_group_wait
-only once all blocks have been submitted to the group. If it is later
-determined that new blocks should be run, it is recommended not to reuse an
-already-running group, but to create a new group.
+only once all blocks have been submitted to the group.
+If it is later determined that new blocks should be run, it is recommended not
+to reuse an already-running group, but to create a new group.
 .Pp
 .Fn dispatch_group_wait
 returns as soon as there are exactly zero
@@ -155,26 +164,21 @@ blocks associated with a group (more precisely, as soon as every
 .Fn dispatch_group_enter
 call has been balanced by a
 .Fn dispatch_group_leave
-call). If one thread waits for a group while another thread submits
-new blocks to the group, then the count of associated blocks might
-momentarily reach zero before all blocks have been submitted. If this happens,
+call).
+If one thread waits for a group while another thread submits new blocks to the
+group, then the count of associated blocks might momentarily reach zero before
+all blocks have been submitted.
+If this happens,
 .Fn dispatch_group_wait
 will return too early: some blocks associated with the group have finished,
 but some have not yet been submitted or run.
 .Pp
 However, as a special case, a block associated with a group may submit new
-blocks associated with its own group. In this case, the behavior is
-deterministic: a waiting thread will
+blocks associated with its own group.
+In this case, the behavior is deterministic: a waiting thread will
 .Em not
 wake up until the newly submitted blocks have also finished.
 .Pp
 All of the foregoing also applies to
 .Fn dispath_group_notify
 as well, with "block to be submitted" substituted for "waiting thread".
-.Sh SEE ALSO
-.Xr dispatch 3 ,
-.Xr dispatch_async 3 ,
-.Xr dispatch_object 3 ,
-.Xr dispatch_queue_create 3 ,
-.Xr dispatch_semaphore_create 3 ,
-.Xr dispatch_time 3

@@ -31,8 +31,11 @@
 #include <pthread.h>
 #else // defined(_WIN32)
 #include "shims/generic_win_stubs.h"
-#include "shims/generic_sys_queue.h"
 #endif // defined(_WIN32)
+
+#if defined(_WIN32) || defined(__linux__)
+#include "shims/generic_sys_queue.h"
+#endif
 
 #ifdef __ANDROID__
 #include "shims/android_stubs.h"
@@ -60,10 +63,6 @@
 
 #if HAVE_PTHREAD_NP_H
 #include <pthread_np.h>
-#endif
-
-#if __has_include(<pthread/private.h>)
-#include <pthread/private.h>
 #endif
 
 #if !HAVE_DECL_FD_COPY
@@ -151,10 +150,7 @@ _pthread_workqueue_should_narrow(pthread_priority_t priority)
 }
 #endif
 
-#if HAVE_PTHREAD_QOS_H && __has_include(<pthread/qos_private.h>) && \
-		defined(PTHREAD_MAX_PARALLELISM_PHYSICAL) && \
-		DISPATCH_HAVE_HW_CONFIG_COMMPAGE && \
-		DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101300)
+#if HAVE_PTHREAD_QOS_H && __has_include(<pthread/qos_private.h>)
 #define DISPATCH_USE_PTHREAD_QOS_MAX_PARALLELISM 1
 #define DISPATCH_MAX_PARALLELISM_PHYSICAL PTHREAD_MAX_PARALLELISM_PHYSICAL
 #else
@@ -213,9 +209,7 @@ void __builtin_trap(void);
 #endif
 
 
-#ifndef __OS_INTERNAL_ATOMIC__
 #include "shims/atomic.h"
-#endif
 #define DISPATCH_ATOMIC64_ALIGN  __attribute__((aligned(8)))
 
 #include "shims/atomic_sfb.h"

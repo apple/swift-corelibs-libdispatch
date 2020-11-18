@@ -78,7 +78,7 @@ __firehose_buffer_tracepoint_flush(firehose_tracepoint_t vat,
 firehose_buffer_t
 __firehose_buffer_create(size_t *size);
 
-void
+bool
 __firehose_merge_updates(firehose_push_reply_t update);
 
 int

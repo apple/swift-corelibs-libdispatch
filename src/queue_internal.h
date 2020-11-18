@@ -318,7 +318,7 @@ DISPATCH_OPTIONS(dispatch_queue_flags, uint32_t,
  *
  * sw: has received sync wait (bit 35, if role DISPATCH_QUEUE_ROLE_BASE_WLH)
  *    Set when a queue owner has been exposed to the kernel because of
- *    dispatch_sync() contention.
+ *    contention with dispatch_sync().
  */
 #define DISPATCH_QUEUE_RECEIVED_OVERRIDE	0x0000000800000000ull
 #define DISPATCH_QUEUE_RECEIVED_SYNC_WAIT	0x0000000800000000ull
@@ -334,14 +334,14 @@ DISPATCH_OPTIONS(dispatch_queue_flags, uint32_t,
  *    drain stealers (like the QoS Override codepath). It holds the identity
  *    (thread port) of the current drainer.
  *
- * st: sync transfer (bit 1 or 30)
- *    Set when a dispatch_sync() is transferred to
+ * us: uncontended sync (bit 1 or 30)
+ *    Set when a dispatch_sync() isn't contending
  *
  * e: enqueued bit (bit 0 or 31)
  *    Set when a queue is enqueued on its target queue
  */
 #define DISPATCH_QUEUE_DRAIN_OWNER_MASK		((uint64_t)DLOCK_OWNER_MASK)
-#define DISPATCH_QUEUE_SYNC_TRANSFER		((uint64_t)DLOCK_FAILED_TRYLOCK_BIT)
+#define DISPATCH_QUEUE_UNCONTENDED_SYNC		((uint64_t)DLOCK_FAILED_TRYLOCK_BIT)
 #define DISPATCH_QUEUE_ENQUEUED				((uint64_t)DLOCK_WAITERS_BIT)
 
 #define DISPATCH_QUEUE_DRAIN_PRESERVED_BITS_MASK \
@@ -350,7 +350,7 @@ DISPATCH_OPTIONS(dispatch_queue_flags, uint32_t,
 
 #define DISPATCH_QUEUE_DRAIN_UNLOCK_MASK \
 		(DISPATCH_QUEUE_DRAIN_OWNER_MASK | DISPATCH_QUEUE_RECEIVED_OVERRIDE | \
-		DISPATCH_QUEUE_RECEIVED_SYNC_WAIT | DISPATCH_QUEUE_SYNC_TRANSFER)
+		DISPATCH_QUEUE_RECEIVED_SYNC_WAIT | DISPATCH_QUEUE_UNCONTENDED_SYNC)
 
 /*
  *******************************************************************************
@@ -467,12 +467,15 @@ typedef struct dispatch_workloop_attr_s *dispatch_workloop_attr_t;
 typedef struct dispatch_workloop_attr_s {
 	uint32_t dwla_flags;
 	dispatch_priority_t dwla_pri;
+#if TARGET_OS_MAC
 	struct sched_param dwla_sched;
+#endif // TARGET_OS_MAC
 	int dwla_policy;
 	struct {
 		uint8_t percent;
 		uint32_t refillms;
 	} dwla_cpupercent;
+	os_workgroup_t workgroup;
 	dispatch_pthread_root_queue_observer_hooks_s dwla_observers;
 } dispatch_workloop_attr_s;
 
@@ -962,10 +965,10 @@ dispatch_queue_attr_info_t _dispatch_queue_attr_to_info(dispatch_queue_attr_t);
 // If dc_flags is less than 0x1000, then the object is a continuation.
 // Otherwise, the object has a private layout and memory management rules. The
 // layout until after 'do_next' must align with normal objects.
-#if __LP64__
+#if DISPATCH_SIZEOF_PTR == 8
 #define DISPATCH_CONTINUATION_HEADER(x) \
 	union { \
-		const void *do_vtable; \
+		const void *__ptrauth_objc_isa_pointer do_vtable; \
 		uintptr_t dc_flags; \
 	}; \
 	union { \
@@ -989,7 +992,7 @@ dispatch_queue_attr_info_t _dispatch_queue_attr_to_info(dispatch_queue_attr_t);
 	}; \
 	struct voucher_s *dc_voucher; \
 	union { \
-		const void *do_vtable; \
+		const void *__ptrauth_objc_isa_pointer do_vtable; \
 		uintptr_t dc_flags; \
 	}; \
 	struct dispatch_##x##_s *volatile do_next; \
@@ -999,7 +1002,7 @@ dispatch_queue_attr_info_t _dispatch_queue_attr_to_info(dispatch_queue_attr_t);
 #else
 #define DISPATCH_CONTINUATION_HEADER(x) \
 	union { \
-		const void *do_vtable; \
+		const void *__ptrauth_objc_isa_pointer do_vtable; \
 		uintptr_t dc_flags; \
 	}; \
 	union { \
@@ -1072,12 +1075,11 @@ typedef struct dispatch_sync_context_s {
 	uint8_t dsc_override_qos;
 	uint16_t dsc_autorelease : 2;
 	uint16_t dsc_wlh_was_first : 1;
+	uint16_t dsc_wlh_self_wakeup : 1;
 	uint16_t dsc_wlh_is_workloop : 1;
 	uint16_t dsc_waiter_needs_cancel : 1;
 	uint16_t dsc_release_storage : 1;
-#if DISPATCH_INTROSPECTION
 	uint16_t dsc_from_async : 1;
-#endif
 } *dispatch_sync_context_t;
 
 typedef struct dispatch_continuation_vtable_s {

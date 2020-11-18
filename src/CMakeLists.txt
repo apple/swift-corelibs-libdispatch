@@ -1,3 +1,4 @@
+include(CheckCCompilerFlag)
 
 include(SwiftSupport)
 include(DTrace)
@@ -53,7 +54,13 @@ add_library(dispatch
               shims/perfmon.h
               shims/time.h
               shims/tsd.h
+              shims/yield.c
               shims/yield.h)
+
+set_target_properties(dispatch
+                      PROPERTIES
+                        POSITION_INDEPENDENT_CODE YES)
+
 if(WIN32)
   target_sources(dispatch
                  PRIVATE
@@ -72,25 +79,79 @@ target_sources(dispatch
                PRIVATE
                  block.cpp)
 if(HAVE_OBJC)
+  # TODO(compnerd) split DispatchStubs.cc into a separate component for the ObjC
+  # registration and a separate component for the swift compiler's emission of a
+  # call to the ObjC autorelease elision entry point.
   target_sources(dispatch
                  PRIVATE
                    data.m
-                   object.m)
+                   object.m
+                   swift/DispatchStubs.cc)
 endif()
 if(ENABLE_SWIFT)
   set(swift_optimization_flags)
   if(NOT CMAKE_BUILD_TYPE MATCHES Debug)
     set(swift_optimization_flags -O)
   endif()
+
+  # NOTE(compnerd) Today regardless of whether or not ObjC interop is enabled,
+  # swift will use an autoreleased return value convention for certain CF
+  # functions (including some that are used/related to dispatch). This means
+  # that the swift compiler in callers to such functions will call the function,
+  # and then pass the result of the function to
+  # objc_retainAutoreleasedReturnValue. In a context where we have ObjC interop
+  # disabled, we do not have access to the objc runtime so an implementation of
+  # objc_retainAutoreleasedReturnValue is not available. To work around this, we
+  # provide a shim for objc_retainAutoreleasedReturnValue in DispatchStubs.cc
+  # that just calls retain on the object. Once we fix the swift compiler to
+  # switch to a different model for handling these arguments with objc-interop
+  # disabled these shims can be eliminated.
+  add_library(DispatchStubs
+              STATIC
+                swift/DispatchStubs.cc)
+  target_include_directories(DispatchStubs
+                             PRIVATE
+                               ${PROJECT_SOURCE_DIR})
+  set_target_properties(DispatchStubs
+                        PROPERTIES
+                          POSITION_INDEPENDENT_CODE YES)
+
+  if(USE_LLD_LINKER)
+    if(CMAKE_HOST_SYSTEM_NAME STREQUAL Windows)
+      set(use_ld_flag -use-ld=lld.exe)
+    else()
+      set(use_ld_flag -use-ld=lld)
+    endif()
+  elseif(USE_GOLD_LINKER)
+    if(CMAKE_HOST_SYSTEM_NAME STREQUAL Windows)
+      set(use_ld_flag -use-ld=gold.exe)
+    else()
+      set(use_ld_flag -use-ld=gold)
+    endif()
+  endif()
+
   add_swift_library(swiftDispatch
+                    CFLAGS
+                      -fblocks
+                      -fmodule-map-file=${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
+                    DEPENDS
+                      module-maps
+                      DispatchStubs
+                    LINK_FLAGS
+                      ${use_ld_flag}
+                      -lDispatchStubs
+                      -L $<TARGET_LINKER_FILE_DIR:BlocksRuntime>
+                      -lBlocksRuntime
+                      -L $<TARGET_LINKER_FILE_DIR:dispatch>
+                      -ldispatch
+                      $<$<AND:$<PLATFORM_ID:Windows>,$<CONFIG:Debug>>:-lmsvcrtd>
+                      $<$<AND:$<PLATFORM_ID:Windows>,$<NOT:$<CONFIG:Debug>>>:-lmsvcrt>
                     MODULE_NAME
                       Dispatch
                     MODULE_LINK_NAME
-                      dispatch
+                      swiftDispatch
                     MODULE_PATH
                       ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
-                    OUTPUT
-                      ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o
                     SOURCES
                       swift/Block.swift
                       swift/Data.swift
@@ -101,26 +162,16 @@ if(ENABLE_SWIFT)
                       swift/Source.swift
                       swift/Time.swift
                       swift/Wrapper.swift
-                    TARGET
-                      ${CMAKE_C_COMPILER_TARGET}
-                    CFLAGS
-                      -fblocks
-                      -fmodule-map-file=${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
                     SWIFT_FLAGS
                       -I ${PROJECT_SOURCE_DIR}
-                      -I/usr/include
                       ${swift_optimization_flags}
-                    DEPENDS
-                      ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap)
-  target_sources(dispatch
-                 PRIVATE
-                   swift/DispatchStubs.cc
-                   ${CMAKE_CURRENT_BINARY_DIR}/swiftDispatch.o)
-  if(CMAKE_BUILD_TYPE MATCHES Debug)
-    target_link_libraries(dispatch
-                          PRIVATE
-                            swiftSwiftOnoneSupport)
-  endif()
+                      $<$<PLATFORM_ID:Windows>:-Xcc>
+                      $<$<PLATFORM_ID:Windows>:-D_MT>
+                      # TODO(compnerd) handle /MT builds
+                      $<$<PLATFORM_ID:Windows>:-Xcc>
+                      $<$<PLATFORM_ID:Windows>:-D_DLL>
+                    TARGET
+                      ${CMAKE_SWIFT_COMPILER_TARGET})
 endif()
 if(ENABLE_DTRACE)
   dtrace_usdt_probe(${CMAKE_CURRENT_SOURCE_DIR}/provider.d
@@ -145,7 +196,9 @@ if(WIN32)
                              PRIVATE
                                _CRT_NONSTDC_NO_WARNINGS)
 endif()
-if(NOT "${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+  target_compile_options(dispatch PRIVATE /EHs-c-)
+else()
   target_compile_options(dispatch PRIVATE -fno-exceptions)
 endif()
 if(DISPATCH_ENABLE_ASSERTS)
@@ -162,11 +215,6 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL Android)
                          PRIVATE
                            -U_GNU_SOURCE)
 endif()
-if(BSD_OVERLAY_FOUND)
-  target_compile_options(dispatch
-                         PRIVATE
-                           ${BSD_OVERLAY_CFLAGS})
-endif()
 if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
   target_compile_options(dispatch
                          PRIVATE
@@ -182,14 +230,11 @@ if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
                          PRIVATE
                            -Xclang -fblocks)
 else()
-  # FIXME(compnerd) add check for -momit-leaf-frame-pointer?
-  target_compile_options(dispatch
-                         PRIVATE
-                           -fblocks
-                           -momit-leaf-frame-pointer)
-endif()
-if(BSD_OVERLAY_FOUND)
-  target_link_libraries(dispatch PRIVATE ${BSD_OVERLAY_LDFLAGS})
+  check_c_compiler_flag("-momit-leaf-frame-pointer -Werror -Wall -O3" C_SUPPORTS_OMIT_LEAF_FRAME_POINTER)
+  target_compile_options(dispatch PRIVATE -fblocks)
+  if (C_SUPPORTS_OMIT_LEAF_FRAME_POINTER)
+    target_compile_options(dispatch PRIVATE -momit-leaf-frame-pointer)
+  endif()
 endif()
 if(LibRT_FOUND)
   target_link_libraries(dispatch PRIVATE RT::rt)
@@ -201,6 +246,7 @@ target_link_libraries(dispatch
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
   target_link_libraries(dispatch
                         PRIVATE
+                          ShLwApi
                           WS2_32
                           WinMM
                           synchronization)
@@ -216,26 +262,49 @@ if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
 endif()
 dispatch_set_linker(dispatch)
 
-# Temporary staging; the various swift projects that depend on libdispatch
-# all expect libdispatch.so to be in src/.libs/libdispatch.so
-# So for now, make a copy so we don't have to do a coordinated commit across
-# all the swift projects to change this assumption.
-add_custom_command(TARGET dispatch POST_BUILD
-                   COMMAND ${CMAKE_COMMAND} -E make_directory .libs
-                   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:dispatch> .libs
-                   COMMENT "Copying libdispatch to .libs")
-
-get_swift_host_arch(SWIFT_HOST_ARCH)
-
 install(TARGETS
           dispatch
-        DESTINATION
-          "${INSTALL_TARGET_DIR}")
+        ARCHIVE DESTINATION ${INSTALL_TARGET_DIR}
+        LIBRARY DESTINATION ${INSTALL_TARGET_DIR}
+        RUNTIME DESTINATION bin)
+
 if(ENABLE_SWIFT)
   install(FILES
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftmodule
             ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftdoc
           DESTINATION
-            "${INSTALL_TARGET_DIR}/${SWIFT_HOST_ARCH}")
+            ${INSTALL_TARGET_DIR}/${swift_arch})
+
+  if(BUILD_SHARED_LIBS)
+    set(library_kind SHARED)
+  else()
+    set(library_kind STATIC)
+  endif()
+
+  set(swiftDispatch_OUTPUT_FILE
+      ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_${library_kind}_LIBRARY_PREFIX}swiftDispatch${CMAKE_${library_kind}_LIBRARY_SUFFIX})
+
+  if(CMAKE_SYSTEM_NAME STREQUAL Windows AND BUILD_SHARED_LIBS)
+    install(FILES
+              ${swiftDispatch_OUTPUT_FILE}
+            DESTINATION
+              bin)
+    install(FILES
+              ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_IMPORT_LIBRARY_PREFIX}swiftDispatch${CMAKE_IMPORT_LIBRARY_SUFFIX}
+            DESTINATION
+              ${INSTALL_TARGET_DIR})
+  else()
+    install(FILES
+              ${swiftDispatch_OUTPUT_FILE}
+            DESTINATION
+              ${INSTALL_TARGET_DIR})
+  endif()
+
+  if(NOT BUILD_SHARED_LIBS)
+    install(FILES
+              $<TARGET_FILE:DispatchStubs>
+            DESTINATION
+              ${INSTALL_TARGET_DIR})
+  endif()
 endif()
 

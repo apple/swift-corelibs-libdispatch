@@ -99,10 +99,15 @@ void *_dispatch_wait_for_enqueuer(void **ptr);
 		((DISPATCH_CONTENTION_SPINS_MIN) + ((DISPATCH_CONTENTION_SPINS_MAX) - \
 		(DISPATCH_CONTENTION_SPINS_MIN)) / 2)
 #elif defined(_WIN32)
-#define _dispatch_contention_spins() ({                                        \
-		unsigned int _value;                                           \
-		rand_s(&_value);                                               \
-		(_value & DISPATCH_CONTENTION_SPINS_MAX) | DISPATCH_CONTENTION_SPINS_MIN; })
+// Use randomness to prevent threads from resonating at the same frequency and
+// permanently contending. Windows doesn't provide rand_r(), so use a simple
+// LCG. (msvcrt has rand_s(), but its security guarantees aren't optimal here.)
+#define _dispatch_contention_spins() ({ \
+		static os_atomic(unsigned int) _seed = 1; \
+		unsigned int _next = os_atomic_load(&_seed, relaxed); \
+		os_atomic_store(&_seed, _next * 1103515245 + 12345, relaxed); \
+		((_next >> 24) & (DISPATCH_CONTENTION_SPINS_MAX)) | \
+				(DISPATCH_CONTENTION_SPINS_MIN); })
 #else
 // Use randomness to prevent threads from resonating at the same
 // frequency and permanently contending.
@@ -145,16 +150,26 @@ void *_dispatch_wait_for_enqueuer(void **ptr);
 		DISPATCH_YIELD_THREAD_SWITCH_OPTION, (mach_msg_timeout_t)(n))
 #define _dispatch_preemption_yield_to(th, n) thread_switch(th, \
 		DISPATCH_YIELD_THREAD_SWITCH_OPTION, (mach_msg_timeout_t)(n))
+#elif HAVE_PTHREAD_YIELD_NP
+#define _dispatch_preemption_yield(n) { (void)n; pthread_yield_np(); }
+#define _dispatch_preemption_yield_to(th, n) { (void)n; pthread_yield_np(); }
+#elif defined(_WIN32)
+#define _dispatch_preemption_yield(n) { (void)n; Sleep(0); }
+#define _dispatch_preemption_yield_to(th, n) { (void)n; Sleep(0); }
 #else
-#define _dispatch_preemption_yield(n) pthread_yield_np()
-#define _dispatch_preemption_yield_to(th, n) pthread_yield_np()
+#define _dispatch_preemption_yield(n) { (void)n; sched_yield(); }
+#define _dispatch_preemption_yield_to(th, n) { (void)n; sched_yield(); }
 #endif // HAVE_MACH
 
 #pragma mark -
 #pragma mark _dispatch_contention_usleep
 
 #ifndef DISPATCH_CONTENTION_USLEEP_START
+#if defined(_WIN32)
+#define DISPATCH_CONTENTION_USLEEP_START 1000   // Must be >= 1ms for Sleep()
+#else
 #define DISPATCH_CONTENTION_USLEEP_START 500
+#endif
 #endif
 #ifndef DISPATCH_CONTENTION_USLEEP_MAX
 #define DISPATCH_CONTENTION_USLEEP_MAX 100000
@@ -170,20 +185,7 @@ void *_dispatch_wait_for_enqueuer(void **ptr);
 #endif
 #else
 #if defined(_WIN32)
-DISPATCH_INLINE void
-_dispatch_contention_usleep(uint64_t useconds) {
-	static BOOL bQPFExecuted = FALSE;
-	static LARGE_INTEGER liFreq;
-	LARGE_INTEGER liStart, liNow;
-
-	if (!bQPFExecuted)
-		bQPFExecuted = QueryPerformanceFrequency(&liFreq);
-
-	QueryPerformanceCounter(&liStart);
-	do {
-		QueryPerformanceCounter(&liNow);
-	} while ((liNow.QuadPart - liStart.QuadPart) / (float)liFreq.QuadPart * 1000 * 1000 < useconds);
-}
+#define _dispatch_contention_usleep(u) Sleep((u) / 1000)
 #else
 #define _dispatch_contention_usleep(u) usleep((u))
 #endif

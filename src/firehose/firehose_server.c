@@ -213,9 +213,9 @@ firehose_client_notify(firehose_client_t fc, mach_port_t reply_port)
 	};
 	kern_return_t kr;
 
-	firehose_atomic_max2o(fc, fc_mem_sent_flushed_pos,
+	firehose_atomic_max(&fc->fc_mem_sent_flushed_pos,
 			push_reply.fpr_mem_flushed_pos, relaxed);
-	firehose_atomic_max2o(fc, fc_io_sent_flushed_pos,
+	firehose_atomic_max(&fc->fc_io_sent_flushed_pos,
 			push_reply.fpr_io_flushed_pos, relaxed);
 
 	if (!fc->fc_pid) {
@@ -495,7 +495,7 @@ firehose_client_finalize(firehose_client_t fc OS_OBJECT_CONSUMED)
 	}
 	fc->fc_entry.tqe_next = DISPATCH_OBJECT_LISTLESS;
 	fc->fc_entry.tqe_prev = DISPATCH_OBJECT_LISTLESS;
-	_os_object_release_without_xref_dispose(&fc->fc_as_os_object);
+	_os_object_release_without_xref_dispose(&fc->fc_object_header);
 }
 
 OS_NOINLINE
@@ -1370,8 +1370,8 @@ firehose_server_register(mach_port_t server_port OS_UNUSED,
 	 * Request a no senders notification for the memory channel.
 	 * That should indicate the client going away.
 	 */
-	dispatch_mach_request_no_senders(
-			fc->fc_mach_channel[FIREHOSE_BUFFER_PUSHPORT_MEM]);
+	dispatch_mach_notify_no_senders(
+			fc->fc_mach_channel[FIREHOSE_BUFFER_PUSHPORT_MEM], true);
 	firehose_client_resume(fc, &fcci);
 
 	if (fcci.fcci_size) {

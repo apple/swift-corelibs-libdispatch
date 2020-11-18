@@ -40,6 +40,15 @@ and the time at which the function is called, with the leeway capped to at least
 .Pp
 For a more detailed description about submitting blocks to queues, see
 .Xr dispatch_async 3 .
+.Sh FUNDAMENTALS
+The
+.Fn dispatch_after
+function is a wrapper around
+.Fn dispatch_after_f .
+.Sh SEE ALSO
+.Xr dispatch 3 ,
+.Xr dispatch_async 3 ,
+.Xr dispatch_time 3
 .Sh CAVEATS
 .Fn dispatch_after
 retains the passed queue.
@@ -57,13 +66,3 @@ The result of passing
 as the
 .Fa when
 parameter is undefined.
-.Pp
-.Sh FUNDAMENTALS
-The
-.Fn dispatch_after
-function is a wrapper around
-.Fn dispatch_after_f .
-.Sh SEE ALSO
-.Xr dispatch 3 ,
-.Xr dispatch_async 3 ,
-.Xr dispatch_time 3

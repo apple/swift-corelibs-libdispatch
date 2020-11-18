@@ -149,6 +149,17 @@ dispatch_set_qos_class_fallback(dispatch_object_t object,
 
 #define DISPATCH_QUEUE_FLAGS_MASK (DISPATCH_QUEUE_OVERCOMMIT)
 
+#if __APPLE__
+#  define DISPATCH_QUEUE_NULLABLE_PTHREAD_ATTR_PTR
+#else // __APPLE__
+// On FreeBSD pthread_attr_t is a typedef to a pointer type
+#if defined(__FreeBSD__)
+#  define DISPATCH_QUEUE_NULLABLE_PTHREAD_ATTR_PTR _Nullable
+#else // defined(__FreeBSD__)
+#  define DISPATCH_QUEUE_NULLABLE_PTHREAD_ATTR_PTR
+#endif // defined(__FreeBSD__)
+#endif // __APPLE__
+
 /*!
  * @function dispatch_queue_attr_make_with_overcommit
  *
@@ -323,12 +334,13 @@ dispatch_queue_set_width(dispatch_queue_t dq, long width);
  * @result
  * The newly created dispatch pthread root queue.
  */
-API_AVAILABLE(macos(10.9), ios(6.0)) DISPATCH_LINUX_UNAVAILABLE()
+API_DEPRECATED_WITH_REPLACEMENT("dispatch_workloop_set_scheduler_priority",
+		macos(10.9, 10.16), ios(6.0, 14.0)) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_global_t
 dispatch_pthread_root_queue_create(const char *_Nullable label,
-		unsigned long flags, const pthread_attr_t *_Nullable attr,
+		unsigned long flags, const pthread_attr_t DISPATCH_QUEUE_NULLABLE_PTHREAD_ATTR_PTR *_Nullable attr,
 		dispatch_block_t _Nullable configure);
 
 /*!
@@ -437,7 +449,7 @@ dispatch_async_enforce_qos_class_f(dispatch_queue_t queue,
  * "detached" before the thread exits or the application will crash.
  */
 DISPATCH_EXPORT
-void _dispatch_install_thread_detach_callback(dispatch_function_t cb);
+void _dispatch_install_thread_detach_callback(void (*cb)(void));
 #endif
 
 __END_DECLS

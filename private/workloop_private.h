@@ -73,7 +73,7 @@ API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_workloop_set_qos_class_floor(dispatch_workloop_t workloop,
-		qos_class_t qos, int relpri, dispatch_workloop_param_flags_t flags);
+		dispatch_qos_class_t qos, int relpri, dispatch_workloop_param_flags_t flags);
 
 /*!
  * @function dispatch_workloop_set_scheduler_priority
@@ -172,7 +172,7 @@ API_DEPRECATED_WITH_REPLACEMENT("dispatch_workloop_set_qos_class_floor",
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_workloop_set_qos_class(dispatch_workloop_t workloop,
-		qos_class_t qos, dispatch_workloop_param_flags_t flags);
+		dispatch_qos_class_t qos, dispatch_workloop_param_flags_t flags);
 
 API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW

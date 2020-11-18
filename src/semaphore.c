@@ -21,13 +21,13 @@
 #include "internal.h"
 
 DISPATCH_WEAK // rdar://problem/8503746
-long _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema);
+intptr_t _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema);
 
 #pragma mark -
 #pragma mark dispatch_semaphore_t
 
 dispatch_semaphore_t
-dispatch_semaphore_create(long value)
+dispatch_semaphore_create(intptr_t value)
 {
 	dispatch_semaphore_t dsema;
 
@@ -76,12 +76,12 @@ _dispatch_semaphore_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 			dsema->dsema_sema);
 #endif
 	offset += dsnprintf(&buf[offset], bufsiz - offset,
-			"value = %ld, orig = %ld }", dsema->dsema_value, dsema->dsema_orig);
+			"value = %" PRIdPTR ", orig = %" PRIdPTR " }", dsema->dsema_value, dsema->dsema_orig);
 	return offset;
 }
 
 DISPATCH_NOINLINE
-long
+intptr_t
 _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 {
 	_dispatch_sema4_create(&dsema->dsema_sema, _DSEMA4_POLICY_FIFO);
@@ -89,7 +89,7 @@ _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 	return 1;
 }
 
-long
+intptr_t
 dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 {
 	long value = os_atomic_inc2o(dsema, dsema_value, release);
@@ -104,7 +104,7 @@ dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 }
 
 DISPATCH_NOINLINE
-static long
+static intptr_t
 _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 		dispatch_time_t timeout)
 {
@@ -121,7 +121,7 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 	case DISPATCH_TIME_NOW:
 		orig = dsema->dsema_value;
 		while (orig < 0) {
-			if (os_atomic_cmpxchgvw2o(dsema, dsema_value, orig, orig + 1,
+			if (os_atomic_cmpxchgv2o(dsema, dsema_value, orig, orig + 1,
 					&orig, relaxed)) {
 				return _DSEMA4_TIMEOUT();
 			}
@@ -135,7 +135,7 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 	return 0;
 }
 
-long
+intptr_t
 dispatch_semaphore_wait(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 {
 	long value = os_atomic_dec2o(dsema, dsema_value, acquire);
@@ -198,7 +198,7 @@ _dispatch_group_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 			_dispatch_object_class_name(dg), dg);
 	offset += _dispatch_object_debug_attr(dg, &buf[offset], bufsiz - offset);
 	offset += dsnprintf(&buf[offset], bufsiz - offset,
-			"count = %d, gen = %d, waiters = %d, notifs = %d }",
+			"count = %u, gen = %d, waiters = %d, notifs = %d }",
 			_dg_state_value(dg_state), _dg_state_gen(dg_state),
 			(bool)(dg_state & DISPATCH_GROUP_HAS_WAITERS),
 			(bool)(dg_state & DISPATCH_GROUP_HAS_NOTIFS));
@@ -206,7 +206,7 @@ _dispatch_group_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 }
 
 DISPATCH_NOINLINE
-static long
+static intptr_t
 _dispatch_group_wait_slow(dispatch_group_t dg, uint32_t gen,
 		dispatch_time_t timeout)
 {
@@ -221,7 +221,7 @@ _dispatch_group_wait_slow(dispatch_group_t dg, uint32_t gen,
 	}
 }
 
-long
+intptr_t
 dispatch_group_wait(dispatch_group_t dg, dispatch_time_t timeout)
 {
 	uint64_t old_state, new_state;

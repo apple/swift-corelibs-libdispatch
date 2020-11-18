@@ -151,8 +151,13 @@ enum {
 #define _dispatch_io_log(x, ...)
 #endif // DISPATCH_IO_DEBUG
 
+#if !defined(_WIN32)
 #define _dispatch_fd_debug(msg, fd, ...) \
 		_dispatch_io_log("fd[0x%x]: " msg, fd, ##__VA_ARGS__)
+#else // !defined(_WIN32)
+#define _dispatch_fd_debug(msg, fd, ...) \
+		_dispatch_io_log("fd[0x%" PRIx64 "]: " msg, fd, ##__VA_ARGS__)
+#endif // !defined(_WIN32)
 #define _dispatch_op_debug(msg, op, ...) \
 		_dispatch_io_log("op[%p]: " msg, op, ##__VA_ARGS__)
 #define _dispatch_io_channel_debug(msg, channel, ...) \
@@ -406,15 +411,29 @@ dispatch_io_create_f(dispatch_io_type_t type, dispatch_fd_t fd,
 			^(int error){ cleanup_handler(context, error); });
 }
 
+#if defined(_WIN32)
+#define _is_separator(ch) ((ch) == '/' || (ch) == '\\')
+#else
+#define _is_separator(ch) ((ch) == '/')
+#endif
+
 dispatch_io_t
 dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 		int oflag, mode_t mode, dispatch_queue_t queue,
 		void (^cleanup_handler)(int error))
 {
-	if ((type != DISPATCH_IO_STREAM && type != DISPATCH_IO_RANDOM) ||
-			!(*path == '/')) {
+	if (type != DISPATCH_IO_STREAM && type != DISPATCH_IO_RANDOM) {
 		return DISPATCH_BAD_INPUT;
 	}
+#if defined(_WIN32)
+	if (PathIsRelativeA(path)) {
+		return DISPATCH_BAD_INPUT;
+	}
+#else
+	if (!_is_separator(*path)) {
+		return DISPATCH_BAD_INPUT;
+	}
+#endif
 	size_t pathlen = strlen(path);
 	dispatch_io_path_data_t path_data = malloc(sizeof(*path_data) + pathlen+1);
 	if (!path_data) {
@@ -449,9 +468,15 @@ dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 				break;
 			default:
 				if ((path_data->oflag & O_CREAT) &&
-						(*(path_data->path + path_data->pathlen - 1) != '/')) {
+						!_is_separator(*(path_data->path + path_data->pathlen - 1))) {
 					// Check parent directory
-					char *c = strrchr(path_data->path, '/');
+					char *c = NULL;
+					for (ssize_t i = (ssize_t)path_data->pathlen - 1; i >= 0; i--) {
+						if (_is_separator(path_data->path[i])) {
+							c = &path_data->path[i];
+							break;
+						}
+					}
 					dispatch_assert(c);
 					*c = 0;
 					int perr;
@@ -465,7 +490,11 @@ dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 							err = 0;
 							break;
 					);
+#if defined(_WIN32)
+					*c = '\\';
+#else
 					*c = '/';
+#endif
 				}
 				break;
 		);
@@ -1287,18 +1316,31 @@ _dispatch_fd_entry_guarded_open(dispatch_fd_entry_t fd_entry, const char *path,
 #if defined(_WIN32)
 	(void)mode;
 	DWORD dwDesiredAccess = 0;
-	if (oflag & _O_RDWR)
-		dwDesiredAccess = GENERIC_READ | GENERIC_WRITE;
-	else if (oflag & _O_RDONLY)
+	switch (oflag & (_O_RDONLY | _O_WRONLY | _O_RDWR)) {
+	case _O_RDONLY:
 		dwDesiredAccess = GENERIC_READ;
-	else if (oflag & _O_WRONLY)
+		break;
+	case _O_WRONLY:
 		dwDesiredAccess = GENERIC_WRITE;
+		break;
+	case _O_RDWR:
+		dwDesiredAccess = GENERIC_READ | GENERIC_WRITE;
+		break;
+	}
 	DWORD dwCreationDisposition = OPEN_EXISTING;
-	if (oflag & _O_CREAT)
+	if (oflag & _O_CREAT) {
 		dwCreationDisposition = OPEN_ALWAYS;
-	if (oflag & _O_TRUNC)
-		dwCreationDisposition = CREATE_ALWAYS;
-	return (dispatch_fd_t)CreateFile(path, dwDesiredAccess, 0, NULL, dwCreationDisposition, 0, NULL);
+		if (oflag & _O_EXCL) {
+			dwCreationDisposition = CREATE_NEW;
+		} else if (oflag & _O_TRUNC) {
+			dwCreationDisposition = CREATE_ALWAYS;
+		}
+	} else if (oflag & _O_TRUNC) {
+		dwCreationDisposition = TRUNCATE_EXISTING;
+	}
+	return (dispatch_fd_t)CreateFile(path, dwDesiredAccess,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+			dwCreationDisposition, 0, NULL);
 #else
 	return open(path, oflag, mode);
 #endif
@@ -1385,7 +1427,11 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 	// On fds lock queue
 	dispatch_fd_entry_t fd_entry = _dispatch_fd_entry_create(
 			_dispatch_io_fds_lockq);
+#if !defined(_WIN32)
 	_dispatch_fd_entry_debug("create: fd %d", fd_entry, fd);
+#else // !defined(_WIN32)
+	_dispatch_fd_entry_debug("create: fd %"PRId64, fd_entry, fd);
+#endif // !defined(_WIN32)
 	fd_entry->fd = fd;
 	LIST_INSERT_HEAD(&_dispatch_io_fds[hash], fd_entry, fd_list);
 	fd_entry->barrier_queue = dispatch_queue_create(
@@ -1399,11 +1445,11 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 			int result = ioctlsocket((SOCKET)fd, (long)FIONBIO, &value);
 			(void)dispatch_assume_zero(result);
 			_dispatch_stream_init(fd_entry,
-				_dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false));
+				_dispatch_get_default_queue(false));
 		} else {
 			dispatch_suspend(fd_entry->barrier_queue);
-			dispatch_once_f(&_dispatch_io_devs_lockq_pred, NULL,
-					_dispatch_io_devs_lockq_init);
+			dispatch_once_f(&_dispatch_io_init_pred, NULL,
+					_dispatch_io_queues_init);
 			dispatch_async(_dispatch_io_devs_lockq, ^{
 				_dispatch_disk_init(fd_entry, 0);
 				dispatch_resume(fd_entry->barrier_queue);
@@ -2227,9 +2273,8 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 	(void)chunk_size;
 #else
 	if (_dispatch_io_get_error(op, NULL, true)) return;
-#if defined(__linux__) || defined(__FreeBSD__)
-	// linux does not support fcntl (F_RDAVISE)
-	// define necessary datastructure and use readahead
+#if !defined(F_RDADVISE)
+	// Compatibility struct whose values may be passed to posix_fadvise()
 	struct radvisory {
 		off_t ra_offset;
 		int   ra_count;
@@ -2254,13 +2299,7 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 	}
 	advise.ra_offset = op->advise_offset;
 	op->advise_offset += advise.ra_count;
-#if defined(__linux__)
-	_dispatch_io_syscall_switch(err,
-			readahead(op->fd_entry->fd, advise.ra_offset, (size_t)advise.ra_count),
-		case EINVAL: break; // fd does refer to a non-supported filetype
-		default: (void)dispatch_assume_zero(err); break;
-	);
-#else
+#if defined(F_RDADVISE)
 	_dispatch_io_syscall_switch(err,
 		fcntl(op->fd_entry->fd, F_RDADVISE, &advise),
 		case EFBIG: break; // advised past the end of the file rdar://10415691
@@ -2268,8 +2307,19 @@ _dispatch_operation_advise(dispatch_operation_t op, size_t chunk_size)
 		// TODO: set disk status on error
 		default: (void)dispatch_assume_zero(err); break;
 	);
-#endif
-#endif
+#elif defined(HAVE_POSIX_FADVISE)
+	err = posix_fadvise(op->fd_entry->fd, advise.ra_offset,
+			(off_t)advise.ra_count, POSIX_FADV_WILLNEED);
+	switch (err) {
+		case 0: break;
+		case EINVAL: break; // unsupported advice or file type
+		case ESPIPE: break; // fd refers to a pipe or FIFO
+		default: (void)dispatch_assume_zero(err); break;
+	}
+#else
+#error "_dispatch_operation_advise not implemented on this platform"
+#endif // defined(F_RDADVISE)
+#endif // defined(_WIN32)
 }
 
 static int
@@ -2312,7 +2362,10 @@ _dispatch_operation_perform(dispatch_operation_t op)
 			}
 			op->buf = _aligned_malloc(op->buf_siz, siInfo.dwPageSize);
 #else
-			op->buf = valloc(op->buf_siz);
+			err = posix_memalign(&op->buf, (size_t)PAGE_SIZE, op->buf_siz);
+			if (err != 0) {
+				goto error;
+			}
 #endif
 			_dispatch_op_debug("buffer allocated", op);
 		} else if (op->direction == DOP_DIR_WRITE) {
@@ -2366,7 +2419,54 @@ syscall:
 	if (op->direction == DOP_DIR_READ) {
 		if (op->params.type == DISPATCH_IO_STREAM) {
 #if defined(_WIN32)
-			ReadFile((HANDLE)op->fd_entry->fd, buf, (DWORD)len, (LPDWORD)&processed, NULL);
+			HANDLE hFile = (HANDLE)op->fd_entry->fd;
+			BOOL bSuccess;
+			if (_dispatch_handle_is_socket(hFile)) {
+				processed = recv((SOCKET)hFile, buf, len, 0);
+				if (processed < 0) {
+					bSuccess = FALSE;
+					err = WSAGetLastError();
+					if (err == WSAEWOULDBLOCK) {
+						err = EAGAIN;
+					}
+					goto error;
+				}
+				bSuccess = TRUE;
+			} else if (GetFileType(hFile) == FILE_TYPE_PIPE) {
+				OVERLAPPED ovlOverlapped = {};
+				DWORD dwTotalBytesAvail;
+				bSuccess = PeekNamedPipe(hFile, NULL, 0, NULL,
+						&dwTotalBytesAvail, NULL);
+				if (bSuccess) {
+					if (dwTotalBytesAvail == 0) {
+						err = EAGAIN;
+						goto error;
+					}
+					len = MIN(len, dwTotalBytesAvail);
+					bSuccess = ReadFile(hFile, buf, (DWORD)len,
+							(LPDWORD)&processed, &ovlOverlapped);
+				}
+				if (!bSuccess) {
+					DWORD dwError = GetLastError();
+					if (dwError == ERROR_IO_PENDING) {
+						bSuccess = GetOverlappedResult(hFile, &ovlOverlapped,
+								(LPDWORD)&processed, /* bWait */ TRUE);
+						dwError = GetLastError();
+					}
+					if (dwError == ERROR_BROKEN_PIPE ||
+							dwError == ERROR_NO_DATA) {
+						bSuccess = TRUE;
+						processed = 0;
+					}
+				}
+			} else {
+				bSuccess = ReadFile(hFile, buf, (DWORD)len,
+						(LPDWORD)&processed, NULL);
+			}
+			if (!bSuccess) {
+				err = EIO;
+				goto error;
+			}
 #else
 			processed = read(op->fd_entry->fd, buf, len);
 #endif
@@ -2375,7 +2475,8 @@ syscall:
 			OVERLAPPED ovlOverlapped = {};
 			ovlOverlapped.Offset = off & 0xffffffff;
 			ovlOverlapped.OffsetHigh = (off >> 32) & 0xffffffff;
-			ReadFile((HANDLE)op->fd_entry->fd, buf, (DWORD)len, (LPDWORD)&processed, &ovlOverlapped);
+			ReadFile((HANDLE)op->fd_entry->fd, buf, (DWORD)len,
+					(LPDWORD)&processed, &ovlOverlapped);
 #else
 			processed = pread(op->fd_entry->fd, buf, len, off);
 #endif
@@ -2383,7 +2484,62 @@ syscall:
 	} else if (op->direction == DOP_DIR_WRITE) {
 		if (op->params.type == DISPATCH_IO_STREAM) {
 #if defined(_WIN32)
-			WriteFile((HANDLE)op->fd_entry->fd, buf, (DWORD)len, (LPDWORD)&processed, NULL);
+			HANDLE hFile = (HANDLE)op->fd_entry->fd;
+			BOOL bSuccess;
+			if (_dispatch_handle_is_socket(hFile)) {
+				processed = send((SOCKET)hFile, buf, len, 0);
+				if (processed < 0) {
+					bSuccess = FALSE;
+					err = WSAGetLastError();
+					if (err == WSAEWOULDBLOCK) {
+						err = EAGAIN;
+					}
+					goto error;
+				}
+				bSuccess = TRUE;
+			} else if (GetFileType(hFile) == FILE_TYPE_PIPE) {
+				// Unfortunately there isn't a good way to achieve O_NONBLOCK
+				// semantics when writing to a pipe. SetNamedPipeHandleState()
+				// can allow pipes to be switched into a "no wait" mode, but
+				// that doesn't work on most pipe handles because Windows
+				// doesn't consistently create pipes with FILE_WRITE_ATTRIBUTES
+				// access. The best we can do is to try to query the write quota
+				// and then write as much as we can.
+				IO_STATUS_BLOCK iosb;
+				FILE_PIPE_LOCAL_INFORMATION fpli;
+				NTSTATUS status = _dispatch_NtQueryInformationFile(hFile, &iosb,
+						&fpli, sizeof(fpli), FilePipeLocalInformation);
+				if (NT_SUCCESS(status)) {
+					if (fpli.WriteQuotaAvailable == 0) {
+						err = EAGAIN;
+						goto error;
+					}
+					len = MIN(len, fpli.WriteQuotaAvailable);
+				}
+				OVERLAPPED ovlOverlapped = {};
+				bSuccess = WriteFile(hFile, buf, (DWORD)len,
+						(LPDWORD)&processed, &ovlOverlapped);
+				if (!bSuccess) {
+					DWORD dwError = GetLastError();
+					if (dwError == ERROR_IO_PENDING) {
+						bSuccess = GetOverlappedResult(hFile, &ovlOverlapped,
+								(LPDWORD)&processed, /* bWait */ TRUE);
+						dwError = GetLastError();
+					}
+					if (dwError == ERROR_BROKEN_PIPE ||
+							dwError == ERROR_NO_DATA) {
+						bSuccess = TRUE;
+						processed = 0;
+					}
+				}
+			} else {
+				bSuccess = WriteFile(hFile, buf, (DWORD)len,
+						(LPDWORD)&processed, NULL);
+			}
+			if (!bSuccess) {
+				err = EIO;
+				goto error;
+			}
 #else
 			processed = write(op->fd_entry->fd, buf, len);
 #endif
@@ -2392,7 +2548,8 @@ syscall:
 			OVERLAPPED ovlOverlapped = {};
 			ovlOverlapped.Offset = off & 0xffffffff;
 			ovlOverlapped.OffsetHigh = (off >> 32) & 0xffffffff;
-			WriteFile((HANDLE)op->fd_entry->fd, buf, (DWORD)len, (LPDWORD)&processed, &ovlOverlapped);
+			WriteFile((HANDLE)op->fd_entry->fd, buf, (DWORD)len,
+					(LPDWORD)&processed, &ovlOverlapped);
 #else
 			processed = pwrite(op->fd_entry->fd, buf, len, off);
 #endif
@@ -2476,8 +2633,14 @@ _dispatch_operation_deliver_data(dispatch_operation_t op,
 	if (op->direction == DOP_DIR_READ) {
 		if (op->buf_len) {
 			void *buf = op->buf;
+#if defined(_WIN32)
+			// buf is allocated with _aligned_malloc()
+			data = dispatch_data_create(buf, op->buf_len, NULL,
+					^{ _aligned_free(buf); });
+#else
 			data = dispatch_data_create(buf, op->buf_len, NULL,
 					DISPATCH_DATA_DESTRUCTOR_FREE);
+#endif
 			op->buf = NULL;
 			op->buf_len = 0;
 			dispatch_data_t d = dispatch_data_create_concat(op->data, data);
@@ -2559,11 +2722,11 @@ static size_t
 _dispatch_io_debug_attr(dispatch_io_t channel, char* buf, size_t bufsiz)
 {
 	dispatch_queue_t target = channel->do_targetq;
-	return dsnprintf(buf, bufsiz, "type = %s, fd = 0x%x, %sfd_entry = %p, "
+	return dsnprintf(buf, bufsiz, "type = %s, fd = 0x%" PRIxPTR ", %sfd_entry = %p, "
 			"queue = %p, target = %s[%p], barrier_queue = %p, barrier_group = "
 			"%p, err = 0x%x, low = 0x%zx, high = 0x%zx, interval%s = %llu ",
 			channel->params.type == DISPATCH_IO_STREAM ? "stream" : "random",
-			channel->fd_actual, channel->atomic_flags & DIO_STOPPED ?
+			(intptr_t)channel->fd_actual, channel->atomic_flags & DIO_STOPPED ?
 			"stopped, " : channel->atomic_flags & DIO_CLOSED ? "closed, " : "",
 			channel->fd_entry, channel->queue, target && target->dq_label ?
 			target->dq_label : "", target, channel->barrier_queue,
@@ -2593,13 +2756,13 @@ _dispatch_operation_debug_attr(dispatch_operation_t op, char* buf,
 {
 	dispatch_queue_t target = op->do_targetq;
 	dispatch_queue_t oqtarget = op->op_q ? op->op_q->do_targetq : NULL;
-	return dsnprintf(buf, bufsiz, "type = %s %s, fd = 0x%x, fd_entry = %p, "
+	return dsnprintf(buf, bufsiz, "type = %s %s, fd = 0x%" PRIxPTR ", fd_entry = %p, "
 			"channel = %p, queue = %p -> %s[%p], target = %s[%p], "
 			"offset = %lld, length = %zu, done = %zu, undelivered = %zu, "
 			"flags = %u, err = 0x%x, low = 0x%zx, high = 0x%zx, "
 			"interval%s = %llu ", op->params.type == DISPATCH_IO_STREAM ?
 			"stream" : "random", op->direction == DOP_DIR_READ ? "read" :
-			"write", op->fd_entry ? op->fd_entry->fd : -1, op->fd_entry,
+			"write", (intptr_t)(op->fd_entry ? op->fd_entry->fd : -1), op->fd_entry,
 			op->channel, op->op_q, oqtarget && oqtarget->dq_label ?
 			oqtarget->dq_label : "", oqtarget, target && target->dq_label ?
 			target->dq_label : "", target, (long long)op->offset, op->length,

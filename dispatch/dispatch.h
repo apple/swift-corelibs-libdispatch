@@ -37,10 +37,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#include <string.h>
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
 #endif
 #include <fcntl.h>
+#if defined(_WIN32)
+#include <time.h>
+#endif
 
 #if (defined(__linux__) || defined(__FreeBSD__)) && defined(__has_feature)
 #if __has_feature(modules)
@@ -58,6 +62,7 @@
 #endif
 
 #include <os/object.h>
+#include <os/workgroup.h>
 #include <dispatch/base.h>
 #include <dispatch/time.h>
 #include <dispatch/object.h>

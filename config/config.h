@@ -121,14 +121,26 @@
 /* Define if you have the Objective-C runtime */
 #define HAVE_OBJC 1
 
+/* Define to 1 if you have the `posix_fadvise' function. */
+#define HAVE_POSIX_FADVISE 0
+
+/* Define to 1 if you have the `posix_spawnp' function. */
+#define HAVE_POSIX_SPAWNP 1
+
 /* Define to 1 if you have the `pthread_key_init_np' function. */
 #define HAVE_PTHREAD_KEY_INIT_NP 1
+
+/* Define to 1 if you have the `pthread_attr_setcpupercent_np' function. */
+#define HAVE_PTHREAD_ATTR_SETCPUPERCENT_NP 1
 
 /* Define to 1 if you have the <pthread_machdep.h> header file. */
 #define HAVE_PTHREAD_MACHDEP_H 1
 
 /* Define to 1 if you have the `pthread_main_np' function. */
 #define HAVE_PTHREAD_MAIN_NP 1
+
+/* Define to 1 if you have the `pthread_yield_np' function. */
+#define HAVE_PTHREAD_YIELD_NP 1
 
 /* Define to 1 if you have the <pthread_np.h> header file. */
 /* #undef HAVE_PTHREAD_NP_H */

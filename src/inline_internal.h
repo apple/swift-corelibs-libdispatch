@@ -759,7 +759,7 @@ DISPATCH_ALWAYS_INLINE
 static inline dispatch_workloop_t
 _dispatch_wlh_to_workloop(dispatch_wlh_t wlh)
 {
-	if (wlh == DISPATCH_WLH_ANON) {
+	if (wlh == NULL || wlh == DISPATCH_WLH_ANON) {
 		return NULL;
 	}
 	if (dx_metatype((dispatch_workloop_t)wlh) == _DISPATCH_WORKLOOP_TYPE) {
@@ -1012,9 +1012,9 @@ _dq_state_is_enqueued_on_manager(uint64_t dq_state)
 
 DISPATCH_ALWAYS_INLINE
 static inline bool
-_dq_state_in_sync_transfer(uint64_t dq_state)
+_dq_state_in_uncontended_sync(uint64_t dq_state)
 {
-	return dq_state & DISPATCH_QUEUE_SYNC_TRANSFER;
+	return dq_state & DISPATCH_QUEUE_UNCONTENDED_SYNC;
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -1031,6 +1031,18 @@ _dq_state_received_sync_wait(uint64_t dq_state)
 {
 	return _dq_state_is_base_wlh(dq_state) &&
 			(dq_state & DISPATCH_QUEUE_RECEIVED_SYNC_WAIT);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dq_state_needs_ensure_ownership(uint64_t dq_state)
+{
+	if (_dq_state_is_base_wlh(dq_state) &&
+			_dq_state_in_uncontended_sync(dq_state)) {
+		return dq_state & (DISPATCH_QUEUE_RECEIVED_SYNC_WAIT |
+				DISPATCH_QUEUE_ENQUEUED);
+	}
+	return false;
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -1118,7 +1130,26 @@ _dq_state_should_override(uint64_t dq_state)
 	if (_dq_state_is_enqueued_on_target(dq_state)) {
 		return true;
 	}
+	return _dq_state_drain_locked(dq_state);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dq_state_should_override_for_waiter(uint64_t dq_state)
+{
+	if (_dq_state_is_suspended(dq_state) ||
+			_dq_state_is_enqueued_on_manager(dq_state)) {
+		return false;
+	}
+	if (_dq_state_is_enqueued_on_target(dq_state)) {
+		return true;
+	}
 	if (_dq_state_is_base_wlh(dq_state)) {
+		// _dq_state_should_override is called only when the enqueued bit
+		// hasn't changed. For kqworkloop based code, if there's no thread
+		// request, then we should not try to assign a QoS/kevent override
+		// at all, because turnstiles are the only thing needed to resolve
+		// priority inversions.
 		return false;
 	}
 	return _dq_state_drain_locked(dq_state);
@@ -1317,7 +1348,11 @@ _dispatch_queue_drain_try_lock_wlh(dispatch_queue_t dq, uint64_t *dq_state)
 		if (unlikely(_dq_state_is_suspended(old_state))) {
 			new_state &= ~DISPATCH_QUEUE_ENQUEUED;
 		} else if (unlikely(_dq_state_drain_locked(old_state))) {
-			os_atomic_rmw_loop_give_up(break);
+			if (_dq_state_in_uncontended_sync(old_state)) {
+				new_state |= DISPATCH_QUEUE_RECEIVED_SYNC_WAIT;
+			} else {
+				os_atomic_rmw_loop_give_up(break);
+			}
 		} else {
 			new_state &= DISPATCH_QUEUE_DRAIN_PRESERVED_BITS_MASK;
 			new_state |= lock_bits;
@@ -1326,7 +1361,7 @@ _dispatch_queue_drain_try_lock_wlh(dispatch_queue_t dq, uint64_t *dq_state)
 	if (unlikely(!_dq_state_is_base_wlh(old_state) ||
 			!_dq_state_is_enqueued_on_target(old_state) ||
 			_dq_state_is_enqueued_on_manager(old_state))) {
-#if !__LP64__
+#if DISPATCH_SIZEOF_PTR == 4
 		old_state >>= 32;
 #endif
 		DISPATCH_INTERNAL_CRASH(old_state, "Invalid wlh state");
@@ -1356,6 +1391,7 @@ _dispatch_queue_try_acquire_barrier_sync_and_suspend(dispatch_lane_t dq,
 	uint64_t init  = DISPATCH_QUEUE_STATE_INIT_VALUE(dq->dq_width);
 	uint64_t value = DISPATCH_QUEUE_WIDTH_FULL_BIT | DISPATCH_QUEUE_IN_BARRIER |
 			_dispatch_lock_value_from_tid(tid) |
+			DISPATCH_QUEUE_UNCONTENDED_SYNC |
 			(suspend_count * DISPATCH_QUEUE_SUSPEND_INTERVAL);
 	uint64_t old_state, new_state;
 
@@ -1536,6 +1572,18 @@ _dispatch_queue_drain_try_unlock(dispatch_queue_t dq, uint64_t owned, bool done)
 		_dispatch_set_basepri_override_qos(_dq_state_max_qos(old_state));
 	}
 	return true;
+}
+
+/*
+ * Clears UNCONTENDED_SYNC and RECEIVED_SYNC_WAIT
+ */
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_queue_move_to_contended_sync(dispatch_queue_t dq)
+{
+	uint64_t clearbits = DISPATCH_QUEUE_RECEIVED_SYNC_WAIT |
+			DISPATCH_QUEUE_UNCONTENDED_SYNC;
+	os_atomic_and2o(dq, dq_state, ~clearbits, relaxed);
 }
 
 #pragma mark -
@@ -2081,7 +2129,7 @@ _dispatch_set_basepri(dispatch_priority_t dq_dbp)
 	_dispatch_thread_setspecific(dispatch_basepri_key, (void*)(uintptr_t)dbp);
 	return old_dbp;
 #else
-	(void)dbp;
+	(void)dq_dbp;
 	return 0;
 #endif
 }
@@ -2294,6 +2342,19 @@ _dispatch_queue_need_override(dispatch_queue_class_t dq, dispatch_qos_t qos)
 
 #define DISPATCH_PRIORITY_PROPAGATE_CURRENT 0x1
 #define DISPATCH_PRIORITY_PROPAGATE_FOR_SYNC_IPC 0x2
+
+DISPATCH_ALWAYS_INLINE
+static inline dispatch_qos_t
+_dispatch_qos_propagate(dispatch_qos_t qos)
+{
+#if HAVE_PTHREAD_WORKQUEUE_QOS
+	// Cap QOS for propagation at user-initiated <rdar://16681262&16998036>
+	return MIN(qos, DISPATCH_QOS_USER_INITIATED);
+#else
+	(void)qos;
+	return 0;
+#endif
+}
 
 DISPATCH_ALWAYS_INLINE
 static inline pthread_priority_t

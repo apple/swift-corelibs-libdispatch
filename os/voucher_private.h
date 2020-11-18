@@ -437,8 +437,8 @@ voucher_create_with_mach_msg(mach_msg_header_t *msg);
  *
  * @param max_hex_data
  * The maximum number of bytes of hex data to be formatted for voucher content
- * that is not of type MACH_VOUCHER_ATTR_KEY_ATM, MACH_VOUCHER_ATTR_KEY_BANK
- * or MACH_VOUCHER_ATTR_KEY_IMPORTANCE.
+ * that is not of type MACH_VOUCHER_ATTR_KEY_BANK or
+ * MACH_VOUCHER_ATTR_KEY_IMPORTANCE.
  *
  * @result
  * The offset of the first byte in the buffer following the formatted voucher

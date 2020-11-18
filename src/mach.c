@@ -71,6 +71,9 @@ static dispatch_continuation_t _dispatch_mach_msg_async_reply_wrap(
 static void _dispatch_mach_notification_kevent_unregister(dispatch_mach_t dm);
 static void _dispatch_mach_notification_kevent_register(dispatch_mach_t dm,
 		mach_port_t send);
+static inline mach_msg_option_t
+_dispatch_mach_send_msg_prepare(dispatch_mach_t dm,
+		dispatch_mach_msg_t dmsg, mach_msg_option_t options);
 
 // For tests only.
 DISPATCH_EXPORT void _dispatch_mach_hooks_install_default(void);
@@ -197,11 +200,17 @@ dispatch_mach_request_no_senders(dispatch_mach_t dm)
 }
 
 void
+dispatch_mach_notify_no_senders(dispatch_mach_t dm, bool made_sendrights)
+{
+	dm->dm_arm_no_senders = true;
+	dm->dm_made_sendrights = made_sendrights;
+	_dispatch_queue_setter_assert_inactive(dm);
+}
+
+void
 dispatch_mach_set_flags(dispatch_mach_t dm, dispatch_mach_flags_t flags)
 {
 	dm->dm_strict_reply = !!(flags & DMF_USE_STRICT_REPLY);
-	dm->dm_arm_no_senders = !!(flags & DMF_REQUEST_NO_SENDERS);
-
 	_dispatch_queue_setter_assert_inactive(dm);
 }
 
@@ -213,8 +222,28 @@ _dispatch_mach_arm_no_senders(dispatch_mach_t dm, bool allow_previous)
 	kern_return_t kr;
 
 	if (MACH_PORT_VALID(recvp)) {
+		// <rdar://problem/57574240&57889260>
+		//
+		// Establishing a peer-connection can be done in two ways:
+		// 1) the client makes a receive right with an inserted send right,
+		//    and ships the receive right across in a checkin message,
+		//
+		// 2) the server makes a receive right and "make-send" a send right
+		//    in the checkin reply.
+		//
+		// While for the case (1) which is the typical XPC case, at the time
+		// dispatch_mach_connect() is called the send right for the peer
+		// connection is made, for case (2) it will only be made later.
+		//
+		// We use dm->dm_made_sendrights to determine which case we're in. If
+		// (1), sync = 0 since the send right could have gone away and we want
+		// no-senders to fire immediately. If (2), sync = 1, we want to fire
+		// no-senders only after creating at least one send right.
+
+		mach_port_mscount_t sync = dm->dm_made_sendrights ? 0 : 1;
+
 		kr = mach_port_request_notification(mach_task_self(), recvp,
-				MACH_NOTIFY_NO_SENDERS, 0, recvp,
+				MACH_NOTIFY_NO_SENDERS, sync, recvp,
 				MACH_MSG_TYPE_MAKE_SEND_ONCE, &previous);
 		DISPATCH_VERIFY_MIG(kr);
 		dispatch_assume_zero(kr);
@@ -472,30 +501,13 @@ _dispatch_mach_reply_kevent_register(dispatch_mach_t dm, mach_port_t reply_port,
 #pragma mark -
 #pragma mark dispatch_mach_msg
 
-DISPATCH_ALWAYS_INLINE DISPATCH_CONST
-static inline bool
-_dispatch_use_mach_special_reply_port(void)
-{
-#if DISPATCH_USE_MACH_SEND_SYNC_OVERRIDE
-	return true;
-#else
-#define thread_get_special_reply_port() ({__builtin_trap(); MACH_PORT_NULL;})
-	return false;
-#endif
-}
-
 static void
 _dispatch_destruct_reply_port(mach_port_t reply_port,
 		enum thread_destruct_special_reply_port_rights rights)
 {
 	kern_return_t kr = KERN_SUCCESS;
 
-	if (_dispatch_use_mach_special_reply_port()) {
-		kr = thread_destruct_special_reply_port(reply_port, rights);
-	} else if (rights == THREAD_SPECIAL_REPLY_PORT_ALL ||
-			rights == THREAD_SPECIAL_REPLY_PORT_RECEIVE_ONLY) {
-		kr = mach_port_destruct(mach_task_self(), reply_port, 0, 0);
-	}
+	kr = thread_destruct_special_reply_port(reply_port, rights);
 	DISPATCH_VERIFY_MIG(kr);
 	dispatch_assume_zero(kr);
 }
@@ -504,25 +516,16 @@ static mach_port_t
 _dispatch_get_thread_reply_port(void)
 {
 	mach_port_t reply_port, mrp;
-	if (_dispatch_use_mach_special_reply_port()) {
-		mrp = _dispatch_get_thread_special_reply_port();
-	} else {
-		mrp = _dispatch_get_thread_mig_reply_port();
-	}
+	mrp = _dispatch_get_thread_special_reply_port();
 	if (mrp) {
 		reply_port = mrp;
 		_dispatch_debug("machport[0x%08x]: borrowed thread sync reply port",
 				reply_port);
 	} else {
-		if (_dispatch_use_mach_special_reply_port()) {
-			reply_port = thread_get_special_reply_port();
-			_dispatch_set_thread_special_reply_port(reply_port);
-		} else {
-			reply_port = mach_reply_port();
-			_dispatch_set_thread_mig_reply_port(reply_port);
-		}
+		reply_port = thread_get_special_reply_port();
+		_dispatch_set_thread_special_reply_port(reply_port);
 		if (unlikely(!MACH_PORT_VALID(reply_port))) {
-			DISPATCH_CLIENT_CRASH(_dispatch_use_mach_special_reply_port(),
+			DISPATCH_CLIENT_CRASH(0,
 				"Unable to allocate reply port, possible port leak");
 		}
 		_dispatch_debug("machport[0x%08x]: allocated thread sync reply port",
@@ -535,12 +538,7 @@ _dispatch_get_thread_reply_port(void)
 static void
 _dispatch_clear_thread_reply_port(mach_port_t reply_port)
 {
-	mach_port_t mrp;
-	if (_dispatch_use_mach_special_reply_port()) {
-		mrp = _dispatch_get_thread_special_reply_port();
-	} else {
-		mrp = _dispatch_get_thread_mig_reply_port();
-	}
+	mach_port_t mrp = _dispatch_get_thread_special_reply_port();
 	if (reply_port != mrp) {
 		if (mrp) {
 			_dispatch_debug("machport[0x%08x]: did not clear thread sync reply "
@@ -548,11 +546,7 @@ _dispatch_clear_thread_reply_port(mach_port_t reply_port)
 		}
 		return;
 	}
-	if (_dispatch_use_mach_special_reply_port()) {
-		_dispatch_set_thread_special_reply_port(MACH_PORT_NULL);
-	} else {
-		_dispatch_set_thread_mig_reply_port(MACH_PORT_NULL);
-	}
+	_dispatch_set_thread_special_reply_port(MACH_PORT_NULL);
 	_dispatch_debug_machport(reply_port);
 	_dispatch_debug("machport[0x%08x]: cleared thread sync reply port",
 			reply_port);
@@ -562,23 +556,14 @@ static void
 _dispatch_set_thread_reply_port(mach_port_t reply_port)
 {
 	_dispatch_debug_machport(reply_port);
-	mach_port_t mrp;
-	if (_dispatch_use_mach_special_reply_port()) {
-		mrp = _dispatch_get_thread_special_reply_port();
-	} else {
-		mrp = _dispatch_get_thread_mig_reply_port();
-	}
+	mach_port_t mrp = _dispatch_get_thread_special_reply_port();
 	if (mrp) {
 		_dispatch_destruct_reply_port(reply_port,
 				THREAD_SPECIAL_REPLY_PORT_ALL);
 		_dispatch_debug("machport[0x%08x]: deallocated sync reply port "
 				"(found 0x%08x)", reply_port, mrp);
 	} else {
-		if (_dispatch_use_mach_special_reply_port()) {
-			_dispatch_set_thread_special_reply_port(reply_port);
-		} else {
-			_dispatch_set_thread_mig_reply_port(reply_port);
-		}
+		_dispatch_set_thread_special_reply_port(reply_port);
 		_dispatch_debug("machport[0x%08x]: restored thread sync reply port",
 				reply_port);
 	}
@@ -1050,6 +1035,39 @@ _dispatch_mach_msg_not_sent(dispatch_mach_t dm, dispatch_object_t dou,
 	}
 }
 
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_mach_send_priority_in_voucher(void)
+{
+	return DISPATCH_USE_MACH_MSG_PRIORITY_COMBINED;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline mach_msg_priority_t
+_dispatch_mach_send_priority(dispatch_mach_msg_t dmsg,
+		dispatch_qos_t qos_ovr, mach_msg_option_t *opts)
+{
+	qos_ovr = _dispatch_qos_propagate(qos_ovr);
+	if (qos_ovr) {
+#if DISPATCH_USE_MACH_MSG_PRIORITY_COMBINED
+		if (!_dispatch_mach_send_priority_in_voucher()) {
+			mach_msg_qos_t qos;
+			int relpri;
+
+			qos = (mach_msg_qos_t)_dispatch_qos_from_pp(dmsg->dmsg_priority);
+			relpri = _pthread_priority_relpri(dmsg->dmsg_priority);
+			*opts |= MACH_SEND_OVERRIDE;
+			return mach_msg_priority_encode((mach_msg_qos_t)qos_ovr, qos, relpri);
+		}
+#else
+		(void)dmsg;
+#endif
+		*opts |= MACH_SEND_OVERRIDE;
+		return (mach_msg_priority_t)_dispatch_qos_to_pp(qos_ovr);
+	}
+	return MACH_MSG_PRIORITY_UNSPECIFIED;
+}
+
 DISPATCH_NOINLINE
 static uint32_t
 _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
@@ -1077,8 +1095,19 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 				dm->dm_needs_mgr = true;
 				goto out;
 			}
+			// Tag the checkin message with a voucher and priority and necessary
+			// options
+			(void) _dispatch_mach_send_msg_prepare(dm, dsrr->dmsr_checkin, 0);
 			if (unlikely(!_dispatch_mach_msg_send(dm,
 					dsrr->dmsr_checkin, NULL, qos, DM_SEND_INVOKE_NONE))) {
+
+				// We failed to send the checkin message, clear the voucher on
+				// it and let the retry tag it with the voucher later.
+				voucher_t v = dsrr->dmsr_checkin->dmsg_voucher;
+				if (v) {
+					_voucher_release(v);
+					dsrr->dmsr_checkin->dmsg_voucher = NULL;
+				}
 				goto out;
 			}
 			if (dm->dm_arm_no_senders) {
@@ -1108,24 +1137,20 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 				opts |= MACH_SEND_NOTIFY;
 			}
 			opts |= MACH_SEND_TIMEOUT;
-			if (dmsg->dmsg_priority != _voucher_get_priority(voucher)) {
+			if (_dispatch_mach_send_priority_in_voucher() &&
+					dmsg->dmsg_priority != _voucher_get_priority(voucher)) {
 				ipc_kvoucher = _voucher_create_mach_voucher_with_priority(
 						voucher, dmsg->dmsg_priority);
 			}
 			_dispatch_voucher_debug("mach-msg[%p] msg_set", voucher, dmsg);
-			if (ipc_kvoucher) {
+			if (_dispatch_mach_send_priority_in_voucher() && ipc_kvoucher) {
 				kvoucher_move_send = true;
 				clear_voucher = _voucher_mach_msg_set_mach_voucher(msg,
 						ipc_kvoucher, kvoucher_move_send);
 			} else {
 				clear_voucher = _voucher_mach_msg_set(msg, voucher);
 			}
-			if (qos) {
-				opts |= MACH_SEND_OVERRIDE;
-				msg_priority = (mach_msg_priority_t)
-						_dispatch_priority_compute_propagated(
-						_dispatch_qos_to_pp(qos), 0);
-			}
+			msg_priority = _dispatch_mach_send_priority(dmsg, qos, &opts);
 			if (reply_port && dm->dm_strict_reply) {
 				opts |= MACH_MSG_STRICT_REPLY;
 			}
@@ -1134,9 +1159,7 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 		if (reply_port) _dispatch_debug_machport(reply_port);
 		if (msg_opts & DISPATCH_MACH_WAIT_FOR_REPLY) {
 			if (dwr->dwr_refs.dmr_reply_port_owned) {
-				if (_dispatch_use_mach_special_reply_port()) {
-					opts |= MACH_SEND_SYNC_OVERRIDE;
-				}
+				opts |= MACH_SEND_SYNC_OVERRIDE;
 				_dispatch_clear_thread_reply_port(reply_port);
 			}
 			_dispatch_mach_reply_waiter_register(dm, dwr, reply_port, dmsg);
@@ -1169,7 +1192,7 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 			// send kevent must be installed on the manager queue
 			dm->dm_needs_mgr = true;
 		}
-		if (ipc_kvoucher) {
+		if (_dispatch_mach_send_priority_in_voucher() && ipc_kvoucher) {
 			_dispatch_kvoucher_debug("reuse on re-send", ipc_kvoucher);
 			voucher_t ipc_voucher;
 			ipc_voucher = _voucher_create_with_priority_and_mach_voucher(
@@ -1391,7 +1414,7 @@ out:
 	qos = _dmsr_state_max_qos(new_state);
 	if (unlikely(new_state & DISPATCH_MACH_STATE_UNLOCK_MASK)) {
 		os_atomic_thread_fence(dependency);
-		dmsr = os_atomic_force_dependency_on(dmsr, new_state);
+		dmsr = os_atomic_inject_dependency(dmsr, new_state);
 		goto again;
 	}
 
@@ -1516,8 +1539,12 @@ _dispatch_mach_send_push(dispatch_mach_t dm, dispatch_object_t dou,
 	uint64_t old_state, new_state, state_flags = 0;
 	struct dispatch_object_s *prev;
 	dispatch_wakeup_flags_t wflags = 0;
-	bool is_send_barrier = (dou._dc->do_vtable == DC_VTABLE(MACH_SEND_BARRIER));
+	bool is_send_barrier = false;
 	dispatch_tid owner;
+
+	if (_dispatch_object_has_vtable(dou._dc)) {
+		is_send_barrier = (dou._dc->do_vtable == DC_VTABLE(MACH_SEND_BARRIER));
+	}
 
 	// <rdar://problem/25896179&26266265> the send queue needs to retain
 	// the mach channel if not empty, for the whole duration of this call
@@ -1759,13 +1786,11 @@ _dispatch_mach_checkin_options(void)
 	return options;
 }
 
-
-
 static inline mach_msg_option_t
 _dispatch_mach_send_options(void)
 {
-	mach_msg_option_t options = 0;
-	return options;
+	//rdar://problem/13740985&47300191&47605096
+	return (_dispatch_is_background_thread() ? MACH_SEND_NOIMPORTANCE : 0);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -1786,8 +1811,7 @@ _dispatch_mach_send_msg_prepare(dispatch_mach_t dm,
 		dmsg->dmsg_priority = 0;
 	} else {
 		unsigned int flags = DISPATCH_PRIORITY_PROPAGATE_CURRENT;
-		if ((options & DISPATCH_MACH_WAIT_FOR_REPLY) &&
-				_dispatch_use_mach_special_reply_port()) {
+		if (options & DISPATCH_MACH_WAIT_FOR_REPLY) {
 			// TODO: remove QoS contribution of sync IPC messages to send queue
 			// rdar://31848737
 			flags |= DISPATCH_PRIORITY_PROPAGATE_FOR_SYNC_IPC;
@@ -1924,11 +1948,9 @@ _dispatch_mach_send_and_wait_for_reply(dispatch_mach_t dm,
 	*returned_send_result = _dispatch_mach_send_msg(dm, dmsg, &dc_wait,options);
 	if (dwr->dwr_refs.dmr_reply_port_owned) {
 		_dispatch_clear_thread_reply_port(reply_port);
-		if (_dispatch_use_mach_special_reply_port()) {
-			// link special reply port to send right for remote receive right
-			// TODO: extend to pre-connect phase <rdar://problem/31823384>
-			send = dm->dm_send_refs->dmsr_send;
-		}
+		// link special reply port to send right for remote receive right
+		// TODO: extend to pre-connect phase <rdar://problem/31823384>
+		send = dm->dm_send_refs->dmsr_send;
 	}
 	dmsg = _dispatch_mach_msg_reply_recv(dm, dwr, reply_port, send);
 #if DISPATCH_DEBUG
@@ -2231,6 +2253,15 @@ _dispatch_mach_handoff_context(mach_port_t port)
 	return dihc;
 }
 
+bool
+dispatch_mach_can_handoff_4libxpc(void)
+{
+	dispatch_thread_context_t dtc;
+
+	dtc = _dispatch_thread_context_find(_dispatch_mach_msg_context_key);
+	return dtc && dtc->dtc_dmsg && dtc->dtc_dih->dih_dc.dc_other == NULL;
+}
+
 static void
 _dispatch_ipc_handoff_release(dispatch_ipc_handoff_t dih)
 {
@@ -2502,7 +2533,7 @@ _dispatch_mach_barrier_set_vtable(dispatch_continuation_t dc,
 {
 	dc->dc_data = (void *)dc->dc_flags;
 	dc->dc_other = dm;
-	dc->do_vtable = vtable; // Must be after dc_flags load, dc_vtable aliases
+	dc->do_vtable = vtable; // Must be after dc_flags load, do_vtable aliases
 }
 
 DISPATCH_NOINLINE
@@ -3052,6 +3083,36 @@ _dispatch_mach_msg_async_reply_invoke(dispatch_continuation_t dc,
 	_dispatch_continuation_free(dc);
 }
 
+void
+dispatch_mach_msg_get_filter_policy_id(dispatch_mach_msg_t msg, mach_msg_filter_id *filter_id)
+{
+	mach_msg_trailer_t *tlr = NULL;
+	mach_msg_mac_trailer_t *mac_tlr;
+
+	if (!filter_id) {
+		DISPATCH_CLIENT_CRASH((uintptr_t)filter_id, "Filter id should be non-NULL");
+	}
+
+	mach_msg_header_t *hdr = dispatch_mach_msg_get_msg(msg, NULL);
+	if (!hdr) {
+		DISPATCH_CLIENT_CRASH((uintptr_t)msg, "Messsage should be non-NULL");
+	}
+	tlr = (mach_msg_trailer_t *)((unsigned char *)hdr +
+			round_msg(hdr->msgh_size));
+
+	// The trailer should always be of format zero.
+	if (tlr->msgh_trailer_type != MACH_MSG_TRAILER_FORMAT_0) {
+		DISPATCH_INTERNAL_CRASH(tlr->msgh_trailer_type, "Trailer format is invalid");
+	}
+
+	if (tlr->msgh_trailer_size >= sizeof(mach_msg_mac_trailer_t)) {
+		mac_tlr = (mach_msg_mac_trailer_t *)tlr;
+		*filter_id = mac_tlr->msgh_ad;
+	} else {
+		DISPATCH_INTERNAL_CRASH(tlr->msgh_trailer_size, "Trailer doesn't contain filter policy id");
+	}
+}
+
 #pragma mark -
 #pragma mark dispatch_mig_server
 
@@ -3091,7 +3152,7 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
 		dispatch_mig_callback_t callback)
 {
 	mach_msg_options_t options = MACH_RCV_MSG | MACH_RCV_TIMEOUT
-		| MACH_RCV_TRAILER_ELEMENTS(MACH_RCV_TRAILER_CTX)
+		| MACH_RCV_TRAILER_ELEMENTS(MACH_RCV_TRAILER_AV)
 		| MACH_RCV_TRAILER_TYPE(MACH_MSG_TRAILER_FORMAT_0) | MACH_RCV_VOUCHER;
 	mach_msg_options_t tmp_options;
 	mig_reply_error_t *bufTemp, *bufRequest, *bufReply;

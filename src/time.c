@@ -43,7 +43,7 @@ _dispatch_mach_host_time_mach2nano(uint64_t machtime)
 		return INT64_MAX;
 	}
 	long double big_tmp = ((long double)machtime * data->frac) + .5L;
-	if (unlikely(big_tmp >= INT64_MAX)) {
+	if (unlikely(big_tmp >= (long double)INT64_MAX)) {
 		return INT64_MAX;
 	}
 	return (uint64_t)big_tmp;
@@ -61,7 +61,7 @@ _dispatch_mach_host_time_nano2mach(uint64_t nsec)
 		return INT64_MAX;
 	}
 	long double big_tmp = ((long double)nsec / data->frac) + .5L;
-	if (unlikely(big_tmp >= INT64_MAX)) {
+	if (unlikely(big_tmp >= (long double)INT64_MAX)) {
 		return INT64_MAX;
 	}
 	return (uint64_t)big_tmp;
@@ -98,7 +98,7 @@ dispatch_time(dispatch_time_t inval, int64_t delta)
 
 	dispatch_clock_t clock;
 	uint64_t value;
-	_dispatch_time_to_clock_and_value(inval, &clock, &value);
+	_dispatch_time_to_clock_and_value(inval, true, &clock, &value);
 	if (value == DISPATCH_TIME_FOREVER) {
 		// Out-of-range for this clock.
 		return value;
@@ -122,14 +122,6 @@ dispatch_time(dispatch_time_t inval, int64_t delta)
 
 	// up time or monotonic time. "value" has the clock type removed,
 	// so the test against DISPATCH_TIME_NOW is correct for either clock.
-	if (value == DISPATCH_TIME_NOW) {
-		if (clock == DISPATCH_CLOCK_UPTIME) {
-			value = _dispatch_uptime();
-		} else {
-			dispatch_assert(clock == DISPATCH_CLOCK_MONOTONIC);
-			value = _dispatch_monotonic_time();
-		}
-	}
 	if (delta >= 0) {
 		offset = _dispatch_time_nano2mach((uint64_t)delta);
 		if ((int64_t)(value += offset) <= 0) {
@@ -143,6 +135,37 @@ dispatch_time(dispatch_time_t inval, int64_t delta)
 		}
 		return _dispatch_clock_and_value_to_time(clock, value);
 	}
+}
+
+bool
+dispatch_time_to_nsecs(dispatch_time_t time,
+		dispatch_clockid_t *clock_out, uint64_t *nsecs_out)
+{
+	dispatch_clock_t clock;
+	uint64_t nsecs;
+
+	_dispatch_time_to_clock_and_value(time, true, &clock, &nsecs);
+
+	if (nsecs != DISPATCH_TIME_FOREVER) {
+		switch (clock) {
+		case DISPATCH_CLOCK_WALL:
+			*clock_out = DISPATCH_CLOCKID_WALLTIME;
+			*nsecs_out = nsecs;
+			return true;
+		case DISPATCH_CLOCK_UPTIME:
+			*clock_out = DISPATCH_CLOCKID_UPTIME;
+			*nsecs_out = nsecs;
+			return true;
+		case DISPATCH_CLOCK_MONOTONIC:
+			*clock_out = DISPATCH_CLOCKID_MONOTONIC;
+			*nsecs_out = nsecs;
+			return true;
+		}
+	}
+
+	*clock_out = 0;
+	*nsecs_out = UINT64_MAX;
+	return false;
 }
 
 dispatch_time_t
@@ -166,16 +189,19 @@ uint64_t
 _dispatch_timeout(dispatch_time_t when)
 {
 	dispatch_time_t now;
-	if (when == DISPATCH_TIME_FOREVER) {
+
+	switch (when) {
+	case DISPATCH_TIME_FOREVER:
 		return DISPATCH_TIME_FOREVER;
-	}
-	if (when == DISPATCH_TIME_NOW) {
+	case DISPATCH_TIME_NOW:
+	case DISPATCH_MONOTONICTIME_NOW:
+	case DISPATCH_WALLTIME_NOW:
 		return 0;
 	}
 
 	dispatch_clock_t clock;
 	uint64_t value;
-	_dispatch_time_to_clock_and_value(when, &clock, &value);
+	_dispatch_time_to_clock_and_value(when, false, &clock, &value);
 	if (clock == DISPATCH_CLOCK_WALL) {
 		now = _dispatch_get_nanoseconds();
 		return now >= value ? 0 : value - now;

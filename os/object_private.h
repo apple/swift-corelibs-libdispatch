@@ -30,6 +30,12 @@
 #include <os/object.h>
 #include <stddef.h>
 #include <stdint.h>
+#if __has_include(<ptrauth.h>)
+#include <ptrauth.h>
+#endif
+#ifndef __ptrauth_objc_isa_pointer
+#define __ptrauth_objc_isa_pointer
+#endif
 
 #if __GNUC__
 #define OS_OBJECT_NOTHROW __attribute__((__nothrow__))
@@ -63,7 +69,7 @@
 #define _OS_OBJECT_GLOBAL_REFCNT INT_MAX
 
 #define _OS_OBJECT_HEADER(isa, ref_cnt, xref_cnt) \
-        isa; /* must be pointer-sized */ \
+        isa; /* must be pointer-sized and use __ptrauth_objc_isa_pointer */ \
         int volatile ref_cnt; \
         int volatile xref_cnt
 
@@ -100,7 +106,7 @@
 #if OS_OBJECT_USE_OBJC
 #define OS_OBJECT_USES_XREF_DISPOSE() \
 	- (oneway void)release { \
-		_os_object_release(self); \
+		_os_object_release((OS_object *) self); \
 	}
 #endif
 
@@ -129,9 +135,7 @@ typedef OS_OBJECT_CLASS(object) *_os_object_t;
 #define _OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL(name, super) \
 		OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL(name, super)
 #elif OS_OBJECT_USE_OBJC
-API_AVAILABLE(macos(10.8), ios(6.0))
-OS_OBJECT_EXPORT
-@interface OS_OBJECT_CLASS(object) : NSObject
+@interface OS_OBJECT_CLASS(object) (OSObjectPrivate)
 // Note: objects who want _xref_dispose to be called need
 // to use OS_OBJECT_USES_XREF_DISPOSE()
 - (void)_xref_dispose;
@@ -158,7 +162,7 @@ API_AVAILABLE(macos(10.8), ios(6.0))
 OS_OBJECT_EXPORT OS_OBJECT_MALLOC OS_OBJECT_WARN_RESULT OS_OBJECT_NOTHROW
 OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 _os_object_t
-_os_object_alloc(const void *cls, size_t size);
+_os_object_alloc(const void * _Nullable cls, size_t size);
 
 API_AVAILABLE(macos(10.8), ios(6.0))
 OS_OBJECT_EXPORT OS_OBJECT_MALLOC OS_OBJECT_WARN_RESULT OS_OBJECT_NOTHROW

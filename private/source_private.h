@@ -654,7 +654,7 @@ typedef struct dispatch_source_extended_data_s {
  * argument, the remaining space in data will have been populated with zeroes.
  */
 API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
-DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 size_t
 dispatch_source_get_extended_data(dispatch_source_t source,

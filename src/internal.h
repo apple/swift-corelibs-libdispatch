@@ -35,6 +35,7 @@
 
 #define __DISPATCH_BUILDING_DISPATCH__
 #define __DISPATCH_INDIRECT__
+#define __OS_WORKGROUP_INDIRECT__
 
 #ifdef __APPLE__
 #include <Availability.h>
@@ -96,6 +97,19 @@
 
 #include <dispatch/dispatch.h>
 #include <dispatch/base.h>
+
+#if __has_feature(ptrauth_calls)
+#include <ptrauth.h>
+#define DISPATCH_VTABLE_ENTRY(op) \
+		(* __ptrauth(ptrauth_key_process_independent_code, true, \
+				ptrauth_string_discriminator("dispatch." #op)) const op)
+#define DISPATCH_FUNCTION_POINTER \
+		__ptrauth(ptrauth_key_process_dependent_code, true, \
+				ptrauth_string_discriminator("dispatch.handler"))
+#else
+#define DISPATCH_VTABLE_ENTRY(op) (* const op)
+#define DISPATCH_FUNCTION_POINTER
+#endif
 
 #define __DISPATCH_HIDE_SYMBOL(sym, version) \
 	__asm__(".section __TEXT,__const\n\t" \
@@ -203,6 +217,10 @@ upcast(dispatch_object_t dou)
 #endif // __OBJC__
 
 #include <os/object.h>
+#include <os/workgroup_base.h>
+#include <os/workgroup_object.h>
+#include <os/workgroup_interval.h>
+#include <os/workgroup_parallel.h>
 #include <dispatch/time.h>
 #include <dispatch/object.h>
 #include <dispatch/queue.h>
@@ -220,12 +238,16 @@ upcast(dispatch_object_t dou)
 #include <pthread.h>
 #endif
 #include "os/object_private.h"
+#include "os/eventlink_private.h"
+#include "os/workgroup_object_private.h"
+#include "os/workgroup_interval_private.h"
 #include "queue_private.h"
 #include "channel_private.h"
 #include "workloop_private.h"
 #include "source_private.h"
 #include "mach_private.h"
 #include "data_private.h"
+#include "time_private.h"
 #include "os/voucher_private.h"
 #include "os/voucher_activity_private.h"
 #include "io_private.h"
@@ -277,13 +299,14 @@ upcast(dispatch_object_t dou)
 #if defined(_WIN32)
 #include <time.h>
 #else
-#include <sys/queue.h>
 #include <sys/mount.h>
 #ifdef __ANDROID__
 #include <linux/sysctl.h>
-#else
-#include <sys/sysctl.h>
 #endif /* __ANDROID__ */
+#if !defined(__linux__)
+#include <sys/sysctl.h>
+#include <sys/queue.h>
+#endif
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/mman.h>
@@ -314,9 +337,6 @@ upcast(dispatch_object_t dou)
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#if defined(_WIN32)
-#define _CRT_RAND_S
-#endif
 #include <stdlib.h>
 #include <string.h>
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
@@ -325,6 +345,11 @@ upcast(dispatch_object_t dou)
 #if defined(_WIN32)
 #include <io.h>
 #include <crtdbg.h>
+#endif
+#include <inttypes.h>
+
+#if __has_include(<os/atomic_private.h>)
+#include <os/atomic_private.h>
 #endif
 
 /* More #includes at EOF (dependent on the contents of internal.h) ... */
@@ -484,10 +509,12 @@ void _dispatch_bug_mach_client(const char *msg, mach_msg_return_t kr);
 
 struct dispatch_unote_class_s;
 
+#if HAVE_MACH
 DISPATCH_NOINLINE DISPATCH_COLD
 void _dispatch_bug_kevent_client(const char *msg, const char *filter,
 		const char *operation, int err, uint64_t ident, uint64_t udata,
 		struct dispatch_unote_class_s *du);
+#endif // HAVE_MACH
 
 DISPATCH_NOINLINE DISPATCH_COLD
 void _dispatch_bug_kevent_vanished(struct dispatch_unote_class_s *du);
@@ -695,8 +722,7 @@ _dispatch_fork_becomes_unsafe(void)
 
 #ifndef HAVE_PTHREAD_WORKQUEUE_WORKLOOP
 #if HAVE_PTHREAD_WORKQUEUE_KEVENT && defined(WORKQ_FEATURE_WORKLOOP) && \
-		defined(KEVENT_FLAG_WORKLOOP) && \
-		DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101300)
+		defined(KEVENT_FLAG_WORKLOOP)
 #define HAVE_PTHREAD_WORKQUEUE_WORKLOOP 1
 #else
 #define HAVE_PTHREAD_WORKQUEUE_WORKLOOP 0
@@ -704,7 +730,7 @@ _dispatch_fork_becomes_unsafe(void)
 #endif // !defined(HAVE_PTHREAD_WORKQUEUE_WORKLOOP)
 
 #ifndef DISPATCH_USE_WORKQUEUE_NARROWING
-#if HAVE_PTHREAD_WORKQUEUES && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101300)
+#if HAVE_PTHREAD_WORKQUEUES
 #define DISPATCH_USE_WORKQUEUE_NARROWING 1
 #else
 #define DISPATCH_USE_WORKQUEUE_NARROWING 0
@@ -797,10 +823,10 @@ extern int malloc_engaged_nano(void);
 extern bool _dispatch_memory_warn;
 #endif
 
-#if defined(MACH_SEND_SYNC_OVERRIDE) && defined(MACH_RCV_SYNC_WAIT) && \
-		DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101300) && \
-		!defined(DISPATCH_USE_MACH_SEND_SYNC_OVERRIDE)
-#define DISPATCH_USE_MACH_SEND_SYNC_OVERRIDE 1
+#if defined(MACH_MSG_QOS_LAST) && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101600)
+#define DISPATCH_USE_MACH_MSG_PRIORITY_COMBINED 1
+#else
+#define DISPATCH_USE_MACH_MSG_PRIORITY_COMBINED 0
 #endif
 
 #if defined(F_SETNOSIGPIPE) && defined(F_GETNOSIGPIPE)
@@ -817,7 +843,6 @@ extern bool _dispatch_memory_warn;
 #define DISPATCH_USE_NOIMPORTANCE_QOS 1 // rdar://problem/21414476
 #endif
 #endif // MACH_SEND_NOIMPORTANCE
-
 
 #if HAVE_LIBPROC_INTERNAL_H
 #include <libproc.h>
@@ -989,7 +1014,7 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 
 #ifndef VOUCHER_USE_PERSONA
 #if VOUCHER_USE_MACH_VOUCHER && defined(BANK_PERSONA_TOKEN) && \
-		!TARGET_OS_SIMULATOR
+		!TARGET_OS_SIMULATOR && !TARGET_CPU_ARM
 #define VOUCHER_USE_PERSONA 1
 #else
 #define VOUCHER_USE_PERSONA 0
@@ -1004,6 +1029,14 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 #define MACH_RCV_VOUCHER 0
 #define VOUCHER_USE_PERSONA 0
 #endif // VOUCHER_USE_MACH_VOUCHER
+
+#ifndef OS_EVENTLINK_USE_MACH_EVENTLINK
+#if DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101600) && __has_include(<mach/mach_eventlink.h>)
+#define OS_EVENTLINK_USE_MACH_EVENTLINK 1
+#else
+#define OS_EVENTLINK_USE_MACH_EVENTLINK 0
+#endif
+#endif // OS_EVENTLINK_USE_MACH_EVENTLINK
 
 #define _dispatch_hardware_crash() \
 		__asm__(""); __builtin_trap() // <rdar://problem/17464981>
@@ -1070,14 +1103,14 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 		dispatch_assert(_length != -1); \
 		_msg = (char *)malloc((unsigned)_length + 1); \
 		dispatch_assert(_msg); \
-		snprintf(_msg, (unsigned)_length + 1, "%s" fmt, DISPATCH_ASSERTION_FAILED_MESSAGE, ##__VA_ARGS__); \
+		(void)snprintf(_msg, (unsigned)_length + 1, "%s" fmt, DISPATCH_ASSERTION_FAILED_MESSAGE, ##__VA_ARGS__); \
 		_dispatch_assert_crash(_msg); \
 		free(_msg); \
 	} while (0)
 #else
 #define _dispatch_client_assert_fail(fmt, ...)  do { \
 		char *_msg = NULL; \
-		asprintf(&_msg, "%s" fmt, DISPATCH_ASSERTION_FAILED_MESSAGE, \
+		(void)asprintf(&_msg, "%s" fmt, DISPATCH_ASSERTION_FAILED_MESSAGE, \
 				##__VA_ARGS__); \
 		_dispatch_assert_crash(_msg); \
 		free(_msg); \
@@ -1126,6 +1159,8 @@ extern bool _dispatch_kevent_workqueue_enabled;
 
 /* #includes dependent on internal.h */
 #include "object_internal.h"
+#include "workgroup_internal.h"
+#include "eventlink_internal.h"
 #include "semaphore_internal.h"
 #include "introspection_internal.h"
 #include "queue_internal.h"

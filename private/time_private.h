@@ -83,5 +83,36 @@ enum {
 
 #endif // __APPLE__
 
+/*!
+ * @function dispatch_time_to_nsecs
+ *
+ * @abstract
+ * Returns the clock and nanoseconds of a given dispatch_time_t.
+ *
+ * @discussion
+ * This interface allows to decode dispatch_time_t which allows to compare them
+ * provided they are for the same "clock_id".
+ *
+ * @param time
+ * The dispatch_time_t value to parse.
+ *
+ * @param clock
+ * A pointer to the clockid for this time.
+ *
+ * @param nsecs
+ * A pointer to the decoded number of nanoseconds for the passed in time
+ * relative to the epoch for this clock ID.
+ *
+ * @result
+ * Returns true if the dispatch_time_t value was valid.
+ * Returns false if the dispatch_time_t value was invalid,
+ * or DISPATCH_TIME_FOREVER.
+ */
+API_AVAILABLE(macos(10.16), ios(14.0), tvos(14.0), watchos(7.0))
+DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+bool
+dispatch_time_to_nsecs(dispatch_time_t time,
+		dispatch_clockid_t *clock, uint64_t *nsecs);
+
 #endif
 

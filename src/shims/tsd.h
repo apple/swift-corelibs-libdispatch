@@ -40,6 +40,11 @@
 #include <os/tsd.h>
 #endif
 
+#if __has_include(<pthread/private.h>)
+#include <pthread/private.h>
+#endif
+#include <sys/errno.h>
+
 #if !defined(OS_GS_RELATIVE) && (defined(__i386__) || defined(__x86_64__))
 #define OS_GS_RELATIVE __attribute__((address_space(256)))
 #endif
@@ -65,16 +70,8 @@ typedef struct { void *a; void *b; } dispatch_tsd_pair_t;
 #endif
 
 #if DISPATCH_USE_DIRECT_TSD
-#ifndef __TSD_THREAD_QOS_CLASS
-#define __TSD_THREAD_QOS_CLASS 4
-#endif
-#ifndef __TSD_RETURN_TO_KERNEL
-#define __TSD_RETURN_TO_KERNEL 5
-#endif
-#ifndef __TSD_MACH_SPECIAL_REPLY
-#define __TSD_MACH_SPECIAL_REPLY 8
-#endif
-
+#undef errno
+#define errno (*_pthread_errno_address_direct())
 
 static const unsigned long dispatch_priority_key	= __TSD_THREAD_QOS_CLASS;
 static const unsigned long dispatch_r2k_key			= __TSD_RETURN_TO_KERNEL;
@@ -112,7 +109,8 @@ DISPATCH_TSD_INLINE
 static inline void
 _dispatch_thread_key_create(DWORD *k, void (DISPATCH_TSD_DTOR_CC *d)(void *))
 {
-	dispatch_assert_zero((*k = FlsAlloc(d)));
+	*k = FlsAlloc(d);
+	dispatch_assert(*k != FLS_OUT_OF_INDEXES);
 }
 
 extern DWORD __dispatch_tsd_key;

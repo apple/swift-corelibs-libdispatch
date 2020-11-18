@@ -41,7 +41,7 @@ _dispatch_benchmark_init(void *context)
 	register size_t cnt = bdata->count;
 	size_t i = 0;
 	uint64_t start, delta;
-#if defined(__LP64__)
+#if DISPATCH_SIZEOF_PTR == 8 && !defined(_WIN32)
 	__uint128_t lcost;
 #else
 	long double lcost;
@@ -60,14 +60,14 @@ _dispatch_benchmark_init(void *context)
 	} while (i < cnt);
 	delta = _dispatch_uptime() - start;
 
-	lcost = delta;
+	lcost = (typeof(lcost)) delta;
 #if HAVE_MACH_ABSOLUTE_TIME
 	lcost *= bdata->tbi.numer;
 	lcost /= bdata->tbi.denom;
 #endif
 	lcost /= cnt;
 
-	bdata->loop_cost = lcost > UINT64_MAX ? UINT64_MAX : (uint64_t)lcost;
+	bdata->loop_cost = (uint64_t) lcost > UINT64_MAX ? UINT64_MAX : (uint64_t)lcost;
 }
 
 #ifdef __BLOCKS__
@@ -93,7 +93,7 @@ dispatch_benchmark_f(size_t count, register void *ctxt,
 	};
 	static dispatch_once_t pred;
 	uint64_t ns, start, delta;
-#if defined(__LP64__)
+#if DISPATCH_SIZEOF_PTR == 8 && !defined(_WIN32)
 	__uint128_t conversion, big_denom;
 #else
 	long double conversion, big_denom;
@@ -113,7 +113,7 @@ dispatch_benchmark_f(size_t count, register void *ctxt,
 	} while (i < count);
 	delta = _dispatch_uptime() - start;
 
-	conversion = delta;
+	conversion = (typeof(conversion)) delta;
 #if HAVE_MACH_ABSOLUTE_TIME
 	conversion *= bdata.tbi.numer;
 	big_denom = bdata.tbi.denom;
@@ -122,7 +122,7 @@ dispatch_benchmark_f(size_t count, register void *ctxt,
 #endif
 	big_denom *= count;
 	conversion /= big_denom;
-	ns = conversion > UINT64_MAX ? UINT64_MAX : (uint64_t)conversion;
+	ns = (uint64_t) conversion > UINT64_MAX ? UINT64_MAX : (uint64_t)conversion;
 
 	return ns - bdata.loop_cost;
 }

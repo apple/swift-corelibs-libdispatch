@@ -70,6 +70,10 @@ typedef unsigned long pthread_priority_t;
 
 #endif // HAVE_PTHREAD_QOS_H
 
+#if !defined(POLICY_RR) && defined(SCHED_RR)
+#define POLICY_RR SCHED_RR
+#endif // !defined(POLICY_RR) && defined(SCHED_RR)
+
 typedef uint32_t dispatch_qos_t;
 typedef uint32_t dispatch_priority_t;
 
@@ -85,7 +89,8 @@ typedef uint32_t dispatch_priority_t;
 #define DISPATCH_QOS_SATURATED          ((dispatch_qos_t)15)
 
 #define DISPATCH_QOS_NBUCKETS           (DISPATCH_QOS_MAX - DISPATCH_QOS_MIN + 1)
-#define DISPATCH_QOS_BUCKET(qos)        ((qos) - DISPATCH_QOS_MIN)
+#define DISPATCH_QOS_BUCKET(qos)        ((int)((qos) - DISPATCH_QOS_MIN))
+#define DISPATCH_QOS_FOR_BUCKET(bucket) ((dispatch_qos_t)((uint32_t)bucket + DISPATCH_QOS_MIN))
 
 #define DISPATCH_PRIORITY_RELPRI_MASK        ((dispatch_priority_t)0x000000ff)
 #define DISPATCH_PRIORITY_RELPRI_SHIFT       0
@@ -165,7 +170,7 @@ _dispatch_qos_to_qos_class(dispatch_qos_t qos)
 
 DISPATCH_ALWAYS_INLINE
 static inline dispatch_qos_t
-_dispatch_qos_from_queue_priority(long priority)
+_dispatch_qos_from_queue_priority(intptr_t priority)
 {
 	switch (priority) {
 	case DISPATCH_QUEUE_PRIORITY_BACKGROUND:      return DISPATCH_QOS_BACKGROUND;

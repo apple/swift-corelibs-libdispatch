@@ -12,6 +12,9 @@
 
 import CDispatch
 import _SwiftDispatchOverlayShims
+#if os(Windows)
+import WinSDK
+#endif
 
 extension DispatchSourceProtocol {
 
@@ -113,7 +116,7 @@ extension DispatchSource {
 	}
 #endif
 
-#if !os(Linux) && !os(Android)
+#if !os(Linux) && !os(Android) && !os(Windows)
 	public struct ProcessEvent : OptionSet, RawRepresentable {
 		public let rawValue: UInt
 		public init(rawValue: UInt) { self.rawValue = rawValue }
@@ -171,15 +174,28 @@ extension DispatchSource {
 	}
 #endif
 
-#if !os(Linux) && !os(Android)
+#if !os(Linux) && !os(Android) && !os(Windows)
 	public class func makeProcessSource(identifier: pid_t, eventMask: ProcessEvent, queue: DispatchQueue? = nil) -> DispatchSourceProcess {
 		let source = dispatch_source_create(_swift_dispatch_source_type_PROC(), UInt(identifier), eventMask.rawValue, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceProcess
 	}
 #endif
 
+#if os(Windows)
+	public class func makeReadSource(handle: HANDLE, queue: DispatchQueue? = nil) -> DispatchSourceRead {
+		let source = dispatch_source_create(_swift_dispatch_source_type_READ(), UInt(bitPattern: handle), 0, queue?.__wrapped)
+		return DispatchSource(source: source) as DispatchSourceRead
+	}
+#endif
+
 	public class func makeReadSource(fileDescriptor: Int32, queue: DispatchQueue? = nil) -> DispatchSourceRead {
-		let source = dispatch_source_create(_swift_dispatch_source_type_READ(), UInt(fileDescriptor), 0, queue?.__wrapped)
+#if os(Windows)
+		let handle: UInt = UInt(_get_osfhandle(fileDescriptor))
+		if handle == UInt(bitPattern: INVALID_HANDLE_VALUE) { fatalError("unable to get underlying handle from file descriptor") }
+#else
+		let handle: UInt = UInt(fileDescriptor)
+#endif
+		let source = dispatch_source_create(_swift_dispatch_source_type_READ(), handle, 0, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceRead
 	}
 
@@ -208,15 +224,28 @@ extension DispatchSource {
 		return DispatchSource(source: source) as DispatchSourceUserDataReplace
 	}
 
-#if !os(Linux) && !os(Android)
+#if !os(Linux) && !os(Android) && !os(Windows)
 	public class func makeFileSystemObjectSource(fileDescriptor: Int32, eventMask: FileSystemEvent, queue: DispatchQueue? = nil) -> DispatchSourceFileSystemObject {
 		let source = dispatch_source_create(_swift_dispatch_source_type_VNODE(), UInt(fileDescriptor), eventMask.rawValue, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceFileSystemObject
 	}
 #endif
 
+#if os(Windows)
+	public class func makeWriteSource(handle: HANDLE, queue: DispatchQueue? = nil) -> DispatchSourceWrite {
+		let source = dispatch_source_create(_swift_dispatch_source_type_WRITE(), UInt(bitPattern: handle), 0, queue?.__wrapped)
+		return DispatchSource(source: source) as DispatchSourceWrite
+	}
+#endif
+
 	public class func makeWriteSource(fileDescriptor: Int32, queue: DispatchQueue? = nil) -> DispatchSourceWrite {
-		let source = dispatch_source_create(_swift_dispatch_source_type_WRITE(), UInt(fileDescriptor), 0, queue?.__wrapped)
+#if os(Windows)
+		let handle: UInt = UInt(_get_osfhandle(fileDescriptor))
+		if handle == UInt(bitPattern: INVALID_HANDLE_VALUE) { fatalError("unable to get underlying handle from file descriptor") }
+#else
+		let handle: UInt = UInt(fileDescriptor)
+#endif
+		let source = dispatch_source_create(_swift_dispatch_source_type_WRITE(), handle, 0, queue?.__wrapped)
 		return DispatchSource(source: source) as DispatchSourceWrite
 	}
 }
@@ -261,7 +290,7 @@ extension DispatchSourceMemoryPressure {
 }
 #endif
 
-#if !os(Linux) && !os(Android)
+#if !os(Linux) && !os(Android) && !os(Windows)
 extension DispatchSourceProcess {
 	public var handle: pid_t {
 		return pid_t(dispatch_source_get_handle(self as! DispatchSource))
@@ -617,7 +646,7 @@ extension DispatchSourceTimer {
 	}
 }
 
-#if !os(Linux) && !os(Android)
+#if !os(Linux) && !os(Android) && !os(Windows)
 extension DispatchSourceFileSystemObject {
 	public var handle: Int32 {
 		return Int32(dispatch_source_get_handle((self as! DispatchSource).__wrapped))

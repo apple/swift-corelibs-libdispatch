@@ -32,8 +32,8 @@ struct dispatch_queue_s;
 DISPATCH_CLASS_DECL(semaphore, OBJECT);
 struct dispatch_semaphore_s {
 	DISPATCH_OBJECT_HEADER(semaphore);
-	long volatile dsema_value;
-	long dsema_orig;
+	intptr_t volatile dsema_value;
+	intptr_t dsema_orig;
 	_dispatch_sema4_t dsema_sema;
 };
 

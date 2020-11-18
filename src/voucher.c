@@ -24,8 +24,6 @@
 #define PERSONA_ID_NONE ((uid_t)-1)
 #endif
 
-#if !DISPATCH_VARIANT_DYLD_STUB
-
 #if VOUCHER_USE_MACH_VOUCHER
 #if !HAVE_PTHREAD_WORKQUEUE_QOS
 #error Unsupported configuration, workqueue QoS support is required
@@ -1155,6 +1153,21 @@ voucher_activity_initialize_4libtrace(voucher_activity_hooks_t hooks)
 		DISPATCH_CLIENT_CRASH(_voucher_libtrace_hooks,
 				"voucher_activity_initialize_4libtrace called twice");
 	}
+
+	// HACK: we can't call into os_variant until after the initialization of
+	// dispatch and XPC, but we want to do it before the end of libsystem
+	// initialization to avoid having to synchronize _dispatch_mode explicitly,
+	// so this happens to be just the right spot
+#if HAVE_OS_FAULT_WITH_PAYLOAD && TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+	if (_dispatch_getenv_bool("LIBDISPATCH_NO_FAULTS", false)) {
+		return;
+	} else if (getpid() == 1 ||
+			!os_variant_has_internal_diagnostics("com.apple.libdispatch")) {
+		return;
+	}
+
+	_dispatch_mode &= ~DISPATCH_MODE_NO_FAULTS;
+#endif // HAVE_OS_FAULT_WITH_PAYLOAD && TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 }
 
 void
@@ -1274,6 +1287,7 @@ DISPATCH_ALWAYS_INLINE
 static inline bool
 _voucher_activity_disabled(void)
 {
+
 	dispatch_once_f(&_firehose_task_buffer_pred,
 			NULL, _firehose_task_buffer_init);
 
@@ -1620,7 +1634,7 @@ _voucher_debug(voucher_t v, char *buf, size_t bufsiz)
 				v->v_activity, v->v_activity_creator, v->v_parent_activity);
 	}
 	bufprintf(" }");
-	
+
 	return offset;
 }
 
@@ -1633,7 +1647,7 @@ format_hex_data(char *prefix, char *desc, uint8_t *data, size_t data_len,
 	uint8_t *pc = data;
 
 	if (desc) {
- 		bufprintf("%s%s:\n", prefix, desc);
+		bufprintf("%s%s:\n", prefix, desc);
 	}
 
 	ssize_t offset_in_row = -1;
@@ -1671,10 +1685,6 @@ format_recipe_detail(mach_voucher_attr_recipe_t recipe, char *buf,
 	bufprintf("Content size: %u\n", recipe->content_size);
 
 	switch (recipe->key) {
-	case MACH_VOUCHER_ATTR_KEY_ATM:
-		bufprintprefix();
-		bufprintf("ATM ID: %llu", *(uint64_t *)(uintptr_t)recipe->content);
-		break;
 	case MACH_VOUCHER_ATTR_KEY_IMPORTANCE:
 		bufprintprefix();
 		bufprintf("IMPORTANCE INFO: %s", (char *)recipe->content);
@@ -1739,7 +1749,7 @@ voucher_kvoucher_debug(mach_port_t task, mach_port_name_t voucher, char *buf,
 	} else {
 		bufprintprefix();
 		bufprintf("Invalid voucher: 0x%x\n", voucher);
-   	}
+	}
 
 done:
 	return offset;
@@ -1872,6 +1882,7 @@ _voucher_dispose(voucher_t voucher)
 	(void)voucher;
 }
 
+#if __has_include(<mach/mach.h>)
 voucher_t
 voucher_copy_with_persona_mach_voucher(mach_voucher_t persona_mach_voucher)
 {
@@ -1915,6 +1926,7 @@ voucher_get_current_persona_proximate_info(struct proc_persona_info *persona_inf
 	(void)persona_info;
 	return -1;
 }
+#endif // __has_include(<mach/mach.h>)
 
 void
 _voucher_activity_debug_channel_init(void)
@@ -1935,8 +1947,8 @@ _voucher_init(void)
 void*
 voucher_activity_get_metadata_buffer(size_t *length)
 {
-    *length = 0;
-    return NULL;
+	*length = 0;
+	return NULL;
 }
 
 voucher_t
@@ -2023,17 +2035,3 @@ _voucher_debug(voucher_t v, char* buf, size_t bufsiz)
 }
 
 #endif // VOUCHER_USE_MACH_VOUCHER
-
-#else // DISPATCH_VARIANT_DYLD_STUB
-
-firehose_activity_id_t
-voucher_get_activity_id_4dyld(void)
-{
-#if VOUCHER_USE_MACH_VOUCHER
-	return _voucher_get_activity_id(_voucher_get(), NULL);
-#else
-	return 0;
-#endif
-}
-
-#endif // DISPATCH_VARIANT_DYLD_STUB

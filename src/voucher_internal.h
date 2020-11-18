@@ -155,7 +155,7 @@ OS_ENUM(voucher_fields, uint16_t,
 
 typedef struct voucher_s {
 	_OS_OBJECT_HEADER(
-	struct voucher_vtable_s *os_obj_isa,
+	struct voucher_vtable_s *__ptrauth_objc_isa_pointer os_obj_isa,
 	os_obj_ref_cnt,
 	os_obj_xref_cnt);
 	struct voucher_hash_entry_s {
@@ -233,7 +233,7 @@ _voucher_hash_store_to_prev_ptr(uintptr_t prev_ptr, struct voucher_s *v)
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
 typedef struct voucher_recipe_s {
 	_OS_OBJECT_HEADER(
-	const _os_object_vtable_s *os_obj_isa,
+	const _os_object_vtable_s *__ptrauth_objc_isa_pointer os_obj_isa,
 	os_obj_ref_cnt,
 	os_obj_xref_cnt);
 	size_t vr_allocation_size;

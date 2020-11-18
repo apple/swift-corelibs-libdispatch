@@ -13,7 +13,11 @@
 #include <dispatch/dispatch.h>
 #include <stdio.h>
 
+#if defined(__ELF__) || defined(__MACH__) || defined(__WASM__)
 #define DISPATCH_RUNTIME_STDLIB_INTERFACE __attribute__((__visibility__("default")))
+#else
+#define DISPATCH_RUNTIME_STDLIB_INTERFACE __declspec(dllexport)
+#endif
 
 #if USE_OBJC
 @protocol OS_dispatch_source;
@@ -54,6 +58,7 @@ static void _dispatch_overlay_constructor() {
 #endif /* USE_OBJC */
 
 #if !USE_OBJC
+DISPATCH_RUNTIME_STDLIB_INTERFACE
 extern "C" void * objc_retainAutoreleasedReturnValue(void *obj);
 #endif
 
@@ -67,7 +72,11 @@ extern "C" void * objc_retainAutoreleasedReturnValue(void *obj);
 // eventually call swift_release to balance the retain below. This is a
 // workaround until the compiler no longer emits this callout on non-ObjC
 // platforms.
-extern "C" void swift_retain(void *);
+extern "C"
+#if defined(_WIN32)
+__declspec(dllimport)
+#endif
+void swift_retain(void *);
 
 DISPATCH_RUNTIME_STDLIB_INTERFACE
 extern "C" void * objc_retainAutoreleasedReturnValue(void *obj) {
@@ -77,5 +86,10 @@ extern "C" void * objc_retainAutoreleasedReturnValue(void *obj) {
     }
     else return NULL;
 }
+
+#if defined(_WIN32)
+extern "C" void *(*__imp_objc_retainAutoreleasedReturnValue)(void *) =
+    &objc_retainAutoreleasedReturnValue;
+#endif
 
 #endif // !USE_OBJC

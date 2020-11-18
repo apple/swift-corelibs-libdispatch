@@ -178,10 +178,12 @@
 
 #define DISPATCH_OBJECT_VTABLE_HEADER(x) \
 	unsigned long const do_type; \
-	void (*const do_dispose)(struct x##_s *, bool *allow_free); \
-	size_t (*const do_debug)(struct x##_s *, char *, size_t); \
-	void (*const do_invoke)(struct x##_s *, dispatch_invoke_context_t, \
-			dispatch_invoke_flags_t)
+	void DISPATCH_VTABLE_ENTRY(do_dispose)(struct x##_s *, \
+			bool *allow_free); \
+	size_t DISPATCH_VTABLE_ENTRY(do_debug)(struct x##_s *, \
+			char *, size_t); \
+	void DISPATCH_VTABLE_ENTRY(do_invoke)(struct x##_s *, \
+			dispatch_invoke_context_t, dispatch_invoke_flags_t)
 #else
 #define DISPATCH_VTABLE_SUBCLASS_INSTANCE(name, ctype, ...) \
 		OS_OBJECT_VTABLE_SUBCLASS_INSTANCE(dispatch_##name, dispatch_##ctype, \
@@ -191,19 +193,21 @@
 #define DISPATCH_OBJECT_VTABLE_HEADER(x) \
 	unsigned long const do_type; \
 	const char *const do_kind; \
-	void (*const do_dispose)(struct x##_s *, bool *allow_free); \
-	size_t (*const do_debug)(struct x##_s *, char *, size_t); \
-	void (*const do_invoke)(struct x##_s *, dispatch_invoke_context_t, \
-			dispatch_invoke_flags_t)
+	void DISPATCH_VTABLE_ENTRY(do_dispose)(struct x##_s *, \
+			bool *allow_free); \
+	size_t DISPATCH_VTABLE_ENTRY(do_debug)(struct x##_s *, \
+			char *, size_t); \
+	void DISPATCH_VTABLE_ENTRY(do_invoke)(struct x##_s *, \
+			dispatch_invoke_context_t, dispatch_invoke_flags_t)
 #endif
 
 #define DISPATCH_QUEUE_VTABLE_HEADER(x); \
 	DISPATCH_OBJECT_VTABLE_HEADER(x); \
-	void (*const dq_activate)(dispatch_queue_class_t); \
-	void (*const dq_wakeup)(dispatch_queue_class_t, dispatch_qos_t, \
-			dispatch_wakeup_flags_t); \
-	void (*const dq_push)(dispatch_queue_class_t, dispatch_object_t, \
-			dispatch_qos_t)
+	void DISPATCH_VTABLE_ENTRY(dq_activate)(dispatch_queue_class_t); \
+	void DISPATCH_VTABLE_ENTRY(dq_wakeup)(dispatch_queue_class_t, \
+			dispatch_qos_t, dispatch_wakeup_flags_t); \
+	void DISPATCH_VTABLE_ENTRY(dq_push)(dispatch_queue_class_t, \
+			dispatch_object_t, dispatch_qos_t)
 
 #define dx_vtable(x) (&(x)->do_vtable->_os_obj_vtable)
 #define dx_type(x) dx_vtable(x)->do_type
@@ -338,7 +342,7 @@ DISPATCH_OPTIONS(dispatch_invoke_flags, uint32_t,
 	// @const DISPATCH_INVOKE_THREAD_BOUND
 	// We're draining from the context of a thread-bound queue (main thread)
 	//
-	// @const DISPATCH_INVOKE_WORKER_DRAIN
+	// @const DISPATCH_INVOKE_WORKLOOP_DRAIN
 	// The queue at the bottom of this drain is a workloop that supports
 	// reordering.
 	//
@@ -432,7 +436,7 @@ typedef struct _os_object_vtable_s {
 
 typedef struct _os_object_s {
 	_OS_OBJECT_HEADER(
-	const _os_object_vtable_s *os_obj_isa,
+	const _os_object_vtable_s *__ptrauth_objc_isa_pointer os_obj_isa,
 	os_obj_ref_cnt,
 	os_obj_xref_cnt);
 } _os_object_s;
@@ -447,7 +451,7 @@ typedef struct _os_object_s {
 #else
 #define OS_OBJECT_STRUCT_HEADER(x) \
 	_OS_OBJECT_HEADER(\
-	const struct x##_vtable_s *do_vtable, \
+	const struct x##_vtable_s *__ptrauth_objc_isa_pointer do_vtable, \
 	do_ref_cnt, \
 	do_xref_cnt)
 #endif
@@ -458,7 +462,10 @@ typedef struct _os_object_s {
 	struct dispatch_##x##_s *volatile do_next; \
 	struct dispatch_queue_s *do_targetq; \
 	void *do_ctxt; \
-	void *do_finalizer
+	union { \
+		dispatch_function_t DISPATCH_FUNCTION_POINTER do_finalizer; \
+		void *do_introspection_ctxt; \
+	}
 
 #define DISPATCH_OBJECT_HEADER(x) \
 	struct dispatch_object_s _as_do[0]; \
@@ -533,7 +540,7 @@ OS_OBJECT_OBJC_CLASS_DECL(object);
 // This is required by the dispatch_data_t/NSData bridging, which is not
 // supported on the old runtime.
 #define DISPATCH_OBJECT_TFB(f, o, ...) \
-	if (unlikely(((uintptr_t)((o)._os_obj->os_obj_isa) & 1) || \
+	if (unlikely(((*(uintptr_t *)&((o)._os_obj->os_obj_isa)) & 1) || \
 			(Class)((o)._os_obj->os_obj_isa) < \
 					(Class)OS_OBJECT_VTABLE(dispatch_object) || \
 			(Class)((o)._os_obj->os_obj_isa) >= \

@@ -371,7 +371,7 @@ extension DispatchQueue {
 	/// Submits a work item to a dispatch queue for asynchronous execution after
 	/// a specified time.
 	///
-	/// - parameter: deadline the time after which the work item should be executed,
+	/// - parameter deadline: the time after which the work item should be executed,
 	/// given as a `DispatchTime`.
 	/// - parameter qos: the QoS at which the work item should be executed.
 	///	Defaults to `DispatchQoS.unspecified`.
@@ -402,7 +402,7 @@ extension DispatchQueue {
 	/// Submits a work item to a dispatch queue for asynchronous execution after
 	/// a specified time.
 	///
-	/// - parameter: deadline the time after which the work item should be executed,
+	/// - parameter deadline: the time after which the work item should be executed,
 	/// given as a `DispatchWallTime`.
 	/// - parameter qos: the QoS at which the work item should be executed.
 	///	Defaults to `DispatchQoS.unspecified`.
@@ -433,7 +433,7 @@ extension DispatchQueue {
 	/// Submits a work item to a dispatch queue for asynchronous execution after
 	/// a specified time.
 	///
-	/// - parameter: deadline the time after which the work item should be executed,
+	/// - parameter deadline: the time after which the work item should be executed,
 	/// given as a `DispatchTime`.
 	/// - parameter execute: The work item to be invoked on the queue.
 	/// - SeeAlso: `asyncAfter(deadline:qos:flags:execute:)`
@@ -448,7 +448,7 @@ extension DispatchQueue {
 	/// Submits a work item to a dispatch queue for asynchronous execution after
 	/// a specified time.
 	///
-	/// - parameter: deadline the time after which the work item should be executed,
+	/// - parameter deadline: the time after which the work item should be executed,
 	/// given as a `DispatchWallTime`.
 	/// - parameter execute: The work item to be invoked on the queue.
 	/// - SeeAlso: `asyncAfter(wallDeadline:qos:flags:execute:)`
