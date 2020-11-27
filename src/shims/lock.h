@@ -564,7 +564,7 @@ typedef struct dispatch_once_gate_s {
  *  effect of the dispatch once initialization.
  *
  *  Per Lemma 2, when the DONE transition happens in a thread zone { N+3, N+4 },
- *  then threads can observe this transiton in their { N+2, N+3 } zone at the
+ *  then threads can observe this transition in their { N+2, N+3 } zone at the
  *  earliest.
  *
  *  Hence for an initializer bracket of { N, N+1 }, the first safe bracket for
