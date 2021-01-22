@@ -1,6 +1,8 @@
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL Darwin)
   add_subdirectory(BlocksRuntime)
+  target_link_libraries(dispatch PUBLIC
+    BlocksRuntime::BlocksRuntime)
 endif()
 
 add_library(dispatch
@@ -137,8 +139,6 @@ if(LibRT_FOUND)
 endif()
 target_link_libraries(dispatch PRIVATE
   Threads::Threads)
-target_link_libraries(dispatch PUBLIC
-  BlocksRuntime::BlocksRuntime)
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
   target_link_libraries(dispatch PRIVATE
     ShLwApi
