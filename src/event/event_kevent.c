@@ -743,7 +743,7 @@ retry:
 		switch (err) {
 		case ENOMEM:
 			_dispatch_temporary_resource_shortage();
-			/* FALLTHROUGH */
+			DISPATCH_FALLTHROUGH;
 		case EINTR:
 			goto retry;
 		case EBADF:
@@ -754,7 +754,7 @@ retry:
 					(flags & KEVENT_FLAG_DYNAMIC_KQ_MUST_EXIST)) {
 				return 0;
 			}
-			/* FALLTHROUGH */
+			DISPATCH_FALLTHROUGH;
 #endif // DISPATCH_USE_KEVENT_WORKLOOP
 		default:
 			DISPATCH_CLIENT_CRASH(err, "Unexpected error from kevent");
@@ -1410,7 +1410,7 @@ _dispatch_kq_fill_workloop_event(dispatch_kevent_t ke, int which,
 	switch (which) {
 	case DISPATCH_WORKLOOP_ASYNC_FROM_SYNC:
 		fflags |= NOTE_WL_END_OWNERSHIP;
-		/* FALLTHROUGH */
+		DISPATCH_FALLTHROUGH;
 	case DISPATCH_WORKLOOP_ASYNC:
 	case DISPATCH_WORKLOOP_ASYNC_DISCOVER_SYNC:
 	case DISPATCH_WORKLOOP_ASYNC_QOS_UPDATE:
@@ -1434,10 +1434,10 @@ _dispatch_kq_fill_workloop_event(dispatch_kevent_t ke, int which,
 
 	case DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_SYNC:
 		fflags |= NOTE_WL_END_OWNERSHIP;
-		/* FALLTHROUGH */
+		DISPATCH_FALLTHROUGH;
 	case DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_TRANSFER:
 		fflags |= NOTE_WL_IGNORE_ESTALE;
-		/* FALLTHROUGH */
+		DISPATCH_FALLTHROUGH;
 	case DISPATCH_WORKLOOP_ASYNC_LEAVE:
 		dispatch_assert(!_dq_state_is_enqueued_on_target(dq_state));
 		action = EV_ADD | EV_DELETE | EV_ENABLE;
