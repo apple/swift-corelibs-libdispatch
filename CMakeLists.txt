@@ -113,7 +113,9 @@ if(__BUILTIN_TRAP)
   set(HAVE_NORETURN_BUILTIN_TRAP 1)
 endif()
 
-find_package(LibRT)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL Android)
+  find_package(LibRT)
+endif()
 
 check_function_exists(_pthread_workqueue_init HAVE__PTHREAD_WORKQUEUE_INIT)
 check_function_exists(getprogname HAVE_GETPROGNAME)

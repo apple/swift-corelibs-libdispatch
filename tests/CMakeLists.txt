@@ -88,6 +88,14 @@ function(add_unit_test name)
     target_compile_options(${name} PRIVATE -fblocks)
     target_compile_options(${name} PRIVATE -Wall -Wno-deprecated-declarations)
   endif()
+  # Without this flag, cross-compiling static test executables for Android armv7
+  # fails with the multiple definition errors seen in android/ndk#176, so I
+  # pulled in this workaround noted there. The tests build and run with this
+  # flag applied.
+  if(NOT BUILD_SHARED_LIBS AND CMAKE_SYSTEM_NAME STREQUAL Android AND
+     CMAKE_SYSTEM_PROCESSOR STREQUAL armv7-a)
+    target_link_options(${name} PRIVATE "LINKER:--allow-multiple-definition")
+  endif()
   target_link_libraries(${name}
                         PRIVATE
                           dispatch
