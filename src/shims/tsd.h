@@ -158,7 +158,7 @@ struct dispatch_tsd {
 extern _Thread_local struct dispatch_tsd __dispatch_tsd;
 
 extern void libdispatch_tsd_init(void);
-extern void _libdispatch_tsd_cleanup(void *ctx);
+extern void DISPATCH_TSD_DTOR_CC _libdispatch_tsd_cleanup(void *ctx);
 
 DISPATCH_ALWAYS_INLINE
 static inline struct dispatch_tsd *
