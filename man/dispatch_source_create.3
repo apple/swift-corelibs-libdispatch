@@ -447,7 +447,12 @@ safe interfaces defined in
 Furthermore, multiple observers of a given signal are supported; thus allowing
 applications and libraries to cooperate safely. However, a dispatch source
 .Em does not
-install a signal handler or otherwise alter the behavior of signal delivery.
+install a signal handler or otherwise alter the behavior of signal delivery
+on BSD systems. It does call
+.Fn sigaction
+on Linux, thus preventing any previous handler installed via
+.Fn sigaction
+to be called.
 Therefore, applications must ignore or at least catch any signal that terminates
 a process by default. For example, near the top of
 .Fn main :
