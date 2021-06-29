@@ -39,7 +39,7 @@ void finish(void* cxt);
 void
 stage1(int stage)
 {
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__FreeBSD__)
 	char *path = dispatch_test_get_large_file();
 	dispatch_fd_t fd = dispatch_test_fd_open(path, O_RDONLY);
 	if (fd == -1)
