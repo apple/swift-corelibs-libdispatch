@@ -177,7 +177,7 @@ void _dispatch_prohibit_transition_to_multithreaded(bool prohibit);
 
 #if TARGET_OS_MAC
 #define DISPATCH_COCOA_COMPAT 1
-#elif defined(__linux__) || defined(__FreeBSD__) || defined(_WIN32)
+#elif defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(_WIN32)
 #define DISPATCH_COCOA_COMPAT 1
 #else
 #define DISPATCH_COCOA_COMPAT 0
