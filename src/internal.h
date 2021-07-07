@@ -475,12 +475,10 @@ void _dispatch_bug_mach_client(const char *msg, mach_msg_return_t kr);
 
 struct dispatch_unote_class_s;
 
-#if HAVE_MACH
 DISPATCH_NOINLINE DISPATCH_COLD
 void _dispatch_bug_kevent_client(const char *msg, const char *filter,
 		const char *operation, int err, uint64_t ident, uint64_t udata,
 		struct dispatch_unote_class_s *du);
-#endif // HAVE_MACH
 
 DISPATCH_NOINLINE DISPATCH_COLD
 void _dispatch_bug_kevent_vanished(struct dispatch_unote_class_s *du);

@@ -125,8 +125,13 @@ _dispatch_timer_flags_from_clock(dispatch_clock_t clock)
 
 #if defined(_WIN32)
 typedef uintptr_t dispatch_unote_ident_t;
+#define PRI_DUI PRIuPTR
+#elif defined(__OpenBSD__)
+typedef uintptr_t dispatch_unote_ident_t;
+#define PRI_DUI PRIuPTR
 #else
 typedef uint32_t dispatch_unote_ident_t;
+#define PRI_DUI PRIu32
 #endif
 
 #define DISPATCH_UNOTE_CLASS_HEADER() \

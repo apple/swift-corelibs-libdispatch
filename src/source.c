@@ -1398,7 +1398,7 @@ _dispatch_source_debug_attr(dispatch_source_t ds, char* buf, size_t bufsiz)
 	dispatch_source_refs_t dr = ds->ds_refs;
 	dispatch_queue_flags_t dqf = _dispatch_queue_atomic_flags(ds);
 	dispatch_unote_state_t du_state = _dispatch_unote_state(dr);
-	return dsnprintf(buf, bufsiz, "target = %s[%p], ident = 0x%x, "
+	return dsnprintf(buf, bufsiz, "target = %s[%p], ident = 0x%" PRI_DUI ", "
 			"mask = 0x%x, pending_data = 0x%llx, registered = %d, "
 			"armed = %d, %s%s%s",
 			target && target->dq_label ? target->dq_label : "", target,

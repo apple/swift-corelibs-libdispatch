@@ -56,6 +56,18 @@ _dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
 #endif
 #endif
 
+#if defined(__unix__)
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
+  uint32_t timeout)
+{
+	(void)value;
+	(void)flags;
+	(void)timeout;
+}
+#endif
+
 #pragma mark - semaphores
 
 #if USE_MACH_SEM
@@ -394,8 +406,10 @@ _dispatch_unfair_lock_wake(uint32_t *uaddr, uint32_t flags)
 #include <sys/time.h>
 #ifdef __ANDROID__
 #include <sys/syscall.h>
-#else
+#elif __linux__
 #include <syscall.h>
+#else
+#include <sys/futex.h>
 #endif /* __ANDROID__ */
 
 DISPATCH_ALWAYS_INLINE
@@ -404,7 +418,12 @@ _dispatch_futex(uint32_t *uaddr, int op, uint32_t val,
 		const struct timespec *timeout, uint32_t *uaddr2, uint32_t val3,
 		int opflags)
 {
+#if __linux__
 	return (int)syscall(SYS_futex, uaddr, op | opflags, val, timeout, uaddr2, val3);
+#else
+	(void)val3;
+	return futex(uaddr, op | opflags, (int)val, timeout, uaddr2);
+#endif
 }
 
 // returns 0, ETIMEDOUT, EFAULT, EINTR, EWOULDBLOCK
@@ -414,11 +433,15 @@ _futex_blocking_op(uint32_t *uaddr, int futex_op, uint32_t val,
 		const struct timespec *timeout, int flags)
 {
 	for (;;) {
-		int rc = _dispatch_futex(uaddr, futex_op, val, timeout, NULL, 0, flags);
-		if (!rc) {
+		int err = _dispatch_futex(uaddr, futex_op, val, timeout, NULL, 0, flags);
+		if (!err) {
 			return 0;
 		}
-		switch (errno) {
+#if __linux__
+		// syscall sets errno to communicate error code.
+		err = errno
+#endif
+		switch (err) {
 		case EINTR:
 			/*
 			 * if we have a timeout, we need to return for the caller to
@@ -454,6 +477,7 @@ _dispatch_futex_wake(uint32_t *uaddr, int wake, int opflags)
 	DISPATCH_INTERNAL_CRASH(errno, "_dlock_wake() failed");
 }
 
+#if HAVE_FUTEX_PI
 static void
 _dispatch_futex_lock_pi(uint32_t *uaddr, struct timespec *timeout, int detect,
 	      int opflags)
@@ -471,6 +495,7 @@ _dispatch_futex_unlock_pi(uint32_t *uaddr, int opflags)
 	if (rc == 0) return;
 	DISPATCH_CLIENT_CRASH(errno, "futex_unlock_pi() failed");
 }
+#endif
 
 #endif
 #pragma mark - wait for address
@@ -599,7 +624,7 @@ _dispatch_unfair_lock_lock_slow(dispatch_unfair_lock_t dul,
 		}
 	}
 }
-#elif HAVE_FUTEX
+#elif HAVE_FUTEX_PI
 void
 _dispatch_unfair_lock_lock_slow(dispatch_unfair_lock_t dul,
 		dispatch_lock_options_t flags)
@@ -636,7 +661,7 @@ _dispatch_unfair_lock_unlock_slow(dispatch_unfair_lock_t dul, dispatch_lock cur)
 	if (_dispatch_lock_has_waiters(cur)) {
 		_dispatch_unfair_lock_wake(&dul->dul_lock, 0);
 	}
-#elif HAVE_FUTEX
+#elif HAVE_FUTEX_PI
 	// futex_unlock_pi() handles both OWNER_DIED which we abuse & WAITERS
 	_dispatch_futex_unlock_pi(&dul->dul_lock, FUTEX_PRIVATE_FLAG);
 #else
