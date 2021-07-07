@@ -6945,7 +6945,7 @@ _dispatch_runloop_root_queue_wakeup_4CF(dispatch_queue_t dq)
 	_dispatch_runloop_queue_wakeup(upcast(dq)._dl, 0, false);
 }
 
-#if TARGET_OS_MAC || defined(_WIN32)
+#if TARGET_OS_MAC || defined(_WIN32) || defined(__OpenBSD__)
 dispatch_runloop_handle_t
 _dispatch_runloop_root_queue_get_port_4CF(dispatch_queue_t dq)
 {
