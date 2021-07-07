@@ -766,7 +766,7 @@ _dispatch_timer_heap_update(dispatch_timer_heap_t dth,
 #pragma mark timer unote
 
 #define _dispatch_timer_du_debug(what, du) \
-		_dispatch_debug("kevent-source[%p]: %s kevent[%p] { ident = 0x%x }", \
+		_dispatch_debug("kevent-source[%p]: %s kevent[%p] { ident = 0x%" PRI_DUI " }", \
 				_dispatch_wref2ptr((du)->du_owner_wref), what, \
 				(du), (du)->du_ident)
 
@@ -792,7 +792,7 @@ static void
 _dispatch_timer_unote_disarm(dispatch_timer_source_refs_t dt,
 		dispatch_timer_heap_t dth)
 {
-	uint32_t tidx = dt->du_ident;
+	uint32_t tidx = (uint32_t)dt->du_ident;
 
 	dispatch_assert(_dispatch_unote_armed(dt));
 	_dispatch_timer_heap_remove(&dth[tidx], dt);

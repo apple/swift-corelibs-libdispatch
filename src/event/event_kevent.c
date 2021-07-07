@@ -195,7 +195,7 @@ dispatch_kevent_debug(const char *verb, const dispatch_kevent_s *kev,
 		}
 	}
 #if DISPATCH_USE_KEVENT_QOS
-	_dispatch_debug("%s kevent[%p] %s= { ident = 0x%llx, filter = %s, "
+	_dispatch_debug("%s kevent[%p] %s= { ident = 0x%" PRI_DUI ", filter = %s, "
 			"flags = %s (0x%x), fflags = 0x%x, data = 0x%llx, udata = 0x%llx, "
 			"qos = 0x%x, ext[0] = 0x%llx, ext[1] = 0x%llx, ext[2] = 0x%llx, "
 			"ext[3] = 0x%llx }: %s #%u", verb, kev, i_n,
@@ -205,7 +205,7 @@ dispatch_kevent_debug(const char *verb, const dispatch_kevent_s *kev,
 			kev->ext[0], kev->ext[1], kev->ext[2], kev->ext[3],
 			function, line);
 #else
-	_dispatch_debug("%s kevent[%p] %s= { ident = 0x%llx, filter = %s, "
+	_dispatch_debug("%s kevent[%p] %s= { ident = 0x%" PRI_DUI ", filter = %s, "
 			"flags = %s (0x%x), fflags = 0x%x, data = 0x%llx, udata = 0x%llx}: "
 			"%s #%u", verb, kev, i_n,
 			(unsigned long long)kev->ident, _evfiltstr(kev->filter),
@@ -240,7 +240,7 @@ dispatch_kevent_debug(const char *verb, const dispatch_kevent_s *kev,
 
 #define _dispatch_du_debug(what, du) \
 		_dispatch_debug("kevent-source[%p]: %s kevent[%p] " \
-				"{ filter = %s, ident = 0x%x }", \
+				"{ filter = %s, ident = 0x%" PRI_DUI " }", \
 				_dispatch_wref2ptr((du)->du_owner_wref), what, \
 				(du), _evfiltstr((du)->du_filter), (du)->du_ident)
 
