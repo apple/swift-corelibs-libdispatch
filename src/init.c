@@ -1049,7 +1049,7 @@ _dispatch_bug_kevent_vanished(dispatch_unote_t du)
 			"{ %p[%s], ident: %" PRIdPTR " / 0x%" PRIxPTR ", handler: %p }",
 			dux_type(du._du)->dst_kind, dou._dq,
 			dou._dq->dq_label ? dou._dq->dq_label : "<unknown>",
-			du._du->du_ident, du._du->du_ident, func);
+			(intptr_t)du._du->du_ident, (uintptr_t)du._du->du_ident, func);
 }
 
 #endif // RDAR_49023449
@@ -1155,7 +1155,7 @@ _dispatch_logv_init(void *context DISPATCH_UNUSED)
 #else
 			dprintf(dispatch_logfile, "=== log file opened for %s[%u] at "
 					"%ld.%06u ===\n", getprogname() ?: "", getpid(),
-					tv.tv_sec, (int)tv.tv_usec);
+					(long)tv.tv_sec, (int)tv.tv_usec);
 #endif
 		}
 	}

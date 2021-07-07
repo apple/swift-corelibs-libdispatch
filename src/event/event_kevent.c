@@ -240,9 +240,9 @@ dispatch_kevent_debug(const char *verb, const dispatch_kevent_s *kev,
 
 #define _dispatch_du_debug(what, du) \
 		_dispatch_debug("kevent-source[%p]: %s kevent[%p] " \
-				"{ filter = %s, ident = 0x%x }", \
+				"{ filter = %s, ident = 0x%llx }", \
 				_dispatch_wref2ptr((du)->du_owner_wref), what, \
-				(du), _evfiltstr((du)->du_filter), (du)->du_ident)
+				(du), _evfiltstr((du)->du_filter), (unsigned long long)(du)->du_ident)
 
 #if DISPATCH_MACHPORT_DEBUG
 #ifndef MACH_PORT_TYPE_SPREQUEST
