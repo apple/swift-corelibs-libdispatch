@@ -67,9 +67,32 @@ typedef uint32_t dispatch_lock;
 
 #define DLOCK_OWNER_MASK			((dispatch_lock)FUTEX_TID_MASK)
 #define DLOCK_WAITERS_BIT			((dispatch_lock)FUTEX_WAITERS)
-#define DLOCK_FAILED_TRYLOCK_BIT	((dispatch_lock)FUTEX_OWNER_DIED)
+#define DLOCK_FAILED_TRYLOCK_BIT	((dispatch_lock)FUTEX_OWNER_DIED)HAVE_UL_COMPARE_AND_WAIT
 
 #define DLOCK_OWNER_NULL			((dispatch_tid)0)
+#define _dispatch_tid_self()        ((dispatch_tid)(_dispatch_get_tsd_base()->tid))
+
+DISPATCH_ALWAYS_INLINE
+static inline dispatch_tid
+_dispatch_lock_owner(dispatch_lock lock_value)
+{
+	return lock_value & DLOCK_OWNER_MASK;
+}
+
+#elif defined(__FreeBSD__)
+
+#include <sys/types.h>
+#include <sys/umtx.h>
+#include <sched.h>
+
+typedef uint32_t dispatch_tid;
+typedef uint32_t dispatch_lock;
+
+#define DLOCK_OWNER_MASK			((dispatch_lock)0x3fffffff)
+#define DLOCK_WAITERS_BIT			((dispatch_lock)UMUTEX_CONTESTED)
+#define DLOCK_FAILED_TRYLOCK_BIT	((dispatch_lock)UMUTEX_RB_OWNERDEAD)
+
+#define DLOCK_OWNER_NULL			((dispatch_tid)UMUTEX_UNOWNED)
 #define _dispatch_tid_self()        ((dispatch_tid)(_dispatch_get_tsd_base()->tid))
 
 DISPATCH_ALWAYS_INLINE

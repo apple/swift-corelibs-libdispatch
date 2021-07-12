@@ -56,6 +56,21 @@ _dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
 #endif
 #endif
 
+#if defined(__FreeBSD__)
+#if !HAVE_UL_UNFAIR_LOCK
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
+		uint32_t timeout)
+{
+	(void)value;
+	(void)flags;
+	(void)timeout;
+	sched_yield();
+}
+#endif
+#endif
+
 #pragma mark - semaphores
 
 #if USE_MACH_SEM
@@ -509,6 +524,16 @@ _dispatch_wait_on_address(uint32_t volatile *_address, uint32_t value,
 	return _dispatch_futex_wait(address, value, NULL, FUTEX_PRIVATE_FLAG);
 #elif defined(_WIN32)
 	return WaitOnAddress(address, &value, sizeof(value), INFINITE) == TRUE;
+#elif defined(__FreeBSD__)
+  (void)flags;
+  if (nsecs != DISPATCH_TIME_FOREVER) {
+		struct timespec ts = {
+			.tv_sec = (__typeof__(ts.tv_sec))(nsecs / NSEC_PER_SEC),
+			.tv_nsec = (__typeof__(ts.tv_nsec))(nsecs % NSEC_PER_SEC),
+		};
+		return _umtx_op((void*)address, UMTX_OP_WAIT_UINT, value, (void*)(uintptr_t)sizeof(struct timespec), (void*)&ts);
+	}
+	return _umtx_op((void*)address, UMTX_OP_WAIT_UINT, value, 0, 0);
 #else
 #error _dispatch_wait_on_address unimplemented for this platform
 #endif
@@ -523,6 +548,8 @@ _dispatch_wake_by_address(uint32_t volatile *address)
 	_dispatch_futex_wake((uint32_t *)address, INT_MAX, FUTEX_PRIVATE_FLAG);
 #elif defined(_WIN32)
 	WakeByAddressAll((uint32_t *)address);
+#elif defined(__FreeBSD__)
+  _umtx_op((void*)address, UMTX_OP_WAKE, INT_MAX, 0, 0);
 #else
 	(void)address;
 #endif
@@ -682,7 +709,7 @@ _dispatch_once_wait(dispatch_once_gate_t dgo)
 		_dispatch_futex_wait(lock, (dispatch_lock)new_v, NULL,
 				FUTEX_PRIVATE_FLAG);
 #else
-		_dispatch_thread_switch(new_v, 0, timeout++);
+		_dispatch_thread_switch((dispatch_lock)new_v, 0, timeout++);
 #endif
 		(void)timeout;
 	}

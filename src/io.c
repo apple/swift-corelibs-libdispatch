@@ -22,7 +22,6 @@
 
 #if defined(__FreeBSD__)
 #include <fcntl.h>
-#define F_RDADVISE F_RDAHEAD
 #endif
 
 #ifndef DISPATCH_IO_DEBUG

@@ -90,6 +90,10 @@ test_get_pipe_buffer_size(int kind)
 		CloseHandle(write_handle);
 	});
 	return size;
+#elif defined(__FreeBSD__)
+	// buffer size of blocking and non-blocking pipes is different on FreeBSD
+	(void)kind;
+	return PIPE_BUF;
 #else
 	(void)kind;
 	static dispatch_once_t once;

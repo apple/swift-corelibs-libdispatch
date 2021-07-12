@@ -36,7 +36,7 @@
 #define __DISPATCH_BUILDING_DISPATCH__
 #define __DISPATCH_INDIRECT__
 
-#ifdef __APPLE__
+#ifdef __APPLE__DISPATCH_USE_KEVENT_WORKLOOP
 #include <Availability.h>
 #include <os/availability.h>
 #include <TargetConditionals.h>
@@ -277,6 +277,9 @@ upcast(dispatch_object_t dou)
 #include <sys/sysctl.h>
 #include <sys/queue.h>
 #endif
+#if defined(__FreeBSD__)
+#include <sys/eventfd.h>
+#endif // __FreeBSD__
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/mman.h>

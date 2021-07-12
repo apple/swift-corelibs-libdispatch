@@ -389,8 +389,13 @@ _dispatch_kevent_print_error(dispatch_kevent_t ke)
 	case 0:
 		return;
 	case ERANGE: /* A broken QoS was passed to kevent_id() */
+#if defined(__APPLE__)
 		DISPATCH_INTERNAL_CRASH(ke->qos, "Invalid kevent priority");
+#else
+		DISPATCH_INTERNAL_CRASH(0, "Invalid kevent priority");
+#endif
 	default:
+#if HAVE_MACH
 		// log the unexpected error
 		_dispatch_bug_kevent_client("kevent", _evfiltstr(ke->filter),
 				!ke->udata ? NULL :
@@ -398,6 +403,9 @@ _dispatch_kevent_print_error(dispatch_kevent_t ke)
 				ke->flags & EV_ADD ? "add" :
 				ke->flags & EV_ENABLE ? "enable" : "monitor",
 				(int)ke->data, ke->ident, ke->udata, du);
+#else
+		break;
+#endif
 	}
 }
 
@@ -591,7 +599,6 @@ _dispatch_kq_create(intptr_t *fd_ptr)
 	guardid_t guard = (uintptr_t)fd_ptr;
 	kqfd = guarded_kqueue_np(&guard, GUARD_CLOSE | GUARD_DUP);
 #else
-	(void)guard_ptr;
 	kqfd = kqueue();
 #endif
 	if (kqfd == -1) {
@@ -743,7 +750,7 @@ retry:
 		switch (err) {
 		case ENOMEM:
 			_dispatch_temporary_resource_shortage();
-			/* FALLTHROUGH */
+			DISPATCH_FALLTHROUGH;
 		case EINTR:
 			goto retry;
 		case EBADF:
@@ -754,7 +761,7 @@ retry:
 					(flags & KEVENT_FLAG_DYNAMIC_KQ_MUST_EXIST)) {
 				return 0;
 			}
-			/* FALLTHROUGH */
+			DISPATCH_FALLTHROUGH;
 #endif // DISPATCH_USE_KEVENT_WORKLOOP
 		default:
 			DISPATCH_CLIENT_CRASH(err, "Unexpected error from kevent");
@@ -860,7 +867,6 @@ _dispatch_kq_unote_set_kevent(dispatch_unote_t _du, dispatch_kevent_t dk,
 				du->du_priority),
 #endif
 	};
-	(void)pp; // if DISPATCH_USE_KEVENT_QOS == 0
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -985,6 +991,7 @@ _dispatch_sync_ipc_handoff_end(dispatch_wlh_t wlh, mach_port_t port)
 }
 #endif
 
+#if DISPATCH_HAVE_DIRECT_KNOTES
 DISPATCH_NOINLINE
 static bool
 _dispatch_kq_unote_update(dispatch_wlh_t wlh, dispatch_unote_t _du,
@@ -1055,6 +1062,7 @@ done:
 	dispatch_assume_zero(r);
 	return true;
 }
+#endif // DISPATCH_HAVE_DIRECT_KNOTES
 
 #pragma mark dispatch_muxnote_t
 
@@ -1300,6 +1308,7 @@ enum {
 	DISPATCH_WORKLOOP_SYNC_END,
 };
 
+#if DISPATCH_USE_KEVENT_WORKLOOP
 static char const * const _dispatch_workloop_actions[] = {
 	[DISPATCH_WORKLOOP_ASYNC]                       = "async",
 	[DISPATCH_WORKLOOP_ASYNC_FROM_SYNC]             = "async (from sync)",
@@ -1316,6 +1325,7 @@ static char const * const _dispatch_workloop_actions[] = {
 	[DISPATCH_WORKLOOP_SYNC_WAKE]                   = "sync-wake",
 	[DISPATCH_WORKLOOP_SYNC_END]                    = "sync-end",
 };
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 
 void
 _dispatch_event_loop_atfork_child(void)
