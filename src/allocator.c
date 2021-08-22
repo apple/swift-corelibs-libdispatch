@@ -534,23 +534,22 @@ _dispatch_alloc_maybe_madvise_page(dispatch_continuation_t c)
 	volatile bitmap_t *page_bitmaps;
 	get_maps_and_indices_for_continuation((dispatch_continuation_t)page, NULL,
 			NULL, (bitmap_t **)&page_bitmaps, NULL);
-	unsigned int i;
-	for (i = 0; i < BITMAPS_PER_PAGE; i++) {
-		if (page_bitmaps[i] != 0) {
+	unsigned int last_locked;
+	for (last_locked = BITMAPS_PER_PAGE; last_locked; last_locked--) {
+		if (page_bitmaps[last_locked] != 0) {
 			return;
 		}
 	}
 	// They are all unallocated, so we could madvise the page. Try to
 	// take ownership of them all.
-	int last_locked = 0;
-	do {
+	for (; last_locked < BITMAPS_PER_PAGE; last_locked++) {
 		if (!os_atomic_cmpxchg(&page_bitmaps[last_locked], BITMAP_C(0),
 				BITMAP_ALL_ONES, relaxed)) {
 			// We didn't get one; since there is a cont allocated in
 			// the page, we can't madvise. Give up and unlock all.
 			goto unlock;
 		}
-	} while (++last_locked < (signed)BITMAPS_PER_PAGE);
+	}
 #if DISPATCH_DEBUG
 	//fprintf(stderr, "%s: madvised page %p for cont %p (next = %p), "
 	//		"[%u+1]=%u bitmaps at %p\n", __func__, page, c, c->do_next,
