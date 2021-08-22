@@ -542,15 +542,15 @@ _dispatch_alloc_maybe_madvise_page(dispatch_continuation_t c)
 	}
 	// They are all unallocated, so we could madvise the page. Try to
 	// take ownership of them all.
-	int last_locked = 0;
-	do {
+	unsigned int last_locked;
+	for (last_locked = 0; lastlocked < BITMAPS_PER_PAGE; i++) {
 		if (!os_atomic_cmpxchg(&page_bitmaps[last_locked], BITMAP_C(0),
 				BITMAP_ALL_ONES, relaxed)) {
 			// We didn't get one; since there is a cont allocated in
 			// the page, we can't madvise. Give up and unlock all.
 			goto unlock;
 		}
-	} while (++last_locked < (signed)BITMAPS_PER_PAGE);
+	}
 #if DISPATCH_DEBUG
 	//fprintf(stderr, "%s: madvised page %p for cont %p (next = %p), "
 	//		"[%u+1]=%u bitmaps at %p\n", __func__, page, c, c->do_next,
