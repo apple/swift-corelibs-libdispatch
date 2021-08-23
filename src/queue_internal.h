@@ -913,8 +913,8 @@ typedef struct dispatch_queue_attr_info_s {
 	int      dqai_relpri : 8;
 	uint16_t dqai_overcommit:2;
 	uint16_t dqai_autorelease_frequency:2;
-	uint16_t dqai_concurrent:1;
-	uint16_t dqai_inactive:1;
+	bool dqai_concurrent:1;
+	bool dqai_inactive:1;
 } dispatch_queue_attr_info_t;
 
 typedef enum {
