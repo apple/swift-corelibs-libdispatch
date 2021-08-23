@@ -537,12 +537,6 @@ dispatch_queue_attr_t
 dispatch_queue_attr_make_with_autorelease_frequency(dispatch_queue_attr_t dqa,
 		dispatch_autorelease_frequency_t frequency)
 {
-	switch (frequency) {
-	case DISPATCH_AUTORELEASE_FREQUENCY_INHERIT:
-	case DISPATCH_AUTORELEASE_FREQUENCY_WORK_ITEM:
-	case DISPATCH_AUTORELEASE_FREQUENCY_NEVER:
-		break;
-	}
 	dispatch_queue_attr_info_t dqai = _dispatch_queue_attr_to_info(dqa);
 	dqai.dqai_autorelease_frequency = (uint16_t)frequency;
 	return _dispatch_queue_attr_from_info(dqai);
