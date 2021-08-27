@@ -34,8 +34,6 @@
 
 __BEGIN_DECLS
 
-#if DISPATCH_MACH_SPI
-
 #define DISPATCH_MACH_SPI_VERSION 20161026
 
 #include <mach/mach.h>
@@ -129,6 +127,10 @@ DISPATCH_DECL(dispatch_mach);
  * an asynchronous reply to a message previously sent to the channel. Used
  * only if the channel is disconnected while waiting for a reply to a message
  * sent with dispatch_mach_send_with_result_and_async_reply_4libxpc().
+ *
+ * @const DISPATCH_MACH_NO_SENDERS
+ * Sent when a no senders requested with dispatch_mach_request_no_senders() has
+ * been received. See dispatch_mach_request_no_senders().
  */
 DISPATCH_ENUM(dispatch_mach_reason, unsigned long,
 	DISPATCH_MACH_CONNECTED = 1,
@@ -143,6 +145,7 @@ DISPATCH_ENUM(dispatch_mach_reason, unsigned long,
 	DISPATCH_MACH_NEEDS_DEFERRED_SEND,
 	DISPATCH_MACH_SIGTERM_RECEIVED,
 	DISPATCH_MACH_ASYNC_WAITER_DISCONNECTED,
+	DISPATCH_MACH_NO_SENDERS,
 	DISPATCH_MACH_REASON_LAST, /* unused */
 );
 
@@ -350,6 +353,78 @@ dispatch_mach_t
 dispatch_mach_create_f(const char *_Nullable label,
 		dispatch_queue_t _Nullable queue, void *_Nullable context,
 		dispatch_mach_handler_function_t handler);
+
+/*!
+ * @function dispatch_mach_request_no_senders
+ *
+ * Configure the mach channel to receive no more senders notifications.
+ *
+ * @discussion
+ * This function must be called before dispatch_mach_connect() has been called.
+ *
+ * When a checkin message is passed to dispatch_mach_connect() or
+ * dispatch_mach_reconnect(), the notification is armed after the checkin
+ * message has been sent successfully.
+ *
+ * If no checkin message is passed, then the mach channel is assumed to be
+ * a "server" peer connection and the no more senders request is armed
+ * immediately.
+ *
+ * @param channel
+ * The mach channel to request no senders notifications on.
+ */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(4.0))
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+void
+dispatch_mach_request_no_senders(dispatch_mach_t channel);
+
+/*!
+ * @typedef dispatch_mach_flags_t
+ *
+ * Flags that can be passed to the dispatch_mach_set_flags function.
+ *
+ * @const DMF_USE_STRICT_REPLY
+ * Instruct the dispatch mach channel to use strict reply port semantics. When
+ * using strict reply port semantics, the kernel will enforce that the port
+ * used as the reply port has precisely 1 extant send-once right, its receive
+ * right exists in the same space as the sender, and any voucher context,
+ * e.g., the persona in the bank attribute, used when sending the message is
+ * also used when replying.
+ *
+ * @const DMF_REQUEST_NO_SENDERS
+ * Configure the mach channel to receive no more senders notifications.
+ * When a checkin message is passed to dispatch_mach_connect() or
+ * dispatch_mach_reconnect(), the notification is armed after the checkin
+ * message has been sent successfully.  If no checkin message is passed, then
+ * the mach channel is assumed to be a "server" peer connection and the no
+ * more senders request is armed immediately.
+ */
+DISPATCH_OPTIONS(dispatch_mach_flags, uint64_t,
+	DMF_NONE               = 0x0,
+	DMF_USE_STRICT_REPLY   = 0x1,
+	DMF_REQUEST_NO_SENDERS = 0x2,
+);
+
+/*!
+ * @function dispatch_mach_set_flags
+ *
+ * Configure optional properties on the mach channel.
+ *
+ * @discussion
+ * This function must be called before dispatch_mach_connect() has been called.
+ *
+ * @param channel
+ * The mach channel to configure.
+ *
+ * @param flags
+ * Flags to configure the dispatch mach channel.
+ *
+ * @see dispatch_mach_flags_t
+ */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(4.0))
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+void
+dispatch_mach_set_flags(dispatch_mach_t channel, dispatch_mach_flags_t flags);
 
 /*!
  * @function dispatch_mach_connect
@@ -882,6 +957,8 @@ DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 mach_port_t
 dispatch_mach_get_checkin_port(dispatch_mach_t channel);
 
+#if DISPATCH_MACH_SPI
+
 // SPI for libxpc
 /*
  * Type for the callback for receipt of asynchronous replies to
@@ -914,6 +991,8 @@ typedef const struct dispatch_mach_xpc_hooks_s {
 
 	/* Fields available in version 2. */
 
+#define DMXH_MSG_CONTEXT_REPLY_QUEUE_SELF ((dispatch_queue_t)NULL)
+
 	/*
 	 * Gets the queue to which a reply to a message sent using
 	 * dispatch_mach_send_with_result_and_async_reply_4libxpc() should be
@@ -945,7 +1024,7 @@ typedef const struct dispatch_mach_xpc_hooks_s {
 	dispatch_mach_async_reply_callback_t dmxh_async_reply_handler;
 
 	/* Fields available in version 3. */
-	/**
+	/*
 	 * Called once when the Mach channel has been activated. If this function
 	 * returns true, a DISPATCH_MACH_SIGTERM_RECEIVED notification will be
 	 * delivered to the channel's event handler when a SIGTERM is received.
@@ -1101,6 +1180,8 @@ dispatch_mach_send_with_result_and_async_reply_4libxpc(dispatch_mach_t channel,
 		dispatch_mach_send_flags_t send_flags,
 		dispatch_mach_reason_t *send_result, mach_error_t *send_error);
 
+#endif // DISPATCH_MACH_SPI
+
 /*!
  * @function dispatch_mach_handoff_reply_f
  *
@@ -1125,7 +1206,7 @@ dispatch_mach_send_with_result_and_async_reply_4libxpc(dispatch_mach_t channel,
  * @param port
  * The send once right that will be replied to.
  */
-API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL4 DISPATCH_NOTHROW
 void
 dispatch_mach_handoff_reply_f(dispatch_queue_t queue, mach_port_t port,
@@ -1140,15 +1221,15 @@ dispatch_mach_handoff_reply_f(dispatch_queue_t queue, mach_port_t port,
  *
  * @see dispatch_mach_handoff_reply_f
  */
-API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+#ifdef __BLOCKS__
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_mach_handoff_reply(dispatch_queue_t queue, mach_port_t port,
 		dispatch_block_t block);
+#endif /* __BLOCKS__ */
 
 DISPATCH_ASSUME_NONNULL_END
-
-#endif // DISPATCH_MACH_SPI
 
 __END_DECLS
 

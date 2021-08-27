@@ -47,7 +47,6 @@ enum {
 	DISPATCH_QUEUE_OVERCOMMIT = 0x2ull,
 };
 
-
 /*!
  * @function dispatch_set_qos_class
  *
@@ -93,54 +92,6 @@ API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 dispatch_set_qos_class(dispatch_object_t object,
-		dispatch_qos_class_t qos_class, int relative_priority);
-
-/*!
- * @function dispatch_set_qos_class_floor
- *
- * @abstract
- * Sets the QOS class floor on a dispatch queue, source, workloop or mach
- * channel.
- *
- * @discussion
- * The QOS class of workitems submitted to this object asynchronously will be
- * elevated to at least the specified QOS class floor.
- * Unlike dispatch_set_qos_class(), the QOS of the workitem will be used if
- * higher than the floor even when the workitem has been created without
- * "ENFORCE" semantics.
- *
- * Setting the QOS class floor is equivalent to the QOS effects of configuring
- * a target queue whose QOS class has been set with dispatch_set_qos_class().
- *
- * Calling this function will supersede any prior calls to
- * dispatch_set_qos_class() or dispatch_set_qos_class_floor().
- *
- * @param object
- * A dispatch queue, workloop, source or mach channel to configure.
- * The object must be inactive.
- *
- * Passing another object type or an object that has been activated is undefined
- * and will cause the process to be terminated.
- *
- * @param qos_class
- * A QOS class value:
- *  - QOS_CLASS_USER_INTERACTIVE
- *  - QOS_CLASS_USER_INITIATED
- *  - QOS_CLASS_DEFAULT
- *  - QOS_CLASS_UTILITY
- *  - QOS_CLASS_BACKGROUND
- * Passing any other value is undefined.
- *
- * @param relative_priority
- * A relative priority within the QOS class. This value is a negative
- * offset from the maximum supported scheduler priority for the given class.
- * Passing a value greater than zero or less than QOS_MIN_RELATIVE_PRIORITY
- * is undefined.
- */
-API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
-DISPATCH_EXPORT DISPATCH_NOTHROW
-void
-dispatch_set_qos_class_floor(dispatch_object_t object,
 		dispatch_qos_class_t qos_class, int relative_priority);
 
 /*!
@@ -372,7 +323,8 @@ dispatch_queue_set_width(dispatch_queue_t dq, long width);
  * @result
  * The newly created dispatch pthread root queue.
  */
-API_AVAILABLE(macos(10.9), ios(6.0)) DISPATCH_LINUX_UNAVAILABLE()
+API_DEPRECATED_WITH_REPLACEMENT("dispatch_workloop_set_scheduler_priority",
+		macos(10.9, 10.16), ios(6.0, 14.0)) DISPATCH_LINUX_UNAVAILABLE()
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_global_t

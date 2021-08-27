@@ -81,8 +81,6 @@ struct firehose_client_s {
 } DISPATCH_ATOMIC64_ALIGN;
 
 void
-_firehose_client_xref_dispose(struct firehose_client_s *fc);
-void
 _firehose_client_dispose(struct firehose_client_s *fc);
 
 extern unsigned char __libfirehose_serverVersionString[];

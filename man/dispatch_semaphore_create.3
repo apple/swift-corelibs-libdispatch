@@ -109,13 +109,15 @@ and
 .Fn dispatch_release .
 .Sh CAVEATS
 Unbalanced dispatch semaphores cannot be released.
-For a given semaphore, calls to
-.Fn dispatch_semaphore_signal
-and
-.Fn dispatch_semaphore_wait
-must be balanced before
+For a given semaphore, the count at the time
 .Fn dispatch_release
-is called on it.
+is called must be equal to or larger than the
+count the semaphore was created with. In other words, at the time of releasing
+the semaphore, there must have been at least as many
+.Fn dispatch_semaphore_signal
+calls as there were successful
+.Fn dispatch_semaphore_wait
+calls that did not timeout.
 .Sh SEE ALSO
 .Xr dispatch 3 ,
 .Xr dispatch_object 3

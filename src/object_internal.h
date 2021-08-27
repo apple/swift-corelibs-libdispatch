@@ -199,7 +199,7 @@
 
 #define DISPATCH_QUEUE_VTABLE_HEADER(x); \
 	DISPATCH_OBJECT_VTABLE_HEADER(x); \
-	void (*const dq_activate)(dispatch_queue_class_t, bool *allow_resume); \
+	void (*const dq_activate)(dispatch_queue_class_t); \
 	void (*const dq_wakeup)(dispatch_queue_class_t, dispatch_qos_t, \
 			dispatch_wakeup_flags_t); \
 	void (*const dq_push)(dispatch_queue_class_t, dispatch_object_t, \
@@ -240,7 +240,7 @@
 #define DISPATCH_OBJECT_LISTLESS ((void *)0x89abcdef)
 #endif
 
-DISPATCH_ENUM(dispatch_wakeup_flags, uint32_t,
+DISPATCH_OPTIONS(dispatch_wakeup_flags, uint32_t,
 	// The caller of dx_wakeup owns two internal refcounts on the object being
 	// woken up. Two are needed for WLH wakeups where two threads need
 	// the object to remain valid in a non-coordinated way
@@ -262,6 +262,9 @@ DISPATCH_ENUM(dispatch_wakeup_flags, uint32_t,
 
 	// This wakeup may cause the source to leave its DSF_NEEDS_EVENT state
 	DISPATCH_WAKEUP_EVENT                   = 0x00000010,
+
+	// This wakeup is allowed to clear the ACTIVATING state of the object
+	DISPATCH_WAKEUP_CLEAR_ACTIVATING        = 0x00000020,
 );
 
 typedef struct dispatch_invoke_context_s {
@@ -288,7 +291,7 @@ typedef struct dispatch_invoke_context_s {
 #define dispatch_with_disabled_narrowing(dic, ...) __VA_ARGS__
 #endif
 
-DISPATCH_ENUM(dispatch_invoke_flags, uint32_t,
+DISPATCH_OPTIONS(dispatch_invoke_flags, uint32_t,
 	DISPATCH_INVOKE_NONE					= 0x00000000,
 
 	// Invoke modes
@@ -335,7 +338,7 @@ DISPATCH_ENUM(dispatch_invoke_flags, uint32_t,
 	// @const DISPATCH_INVOKE_THREAD_BOUND
 	// We're draining from the context of a thread-bound queue (main thread)
 	//
-	// @const DISPATCH_INVOKE_WORKER_DRAIN
+	// @const DISPATCH_INVOKE_WORKLOOP_DRAIN
 	// The queue at the bottom of this drain is a workloop that supports
 	// reordering.
 	//
@@ -359,7 +362,7 @@ DISPATCH_ENUM(dispatch_invoke_flags, uint32_t,
 #define _DISPATCH_INVOKE_AUTORELEASE_MASK	  0x03000000u
 );
 
-DISPATCH_ENUM(dispatch_object_flags, unsigned long,
+DISPATCH_OPTIONS(dispatch_object_flags, unsigned long,
 	_DISPATCH_META_TYPE_MASK		= 0x000000ff, // mask for object meta-types
 	_DISPATCH_TYPE_CLUSTER_MASK		= 0x000000f0, // mask for the cluster type
 	_DISPATCH_SUB_TYPE_MASK			= 0x0000ff00, // mask for object sub-types
@@ -419,7 +422,8 @@ DISPATCH_ENUM(dispatch_object_flags, unsigned long,
 			_DISPATCH_QUEUE_BASE_TYPEFLAG,
 
 	DISPATCH_SOURCE_KEVENT_TYPE			= DISPATCH_OBJECT_SUBTYPE(1, SOURCE),
-	DISPATCH_MACH_CHANNEL_TYPE			= DISPATCH_OBJECT_SUBTYPE(2, SOURCE),
+	DISPATCH_CHANNEL_TYPE				= DISPATCH_OBJECT_SUBTYPE(2, SOURCE),
+	DISPATCH_MACH_CHANNEL_TYPE			= DISPATCH_OBJECT_SUBTYPE(3, SOURCE),
 );
 
 typedef struct _os_object_vtable_s {
@@ -467,6 +471,9 @@ typedef struct _os_object_s {
 		return [super init]; \
 	}
 
+#define DISPATCH_OBJECT_USES_XREF_DISPOSE() \
+		OS_OBJECT_USES_XREF_DISPOSE()
+
 _OS_OBJECT_DECL_PROTOCOL(dispatch_object, object);
 DISPATCH_CLASS_DECL_BARE(object, OBJECT);
 
@@ -480,9 +487,7 @@ size_t _dispatch_object_debug_attr(dispatch_object_t dou, char* buf,
 void *_dispatch_object_alloc(const void *vtable, size_t size);
 void _dispatch_object_finalize(dispatch_object_t dou);
 void _dispatch_object_dealloc(dispatch_object_t dou);
-#if !USE_OBJC
 void _dispatch_xref_dispose(dispatch_object_t dou);
-#endif
 void _dispatch_dispose(dispatch_object_t dou);
 #if DISPATCH_COCOA_COMPAT
 #if USE_OBJC

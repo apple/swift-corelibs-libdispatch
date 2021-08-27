@@ -213,9 +213,7 @@ void __builtin_trap(void);
 #endif
 
 
-#ifndef __OS_INTERNAL_ATOMIC__
 #include "shims/atomic.h"
-#endif
 #define DISPATCH_ATOMIC64_ALIGN  __attribute__((aligned(8)))
 
 #include "shims/atomic_sfb.h"

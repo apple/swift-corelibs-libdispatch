@@ -309,7 +309,7 @@ _voucher_release_inline(struct voucher_s *voucher)
 	if (unlikely(xref_cnt < -1)) {
 		_OS_OBJECT_CLIENT_CRASH("Voucher over-release");
 	}
-	return _os_object_xref_dispose((_os_object_t)voucher);
+	return _voucher_xref_dispose((voucher_t)voucher);
 }
 
 #if DISPATCH_PURE_C

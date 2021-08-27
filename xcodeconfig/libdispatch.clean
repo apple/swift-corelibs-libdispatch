@@ -18,6 +18,7 @@
 # @APPLE_APACHE_LICENSE_HEADER_END@
 #
 
+__MergedGlobals
 __dispatch_bug.last_seen
 __dispatch_bug_deprecated.last_seen
 __dispatch_bug_kevent_client.last_seen

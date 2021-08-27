@@ -50,7 +50,7 @@
 #endif
 #endif
 
-#define DISPATCH_API_VERSION 20180109
+#define DISPATCH_API_VERSION 20181008
 
 #ifndef __DISPATCH_BUILDING_DISPATCH__
 #ifndef __DISPATCH_INDIRECT__
@@ -69,6 +69,7 @@
 #include <dispatch/once.h>
 #include <dispatch/data.h>
 #include <dispatch/io.h>
+#include <dispatch/workloop.h>
 
 #undef __DISPATCH_INDIRECT__
 #endif /* !__DISPATCH_BUILDING_DISPATCH__ */

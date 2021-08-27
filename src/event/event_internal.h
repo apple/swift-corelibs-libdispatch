@@ -99,7 +99,7 @@ typedef struct dispatch_wlh_s *dispatch_wlh_t; // opaque handle
 #define DISPATCH_WLH_ANON       ((dispatch_wlh_t)(void*)(~0x3ul))
 #define DISPATCH_WLH_MANAGER    ((dispatch_wlh_t)(void*)(~0x7ul))
 
-DISPATCH_ENUM(dispatch_unote_timer_flags, uint8_t,
+DISPATCH_OPTIONS(dispatch_unote_timer_flags, uint8_t,
 	/* DISPATCH_TIMER_STRICT 0x1 */
 	/* DISPATCH_TIMER_BACKGROUND = 0x2, */
 	DISPATCH_TIMER_CLOCK_UPTIME = DISPATCH_CLOCK_UPTIME << 2,
@@ -344,6 +344,7 @@ typedef struct dispatch_source_type_s {
 	dispatch_unote_action_t dst_action;
 	uint8_t    dst_per_trigger_qos : 1;
 	uint8_t    dst_strict : 1;
+	uint8_t    dst_allow_empty_mask : 1;
 	uint8_t    dst_timer_flags;
 	uint16_t   dst_flags;
 #if DISPATCH_EVENT_BACKEND_KEVENT

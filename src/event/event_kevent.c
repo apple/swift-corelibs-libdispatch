@@ -323,6 +323,17 @@ _dispatch_kevent_mach_msg_size(dispatch_kevent_t ke)
 	return (mach_msg_size_t)ke->ext[1];
 }
 
+static inline bool
+_dispatch_kevent_has_machmsg_rcv_error(dispatch_kevent_t ke)
+{
+#define MACH_ERROR_RCV_SUB 0x4
+	mach_error_t kr = (mach_error_t) ke->fflags;
+	return (err_get_system(kr) == err_mach_ipc) &&
+			(err_get_sub(kr) == MACH_ERROR_RCV_SUB);
+#undef MACH_ERROR_RCV_SUB
+}
+
+static inline bool _dispatch_kevent_has_machmsg_rcv_error(dispatch_kevent_t ke);
 static void _dispatch_kevent_mach_msg_drain(dispatch_kevent_t ke);
 static inline void _dispatch_mach_host_calendar_change_register(void);
 
@@ -560,7 +571,8 @@ _dispatch_kevent_drain(dispatch_kevent_t ke)
 	}
 
 #if HAVE_MACH
-	if (ke->filter == EVFILT_MACHPORT && _dispatch_kevent_mach_msg_size(ke)) {
+	if (ke->filter == EVFILT_MACHPORT && (_dispatch_kevent_mach_msg_size(ke) ||
+			_dispatch_kevent_has_machmsg_rcv_error(ke))) {
 		return _dispatch_kevent_mach_msg_drain(ke);
 	}
 #endif
@@ -777,8 +789,9 @@ _dispatch_kq_drain(dispatch_wlh_t wlh, dispatch_kevent_t ke, int n,
 #if DISPATCH_USE_KEVENT_QOS
 	size_t size;
 	if (poll_for_events) {
-		size = DISPATCH_MACH_RECEIVE_MAX_INLINE_MESSAGE_SIZE +
-				DISPATCH_MACH_TRAILER_SIZE;
+		dispatch_assert(DISPATCH_MACH_RECEIVE_MAX_INLINE_MESSAGE_SIZE +
+				DISPATCH_MACH_TRAILER_SIZE <= 32 << 10);
+		size = 32 << 10; // match WQ_KEVENT_DATA_SIZE
 		buf = alloca(size);
 		avail = &size;
 	}
@@ -946,7 +959,7 @@ void
 _dispatch_sync_ipc_handoff_begin(dispatch_wlh_t wlh, mach_port_t port,
 		uint64_t _Atomic *addr)
 {
-#ifdef NOTE_WL_SYNC_IPC
+#if DISPATCH_USE_WL_SYNC_IPC_HANDOFF
 	dispatch_kevent_s ke = {
 		.ident  = port,
 		.filter = EVFILT_WORKLOOP,
@@ -958,18 +971,18 @@ _dispatch_sync_ipc_handoff_begin(dispatch_wlh_t wlh, mach_port_t port,
 		.ext[EV_EXTIDX_WL_VALUE] = (uintptr_t)wlh,
 	};
 	int rc = _dispatch_kq_immediate_update(wlh, &ke);
-	if (unlikely(rc)) {
+	if (unlikely(rc && rc != ENOENT)) {
 		DISPATCH_INTERNAL_CRASH(rc, "Unexpected error from kevent");
 	}
 #else
 	(void)wlh; (void)port; (void)addr;
-#endif
+#endif // DISPATCH_USE_WL_SYNC_IPC_HANDOFF
 }
 
 void
 _dispatch_sync_ipc_handoff_end(dispatch_wlh_t wlh, mach_port_t port)
 {
-#ifdef NOTE_WL_SYNC_IPC
+#if DISPATCH_USE_WL_SYNC_IPC_HANDOFF
 	dispatch_kevent_s ke = {
 		.ident  = port,
 		.filter = EVFILT_WORKLOOP,
@@ -980,7 +993,7 @@ _dispatch_sync_ipc_handoff_end(dispatch_wlh_t wlh, mach_port_t port)
 	_dispatch_kq_deferred_update(wlh, &ke);
 #else
 	(void)wlh; (void)port;
-#endif // NOTE_WL_SYNC_IPC
+#endif // DISPATCH_USE_WL_SYNC_IPC_HANDOFF
 }
 #endif
 
@@ -1652,6 +1665,13 @@ _dispatch_kevent_workloop_poke_drain(dispatch_kevent_t ke)
 	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
 	dispatch_wlh_t wlh = (dispatch_wlh_t)ke->udata;
 
+#if DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+	if (ke->fflags & NOTE_WL_SYNC_IPC) {
+		dispatch_assert((ke->flags & EV_ERROR) && ke->data == ENOENT);
+		return _dispatch_kevent_wlh_debug("ignoring", ke);
+	}
+#endif // DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+
 	dispatch_assert(ke->fflags & NOTE_WL_THREAD_REQUEST);
 	if (ke->flags & EV_ERROR) {
 		uint64_t dq_state = ke->ext[EV_EXTIDX_WL_VALUE];
@@ -1852,7 +1872,6 @@ _dispatch_kevent_workloop_poke_self(dispatch_deferred_items_t ddi,
 		// will continue to apply the overrides in question until we acknowledge
 		// them, so there's no rush.
 		//
-		ddi->ddi_wlh_needs_update = true;
 		if (flags & DISPATCH_EVENT_LOOP_CONSUME_2) {
 			_dispatch_release_no_dispose(dq);
 		} else {
@@ -1868,6 +1887,7 @@ _dispatch_kevent_workloop_poke_self(dispatch_deferred_items_t ddi,
 	}
 	dispatch_assert(!ddi->ddi_stashed_dou._dq);
 	ddi->ddi_wlh_needs_delete = true;
+	ddi->ddi_wlh_needs_update = true;
 	ddi->ddi_stashed_rq = upcast(dq->do_targetq)._dgq;
 	ddi->ddi_stashed_dou._dq = dq;
 	ddi->ddi_stashed_qos = _dq_state_max_qos(dq_state);
@@ -2161,7 +2181,7 @@ _dispatch_event_loop_wait_for_ownership(dispatch_sync_context_t dsc)
 	int i, n = 0;
 
 	dq_state = os_atomic_load2o((dispatch_queue_t)wlh, dq_state, relaxed);
-	if (dsc->dsc_wlh_was_first && !_dq_state_drain_locked(dq_state) &&
+	if (!_dq_state_drain_locked(dq_state) &&
 			_dq_state_is_enqueued_on_target(dq_state)) {
 		//
 		// <rdar://problem/32123779>
@@ -2181,6 +2201,13 @@ _dispatch_event_loop_wait_for_ownership(dispatch_sync_context_t dsc)
 		// have bounced, or still be in the process of being added by a much
 		// lower priority thread, so we need to drive it once to avoid priority
 		// inversions.
+		//
+		// <rdar://problem/33711357>
+		//
+		// Also, it is possible that a low priority async is ahead of us,
+		// and hasn't made its thread request yet. If this waiter is high
+		// priority this is a priority inversion, and we need to redrive the
+		// async.
 		//
 		_dispatch_kq_fill_workloop_event(&ke[n++], DISPATCH_WORKLOOP_ASYNC,
 				wlh, dq_state);
@@ -2417,7 +2444,6 @@ const dispatch_source_type_s _dispatch_source_type_proc = {
 			,
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_source_proc_create,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
@@ -2438,7 +2464,6 @@ const dispatch_source_type_s _dispatch_source_type_vnode = {
 			,
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_with_fd,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
@@ -2471,7 +2496,6 @@ const dispatch_source_type_s _dispatch_source_type_vfs = {
 			,
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_without_handle,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
@@ -2497,7 +2521,6 @@ const dispatch_source_type_s _dispatch_source_type_sock = {
 		,
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_with_fd,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
@@ -2509,10 +2532,9 @@ const dispatch_source_type_s _dispatch_source_type_nw_channel = {
 	.dst_kind       = "nw_channel",
 	.dst_filter     = EVFILT_NW_CHANNEL,
 	.dst_flags      = DISPATCH_EV_DIRECT|EV_CLEAR|EV_VANISHED,
-	.dst_mask       = NOTE_FLOW_ADV_UPDATE,
+	.dst_mask       = NOTE_FLOW_ADV_UPDATE|NOTE_CHANNEL_EVENT|NOTE_IF_ADV_UPD,
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_with_fd,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
@@ -2630,7 +2652,6 @@ const dispatch_source_type_s _dispatch_source_type_memorypressure = {
 			|NOTE_MEMORYSTATUS_MSL_STATUS,
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
-	.dst_strict     = false,
 
 #if TARGET_OS_SIMULATOR
 	.dst_create     = _dispatch_source_memorypressure_create,
@@ -2661,7 +2682,6 @@ const dispatch_source_type_s _dispatch_source_type_vm = {
 	.dst_mask       = NOTE_VM_PRESSURE,
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_source_vm_create,
 	// redirected to _dispatch_source_type_memorypressure
@@ -2712,6 +2732,18 @@ _dispatch_mach_msg_get_audit_trailer(mach_msg_header_t *hdr)
 	return audit_tlr;
 }
 
+bool
+_dispatch_mach_msg_sender_is_kernel(mach_msg_header_t *hdr)
+{
+	mach_msg_audit_trailer_t *tlr;
+	tlr = _dispatch_mach_msg_get_audit_trailer(hdr);
+	if (!tlr) {
+		DISPATCH_INTERNAL_CRASH(0, "message received without expected trailer");
+	}
+
+	return tlr->msgh_audit.val[DISPATCH_MACH_AUDIT_TOKEN_PID] == 0;
+}
+
 DISPATCH_NOINLINE
 static void
 _dispatch_mach_notification_merge_msg(dispatch_unote_t du, uint32_t flags,
@@ -2720,18 +2752,12 @@ _dispatch_mach_notification_merge_msg(dispatch_unote_t du, uint32_t flags,
 		pthread_priority_t ovr_pp DISPATCH_UNUSED)
 {
 	mig_reply_error_t reply;
-	mach_msg_audit_trailer_t *tlr = NULL;
 	dispatch_assert(sizeof(mig_reply_error_t) == sizeof(union
 		__ReplyUnion___dispatch_libdispatch_internal_protocol_subsystem));
 	dispatch_assert(sizeof(mig_reply_error_t) <
 			DISPATCH_MACH_RECEIVE_MAX_INLINE_MESSAGE_SIZE);
-	tlr = _dispatch_mach_msg_get_audit_trailer(hdr);
-	if (!tlr) {
-		DISPATCH_INTERNAL_CRASH(0, "message received without expected trailer");
-	}
 	if (hdr->msgh_id <= MACH_NOTIFY_LAST &&
-			dispatch_assume_zero(tlr->msgh_audit.val[
-			DISPATCH_MACH_AUDIT_TOKEN_PID])) {
+			!dispatch_assume(_dispatch_mach_msg_sender_is_kernel(hdr))) {
 		mach_msg_destroy(hdr);
 		goto out;
 	}
@@ -3075,7 +3101,6 @@ const dispatch_source_type_s _dispatch_source_type_mach_send = {
 	.dst_mask       = DISPATCH_MACH_SEND_DEAD|DISPATCH_MACH_SEND_POSSIBLE,
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_source_mach_send_create,
 	.dst_update_mux = _dispatch_mach_send_update,
@@ -3103,7 +3128,6 @@ const dispatch_source_type_s _dispatch_mach_type_send = {
 	.dst_mask       = DISPATCH_MACH_SEND_DEAD|DISPATCH_MACH_SEND_POSSIBLE,
 	.dst_action     = DISPATCH_UNOTE_ACTION_PASS_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_mach_send_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_mach_send_create,
 	.dst_update_mux = _dispatch_mach_send_update,
@@ -3142,20 +3166,27 @@ static void
 _dispatch_kevent_mach_msg_drain(dispatch_kevent_t ke)
 {
 	mach_msg_header_t *hdr = _dispatch_kevent_mach_msg_buf(ke);
+	mach_msg_size_t siz = _dispatch_kevent_mach_msg_size(ke);
 	dispatch_unote_t du = _dispatch_kevent_get_unote(ke);
 	pthread_priority_t msg_pp = (pthread_priority_t)(ke->ext[2] >> 32);
 	pthread_priority_t ovr_pp = (pthread_priority_t)ke->qos;
 	uint32_t flags = ke->flags;
-	mach_msg_size_t siz;
 	mach_msg_return_t kr = (mach_msg_return_t)ke->fflags;
 
-	if (unlikely(!hdr)) {
-		DISPATCH_INTERNAL_CRASH(kr, "EVFILT_MACHPORT with no message");
-	}
-	if (likely(!kr)) {
-		return _dispatch_kevent_mach_msg_recv(du, flags, hdr, msg_pp, ovr_pp);
-	}
-	if (kr != MACH_RCV_TOO_LARGE) {
+	if (unlikely(kr == MACH_RCV_TOO_LARGE)) {
+		if (unlikely(!siz)) {
+			DISPATCH_INTERNAL_CRASH(kr, "EVFILT_MACHPORT with no message size");
+		}
+	} else if (unlikely(kr == MACH_RCV_INVALID_DATA)) {
+		dispatch_assert(siz == 0);
+		DISPATCH_CLIENT_CRASH(kr, "Unable to copyout msg, possible port leak");
+	} else {
+		if (unlikely(!hdr)) {
+			DISPATCH_INTERNAL_CRASH(kr, "EVFILT_MACHPORT with no message");
+		}
+		if (likely(!kr)) {
+			return _dispatch_kevent_mach_msg_recv(du, flags, hdr, msg_pp, ovr_pp);
+		}
 		goto out;
 	}
 
@@ -3166,9 +3197,14 @@ _dispatch_kevent_mach_msg_drain(dispatch_kevent_t ke)
 		DISPATCH_INTERNAL_CRASH(ke->ext[1],
 				"EVFILT_MACHPORT with overlarge message");
 	}
+
+	mach_msg_options_t extra_options = 0;
+	if (du._du->du_fflags & MACH_MSG_STRICT_REPLY) {
+		extra_options |= MACH_MSG_STRICT_REPLY;
+	}
 	const mach_msg_option_t options = ((DISPATCH_MACH_RCV_OPTIONS |
-			MACH_RCV_TIMEOUT) & ~MACH_RCV_LARGE);
-	siz = _dispatch_kevent_mach_msg_size(ke) + DISPATCH_MACH_TRAILER_SIZE;
+			MACH_RCV_TIMEOUT | extra_options) & ~MACH_RCV_LARGE);
+	siz += DISPATCH_MACH_TRAILER_SIZE;
 	hdr = malloc(siz); // mach_msg will return TOO_LARGE if hdr/siz is NULL/0
 	kr = mach_msg(hdr, options, 0, dispatch_assume(hdr) ? siz : 0,
 			(mach_port_name_t)ke->data, MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL);
@@ -3198,15 +3234,20 @@ const dispatch_source_type_s _dispatch_source_type_mach_recv = {
 	.dst_filter     = EVFILT_MACHPORT,
 	.dst_flags      = EV_UDATA_SPECIFIC|EV_DISPATCH|EV_VANISHED,
 	.dst_fflags     = 0,
+	.dst_mask       = 0
+#ifdef MACH_RCV_SYNC_PEEK
+			| MACH_RCV_SYNC_PEEK
+#endif
+			,
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_with_handle,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
 	.dst_merge_msg  = NULL, // never receives messages directly
 
 	.dst_per_trigger_qos = true,
+	.dst_allow_empty_mask = true,
 };
 
 static void
@@ -3220,10 +3261,9 @@ const dispatch_source_type_s _dispatch_mach_type_notification = {
 	.dst_kind       = "mach_notification",
 	.dst_filter     = EVFILT_MACHPORT,
 	.dst_flags      = EV_UDATA_SPECIFIC|EV_DISPATCH|EV_VANISHED,
-	.dst_fflags     = DISPATCH_MACH_RCV_OPTIONS,
+	.dst_fflags     = DISPATCH_MACH_RCV_OPTIONS & ~MACH_RCV_VOUCHER,
 	.dst_action     = DISPATCH_UNOTE_ACTION_PASS_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_unote_class_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_with_handle,
 	.dst_merge_evt  = _dispatch_mach_notification_event,
@@ -3237,7 +3277,7 @@ _dispatch_mach_recv_direct_merge_evt(dispatch_unote_t du, uint32_t flags,
 		uintptr_t data, pthread_priority_t pp)
 {
 	if (flags & EV_VANISHED) {
-		DISPATCH_CLIENT_CRASH(du._du->du_ident,
+		DISPATCH_CLIENT_CRASH(0,
 				"Unexpected EV_VANISHED (do not destroy random mach ports)");
 	}
 	return _dispatch_source_merge_evt(du, flags, data, pp);
@@ -3250,7 +3290,6 @@ const dispatch_source_type_s _dispatch_mach_type_recv = {
 	.dst_fflags     = DISPATCH_MACH_RCV_OPTIONS,
 	.dst_action     = DISPATCH_UNOTE_ACTION_PASS_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_mach_recv_refs_s),
-	.dst_strict     = false,
 
 	// without handle because the mach code will set the ident after connect
 	.dst_create     = _dispatch_unote_create_without_handle,
@@ -3262,21 +3301,24 @@ const dispatch_source_type_s _dispatch_mach_type_recv = {
 
 DISPATCH_NORETURN
 static void
-_dispatch_mach_reply_merge_evt(dispatch_unote_t du,
-		uint32_t flags DISPATCH_UNUSED, uintptr_t data DISPATCH_UNUSED,
+_dispatch_mach_reply_merge_evt(dispatch_unote_t du DISPATCH_UNUSED,
+		uint32_t flags, uintptr_t data DISPATCH_UNUSED,
 		pthread_priority_t pp DISPATCH_UNUSED)
 {
-	DISPATCH_INTERNAL_CRASH(du._du->du_ident, "Unexpected event");
+	if (flags & EV_VANISHED) {
+		DISPATCH_CLIENT_CRASH(0,
+				"Unexpected EV_VANISHED (do not destroy random mach ports)");
+	}
+	DISPATCH_INTERNAL_CRASH(flags, "Unexpected event");
 }
 
 const dispatch_source_type_s _dispatch_mach_type_reply = {
 	.dst_kind       = "mach reply",
 	.dst_filter     = EVFILT_MACHPORT,
 	.dst_flags      = EV_UDATA_SPECIFIC|EV_DISPATCH|EV_ONESHOT|EV_VANISHED,
-	.dst_fflags     = DISPATCH_MACH_RCV_OPTIONS,
+	.dst_fflags     = DISPATCH_MACH_RCV_OPTIONS & ~MACH_RCV_VOUCHER,
 	.dst_action     = DISPATCH_UNOTE_ACTION_PASS_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_mach_reply_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_with_handle,
 	.dst_merge_evt  = _dispatch_mach_reply_merge_evt,
@@ -3292,7 +3334,6 @@ const dispatch_source_type_s _dispatch_xpc_type_sigterm = {
 	.dst_fflags     = 0,
 	.dst_action     = DISPATCH_UNOTE_ACTION_PASS_DATA,
 	.dst_size       = sizeof(struct dispatch_xpc_term_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_with_handle,
 	.dst_merge_evt  = _dispatch_xpc_sigterm_merge_evt,

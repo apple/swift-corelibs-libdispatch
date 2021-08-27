@@ -124,7 +124,7 @@ _os_object_dispose(_os_object_t obj)
 {
 	struct _os_object_s *o = (struct _os_object_s *)obj;
 	_os_object_refcnt_dispose_barrier(o);
-	[obj _dispose];
+	_os_object_dealloc(obj);
 }
 
 #undef os_retain
@@ -170,7 +170,7 @@ DISPATCH_UNAVAILABLE_INIT()
 }
 
 -(oneway void)release {
-	return _os_object_release(self);
+	return _os_object_release_without_xref_dispose(self);
 }
 
 -(NSUInteger)retainCount {
@@ -192,10 +192,6 @@ DISPATCH_UNAVAILABLE_INIT()
 
 - (void)_xref_dispose {
 	return _os_object_release_internal(self);
-}
-
-- (void)_dispose {
-	return _os_object_dealloc(self);
 }
 
 @end
@@ -281,15 +277,8 @@ _dispatch_objc_debug(dispatch_object_t dou, char* buf, size_t bufsiz)
 #pragma mark -
 #pragma mark _dispatch_object
 
-// Force non-lazy class realization rdar://10640168
-#define DISPATCH_OBJC_LOAD() + (void)load {}
-
 @implementation DISPATCH_CLASS(object)
 DISPATCH_UNAVAILABLE_INIT()
-
-- (void)_dispose {
-	return _dispatch_dispose(self); // calls _os_object_dealloc()
-}
 
 - (NSString *)debugDescription {
 	Class nsstring = objc_lookUpClass("NSString");
@@ -306,16 +295,20 @@ DISPATCH_UNAVAILABLE_INIT()
 	return [nsstring stringWithFormat:format, object_getClassName(self), buf];
 }
 
-- (void)dealloc DISPATCH_NORETURN {
-	DISPATCH_INTERNAL_CRASH(0, "Calling dealloc on a dispatch object");
-	[super dealloc]; // make clang happy
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wobjc-missing-super-calls"
+- (void)dealloc {
+	return _dispatch_dispose(self);
 }
+#pragma clang diagnostic pop
 
 @end
 
+OS_OBJECT_NONLAZY_CLASS
 @implementation DISPATCH_CLASS(queue)
-DISPATCH_OBJC_LOAD()
+OS_OBJECT_NONLAZY_CLASS_LOAD
 DISPATCH_UNAVAILABLE_INIT()
+DISPATCH_OBJECT_USES_XREF_DISPOSE()
 
 - (NSString *)description {
 	Class nsstring = objc_lookUpClass("NSString");
@@ -333,9 +326,25 @@ DISPATCH_UNAVAILABLE_INIT()
 
 @end
 
-@implementation DISPATCH_CLASS(source)
-DISPATCH_OBJC_LOAD()
+OS_OBJECT_NONLAZY_CLASS
+@implementation DISPATCH_CLASS(channel)
+OS_OBJECT_NONLAZY_CLASS_LOAD
 DISPATCH_UNAVAILABLE_INIT()
+DISPATCH_OBJECT_USES_XREF_DISPOSE()
+
+- (void)_xref_dispose {
+	_dispatch_queue_xref_dispose((struct dispatch_queue_s *)self);
+	_dispatch_channel_xref_dispose(self);
+	[super _xref_dispose];
+}
+
+@end
+
+OS_OBJECT_NONLAZY_CLASS
+@implementation DISPATCH_CLASS(source)
+OS_OBJECT_NONLAZY_CLASS_LOAD
+DISPATCH_UNAVAILABLE_INIT()
+DISPATCH_OBJECT_USES_XREF_DISPOSE()
 
 - (void)_xref_dispose {
 	_dispatch_queue_xref_dispose((struct dispatch_queue_s *)self);
@@ -345,9 +354,11 @@ DISPATCH_UNAVAILABLE_INIT()
 
 @end
 
+OS_OBJECT_NONLAZY_CLASS
 @implementation DISPATCH_CLASS(mach)
-DISPATCH_OBJC_LOAD()
+OS_OBJECT_NONLAZY_CLASS_LOAD
 DISPATCH_UNAVAILABLE_INIT()
+DISPATCH_OBJECT_USES_XREF_DISPOSE()
 
 - (void)_xref_dispose {
 	_dispatch_queue_xref_dispose((struct dispatch_queue_s *)self);
@@ -357,9 +368,11 @@ DISPATCH_UNAVAILABLE_INIT()
 
 @end
 
+OS_OBJECT_NONLAZY_CLASS
 @implementation DISPATCH_CLASS(queue_runloop)
-DISPATCH_OBJC_LOAD()
+OS_OBJECT_NONLAZY_CLASS_LOAD
 DISPATCH_UNAVAILABLE_INIT()
+DISPATCH_OBJECT_USES_XREF_DISPOSE()
 
 - (void)_xref_dispose {
 	_dispatch_queue_xref_dispose((struct dispatch_queue_s *)self);
@@ -370,8 +383,9 @@ DISPATCH_UNAVAILABLE_INIT()
 @end
 
 #define DISPATCH_CLASS_IMPL(name) \
+		OS_OBJECT_NONLAZY_CLASS \
 		@implementation DISPATCH_CLASS(name) \
-		DISPATCH_OBJC_LOAD() \
+		OS_OBJECT_NONLAZY_CLASS_LOAD \
 		DISPATCH_UNAVAILABLE_INIT() \
 		@end
 
@@ -395,9 +409,10 @@ DISPATCH_CLASS_IMPL(io)
 DISPATCH_CLASS_IMPL(operation)
 DISPATCH_CLASS_IMPL(disk)
 
+OS_OBJECT_NONLAZY_CLASS
 @implementation OS_OBJECT_CLASS(voucher)
+OS_OBJECT_NONLAZY_CLASS_LOAD
 DISPATCH_UNAVAILABLE_INIT()
-DISPATCH_OBJC_LOAD()
 
 -(id)retain {
 	return (id)_voucher_retain_inline((struct voucher_s *)self);
@@ -407,12 +422,9 @@ DISPATCH_OBJC_LOAD()
 	return _voucher_release_inline((struct voucher_s *)self);
 }
 
-- (void)_xref_dispose {
-	return _voucher_xref_dispose(self); // calls _os_object_release_internal()
-}
-
-- (void)_dispose {
-	return _voucher_dispose(self); // calls _os_object_dealloc()
+- (void)dealloc {
+	_voucher_dispose(self);
+	[super dealloc];
 }
 
 - (NSString *)debugDescription {
@@ -428,13 +440,10 @@ DISPATCH_OBJC_LOAD()
 @end
 
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
+OS_OBJECT_NONLAZY_CLASS
 @implementation OS_OBJECT_CLASS(voucher_recipe)
+OS_OBJECT_NONLAZY_CLASS_LOAD
 DISPATCH_UNAVAILABLE_INIT()
-DISPATCH_OBJC_LOAD()
-
-- (void)_dispose {
-
-}
 
 - (NSString *)debugDescription {
 	return nil; // TODO: voucher_recipe debugDescription
@@ -442,7 +451,6 @@ DISPATCH_OBJC_LOAD()
 
 @end
 #endif
-
 
 #pragma mark -
 #pragma mark dispatch_last_resort_autorelease_pool

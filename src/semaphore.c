@@ -72,7 +72,7 @@ _dispatch_semaphore_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 			_dispatch_object_class_name(dsema), dsema);
 	offset += _dispatch_object_debug_attr(dsema, &buf[offset], bufsiz - offset);
 #if USE_MACH_SEM
-	offset += dsnprintf(&buf[offset], bufsiz - offset, "port = 0x%u, ",
+	offset += dsnprintf(&buf[offset], bufsiz - offset, "port = 0x%x, ",
 			dsema->dsema_sema);
 #endif
 	offset += dsnprintf(&buf[offset], bufsiz - offset,
@@ -121,7 +121,7 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 	case DISPATCH_TIME_NOW:
 		orig = dsema->dsema_value;
 		while (orig < 0) {
-			if (os_atomic_cmpxchgvw2o(dsema, dsema_value, orig, orig + 1,
+			if (os_atomic_cmpxchgv2o(dsema, dsema_value, orig, orig + 1,
 					&orig, relaxed)) {
 				return _DSEMA4_TIMEOUT();
 			}
@@ -158,7 +158,7 @@ _dispatch_group_create_with_count(uint32_t n)
 	dg->do_targetq = _dispatch_get_default_queue(false);
 	if (n) {
 		os_atomic_store2o(dg, dg_bits,
-				-n * DISPATCH_GROUP_VALUE_INTERVAL, relaxed);
+				(uint32_t)-n * DISPATCH_GROUP_VALUE_INTERVAL, relaxed);
 		os_atomic_store2o(dg, do_ref_cnt, 1, relaxed); // <rdar://22318411>
 	}
 	return dg;

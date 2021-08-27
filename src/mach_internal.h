@@ -99,7 +99,7 @@ void _dispatch_mach_ipc_handoff_invoke(dispatch_continuation_t dc,
 void _dispatch_mach_msg_async_reply_invoke(dispatch_continuation_t dc,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 void _dispatch_mach_dispose(dispatch_mach_t dm, bool *allow_free);
-void _dispatch_mach_activate(dispatch_mach_t dm, bool *allow_resume);
+void _dispatch_mach_activate(dispatch_mach_t dm);
 void _dispatch_mach_invoke(dispatch_mach_t dm, dispatch_invoke_context_t dic,
 		dispatch_invoke_flags_t flags);
 void _dispatch_mach_wakeup(dispatch_mach_t dm, dispatch_qos_t qos,

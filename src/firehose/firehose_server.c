@@ -41,6 +41,7 @@ static struct firehose_server_s {
 	dispatch_mach_t		fs_mach_channel;
 	dispatch_queue_t	fs_snapshot_gate_queue;
 	dispatch_queue_t	fs_io_drain_queue;
+	dispatch_workloop_t	fs_io_wl;
 	dispatch_queue_t	fs_mem_drain_queue;
 	firehose_handler_t	fs_handler;
 
@@ -212,9 +213,9 @@ firehose_client_notify(firehose_client_t fc, mach_port_t reply_port)
 	};
 	kern_return_t kr;
 
-	firehose_atomic_max2o(fc, fc_mem_sent_flushed_pos,
+	firehose_atomic_max(&fc->fc_mem_sent_flushed_pos,
 			push_reply.fpr_mem_flushed_pos, relaxed);
-	firehose_atomic_max2o(fc, fc_io_sent_flushed_pos,
+	firehose_atomic_max(&fc->fc_io_sent_flushed_pos,
 			push_reply.fpr_io_flushed_pos, relaxed);
 
 	if (!fc->fc_pid) {
@@ -291,6 +292,7 @@ firehose_client_drain_one(firehose_client_t fc, mach_port_t port, uint32_t flags
 	firehose_buffer_t fb = fc->fc_buffer;
 	firehose_chunk_t fbc;
 	firehose_event_t evt;
+	firehose_snapshot_event_t sevt;
 	uint16_t volatile *fbh_ring;
 	uint16_t flushed, count = 0;
 	firehose_chunk_ref_t ref;
@@ -300,6 +302,7 @@ firehose_client_drain_one(firehose_client_t fc, mach_port_t port, uint32_t flags
 
 	if (for_io) {
 		evt = FIREHOSE_EVENT_IO_BUFFER_RECEIVED;
+		sevt = FIREHOSE_SNAPSHOT_EVENT_IO_BUFFER;
 		_Static_assert(FIREHOSE_EVENT_IO_BUFFER_RECEIVED ==
 				FIREHOSE_SNAPSHOT_EVENT_IO_BUFFER, "");
 		fbh_ring = fb->fb_header.fbh_io_ring;
@@ -308,6 +311,7 @@ firehose_client_drain_one(firehose_client_t fc, mach_port_t port, uint32_t flags
 		if (fc->fc_needs_io_snapshot) snapshot = server_config.fs_snapshot;
 	} else {
 		evt = FIREHOSE_EVENT_MEM_BUFFER_RECEIVED;
+		sevt = FIREHOSE_SNAPSHOT_EVENT_MEM_BUFFER;
 		_Static_assert(FIREHOSE_EVENT_MEM_BUFFER_RECEIVED ==
 				FIREHOSE_SNAPSHOT_EVENT_MEM_BUFFER, "");
 		fbh_ring = fb->fb_header.fbh_mem_ring;
@@ -353,7 +357,7 @@ firehose_client_drain_one(firehose_client_t fc, mach_port_t port, uint32_t flags
 		}
 		server_config.fs_handler(fc, evt, fbc, fc_pos);
 		if (unlikely(snapshot)) {
-			snapshot->handler(fc, evt, fbc, fc_pos);
+			snapshot->handler(fc, sevt, fbc, fc_pos);
 		}
 		if (fc_pos.fcp_stream == firehose_stream_metadata) {
 			os_unfair_lock_unlock(&fc->fc_lock);
@@ -491,7 +495,7 @@ firehose_client_finalize(firehose_client_t fc OS_OBJECT_CONSUMED)
 	}
 	fc->fc_entry.tqe_next = DISPATCH_OBJECT_LISTLESS;
 	fc->fc_entry.tqe_prev = DISPATCH_OBJECT_LISTLESS;
-	_os_object_release(&fc->fc_as_os_object);
+	_os_object_release_without_xref_dispose(&fc->fc_as_os_object);
 }
 
 OS_NOINLINE
@@ -614,15 +618,15 @@ firehose_client_handle_mach_event(void *ctx, dispatch_mach_reason_t reason,
 			break;
 		}
 
-		msg_hdr = dispatch_mach_msg_get_msg(dmsg, NULL);
-		if (msg_hdr->msgh_id == MACH_NOTIFY_NO_SENDERS) {
-			_dispatch_debug("FIREHOSE NO_SENDERS (unique_pid: 0x%llx)",
-					firehose_client_get_unique_pid(fc, NULL));
-			for (int i = 0; i < FIREHOSE_BUFFER_NPUSHPORTS; i++) {
-				dispatch_mach_cancel(fc->fc_mach_channel[i]);
-			}
+		mach_msg_destroy(dispatch_mach_msg_get_msg(dmsg, NULL));
+		break;
+
+	case DISPATCH_MACH_NO_SENDERS:
+		_dispatch_debug("FIREHOSE NO_SENDERS (unique_pid: 0x%llx)",
+				firehose_client_get_unique_pid(fc, NULL));
+		for (int i = 0; i < FIREHOSE_BUFFER_NPUSHPORTS; i++) {
+			dispatch_mach_cancel(fc->fc_mach_channel[i]);
 		}
-		mach_msg_destroy(msg_hdr);
 		break;
 
 	case DISPATCH_MACH_DISCONNECTED:
@@ -829,13 +833,6 @@ _firehose_client_dispose(firehose_client_t fc)
 			(firehose_chunk_pos_u){ .fcp_pos = 0 });
 }
 
-void
-_firehose_client_xref_dispose(firehose_client_t fc)
-{
-	_dispatch_debug("Cleaning up client info for unique_pid 0x%llx",
-			firehose_client_get_unique_pid(fc, NULL));
-}
-
 uint64_t
 firehose_client_get_unique_pid(firehose_client_t fc, pid_t *pid_out)
 {
@@ -911,7 +908,8 @@ firehose_server_init(mach_port_t comm_port, firehose_handler_t handler)
 {
 	struct firehose_server_s *fs = &server_config;
 	dispatch_queue_attr_t attr = DISPATCH_QUEUE_SERIAL_WITH_AUTORELEASE_POOL;
-	dispatch_queue_attr_t attr_inactive, attr_utility_inactive;
+	dispatch_queue_attr_t attr_inactive =
+			dispatch_queue_attr_make_initially_inactive(attr);
 	dispatch_mach_t dm;
 	dispatch_source_t ds;
 
@@ -921,14 +919,12 @@ firehose_server_init(mach_port_t comm_port, firehose_handler_t handler)
 	fs->fs_snapshot_gate_queue = dispatch_queue_create_with_target(
 			"com.apple.firehose.snapshot-gate", attr, NULL);
 
-	attr_inactive = dispatch_queue_attr_make_initially_inactive(attr);
-	attr_utility_inactive = dispatch_queue_attr_make_with_qos_class(
-			attr_inactive, QOS_CLASS_UTILITY, 0);
+	fs->fs_io_wl = dispatch_workloop_create_inactive("com.apple.firehose.io-wl");
+	dispatch_set_qos_class_fallback(fs->fs_io_wl, QOS_CLASS_UTILITY);
+	dispatch_activate(fs->fs_io_wl);
 
 	fs->fs_io_drain_queue = dispatch_queue_create_with_target(
-			"com.apple.firehose.drain-io", attr_utility_inactive, NULL);
-	dispatch_set_qos_class_fallback(fs->fs_io_drain_queue, QOS_CLASS_UTILITY);
-	dispatch_activate(fs->fs_io_drain_queue);
+			"com.apple.firehose.drain-io", attr, (dispatch_queue_t)fs->fs_io_wl);
 
 	fs->fs_mem_drain_queue = dispatch_queue_create_with_target(
 			"com.apple.firehose.drain-mem", attr_inactive, NULL);
@@ -1057,6 +1053,9 @@ firehose_server_copy_queue(firehose_server_queue_t which)
 		break;
 	case FIREHOSE_SERVER_QUEUE_MEMORY:
 		dq = server_config.fs_mem_drain_queue;
+		break;
+	case FIREHOSE_SERVER_QUEUE_IO_WL:
+		dq = (dispatch_queue_t)server_config.fs_io_wl;
 		break;
 	default:
 		DISPATCH_INTERNAL_CRASH(which, "Invalid firehose server queue type");
@@ -1337,20 +1336,6 @@ firehose_server_register(mach_port_t server_port OS_UNUSED,
 		return KERN_INVALID_VALUE;
 	}
 
-	/*
-	 * Request a MACH_NOTIFY_NO_SENDERS notification for the mem_recvp. That
-	 * should indicate the client going away.
-	 */
-	mach_port_t previous = MACH_PORT_NULL;
-	kr = mach_port_request_notification(mach_task_self(), comm_mem_recvp,
-			MACH_NOTIFY_NO_SENDERS, 0, comm_mem_recvp,
-			MACH_MSG_TYPE_MAKE_SEND_ONCE, &previous);
-	DISPATCH_VERIFY_MIG(kr);
-	if (dispatch_assume_zero(kr)) {
-		return KERN_FAILURE;
-	}
-	dispatch_assert(previous == MACH_PORT_NULL);
-
 	/* Map the memory handle into the server address space */
 	kr = mach_vm_map(mach_task_self(), &base_addr, mem_size, 0,
 			VM_FLAGS_ANYWHERE, mem_port, 0, FALSE,
@@ -1381,6 +1366,12 @@ firehose_server_register(mach_port_t server_port OS_UNUSED,
 	fc = firehose_client_create((firehose_buffer_t)base_addr,
 			(firehose_token_t)&atoken, comm_mem_recvp, comm_io_recvp,
 			comm_sendp);
+	/*
+	 * Request a no senders notification for the memory channel.
+	 * That should indicate the client going away.
+	 */
+	dispatch_mach_request_no_senders(
+			fc->fc_mach_channel[FIREHOSE_BUFFER_PUSHPORT_MEM]);
 	firehose_client_resume(fc, &fcci);
 
 	if (fcci.fcci_size) {

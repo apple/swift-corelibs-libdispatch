@@ -249,6 +249,10 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 		waiter = pthread_from_mach_thread_np(dsc->dsc_waiter);
 		ctxt = dsc->dsc_ctxt;
 		func = dsc->dsc_func;
+	} else if (_dispatch_object_is_channel_item(dc)) {
+		dispatch_channel_callbacks_t callbacks = upcast(dq)._dch->dch_callbacks;
+		ctxt = dc->dc_ctxt;
+		func = (dispatch_function_t)callbacks->dcc_invoke;
 	} else if (func == _dispatch_apply_invoke ||
 			func == _dispatch_apply_redirect_invoke) {
 		dispatch_apply_t da = ctxt;
@@ -389,7 +393,8 @@ again:
 		}
 		if (metatype == _DISPATCH_CONTINUATION_TYPE) {
 			_dispatch_introspection_continuation_get_info(dq, dc, &diqi);
-		} else if (metatype == _DISPATCH_LANE_TYPE) {
+		} else if (metatype == _DISPATCH_LANE_TYPE ||
+				type == DISPATCH_CHANNEL_TYPE) {
 			diqi.type = dispatch_introspection_queue_item_type_queue;
 			diqi.queue = _dispatch_introspection_lane_get_info(dou._dl);
 		} else if (metatype == _DISPATCH_WORKLOOP_TYPE) {

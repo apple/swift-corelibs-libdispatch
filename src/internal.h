@@ -61,6 +61,9 @@
 #if !defined(DISPATCH_LAYOUT_SPI) && TARGET_OS_MAC
 #define DISPATCH_LAYOUT_SPI 1
 #endif
+#if !defined(DISPATCH_CHANNEL_SPI)
+#define DISPATCH_CHANNEL_SPI 1
+#endif
 
 #if __has_include(<mach-o/dyld_priv.h>)
 #include <mach-o/dyld_priv.h>
@@ -138,6 +141,7 @@ typedef union {
 	struct dispatch_queue_global_s *_dgq;
 	struct dispatch_queue_pthread_root_s *_dpq;
 	struct dispatch_source_s *_ds;
+	struct dispatch_channel_s *_dch;
 	struct dispatch_mach_s *_dm;
 #ifdef __OBJC__
 	id<OS_dispatch_queue> _objc_dq; // unsafe cast for the sake of object.m
@@ -153,6 +157,7 @@ typedef union {
 	struct dispatch_queue_global_s *_dgq;
 	struct dispatch_queue_pthread_root_s *_dpq;
 	struct dispatch_source_s *_ds;
+	struct dispatch_channel_s *_dch;
 	struct dispatch_mach_s *_dm;
 	dispatch_lane_class_t _dlu;
 #ifdef __OBJC__
@@ -168,6 +173,7 @@ typedef union {
 	struct dispatch_queue_attr_s *_dqa;
 	struct dispatch_group_s *_dg;
 	struct dispatch_source_s *_ds;
+	struct dispatch_channel_s *_dch;
 	struct dispatch_mach_s *_dm;
 	struct dispatch_mach_msg_s *_dmsg;
 	struct dispatch_semaphore_s *_dsema;
@@ -207,6 +213,7 @@ upcast(dispatch_object_t dou)
 #include <dispatch/once.h>
 #include <dispatch/data.h>
 #include <dispatch/io.h>
+#include <dispatch/workloop.h>
 
 /* private.h must be included last to avoid picking up installed headers. */
 #if !defined(_WIN32)
@@ -214,6 +221,7 @@ upcast(dispatch_object_t dou)
 #endif
 #include "os/object_private.h"
 #include "queue_private.h"
+#include "channel_private.h"
 #include "workloop_private.h"
 #include "source_private.h"
 #include "mach_private.h"
@@ -253,7 +261,7 @@ upcast(dispatch_object_t dou)
 #include <mach/mach_sync_ipc.h>
 #endif
 #endif /* HAVE_MACH */
-#if __has_include(<os/reason_private.h>)
+#if __has_include(<os/reason_private.h>) && __has_include(<os/variant_private.h>)
 #define HAVE_OS_FAULT_WITH_PAYLOAD 1
 #include <os/reason_private.h>
 #include <os/variant_private.h>
@@ -317,6 +325,10 @@ upcast(dispatch_object_t dou)
 #if defined(_WIN32)
 #include <io.h>
 #include <crtdbg.h>
+#endif
+
+#if __has_include(<os/atomic_private.h>)
+#include <os/atomic_private.h>
 #endif
 
 /* More #includes at EOF (dependent on the contents of internal.h) ... */
@@ -491,7 +503,7 @@ DISPATCH_NOINLINE DISPATCH_NORETURN DISPATCH_COLD
 void _dispatch_abort(size_t line, long val);
 
 #if !defined(DISPATCH_USE_OS_DEBUG_LOG) && DISPATCH_DEBUG
-#if __has_include(<os/debug_private.h>)
+#if __has_include(<os/debug_private.h>) && !TARGET_OS_DRIVERKIT
 #define DISPATCH_USE_OS_DEBUG_LOG 1
 #include <os/debug_private.h>
 #endif
@@ -749,6 +761,22 @@ _dispatch_fork_becomes_unsafe(void)
 #endif
 #endif // !defined(DISPATCH_USE_KEVENT_WORKLOOP)
 
+#ifndef DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+#if DISPATCH_USE_KEVENT_WORKLOOP && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(109900)
+#define DISPATCH_USE_WL_SYNC_IPC_HANDOFF 1
+#else
+#define DISPATCH_USE_WL_SYNC_IPC_HANDOFF 0
+#endif
+#endif // !defined DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+
+#ifndef DISPATCH_USE_KEVENT_SETUP
+#if DISPATCH_USE_KEVENT_WORKLOOP && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(109900)
+#define DISPATCH_USE_KEVENT_SETUP 1
+#else
+#define DISPATCH_USE_KEVENT_SETUP 0
+#endif
+#endif // !defined(DISPATCH_USE_KEVENT_SETUP)
+
 #ifdef EVFILT_MEMORYSTATUS
 #ifndef DISPATCH_USE_MEMORYSTATUS
 #define DISPATCH_USE_MEMORYSTATUS 1
@@ -793,7 +821,6 @@ extern bool _dispatch_memory_warn;
 #define DISPATCH_USE_NOIMPORTANCE_QOS 1 // rdar://problem/21414476
 #endif
 #endif // MACH_SEND_NOIMPORTANCE
-
 
 #if HAVE_LIBPROC_INTERNAL_H
 #include <libproc.h>
@@ -1062,7 +1089,7 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 
 #define DISPATCH_NO_VOUCHER ((voucher_t)(void*)~0ul)
 #define DISPATCH_NO_PRIORITY ((pthread_priority_t)~0ul)
-DISPATCH_ENUM(dispatch_thread_set_self, unsigned long,
+DISPATCH_OPTIONS(dispatch_thread_set_self, unsigned long,
 	DISPATCH_PRIORITY_ENFORCE = 0x1,
 	DISPATCH_VOUCHER_REPLACE = 0x2,
 	DISPATCH_VOUCHER_CONSUME = 0x4,
@@ -1074,6 +1101,7 @@ static inline voucher_t _dispatch_adopt_priority_and_set_voucher(
 		dispatch_thread_set_self_t flags);
 #if HAVE_MACH
 mach_port_t _dispatch_get_mach_host_port(void);
+bool _dispatch_mach_msg_sender_is_kernel(mach_msg_header_t *hdr);
 #endif
 
 #if HAVE_PTHREAD_WORKQUEUE_QOS

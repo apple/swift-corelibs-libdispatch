@@ -39,7 +39,7 @@ _dispatch_unote_create(dispatch_source_type_t dst,
 		return DISPATCH_UNOTE_NULL;
 	}
 
-	if (dst->dst_mask && !mask) {
+	if (dst->dst_mask && !dst->dst_allow_empty_mask && !mask) {
 		return DISPATCH_UNOTE_NULL;
 	}
 
@@ -227,7 +227,6 @@ const dispatch_source_type_s _dispatch_source_type_data_add = {
 	.dst_flags      = EV_UDATA_SPECIFIC|EV_CLEAR,
 	.dst_action     = DISPATCH_UNOTE_ACTION_PASS_DATA,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_source_data_create,
 	.dst_merge_evt  = NULL,
@@ -239,7 +238,6 @@ const dispatch_source_type_s _dispatch_source_type_data_or = {
 	.dst_flags      = EV_UDATA_SPECIFIC|EV_CLEAR,
 	.dst_action     = DISPATCH_UNOTE_ACTION_PASS_DATA,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_source_data_create,
 	.dst_merge_evt  = NULL,
@@ -251,7 +249,6 @@ const dispatch_source_type_s _dispatch_source_type_data_replace = {
 	.dst_flags      = EV_UDATA_SPECIFIC|EV_CLEAR,
 	.dst_action     = DISPATCH_UNOTE_ACTION_PASS_DATA,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_source_data_create,
 	.dst_merge_evt  = NULL,
@@ -271,7 +268,6 @@ const dispatch_source_type_s _dispatch_source_type_read = {
 #endif // DISPATCH_EVENT_BACKEND_KEVENT
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_SET_DATA,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_with_fd,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
@@ -289,7 +285,6 @@ const dispatch_source_type_s _dispatch_source_type_write = {
 #endif // DISPATCH_EVENT_BACKEND_KEVENT
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_SET_DATA,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_unote_create_with_fd,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
@@ -313,7 +308,6 @@ const dispatch_source_type_s _dispatch_source_type_signal = {
 	.dst_flags      = DISPATCH_EV_DIRECT|EV_CLEAR,
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_ADD_DATA,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
-	.dst_strict     = false,
 
 	.dst_create     = _dispatch_source_signal_create,
 	.dst_merge_evt  = _dispatch_source_merge_evt,
@@ -990,7 +984,6 @@ const dispatch_source_type_s _dispatch_source_type_timer = {
 	.dst_timer_flags    = 0,
 	.dst_action         = DISPATCH_UNOTE_ACTION_SOURCE_TIMER,
 	.dst_size           = sizeof(struct dispatch_timer_source_refs_s),
-	.dst_strict         = false,
 
 	.dst_create         = _dispatch_source_timer_create,
 	.dst_merge_evt      = _dispatch_source_merge_evt,
@@ -1004,6 +997,7 @@ const dispatch_source_type_s _dispatch_source_type_timer_with_clock = {
 	.dst_timer_flags    = 0,
 	.dst_action         = DISPATCH_UNOTE_ACTION_SOURCE_TIMER,
 	.dst_size           = sizeof(struct dispatch_timer_source_refs_s),
+	.dst_strict         = true,
 
 	.dst_create         = _dispatch_source_timer_create,
 	.dst_merge_evt      = _dispatch_source_merge_evt,

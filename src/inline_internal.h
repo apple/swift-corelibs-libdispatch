@@ -193,6 +193,16 @@ _dispatch_object_is_sync_waiter(dispatch_object_t dou)
 
 DISPATCH_ALWAYS_INLINE
 static inline bool
+_dispatch_object_is_channel_item(dispatch_object_t dou)
+{
+    if (_dispatch_object_has_vtable(dou)) {
+        return false;
+    }
+    return (dou._dc->dc_flags & DC_FLAG_CHANNEL_ITEM);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline bool
 _dispatch_object_is_sync_waiter_non_barrier(dispatch_object_t dou)
 {
 	if (_dispatch_object_has_vtable(dou)) {
@@ -901,7 +911,7 @@ DISPATCH_ALWAYS_INLINE
 static inline bool
 _dq_state_is_suspended(uint64_t dq_state)
 {
-	return dq_state >= DISPATCH_QUEUE_NEEDS_ACTIVATION;
+	return dq_state & DISPATCH_QUEUE_SUSPEND_BITS_MASK;
 }
 #define DISPATCH_QUEUE_IS_SUSPENDED(x) \
 		_dq_state_is_suspended(os_atomic_load2o(x, dq_state, relaxed))
@@ -910,14 +920,24 @@ DISPATCH_ALWAYS_INLINE
 static inline bool
 _dq_state_is_inactive(uint64_t dq_state)
 {
-	return dq_state & DISPATCH_QUEUE_INACTIVE;
+	return (dq_state & DISPATCH_QUEUE_INACTIVE_BITS_MASK) ==
+			DISPATCH_QUEUE_INACTIVE;
 }
 
 DISPATCH_ALWAYS_INLINE
 static inline bool
-_dq_state_needs_activation(uint64_t dq_state)
+_dq_state_is_activated(uint64_t dq_state)
 {
-	return dq_state & DISPATCH_QUEUE_NEEDS_ACTIVATION;
+	return (dq_state & DISPATCH_QUEUE_INACTIVE_BITS_MASK) ==
+			DISPATCH_QUEUE_ACTIVATED;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dq_state_is_activating(uint64_t dq_state)
+{
+	return (dq_state & DISPATCH_QUEUE_INACTIVE_BITS_MASK) ==
+			DISPATCH_QUEUE_ACTIVATING;
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -1118,6 +1138,19 @@ static inline dispatch_priority_t _dispatch_set_basepri(dispatch_priority_t dbp)
 
 #if DISPATCH_PURE_C
 
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_queue_setter_assert_inactive(dispatch_queue_class_t dq)
+{
+	uint64_t dq_state = os_atomic_load2o(dq._dq, dq_state, relaxed);
+	if (likely(_dq_state_is_inactive(dq_state))) return;
+#ifndef __LP64__
+	dq_state >>= 32;
+#endif
+	DISPATCH_CLIENT_CRASH((uintptr_t)dq_state,
+			"dispatch queue/source property setter called after activation");
+}
+
 // Note to later developers: ensure that any initialization changes are
 // made for statically allocated queues (i.e. _dispatch_main_q).
 static inline dispatch_queue_class_t
@@ -1131,14 +1164,13 @@ _dispatch_queue_init(dispatch_queue_class_t dqu, dispatch_queue_flags_t dqf,
 			DISPATCH_QUEUE_INACTIVE)) == 0);
 
 	if (initial_state_bits & DISPATCH_QUEUE_INACTIVE) {
-		dq_state |= DISPATCH_QUEUE_INACTIVE + DISPATCH_QUEUE_NEEDS_ACTIVATION;
 		dq->do_ref_cnt += 2; // rdar://8181908 see _dispatch_lane_resume
 		if (dx_metatype(dq) == _DISPATCH_SOURCE_TYPE) {
 			dq->do_ref_cnt++; // released when DSF_DELETED is set
 		}
 	}
 
-	dq_state |= (initial_state_bits & DISPATCH_QUEUE_ROLE_MASK);
+	dq_state |= initial_state_bits;
 	dq->do_next = DISPATCH_OBJECT_LISTLESS;
 	dqf |= DQF_WIDTH(width);
 	os_atomic_store2o(dq, dq_atomic_flags, dqf, relaxed);
@@ -2499,6 +2531,25 @@ _dispatch_continuation_pop_inline(dispatch_object_t dou,
 	}
 	if (observer_hooks) observer_hooks->queue_did_execute(dqu._dq);
 }
+
+// used to forward the do_invoke of a continuation with a vtable to its real
+// implementation.
+//
+// Unlike _dispatch_continuation_pop_forwarded,
+// this doesn't free the continuation
+#define _dispatch_continuation_pop_forwarded_no_free(dc, dc_flags, dq, ...) \
+	({ \
+		dispatch_continuation_t _dc = (dc); \
+		uintptr_t _dc_flags = (dc_flags); \
+		_dispatch_continuation_voucher_adopt(_dc, _dc_flags); \
+		if (!(_dc_flags & DC_FLAG_NO_INTROSPECTION)) { \
+			_dispatch_trace_item_pop(dq, dc); \
+		} \
+		__VA_ARGS__; \
+		if (!(_dc_flags & DC_FLAG_NO_INTROSPECTION)) { \
+			_dispatch_trace_item_complete(_dc); \
+		} \
+	})
 
 // used to forward the do_invoke of a continuation with a vtable to its real
 // implementation.

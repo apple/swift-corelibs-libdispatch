@@ -62,11 +62,12 @@
 
 #include <dispatch/benchmark.h>
 #include <dispatch/queue_private.h>
+#if DISPATCH_CHANNEL_SPI
+#include <dispatch/channel_private.h>
+#endif
 #include <dispatch/workloop_private.h>
 #include <dispatch/source_private.h>
-#if DISPATCH_MACH_SPI
 #include <dispatch/mach_private.h>
-#endif // DISPATCH_MACH_SPI
 #include <dispatch/data_private.h>
 #include <dispatch/io_private.h>
 #include <dispatch/layout_private.h>
@@ -76,7 +77,7 @@
 #endif /* !__DISPATCH_BUILDING_DISPATCH__ */
 
 // <rdar://problem/9627726> Check that public and private dispatch headers match
-#if DISPATCH_API_VERSION != 20180109 // Keep in sync with <dispatch/dispatch.h>
+#if DISPATCH_API_VERSION != 20181008 // Keep in sync with <dispatch/dispatch.h>
 #error "Dispatch header mismatch between /usr/include and /usr/local/include"
 #endif
 

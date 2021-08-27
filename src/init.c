@@ -32,7 +32,6 @@
 #pragma mark -
 #pragma mark dispatch_init
 
-
 #if USE_LIBDISPATCH_INIT_CONSTRUCTOR
 DISPATCH_NOTHROW __attribute__((constructor))
 void
@@ -443,7 +442,7 @@ _dispatch_queue_attr_to_info(dispatch_queue_attr_t dqa)
 	dqai.dqai_concurrent = !(idx % DISPATCH_QUEUE_ATTR_CONCURRENCY_COUNT);
 	idx /= DISPATCH_QUEUE_ATTR_CONCURRENCY_COUNT;
 
-	dqai.dqai_relpri = -(idx % DISPATCH_QUEUE_ATTR_PRIO_COUNT);
+	dqai.dqai_relpri = -(int)(idx % DISPATCH_QUEUE_ATTR_PRIO_COUNT);
 	idx /= DISPATCH_QUEUE_ATTR_PRIO_COUNT;
 
 	dqai.dqai_qos = idx % DISPATCH_QUEUE_ATTR_QOS_COUNT;
@@ -634,8 +633,7 @@ DISPATCH_VTABLE_INSTANCE(disk,
 
 DISPATCH_NOINLINE
 static void
-_dispatch_queue_no_activate(dispatch_queue_class_t dqu,
-		DISPATCH_UNUSED bool *allow_resume)
+_dispatch_queue_no_activate(dispatch_queue_class_t dqu)
 {
 	DISPATCH_INTERNAL_CRASH(dx_type(dqu._dq), "dq_activate called");
 }
@@ -754,6 +752,17 @@ DISPATCH_VTABLE_INSTANCE(source,
 
 	.dq_activate    = _dispatch_source_activate,
 	.dq_wakeup      = _dispatch_source_wakeup,
+	.dq_push        = _dispatch_lane_push,
+);
+
+DISPATCH_VTABLE_INSTANCE(channel,
+	.do_type        = DISPATCH_CHANNEL_TYPE,
+	.do_dispose     = _dispatch_channel_dispose,
+	.do_debug       = _dispatch_channel_debug,
+	.do_invoke      = _dispatch_channel_invoke,
+
+	.dq_activate    = _dispatch_lane_activate,
+	.dq_wakeup      = _dispatch_channel_wakeup,
 	.dq_push        = _dispatch_lane_push,
 );
 
@@ -1180,31 +1189,31 @@ _dispatch_vsyslog(const char *msg, va_list ap)
 static inline void
 _dispatch_syslog(const char *msg)
 {
-  OutputDebugStringA(msg);
+	OutputDebugStringA(msg);
 }
 
 static inline void
 _dispatch_vsyslog(const char *msg, va_list ap)
 {
-  va_list argp;
+	va_list argp;
 
-  va_copy(argp, ap);
+	va_copy(argp, ap);
 
-  int length = _vscprintf(msg, ap);
-  if (length == -1)
-    return;
+	int length = _vscprintf(msg, ap);
+	if (length == -1)
+		return;
 
-  char *buffer = malloc((size_t)length + 1);
-  if (buffer == NULL)
-    return;
+	char *buffer = malloc((size_t)length + 1);
+	if (buffer == NULL)
+		return;
 
-  _vsnprintf(buffer, (size_t)length + 1, msg, argp);
+	_vsnprintf(buffer, (size_t)length + 1, msg, argp);
 
-  va_end(argp);
+	va_end(argp);
 
-  _dispatch_syslog(buffer);
+	_dispatch_syslog(buffer);
 
-  free(buffer);
+	free(buffer);
 }
 #else // DISPATCH_USE_SIMPLE_ASL
 static inline void
@@ -1348,7 +1357,7 @@ _dispatch_calloc(size_t num_items, size_t size)
 	return buf;
 }
 
-/**
+/*
  * If the source string is mutable, allocates memory and copies the contents.
  * Otherwise returns the source string.
  */

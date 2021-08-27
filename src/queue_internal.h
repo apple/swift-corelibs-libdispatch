@@ -35,7 +35,7 @@
 #pragma mark -
 #pragma mark dispatch_queue_flags, dq_state
 
-DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
+DISPATCH_OPTIONS(dispatch_queue_flags, uint32_t,
 	DQF_NONE                = 0x00000000,
 	DQF_AUTORELEASE_ALWAYS  = 0x00010000,
 	DQF_AUTORELEASE_NEVER   = 0x00020000,
@@ -121,20 +121,16 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
  */
 #define DISPATCH_QUEUE_HAS_SIDE_SUSPEND_CNT	0x0200000000000000ull
 /*
- * i: inactive bit (bit 56)
+ * i: inactive state (bit 56-55)
  *    This bit means that the object is inactive (see dispatch_activate)
  */
-#define DISPATCH_QUEUE_INACTIVE				0x0100000000000000ull
+#define DISPATCH_QUEUE_INACTIVE				0x0180000000000000ull
+#define DISPATCH_QUEUE_ACTIVATED			0x0100000000000000ull
+#define DISPATCH_QUEUE_ACTIVATING			0x0080000000000000ull
 /*
- * na: needs activation (bit 55)
- *    This bit is set if the object is created inactive. It tells
- *    dispatch_queue_wakeup to perform various tasks at first wakeup.
- *
- *    This bit is cleared as part of the first wakeup. Having that bit prevents
- *    the object from being woken up (because _dq_state_should_wakeup will say
- *    no), except in the dispatch_activate/dispatch_resume codepath.
+ * This mask covers the inactive bits state
  */
-#define DISPATCH_QUEUE_NEEDS_ACTIVATION		0x0080000000000000ull
+#define DISPATCH_QUEUE_INACTIVE_BITS_MASK	0x0180000000000000ull
 /*
  * This mask covers the suspend count (sc), side suspend count bit (ssc),
  * inactive (i) and needs activation (na) bits
@@ -461,11 +457,12 @@ typedef struct dispatch_queue_specific_head_s {
 	TAILQ_HEAD(, dispatch_queue_specific_s) dqsh_entries;
 } *dispatch_queue_specific_head_t;
 
-#define DISPATCH_WORKLOOP_ATTR_HAS_SCHED 0x1u
-#define DISPATCH_WORKLOOP_ATTR_HAS_POLICY 0x2u
-#define DISPATCH_WORKLOOP_ATTR_HAS_CPUPERCENT 0x4u
-#define DISPATCH_WORKLOOP_ATTR_HAS_QOS_CLASS 0x8u
-#define DISPATCH_WORKLOOP_ATTR_NEEDS_DESTROY 0x10u
+#define DISPATCH_WORKLOOP_ATTR_HAS_SCHED      0x0001u
+#define DISPATCH_WORKLOOP_ATTR_HAS_POLICY     0x0002u
+#define DISPATCH_WORKLOOP_ATTR_HAS_CPUPERCENT 0x0004u
+#define DISPATCH_WORKLOOP_ATTR_HAS_QOS_CLASS  0x0008u
+#define DISPATCH_WORKLOOP_ATTR_NEEDS_DESTROY  0x0010u
+#define DISPATCH_WORKLOOP_ATTR_HAS_OBSERVERS  0x0020u
 typedef struct dispatch_workloop_attr_s *dispatch_workloop_attr_t;
 typedef struct dispatch_workloop_attr_s {
 	uint32_t dwla_flags;
@@ -476,6 +473,7 @@ typedef struct dispatch_workloop_attr_s {
 		uint8_t percent;
 		uint32_t refillms;
 	} dwla_cpupercent;
+	dispatch_pthread_root_queue_observer_hooks_s dwla_observers;
 } dispatch_workloop_attr_s;
 
 /*
@@ -501,6 +499,7 @@ typedef struct dispatch_workloop_attr_s {
  *  '--> dispatch_lane_class_t
  *        +--> struct dispatch_lane_s
  *        |     +--> struct dispatch_source_s
+ *        |     +--> struct dispatch_channel_s
  *        |     '--> struct dispatch_mach_s
  *        +--> struct dispatch_queue_static_s
  *        '--> struct dispatch_queue_global_s
@@ -598,6 +597,7 @@ typedef struct dispatch_workloop_attr_s {
 		struct dispatch_source_refs_s *ds_refs; \
 		struct dispatch_timer_source_refs_s *ds_timer_refs; \
 		struct dispatch_mach_recv_refs_s *dm_recv_refs; \
+		struct dispatch_channel_callbacks_s const *dch_callbacks; \
 	}; \
 	int volatile dq_sref_cnt
 
@@ -671,6 +671,10 @@ bool
 _dispatch_queue_is_exclusively_owned_by_current_thread_4IOHID(
 		dispatch_queue_t queue);
 
+DISPATCH_EXPORT DISPATCH_NOTHROW
+void
+_dispatch_workloop_set_observer_hooks_4IOHID(dispatch_workloop_t workloop,
+		dispatch_pthread_root_queue_observer_hooks_t observer_hooks);
 #endif // __APPLE__
 
 #if DISPATCH_USE_PTHREAD_POOL
@@ -777,12 +781,18 @@ void _dispatch_queue_invoke_finish(dispatch_queue_t dq,
 dispatch_priority_t _dispatch_queue_compute_priority_and_wlh(
 		dispatch_queue_class_t dq, dispatch_wlh_t *wlh_out);
 
+DISPATCH_ENUM(dispatch_resume_op, int,
+	DISPATCH_RESUME,
+	DISPATCH_ACTIVATE,
+	DISPATCH_ACTIVATION_DONE,
+);
+void _dispatch_lane_resume(dispatch_lane_class_t dq, dispatch_resume_op_t how);
+
 void _dispatch_lane_set_target_queue(dispatch_lane_t dq, dispatch_queue_t tq);
 void _dispatch_lane_class_dispose(dispatch_queue_class_t dq, bool *allow_free);
 void _dispatch_lane_dispose(dispatch_lane_class_t dq, bool *allow_free);
 void _dispatch_lane_suspend(dispatch_lane_class_t dq);
-void _dispatch_lane_resume(dispatch_lane_class_t dq, bool activate);
-void _dispatch_lane_activate(dispatch_lane_class_t dq, bool *allow_resume);
+void _dispatch_lane_activate(dispatch_lane_class_t dq);
 void _dispatch_lane_invoke(dispatch_lane_class_t dq,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 void _dispatch_lane_push(dispatch_lane_class_t dq, dispatch_object_t dou,
@@ -1040,6 +1050,8 @@ dispatch_queue_attr_info_t _dispatch_queue_attr_to_info(dispatch_queue_attr_t);
 // continuation is an internal implementation detail that should not be
 // introspected
 #define DC_FLAG_NO_INTROSPECTION		0x200ul
+// The item is a channel item, not a continuation
+#define DC_FLAG_CHANNEL_ITEM			0x400ul
 
 typedef struct dispatch_continuation_s {
 	DISPATCH_CONTINUATION_HEADER(continuation);

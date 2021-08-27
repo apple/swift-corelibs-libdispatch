@@ -90,7 +90,7 @@ _dispatch_source_xref_dispose(dispatch_source_t ds)
 	dispatch_queue_flags_t dqf = _dispatch_queue_atomic_flags(ds);
 	if (unlikely((dqf & DSF_STRICT) && !(dqf & DSF_CANCELED) &&
 			_dispatch_source_get_cancel_handler(ds->ds_refs))) {
-		DISPATCH_CLIENT_CRASH(ds, "Release of a source that has not been "
+		DISPATCH_CLIENT_CRASH(dqf, "Release of a source that has not been "
 				"cancelled, but has a mandatory cancel handler");
 	}
 	dx_wakeup(ds, 0, DISPATCH_WAKEUP_MAKE_DIRTY);
@@ -327,7 +327,7 @@ _dispatch_source_set_handler(dispatch_source_t ds, void *func,
 
 	if (_dispatch_lane_try_inactive_suspend(ds)) {
 		_dispatch_source_handler_replace(ds, kind, dc);
-		return _dispatch_lane_resume(ds, false);
+		return _dispatch_lane_resume(ds, DISPATCH_RESUME);
 	}
 
 	dispatch_queue_flags_t dqf = _dispatch_queue_atomic_flags(ds);
@@ -511,7 +511,7 @@ _dispatch_source_timer_data(dispatch_timer_source_refs_t dr, uint64_t prev)
 	// We hence need dependency ordering to pair with the release barrier
 	// done by _dispatch_timers_run2() when setting the DISARMED_MARKER bit.
 	os_atomic_thread_fence(dependency);
-	dr = os_atomic_force_dependency_on(dr, data);
+	dr = os_atomic_inject_dependency(dr, data);
 
 	if (dr->dt_timer.target < INT64_MAX) {
 		uint64_t now = _dispatch_time_now(DISPATCH_TIMER_CLOCK(dr->du_ident));
@@ -637,7 +637,7 @@ _dispatch_source_install(dispatch_source_t ds, dispatch_wlh_t wlh,
 }
 
 void
-_dispatch_source_activate(dispatch_source_t ds, bool *allow_resume)
+_dispatch_source_activate(dispatch_source_t ds)
 {
 	dispatch_continuation_t dc;
 	dispatch_source_refs_t dr = ds->ds_refs;
@@ -667,7 +667,7 @@ _dispatch_source_activate(dispatch_source_t ds, bool *allow_resume)
 	}
 
 	// call "super"
-	_dispatch_lane_activate(ds, allow_resume);
+	_dispatch_lane_activate(ds);
 
 	if ((dr->du_is_direct || dr->du_is_timer) && !ds->ds_is_installed) {
 		pri = _dispatch_queue_compute_priority_and_wlh(ds, &wlh);
@@ -686,6 +686,7 @@ _dispatch_source_activate(dispatch_source_t ds, bool *allow_resume)
 				_dispatch_unote_state_set(dr, wlh, 0);
 			}
 #endif
+			// rdar://45419440 this needs to be last
 			_dispatch_source_install(ds, wlh, pri);
 		}
 	}
@@ -808,10 +809,8 @@ _dispatch_source_invoke2(dispatch_source_t ds, dispatch_invoke_context_t dic,
 				avoid_starvation = dq->do_targetq ||
 						!(dq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT);
 			}
-			if (avoid_starvation &&
-					os_atomic_load2o(dr, ds_pending_data, relaxed)) {
-				retq = ds->do_targetq;
-			}
+
+			ds->ds_latched = true;
 		} else {
 			// there is no point trying to be eager, the next thing to do is
 			// to deliver the event
@@ -863,21 +862,61 @@ _dispatch_source_invoke2(dispatch_source_t ds, dispatch_invoke_context_t dic,
 			// from the source handler
 			return ds->do_targetq;
 		}
-		if (avoid_starvation && _dispatch_unote_wlh(dr) == DISPATCH_WLH_ANON) {
-			// keep the old behavior to force re-enqueue to our target queue
-			// for the rearm.
+		if (dr->du_is_direct && _dispatch_unote_wlh(dr) == DISPATCH_WLH_ANON) {
 			//
-			// if the handler didn't run, or this is a pending delete
-			// or our target queue is a global queue, then starvation is
-			// not a concern and we can rearm right away.
-			return ds->do_targetq;
-		}
-		_dispatch_unote_resume(dr);
-		if (!avoid_starvation && _dispatch_wlh_should_poll_unote(dr)) {
-			// try to redrive the drain from under the lock for sources
-			// targeting an overcommit root queue to avoid parking
-			// when the next event has already fired
-			_dispatch_event_loop_drain(KEVENT_FLAG_IMMEDIATE);
+			// <rdar://problem/43622806> for legacy, direct event delivery,
+			// _dispatch_source_install above could cause a worker thread to
+			// deliver an event, and disarm the knote before we're through.
+			//
+			// This can lead to a double fire of the event handler for the same
+			// event with the following ordering:
+			//
+			//------------------------------------------------------------------
+			//  Thread1                         Thread2
+			//
+			//  _dispatch_source_invoke()
+			//    _dispatch_source_install()
+			//                                  _dispatch_kevent_worker_thread()
+			//                                  _dispatch_source_merge_evt()
+			//
+			//    _dispatch_unote_resume()
+			//                                  _dispatch_kevent_worker_thread()
+			//  < re-enqueue due DIRTY >
+			//
+			//  _dispatch_source_invoke()
+			//    ..._latch_and_call()
+			//    _dispatch_unote_resume()
+			//                                  _dispatch_source_merge_evt()
+			//
+			//  _dispatch_source_invoke()
+			//    ..._latch_and_call()
+			//
+			//------------------------------------------------------------------
+			//
+			// To avoid this situation, we should never resume a direct source
+			// for which we haven't fired an event.
+			//
+			// Note: this isn't a concern for kqworkloops as event delivery is
+			//       serial with draining it by design.
+			//
+			if (ds->ds_latched) {
+				ds->ds_latched = false;
+				_dispatch_unote_resume(dr);
+			}
+			if (avoid_starvation) {
+				// To avoid starvation of a source firing immediately when we
+				// rearm it, force a round-trip through the end of the target
+				// queue no matter what.
+				return ds->do_targetq;
+			}
+		} else {
+			_dispatch_unote_resume(dr);
+			if (!avoid_starvation && _dispatch_wlh_should_poll_unote(dr)) {
+				// try to redrive the drain from under the lock for sources
+				// targeting an overcommit root queue to avoid parking
+				// when the next event has already fired
+				_dispatch_event_loop_drain(KEVENT_FLAG_IMMEDIATE);
+			}
 		}
 	}
 
@@ -1132,6 +1171,7 @@ _dispatch_source_merge_evt(dispatch_unote_t du, uint32_t flags,
 	_dispatch_debug("kevent-source[%p]: merged kevent[%p]", ds, du._dr);
 	_dispatch_object_debug(ds, "%s", __func__);
 	dx_wakeup(ds, _dispatch_qos_from_pp(pp), DISPATCH_WAKEUP_EVENT |
+			DISPATCH_WAKEUP_CLEAR_ACTIVATING |
 			DISPATCH_WAKEUP_CONSUME_2 | DISPATCH_WAKEUP_MAKE_DIRTY);
 }
 

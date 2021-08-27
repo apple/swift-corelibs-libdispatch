@@ -569,9 +569,7 @@ _dispatch_unfair_lock_lock_slow(dispatch_unfair_lock_t dul,
 		}
 		rc = _dispatch_unfair_lock_wait(&dul->dul_lock, new_value, 0, flags);
 		if (rc == ENOTEMPTY) {
-			next = value_self | DLOCK_WAITERS_BIT;
-		} else {
-			next = value_self;
+			next |= DLOCK_WAITERS_BIT;
 		}
 	}
 }

@@ -190,9 +190,15 @@ enum {
  *
  * @constant DISPATCH_NW_CHANNEL_FLOW_ADV_UPDATE
  * Received network channel flow advisory.
+ * @constant DISPATCH_NW_CHANNEL_CHANNEL_EVENT
+ * Received network channel event.
+ * @constant DISPATCH_NW_CHANNEL_INTF_ADV_UPDATE
+ * Received network channel interface advisory.
  */
 enum {
 	DISPATCH_NW_CHANNEL_FLOW_ADV_UPDATE = 0x00000001,
+	DISPATCH_NW_CHANNEL_CHANNEL_EVENT = 0x00000002,
+	DISPATCH_NW_CHANNEL_INTF_ADV_UPDATE = 0x00000004,
 };
 
 /*!
@@ -324,6 +330,18 @@ enum {
  */
 enum {
 	DISPATCH_MACH_SEND_POSSIBLE = 0x8,
+};
+
+/*!
+ * @enum dispatch_source_mach_recv_flags_t
+ *
+ * @constant DISPATCH_MACH_RECV_SYNC_PEEK
+ * The receive source will participate in synchronous IPC priority inversion
+ * avoidance when possible.
+ */
+enum {
+	DISPATCH_MACH_RECV_SYNC_PEEK DISPATCH_ENUM_API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(4.0)) =
+			0x00008000,
 };
 
 /*!

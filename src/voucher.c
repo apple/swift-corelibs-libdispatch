@@ -24,8 +24,6 @@
 #define PERSONA_ID_NONE ((uid_t)-1)
 #endif
 
-#if !DISPATCH_VARIANT_DYLD_STUB
-
 #if VOUCHER_USE_MACH_VOUCHER
 #if !HAVE_PTHREAD_WORKQUEUE_QOS
 #error Unsupported configuration, workqueue QoS support is required
@@ -796,7 +794,9 @@ _voucher_dispose(voucher_t voucher)
 	voucher->v_recipe_extra_size = 0;
 	voucher->v_recipe_extra_offset = 0;
 #endif
+#if !USE_OBJC
 	return _os_object_dealloc((_os_object_t)voucher);
+#endif // !USE_OBJC
 }
 
 void
@@ -913,13 +913,10 @@ mach_voucher_persona_self(mach_voucher_t *persona_mach_voucher)
 	mach_voucher_t bkv = MACH_VOUCHER_NULL;
 	kern_return_t kr = KERN_NOT_SUPPORTED;
 #if VOUCHER_USE_PERSONA
-	mach_voucher_t kv = _voucher_get_task_mach_voucher();
-
 	const mach_voucher_attr_recipe_data_t bank_send_recipe[] = {
 		[0] = {
 			.key = MACH_VOUCHER_ATTR_KEY_BANK,
-			.command = MACH_VOUCHER_ATTR_COPY,
-			.previous_voucher = kv,
+			.command = MACH_VOUCHER_ATTR_BANK_CREATE,
 		},
 		[1] = {
 			.key = MACH_VOUCHER_ATTR_KEY_BANK,
@@ -2024,17 +2021,3 @@ _voucher_debug(voucher_t v, char* buf, size_t bufsiz)
 }
 
 #endif // VOUCHER_USE_MACH_VOUCHER
-
-#else // DISPATCH_VARIANT_DYLD_STUB
-
-firehose_activity_id_t
-voucher_get_activity_id_4dyld(void)
-{
-#if VOUCHER_USE_MACH_VOUCHER
-	return _voucher_get_activity_id(_voucher_get(), NULL);
-#else
-	return 0;
-#endif
-}
-
-#endif // DISPATCH_VARIANT_DYLD_STUB

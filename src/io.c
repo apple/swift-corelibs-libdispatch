@@ -155,7 +155,7 @@ enum {
 		_dispatch_io_log("fd[0x%x]: " msg, fd, ##__VA_ARGS__)
 #define _dispatch_op_debug(msg, op, ...) \
 		_dispatch_io_log("op[%p]: " msg, op, ##__VA_ARGS__)
-#define _dispatch_channel_debug(msg, channel, ...) \
+#define _dispatch_io_channel_debug(msg, channel, ...) \
 		_dispatch_io_log("channel[%p]: " msg, channel, ##__VA_ARGS__)
 #define _dispatch_fd_entry_debug(msg, fd_entry, ...) \
 		_dispatch_io_log("fd_entry[%p]: " msg, fd_entry, ##__VA_ARGS__)
@@ -261,7 +261,7 @@ _dispatch_io_init(dispatch_io_t channel, dispatch_fd_entry_t fd_entry,
 		_dispatch_retain(queue);
 		dispatch_async(!err ? fd_entry->close_queue : channel->queue, ^{
 			dispatch_async(queue, ^{
-				_dispatch_channel_debug("cleanup handler invoke: err %d",
+				_dispatch_io_channel_debug("cleanup handler invoke: err %d",
 						channel, err);
 				cleanup_handler(err);
 			});
@@ -355,7 +355,7 @@ dispatch_io_create(dispatch_io_type_t type, dispatch_fd_t fd,
 	}
 	dispatch_io_t channel = _dispatch_io_create(type);
 	channel->fd = fd;
-	_dispatch_channel_debug("create", channel);
+	_dispatch_io_channel_debug("create", channel);
 	channel->fd_actual = fd;
 	dispatch_suspend(channel->queue);
 	_dispatch_retain(queue);
@@ -422,7 +422,7 @@ dispatch_io_create_with_path(dispatch_io_type_t type, const char *path,
 	}
 	dispatch_io_t channel = _dispatch_io_create(type);
 	channel->fd = -1;
-	_dispatch_channel_debug("create with path %s", channel, path);
+	_dispatch_io_channel_debug("create with path %s", channel, path);
 	channel->fd_actual = -1;
 	path_data->channel = channel;
 	path_data->oflag = oflag;
@@ -512,7 +512,7 @@ dispatch_io_create_with_io(dispatch_io_type_t type, dispatch_io_t in_channel,
 		return DISPATCH_BAD_INPUT;
 	}
 	dispatch_io_t channel = _dispatch_io_create(type);
-	_dispatch_channel_debug("create with channel %p", channel, in_channel);
+	_dispatch_io_channel_debug("create with channel %p", channel, in_channel);
 	dispatch_suspend(channel->queue);
 	_dispatch_retain(queue);
 	_dispatch_retain(channel);
@@ -630,7 +630,7 @@ dispatch_io_set_high_water(dispatch_io_t channel, size_t high_water)
 {
 	_dispatch_retain(channel);
 	dispatch_async(channel->queue, ^{
-		_dispatch_channel_debug("set high water: %zu", channel, high_water);
+		_dispatch_io_channel_debug("set high water: %zu", channel, high_water);
 		if (channel->params.low > high_water) {
 			channel->params.low = high_water;
 		}
@@ -644,7 +644,7 @@ dispatch_io_set_low_water(dispatch_io_t channel, size_t low_water)
 {
 	_dispatch_retain(channel);
 	dispatch_async(channel->queue, ^{
-		_dispatch_channel_debug("set low water: %zu", channel, low_water);
+		_dispatch_io_channel_debug("set low water: %zu", channel, low_water);
 		if (channel->params.high < low_water) {
 			channel->params.high = low_water ? low_water : 1;
 		}
@@ -659,7 +659,7 @@ dispatch_io_set_interval(dispatch_io_t channel, uint64_t interval,
 {
 	_dispatch_retain(channel);
 	dispatch_async(channel->queue, ^{
-		_dispatch_channel_debug("set interval: %llu", channel,
+		_dispatch_io_channel_debug("set interval: %llu", channel,
 		  (unsigned long long)interval);
 		channel->params.interval = interval < INT64_MAX ? interval : INT64_MAX;
 		channel->params.interval_flags = flags;
@@ -704,7 +704,7 @@ dispatch_io_get_descriptor(dispatch_io_t channel)
 static void
 _dispatch_io_stop(dispatch_io_t channel)
 {
-	_dispatch_channel_debug("stop", channel);
+	_dispatch_io_channel_debug("stop", channel);
 	(void)os_atomic_or2o(channel, atomic_flags, DIO_STOPPED, relaxed);
 	_dispatch_retain(channel);
 	dispatch_async(channel->queue, ^{
@@ -712,7 +712,7 @@ _dispatch_io_stop(dispatch_io_t channel)
 			_dispatch_object_debug(channel, "%s", __func__);
 			dispatch_fd_entry_t fd_entry = channel->fd_entry;
 			if (fd_entry) {
-				_dispatch_channel_debug("stop cleanup", channel);
+				_dispatch_io_channel_debug("stop cleanup", channel);
 				_dispatch_fd_entry_cleanup_operations(fd_entry, channel);
 				if (!(channel->atomic_flags & DIO_CLOSED)) {
 					if (fd_entry->path_data) {
@@ -726,7 +726,7 @@ _dispatch_io_stop(dispatch_io_t channel)
 				_dispatch_retain(channel);
 				dispatch_async(_dispatch_io_fds_lockq, ^{
 					_dispatch_object_debug(channel, "%s", __func__);
-					_dispatch_channel_debug("stop cleanup after close",
+					_dispatch_io_channel_debug("stop cleanup after close",
 							channel);
 					dispatch_fd_entry_t fdi;
 					uintptr_t hash = DIO_HASH(channel->fd);
@@ -762,7 +762,7 @@ dispatch_io_close(dispatch_io_t channel, unsigned long flags)
 	dispatch_async(channel->queue, ^{
 		dispatch_async(channel->barrier_queue, ^{
 			_dispatch_object_debug(channel, "%s", __func__);
-			_dispatch_channel_debug("close", channel);
+			_dispatch_io_channel_debug("close", channel);
 			if (!(channel->atomic_flags & (DIO_CLOSED|DIO_STOPPED))) {
 				(void)os_atomic_or2o(channel, atomic_flags, DIO_CLOSED,
 						relaxed);
@@ -1048,7 +1048,7 @@ _dispatch_operation_create(dispatch_op_direction_t direction,
 				} else if (direction == DOP_DIR_WRITE && !err) {
 					d = NULL;
 				}
-				_dispatch_channel_debug("IO handler invoke: err %d", channel,
+				_dispatch_io_channel_debug("IO handler invoke: err %d", channel,
 						err);
 				handler(true, d, err);
 				_dispatch_release(channel);
@@ -1060,7 +1060,7 @@ _dispatch_operation_create(dispatch_op_direction_t direction,
 	}
 	dispatch_operation_t op = _dispatch_object_alloc(DISPATCH_VTABLE(operation),
 			sizeof(struct dispatch_operation_s));
-	_dispatch_channel_debug("operation create: %p", channel, op);
+	_dispatch_io_channel_debug("operation create: %p", channel, op);
 	op->do_next = DISPATCH_OBJECT_LISTLESS;
 	op->do_xref_cnt = -1; // operation object is not exposed externally
 	op->op_q = dispatch_queue_create_with_target("com.apple.libdispatch-io.opq",

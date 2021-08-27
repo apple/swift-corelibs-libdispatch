@@ -148,8 +148,10 @@
 #	endif // VQ_FREE_SPACE_CHANGE
 
 #	if !defined(EVFILT_NW_CHANNEL) && defined(__APPLE__)
-#	define EVFILT_NW_CHANNEL       (-16)
-#	define NOTE_FLOW_ADV_UPDATE    	0x1
+#	define EVFILT_NW_CHANNEL		(-16)
+#	define NOTE_FLOW_ADV_UPDATE		0x1
+#	define NOTE_CHANNEL_EVENT		0x2
+#	define NOTE_IF_ADV_UPD			0x4
 #	endif
 #else // DISPATCH_EVENT_BACKEND_KEVENT
 #	define EV_ADD					0x0001
@@ -231,6 +233,10 @@ typedef unsigned int mach_msg_priority_t;
 #	ifndef MACH_SEND_SYNC_OVERRIDE
 #	define MACH_SEND_SYNC_OVERRIDE 0x00100000
 #	endif // MACH_SEND_SYNC_OVERRIDE
+
+#	ifndef MACH_MSG_STRICT_REPLY
+#	define MACH_MSG_STRICT_REPLY  0x00000200
+#	endif
 
 #	ifndef MACH_RCV_SYNC_WAIT
 #	define MACH_RCV_SYNC_WAIT 0x00004000
