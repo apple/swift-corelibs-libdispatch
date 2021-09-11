@@ -156,12 +156,12 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 			++dwProcessorPhysicalCount;
 			dwProcessorLogicalCount += __popcnt64(slpiCurrent->ProcessorMask);
 			break;
-#if defined(RelationProcessorDie)
+#if defined(DISPATCH_HAVE_EXTENDED_SLPI_20348)
 		case RelationProcessorDie:
 #endif
 		case RelationProcessorPackage:
 		case RelationNumaNode:
-#if defined(RelationNumaNodeEx)
+#if defined(DISPATCH_HAVE_EXTENDED_SLPI_20348)
 		case RelationNumaNodeEx:
 #endif
 		case RelationCache:
