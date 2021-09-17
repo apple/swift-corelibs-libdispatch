@@ -152,6 +152,7 @@ main(int argc, char *argv[])
 	assert(pid > 0);
 
 #if defined(__linux__)
+      (void)to;
 	int status;
 	struct rusage usage;
 	struct timeval tv_stop, tv_wall;
