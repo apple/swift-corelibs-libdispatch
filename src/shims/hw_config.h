@@ -166,6 +166,9 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 #endif
 		case RelationCache:
 		case RelationGroup:
+#if defined(DISPATCH_HAVE_EXTENDED_SLPI_22000)
+		case RelationProcessorModule:
+#endif
 		case RelationAll:
 			break;
 		}
