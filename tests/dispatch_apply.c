@@ -65,6 +65,7 @@ static void busythread(void *ignored)
 		j += i;
 		i += 1;
 	}
+	(void)j;
 
 	OSAtomicIncrement32(&busy_threads_finished);
 }
