@@ -72,13 +72,6 @@ main(int argc, char *argv[])
 	assert(res == 0);
 #endif
 
-	uint64_t to = 0;
-	char *tos = getenv("BSDTEST_TIMEOUT");
-	if (tos) {
-		to = strtoul(tos, NULL, 0);
-		to *= NSEC_PER_SEC;
-	}
-
 #ifdef __APPLE__
 	char *arch = getenv("BSDTEST_ARCH");
 	if (arch) {
@@ -244,6 +237,13 @@ main(int argc, char *argv[])
 		exit((WIFEXITED(status) && WEXITSTATUS(status)) || WIFSIGNALED(status));
 	});
 	dispatch_resume(tmp_ds);
+
+	uint64_t to = 0;
+	char *tos = getenv("BSDTEST_TIMEOUT");
+	if (tos) {
+		to = strtoul(tos, NULL, 0);
+		to *= NSEC_PER_SEC;
+	}
 
 	if (!to) {
 #if TARGET_OS_EMBEDDED
