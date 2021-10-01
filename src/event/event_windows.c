@@ -364,7 +364,11 @@ _dispatch_socket_callback(PTP_CALLBACK_INSTANCE inst, void *context,
 		} else if (lNetworkEvents & FD_READ) {
 			ioctlsocket(sock, FIONREAD, &dwBytesAvailable);
 		}
-		if (lNetworkEvents & FD_READ) {
+		// ioctlsocket could legally return 0 and that doesn't mean the socket is closed.
+		// Here and below we have to double-check dwBytesAvailable and make sure we don't 
+		// wake up read/write handlers with 0 value for live (not closed) socket, because
+		// that would force handler to shut down.
+		if (((lNetworkEvents & FD_READ) && dwBytesAvailable > 0) || (lNetworkEvents & FD_CLOSE)) {
 			_dispatch_muxnote_retain(dmn);
 			if (!PostQueuedCompletionStatus(hPort, dwBytesAvailable,
 					(ULONG_PTR)DISPATCH_PORT_SOCKET_READ, (LPOVERLAPPED)dmn)) {
@@ -372,7 +376,7 @@ _dispatch_socket_callback(PTP_CALLBACK_INSTANCE inst, void *context,
 						"PostQueuedCompletionStatus");
 			}
 		}
-		if (lNetworkEvents & FD_WRITE) {
+		if (((lNetworkEvents & FD_WRITE) && dwBytesAvailable > 0) || (lNetworkEvents & FD_CLOSE)) {
 			_dispatch_muxnote_retain(dmn);
 			if (!PostQueuedCompletionStatus(hPort, dwBytesAvailable,
 					(ULONG_PTR)DISPATCH_PORT_SOCKET_WRITE, (LPOVERLAPPED)dmn)) {
