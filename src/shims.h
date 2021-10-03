@@ -280,7 +280,7 @@ _dispatch_mempcpy(void *ptr, const void *data, size_t len)
 		void *a[(s)/sizeof(void*) ? (s)/sizeof(void*) : 1]; \
 		a[0] = pthread_get_stackaddr_np(pthread_self()); \
 		void* volatile const p = (void*)&a[1]; /* <rdar://32604885> */ \
-		bzero((void*)p, (size_t)(a[0] - (void*)&a[1])); \
+		memset((void*)p, 0, (size_t)(a[0] - (void*)&a[1])); \
 	} while (0)
 #else
 #define _dispatch_clear_stack(s)

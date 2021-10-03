@@ -873,9 +873,9 @@ firehose_buffer_stream_chunk_install(firehose_buffer_t fb,
 			// ring and it is dirty, when crawling the chunk, we don't see
 			// remnants of other tracepoints.
 			//
-			// We only do that when the fc_pos is non zero, because zero means
-			// we just faulted the chunk, and the kernel already bzero-ed it.
-			bzero(fc->fc_data, sizeof(fc->fc_data));
+			// We only do that when the fc_pos is non-zero, because zero means
+			// we just faulted the chunk, and the kernel already zeroed it.
+			memset(fc->fc_data, 0, sizeof(fc->fc_data));
 		}
 		dispatch_compiler_barrier();
 

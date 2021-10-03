@@ -163,7 +163,7 @@ main(void)
 			if (!p) {
 				break;
 			}
-			bzero(p, ALLOC_SIZE);
+			memset(p, 0, ALLOC_SIZE);
 			pages[page_count] = p;
 			if (!(OSAtomicIncrement32Barrier(&page_count) % interval)) {
 				log_msg("Allocated %ldMB\n", pg2mb(page_count));

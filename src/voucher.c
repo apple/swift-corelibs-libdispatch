@@ -953,7 +953,7 @@ mach_voucher_persona_for_originator(uid_t persona_id,
 	mach_voucher_attr_recipe_t bank_modify_recipe =
 			(mach_voucher_attr_recipe_t)alloca(bank_modify_recipe_size);
 
-	bzero((void *)bank_modify_recipe, bank_modify_recipe_size);
+	memset((void *)bank_modify_recipe, 0, bank_modify_recipe_size);
 
 	bank_modify_recipe[0] = (mach_voucher_attr_recipe_data_t){
 		.key = MACH_VOUCHER_ATTR_KEY_BANK,
@@ -1700,7 +1700,7 @@ voucher_kvoucher_debug(mach_port_t task, mach_port_name_t voucher, char *buf,
 		size_t bufsiz, size_t offset, char *prefix, size_t max_hex_data)
 {
 	uint8_t voucher_contents[VOUCHER_CONTENTS_SIZE];
-	bzero(voucher_contents, VOUCHER_CONTENTS_SIZE);
+	memset(voucher_contents, 0, VOUCHER_CONTENTS_SIZE);
 	size_t recipe_size = VOUCHER_CONTENTS_SIZE;
 	unsigned v_kobject = 0;
 	unsigned v_kotype = 0;
