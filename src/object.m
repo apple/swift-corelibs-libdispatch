@@ -382,12 +382,15 @@ DISPATCH_OBJECT_USES_XREF_DISPOSE()
 
 @end
 
-#define DISPATCH_CLASS_IMPL(name) \
+#define EMPTY_OS_OBJECT_CLASS_IMPL(name) \
 		OS_OBJECT_NONLAZY_CLASS \
-		@implementation DISPATCH_CLASS(name) \
+		@implementation name \
 		OS_OBJECT_NONLAZY_CLASS_LOAD \
 		DISPATCH_UNAVAILABLE_INIT() \
 		@end
+
+#define DISPATCH_CLASS_IMPL(name) \
+		EMPTY_OS_OBJECT_CLASS_IMPL(DISPATCH_CLASS(name))
 
 #if !DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
 DISPATCH_CLASS_IMPL(data)
@@ -402,12 +405,74 @@ DISPATCH_CLASS_IMPL(queue_global)
 #if DISPATCH_USE_PTHREAD_ROOT_QUEUES
 DISPATCH_CLASS_IMPL(queue_pthread_root)
 #endif
+DISPATCH_CLASS_IMPL(queue_cooperative)
 DISPATCH_CLASS_IMPL(queue_mgr)
 DISPATCH_CLASS_IMPL(queue_attr)
 DISPATCH_CLASS_IMPL(mach_msg)
 DISPATCH_CLASS_IMPL(io)
 DISPATCH_CLASS_IMPL(operation)
 DISPATCH_CLASS_IMPL(disk)
+
+#pragma mark os_workgroups
+
+@implementation OS_OBJECT_CLASS(os_workgroup)
+DISPATCH_UNAVAILABLE_INIT()
+OS_OBJECT_USES_XREF_DISPOSE()
+
+- (void)_xref_dispose {
+	_os_workgroup_xref_dispose(self);
+	[super _xref_dispose];
+}
+
+- (void) dealloc {
+	_os_workgroup_dispose(self);
+	[super dealloc];
+}
+
+- (NSString *) debugDescription {
+	Class nsstring = objc_lookUpClass("NSString");
+	if (!nsstring) return nil;
+	char buf[2048];
+
+	os_workgroup_t wg = (os_workgroup_t) self;
+	_os_workgroup_debug(wg, buf, sizeof(buf));
+
+	return [nsstring stringWithUTF8String:buf];
+}
+@end
+
+@implementation OS_OBJECT_CLASS(os_workgroup_interval)
+DISPATCH_UNAVAILABLE_INIT()
+
+- (void) _xref_dispose {
+	_os_workgroup_interval_xref_dispose(self);
+	[super _xref_dispose];
+}
+
+- (void) dealloc {
+	_os_workgroup_interval_dispose(self);
+	[super dealloc];
+}
+@end
+
+@implementation OS_OBJECT_CLASS(os_workgroup_parallel)
+DISPATCH_UNAVAILABLE_INIT()
+@end
+
+#pragma mark eventlink
+
+@implementation OS_OBJECT_CLASS(os_eventlink)
+DISPATCH_UNAVAILABLE_INIT()
+
+- (void) dealloc {
+	_os_eventlink_dispose(self);
+	[super dealloc];
+}
+
+@end
+
+
+#pragma mark vouchers
 
 OS_OBJECT_NONLAZY_CLASS
 @implementation OS_OBJECT_CLASS(voucher)
@@ -539,6 +604,18 @@ _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 	}
 }
 #endif // HAVE_MACH
+
+#undef _dispatch_client_callout3_a
+void
+_dispatch_client_callout3_a(void *ctxt, size_t i, size_t w, dispatch_apply_attr_function_t f)
+{
+	@try {
+		return f(ctxt, i, w);
+	}
+	@catch (...) {
+		objc_terminate();
+	}
+}
 
 #endif // DISPATCH_USE_CLIENT_CALLOUT
 

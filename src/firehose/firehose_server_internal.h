@@ -31,10 +31,7 @@ struct firehose_snapshot_s {
 };
 
 struct firehose_client_s {
-	union {
-		_OS_OBJECT_HEADER(void *os_obj_isa, os_obj_ref_cnt, os_obj_xref_cnt);
-		struct _os_object_s fc_as_os_object;
-	};
+	struct _os_object_s fc_object_header;
 	TAILQ_ENTRY(firehose_client_s) fc_entry;
 	struct firehose_client_s *volatile fc_next[2];
 

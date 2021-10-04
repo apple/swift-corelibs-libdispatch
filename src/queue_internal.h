@@ -318,7 +318,7 @@ DISPATCH_OPTIONS(dispatch_queue_flags, uint32_t,
  *
  * sw: has received sync wait (bit 35, if role DISPATCH_QUEUE_ROLE_BASE_WLH)
  *    Set when a queue owner has been exposed to the kernel because of
- *    dispatch_sync() contention.
+ *    contention with dispatch_sync().
  */
 #define DISPATCH_QUEUE_RECEIVED_OVERRIDE	0x0000000800000000ull
 #define DISPATCH_QUEUE_RECEIVED_SYNC_WAIT	0x0000000800000000ull
@@ -334,14 +334,14 @@ DISPATCH_OPTIONS(dispatch_queue_flags, uint32_t,
  *    drain stealers (like the QoS Override codepath). It holds the identity
  *    (thread port) of the current drainer.
  *
- * st: sync transfer (bit 1 or 30)
- *    Set when a dispatch_sync() is transferred to
+ * us: uncontended sync (bit 1 or 30)
+ *    Set when a dispatch_sync() isn't contending
  *
  * e: enqueued bit (bit 0 or 31)
  *    Set when a queue is enqueued on its target queue
  */
 #define DISPATCH_QUEUE_DRAIN_OWNER_MASK		((uint64_t)DLOCK_OWNER_MASK)
-#define DISPATCH_QUEUE_SYNC_TRANSFER		((uint64_t)DLOCK_FAILED_TRYLOCK_BIT)
+#define DISPATCH_QUEUE_UNCONTENDED_SYNC		((uint64_t)DLOCK_FAILED_TRYLOCK_BIT)
 #define DISPATCH_QUEUE_ENQUEUED				((uint64_t)DLOCK_WAITERS_BIT)
 
 #define DISPATCH_QUEUE_DRAIN_PRESERVED_BITS_MASK \
@@ -350,7 +350,7 @@ DISPATCH_OPTIONS(dispatch_queue_flags, uint32_t,
 
 #define DISPATCH_QUEUE_DRAIN_UNLOCK_MASK \
 		(DISPATCH_QUEUE_DRAIN_OWNER_MASK | DISPATCH_QUEUE_RECEIVED_OVERRIDE | \
-		DISPATCH_QUEUE_RECEIVED_SYNC_WAIT | DISPATCH_QUEUE_SYNC_TRANSFER)
+		DISPATCH_QUEUE_RECEIVED_SYNC_WAIT | DISPATCH_QUEUE_UNCONTENDED_SYNC)
 
 /*
  *******************************************************************************
@@ -475,6 +475,7 @@ typedef struct dispatch_workloop_attr_s {
 		uint8_t percent;
 		uint32_t refillms;
 	} dwla_cpupercent;
+	os_workgroup_t workgroup;
 	dispatch_pthread_root_queue_observer_hooks_s dwla_observers;
 } dispatch_workloop_attr_s;
 
@@ -739,6 +740,7 @@ DISPATCH_SUBCLASS_DECL(queue_global, queue, lane);
 #if DISPATCH_USE_PTHREAD_ROOT_QUEUES
 DISPATCH_INTERNAL_SUBCLASS_DECL(queue_pthread_root, queue, lane);
 #endif
+DISPATCH_INTERNAL_SUBCLASS_DECL(queue_cooperative, queue, lane);
 DISPATCH_INTERNAL_SUBCLASS_DECL(queue_runloop, queue_serial, lane);
 DISPATCH_INTERNAL_SUBCLASS_DECL(queue_mgr, queue_serial, lane);
 
@@ -863,45 +865,56 @@ DISPATCH_COLD
 size_t _dispatch_queue_debug_attr(dispatch_queue_t dq,
 		char *buf, size_t bufsiz);
 
-#define DISPATCH_ROOT_QUEUE_COUNT (DISPATCH_QOS_NBUCKETS * 2)
+#define DISPATCH_ROOT_QUEUE_FLAVORS 3
+#define DISPATCH_ROOT_QUEUE_COUNT (DISPATCH_QOS_NBUCKETS * DISPATCH_ROOT_QUEUE_FLAVORS)
 
 // must be in lowest to highest qos order (as encoded in dispatch_qos_t)
-// overcommit qos index values need bit 1 set
 enum {
 	DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS = 0,
 	DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS_COOPERATIVE,
 	DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS,
 	DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS_COOPERATIVE,
 	DISPATCH_ROOT_QUEUE_IDX_UTILITY_QOS,
 	DISPATCH_ROOT_QUEUE_IDX_UTILITY_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_UTILITY_QOS_COOPERATIVE,
 	DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS,
 	DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS_COOPERATIVE,
 	DISPATCH_ROOT_QUEUE_IDX_USER_INITIATED_QOS,
 	DISPATCH_ROOT_QUEUE_IDX_USER_INITIATED_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_USER_INITIATED_QOS_COOPERATIVE,
 	DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS,
 	DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS_COOPERATIVE,
 	_DISPATCH_ROOT_QUEUE_IDX_COUNT,
 };
+
+#define DISPATCH_ROOT_QUEUE_IDX_OFFSET_OVERCOMMIT \
+		(DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS_OVERCOMMIT - DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS)
+#define DISPATCH_ROOT_QUEUE_IDX_OFFSET_COOPERATIVE \
+		(DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS_COOPERATIVE - DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS)
 
 // skip zero
 // 1 - main_q
 // 2 - mgr_q
 // 3 - mgr_root_q
-// 4,5,6,7,8,9,10,11,12,13,14,15 - global queues
-// 17 - workloop_fallback_q
+// 4 - 21 - global queues
+// 22 - workloop_fallback_q
 // we use 'xadd' on Intel, so the initial value == next assigned
-#define DISPATCH_QUEUE_SERIAL_NUMBER_INIT 17
+#define DISPATCH_QUEUE_SERIAL_NUMBER_INIT 22
 extern unsigned long volatile _dispatch_queue_serial_numbers;
 
 // mark the workloop fallback queue to avoid finalizing objects on the base
 // queue of custom outside-of-qos workloops
-#define DISPATCH_QUEUE_SERIAL_NUMBER_WLF 16
+#define DISPATCH_QUEUE_SERIAL_NUMBER_WLF 22
 
 extern struct dispatch_queue_static_s _dispatch_mgr_q; // serial 2
 #if DISPATCH_USE_MGR_THREAD && DISPATCH_USE_PTHREAD_ROOT_QUEUES
 extern struct dispatch_queue_global_s _dispatch_mgr_root_queue; // serial 3
 #endif
-extern struct dispatch_queue_global_s _dispatch_root_queues[]; // serials 4 - 15
+extern struct dispatch_queue_global_s _dispatch_root_queues[]; // serials 4 - 21
 
 #if DISPATCH_DEBUG
 #define DISPATCH_ASSERT_ON_MANAGER_QUEUE() \
@@ -967,7 +980,7 @@ dispatch_queue_attr_info_t _dispatch_queue_attr_to_info(dispatch_queue_attr_t);
 #if DISPATCH_SIZEOF_PTR == 8
 #define DISPATCH_CONTINUATION_HEADER(x) \
 	union { \
-		const void *do_vtable; \
+		const void *__ptrauth_objc_isa_pointer do_vtable; \
 		uintptr_t dc_flags; \
 	}; \
 	union { \
@@ -991,7 +1004,7 @@ dispatch_queue_attr_info_t _dispatch_queue_attr_to_info(dispatch_queue_attr_t);
 	}; \
 	struct voucher_s *dc_voucher; \
 	union { \
-		const void *do_vtable; \
+		const void *__ptrauth_objc_isa_pointer do_vtable; \
 		uintptr_t dc_flags; \
 	}; \
 	struct dispatch_##x##_s *volatile do_next; \
@@ -1001,7 +1014,7 @@ dispatch_queue_attr_info_t _dispatch_queue_attr_to_info(dispatch_queue_attr_t);
 #else
 #define DISPATCH_CONTINUATION_HEADER(x) \
 	union { \
-		const void *do_vtable; \
+		const void *__ptrauth_objc_isa_pointer do_vtable; \
 		uintptr_t dc_flags; \
 	}; \
 	union { \
@@ -1062,6 +1075,36 @@ typedef struct dispatch_continuation_s {
 dispatch_assert_aliases(dispatch_continuation_s, dispatch_object_s, do_next);
 dispatch_assert_aliases(dispatch_continuation_s, dispatch_object_s, do_vtable);
 
+/* Swift runtime objects to be enqueued into dispatch */
+struct dispatch_swift_continuation_s;
+
+struct dispatch_swift_continuation_extra_vtable_s {
+	unsigned long const do_type;
+	void DISPATCH_VTABLE_ENTRY(do_invoke)(struct dispatch_swift_continuation_s *,
+			void *, dispatch_swift_job_invoke_flags_t flags);
+};
+
+typedef struct dispatch_swift_continuation_vtable_s {
+	_OS_OBJECT_CLASS_HEADER();
+	struct dispatch_swift_continuation_extra_vtable_s _os_obj_vtable;
+} const *dispatch_swift_continuation_vtable_t;
+
+/* This is the internal representation of a Swift object that will be enqueued
+ * onto dispatch. The actual object may be bigger but we only care about this
+ * piece of it. The vtable the continuation points to, will be interpreted as a
+ * dispatch_swift_continuation_vtable_t even if it is bigger.
+ */
+typedef struct dispatch_swift_continuation_s {
+	struct dispatch_object_s _as_do[0];
+	_DISPATCH_OBJECT_HEADER_INTERNAL(swift_continuation);
+	void *opaque1;
+	void *opaque2;
+	void *opaque3;
+} *dispatch_swift_continuation_t;
+
+dispatch_static_assert(sizeof(struct dispatch_swift_continuation_s) ==
+	sizeof(struct dispatch_object_s));
+
 typedef struct dispatch_sync_context_s {
 	struct dispatch_continuation_s _as_dc[0];
 	DISPATCH_CONTINUATION_HEADER(continuation);
@@ -1074,12 +1117,11 @@ typedef struct dispatch_sync_context_s {
 	uint8_t dsc_override_qos;
 	uint16_t dsc_autorelease : 2;
 	uint16_t dsc_wlh_was_first : 1;
+	uint16_t dsc_wlh_self_wakeup : 1;
 	uint16_t dsc_wlh_is_workloop : 1;
 	uint16_t dsc_waiter_needs_cancel : 1;
 	uint16_t dsc_release_storage : 1;
-#if DISPATCH_INTROSPECTION
 	uint16_t dsc_from_async : 1;
-#endif
 } *dispatch_sync_context_t;
 
 typedef struct dispatch_continuation_vtable_s {
@@ -1174,7 +1216,8 @@ struct dispatch_apply_s {
 #if !OS_OBJECT_HAVE_OBJC1
 	dispatch_continuation_t da_dc;
 #endif
-	size_t volatile da_index, da_todo;
+	size_t _Atomic da_index;
+	size_t _Atomic da_todo;
 	size_t da_iterations;
 #if OS_OBJECT_HAVE_OBJC1
 	dispatch_continuation_t da_dc;
@@ -1183,11 +1226,28 @@ struct dispatch_apply_s {
 	dispatch_thread_event_s da_event;
 	dispatch_invoke_flags_t da_flags;
 	int32_t da_thr_cnt;
+	uint32_t _Atomic da_worker_index;
+	dispatch_apply_attr_t da_attr;
 };
 dispatch_static_assert(offsetof(struct dispatch_continuation_s, dc_flags) ==
 		offsetof(struct dispatch_apply_s, da_dc),
 		"These fields must alias so that leaks instruments work");
 typedef struct dispatch_apply_s *dispatch_apply_t;
+
+#define DISPATCH_APPLY_ATTR_SIG 0xA11AB000
+struct dispatch_apply_attr_s {
+	uint32_t sig;
+	uint32_t flags;
+	size_t per_cluster_parallelism;
+	uintptr_t guard; /* To prevent copying */
+#if defined(__LP64__)
+	uint8_t unused[40];
+#else
+	uint8_t unused[48];
+#endif
+};
+dispatch_static_assert(sizeof(struct dispatch_apply_attr_s) == __DISPATCH_APPLY_ATTR_SIZE__,
+		"Opaque dispatch apply attr and internal apply attr size should match");
 
 #pragma mark -
 #pragma mark dispatch_block_t

@@ -151,8 +151,13 @@ enum {
 #define _dispatch_io_log(x, ...)
 #endif // DISPATCH_IO_DEBUG
 
+#if !defined(_WIN32)
+#define _dispatch_fd_debug(msg, fd, ...) \
+		_dispatch_io_log("fd[0x%x]: " msg, fd, ##__VA_ARGS__)
+#else // !defined(_WIN32)
 #define _dispatch_fd_debug(msg, fd, ...) \
 		_dispatch_io_log("fd[0x%" PRIx64 "]: " msg, fd, ##__VA_ARGS__)
+#endif // !defined(_WIN32)
 #define _dispatch_op_debug(msg, op, ...) \
 		_dispatch_io_log("op[%p]: " msg, op, ##__VA_ARGS__)
 #define _dispatch_io_channel_debug(msg, channel, ...) \
@@ -1312,15 +1317,15 @@ _dispatch_fd_entry_guarded_open(dispatch_fd_entry_t fd_entry, const char *path,
 	(void)mode;
 	DWORD dwDesiredAccess = 0;
 	switch (oflag & (_O_RDONLY | _O_WRONLY | _O_RDWR)) {
-		case _O_RDONLY:
-			dwDesiredAccess = GENERIC_READ;
-			break;
-		case _O_WRONLY:
-			dwDesiredAccess = GENERIC_WRITE;
-			break;
-		case _O_RDWR:
-			dwDesiredAccess = GENERIC_READ | GENERIC_WRITE;
-			break;
+	case _O_RDONLY:
+		dwDesiredAccess = GENERIC_READ;
+		break;
+	case _O_WRONLY:
+		dwDesiredAccess = GENERIC_WRITE;
+		break;
+	case _O_RDWR:
+		dwDesiredAccess = GENERIC_READ | GENERIC_WRITE;
+		break;
 	}
 	DWORD dwCreationDisposition = OPEN_EXISTING;
 	if (oflag & _O_CREAT) {
@@ -1422,7 +1427,11 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 	// On fds lock queue
 	dispatch_fd_entry_t fd_entry = _dispatch_fd_entry_create(
 			_dispatch_io_fds_lockq);
-	_dispatch_fd_entry_debug("create: fd %" PRId64, fd_entry, fd);
+#if !defined(_WIN32)
+	_dispatch_fd_entry_debug("create: fd %d", fd_entry, fd);
+#else // !defined(_WIN32)
+	_dispatch_fd_entry_debug("create: fd %"PRId64, fd_entry, fd);
+#endif // !defined(_WIN32)
 	fd_entry->fd = fd;
 	LIST_INSERT_HEAD(&_dispatch_io_fds[hash], fd_entry, fd_list);
 	fd_entry->barrier_queue = dispatch_queue_create(

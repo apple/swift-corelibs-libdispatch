@@ -47,8 +47,9 @@ DISPATCH_CLASS_DECL(channel, QUEUE);
 		dm_cancel_handler_called:1, \
 		dm_is_xpc:1, \
 		dm_arm_no_senders:1, \
+		dm_made_sendrights:1, \
 		dm_strict_reply:1, \
-		__ds_flags_pad : 9; \
+		__ds_flags_pad : 8; \
 	uint16_t __dq_flags_separation[0]; \
 	uint16_t \
 		/* set under the send queue lock */ \

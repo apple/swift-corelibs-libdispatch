@@ -473,6 +473,7 @@ firehose_buffer_stream_signal_waiting_for_logd(firehose_buffer_t fb,
 			new_state = (firehose_stream_state_u){
 				.fss_allocator = (state.fss_allocator &
 						~FIREHOSE_GATE_UNRELIABLE_WAITERS_BIT),
+				.fss_current = state.fss_current,
 				.fss_loss = state.fss_loss,
 				.fss_timestamped = true,
 				.fss_waiting_for_logd = true,
@@ -486,6 +487,7 @@ firehose_buffer_stream_signal_waiting_for_logd(firehose_buffer_t fb,
 			new_state = (firehose_stream_state_u){
 				.fss_allocator = (state.fss_allocator &
 						~FIREHOSE_GATE_UNRELIABLE_WAITERS_BIT),
+				.fss_current = state.fss_current,
 				.fss_loss = state.fss_loss,
 				.fss_timestamped = true,
 				.fss_waiting_for_logd = true,

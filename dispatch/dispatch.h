@@ -62,6 +62,7 @@
 #endif
 
 #include <os/object.h>
+#include <os/workgroup.h>
 #include <dispatch/base.h>
 #include <dispatch/time.h>
 #include <dispatch/object.h>

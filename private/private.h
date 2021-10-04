@@ -72,6 +72,7 @@
 #include <dispatch/io_private.h>
 #include <dispatch/layout_private.h>
 #include <dispatch/time_private.h>
+#include <dispatch/apply_private.h>
 
 #undef __DISPATCH_INDIRECT__
 #endif /* !__DISPATCH_BUILDING_DISPATCH__ */

@@ -1430,13 +1430,26 @@ __firehose_buffer_tracepoint_flush(firehose_tracepoint_t ft,
 	return firehose_buffer_tracepoint_flush(kernel_firehose_buffer, ft, ftid);
 }
 
-void
+bool
 __firehose_merge_updates(firehose_push_reply_t update)
 {
 	firehose_buffer_t fb = kernel_firehose_buffer;
+	bool has_more = false;
+	uint16_t head;
+
 	if (likely(fb)) {
+		firehose_buffer_header_t fbh = &fb->fb_header;
 		firehose_client_merge_updates(fb, true, update, false, NULL);
+		head = os_atomic_load(&fbh->fbh_ring_io_head, relaxed);
+		if (head != (uint16_t)os_atomic_load(&fbh->fbh_bank.fbb_io_flushed, relaxed)) {
+			has_more = true;
+		}
+		head = os_atomic_load(&fbh->fbh_ring_mem_head, relaxed);
+		if (head != (uint16_t)os_atomic_load(&fbh->fbh_bank.fbb_mem_flushed, relaxed)) {
+			has_more = true;
+		}
 	}
+	return has_more;
 }
 
 int

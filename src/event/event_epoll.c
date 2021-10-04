@@ -703,6 +703,12 @@ _dispatch_event_loop_wait_for_ownership(dispatch_sync_context_t dsc)
 }
 
 void
+_dispatch_event_loop_ensure_ownership(dispatch_wlh_t wlh)
+{
+	(void)wlh;
+}
+
+void
 _dispatch_event_loop_end_ownership(dispatch_wlh_t wlh, uint64_t old_state,
 		uint64_t new_state, uint32_t flags)
 {

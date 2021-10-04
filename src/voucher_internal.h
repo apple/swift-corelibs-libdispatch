@@ -89,6 +89,7 @@ voucher_get_mach_voucher(voucher_t voucher);
 
 void _voucher_init(void);
 void _voucher_atfork_child(void);
+void _voucher_atfork_parent(void);
 void _voucher_activity_debug_channel_init(void);
 #if OS_VOUCHER_ACTIVITY_SPI && OS_VOUCHER_ACTIVITY_GENERATE_SWAPS
 void _voucher_activity_swap(firehose_activity_id_t old_id,
@@ -155,7 +156,7 @@ OS_ENUM(voucher_fields, uint16_t,
 
 typedef struct voucher_s {
 	_OS_OBJECT_HEADER(
-	struct voucher_vtable_s *os_obj_isa,
+	struct voucher_vtable_s *__ptrauth_objc_isa_pointer os_obj_isa,
 	os_obj_ref_cnt,
 	os_obj_xref_cnt);
 	struct voucher_hash_entry_s {
@@ -233,7 +234,7 @@ _voucher_hash_store_to_prev_ptr(uintptr_t prev_ptr, struct voucher_s *v)
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
 typedef struct voucher_recipe_s {
 	_OS_OBJECT_HEADER(
-	const _os_object_vtable_s *os_obj_isa,
+	const _os_object_vtable_s *__ptrauth_objc_isa_pointer os_obj_isa,
 	os_obj_ref_cnt,
 	os_obj_xref_cnt);
 	size_t vr_allocation_size;
@@ -450,6 +451,10 @@ _voucher_get_activity_id(voucher_t v, uint64_t *creator_pid)
 void _voucher_task_mach_voucher_init(void* ctxt);
 extern dispatch_once_t _voucher_task_mach_voucher_pred;
 extern mach_voucher_t _voucher_task_mach_voucher;
+
+extern dispatch_once_t _voucher_process_can_use_arbitrary_personas_pred;
+extern bool _voucher_process_can_use_arbitrary_personas;
+
 #if VOUCHER_USE_EMPTY_MACH_BASE_VOUCHER
 #define _voucher_default_task_mach_voucher MACH_VOUCHER_NULL
 #else

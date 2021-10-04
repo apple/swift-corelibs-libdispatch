@@ -559,8 +559,8 @@ _dispatch_kevent_drain(dispatch_kevent_t ke)
 			// when the process exists but is a zombie. As a workaround, we
 			// simulate an exit event for any EVFILT_PROC with an invalid pid.
 			ke->flags  = EV_UDATA_SPECIFIC | EV_ONESHOT | EV_DELETE;
-			ke->fflags = NOTE_EXIT;
-			ke->data   = 0;
+			ke->fflags = NOTE_EXIT | NOTE_EXITSTATUS;
+			ke->data   = 0; // Fake exit status
 			_dispatch_kevent_debug("synthetic NOTE_EXIT", ke);
 		} else {
 			return _dispatch_kevent_print_error(ke);
@@ -873,7 +873,6 @@ _dispatch_kq_unote_set_kevent(dispatch_unote_t _du, dispatch_kevent_t dk,
 				du->du_priority),
 #endif
 	};
-	(void)pp; // if DISPATCH_USE_KEVENT_QOS == 0
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -1299,14 +1298,13 @@ _dispatch_unote_unregister_direct(dispatch_unote_t du, uint32_t flags)
 enum {
 	DISPATCH_WORKLOOP_ASYNC,
 	DISPATCH_WORKLOOP_ASYNC_FROM_SYNC,
-	DISPATCH_WORKLOOP_ASYNC_DISCOVER_SYNC,
 	DISPATCH_WORKLOOP_ASYNC_QOS_UPDATE,
 	DISPATCH_WORKLOOP_ASYNC_LEAVE,
 	DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_SYNC,
 	DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_TRANSFER,
-	DISPATCH_WORKLOOP_ASYNC_FORCE_END_OWNERSHIP,
 	DISPATCH_WORKLOOP_RETARGET,
 
+	DISPATCH_WORKLOOP_SYNC_DISCOVER,
 	DISPATCH_WORKLOOP_SYNC_WAIT,
 	DISPATCH_WORKLOOP_SYNC_WAKE,
 	DISPATCH_WORKLOOP_SYNC_FAKE,
@@ -1316,17 +1314,16 @@ enum {
 static char const * const _dispatch_workloop_actions[] = {
 	[DISPATCH_WORKLOOP_ASYNC]                       = "async",
 	[DISPATCH_WORKLOOP_ASYNC_FROM_SYNC]             = "async (from sync)",
-	[DISPATCH_WORKLOOP_ASYNC_DISCOVER_SYNC]         = "discover sync",
 	[DISPATCH_WORKLOOP_ASYNC_QOS_UPDATE]            = "qos update",
 	[DISPATCH_WORKLOOP_ASYNC_LEAVE]                 = "leave",
 	[DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_SYNC]       = "leave (from sync)",
 	[DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_TRANSFER]   = "leave (from transfer)",
-	[DISPATCH_WORKLOOP_ASYNC_FORCE_END_OWNERSHIP]   = "leave (forced)",
 	[DISPATCH_WORKLOOP_RETARGET]                    = "retarget",
 
+	[DISPATCH_WORKLOOP_SYNC_DISCOVER]               = "sync-discover",
 	[DISPATCH_WORKLOOP_SYNC_WAIT]                   = "sync-wait",
-	[DISPATCH_WORKLOOP_SYNC_FAKE]                   = "sync-fake",
 	[DISPATCH_WORKLOOP_SYNC_WAKE]                   = "sync-wake",
+	[DISPATCH_WORKLOOP_SYNC_FAKE]                   = "sync-fake",
 	[DISPATCH_WORKLOOP_SYNC_END]                    = "sync-end",
 };
 
@@ -1405,6 +1402,11 @@ _dispatch_kevent_workloop_priority(dispatch_queue_t dq, int which,
 		qos = DISPATCH_QOS_MAINTENANCE;
 	}
 	pthread_priority_t pp = _dispatch_qos_to_pp(qos);
+
+	if (rq_pri & DISPATCH_PRIORITY_FLAG_COOPERATIVE) {
+		DISPATCH_INTERNAL_CRASH(rq_pri, "Waking up a kq with cooperative thread request is not supported");
+	}
+
 	return pp | (rq_pri & DISPATCH_PRIORITY_FLAG_OVERCOMMIT);
 }
 
@@ -1421,11 +1423,8 @@ _dispatch_kq_fill_workloop_event(dispatch_kevent_t ke, int which,
 	uint16_t action = 0;
 
 	switch (which) {
-	case DISPATCH_WORKLOOP_ASYNC_FROM_SYNC:
-		fflags |= NOTE_WL_END_OWNERSHIP;
-		/* FALLTHROUGH */
 	case DISPATCH_WORKLOOP_ASYNC:
-	case DISPATCH_WORKLOOP_ASYNC_DISCOVER_SYNC:
+	case DISPATCH_WORKLOOP_ASYNC_FROM_SYNC:
 	case DISPATCH_WORKLOOP_ASYNC_QOS_UPDATE:
 		dispatch_assert(_dq_state_is_base_wlh(dq_state));
 		dispatch_assert(_dq_state_is_enqueued_on_target(dq_state));
@@ -1433,21 +1432,16 @@ _dispatch_kq_fill_workloop_event(dispatch_kevent_t ke, int which,
 		mask |= DISPATCH_QUEUE_ROLE_MASK;
 		mask |= DISPATCH_QUEUE_ENQUEUED;
 		mask |= DISPATCH_QUEUE_MAX_QOS_MASK;
-		if (which == DISPATCH_WORKLOOP_ASYNC_DISCOVER_SYNC) {
-			dispatch_assert(!_dq_state_in_sync_transfer(dq_state));
-			dispatch_assert(_dq_state_drain_locked(dq_state));
-			mask |= DISPATCH_QUEUE_SYNC_TRANSFER;
-			fflags |= NOTE_WL_DISCOVER_OWNER;
-		} else {
-			fflags |= NOTE_WL_IGNORE_ESTALE;
-		}
+		fflags |= NOTE_WL_IGNORE_ESTALE;
 		fflags |= NOTE_WL_UPDATE_QOS;
+		if (_dq_state_in_uncontended_sync(dq_state)) {
+			fflags |= NOTE_WL_DISCOVER_OWNER;
+			mask |= DISPATCH_QUEUE_UNCONTENDED_SYNC;
+		}
 		pp = _dispatch_kevent_workloop_priority(dq, which, qos);
 		break;
 
 	case DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_SYNC:
-		fflags |= NOTE_WL_END_OWNERSHIP;
-		/* FALLTHROUGH */
 	case DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_TRANSFER:
 		fflags |= NOTE_WL_IGNORE_ESTALE;
 		/* FALLTHROUGH */
@@ -1455,18 +1449,6 @@ _dispatch_kq_fill_workloop_event(dispatch_kevent_t ke, int which,
 		dispatch_assert(!_dq_state_is_enqueued_on_target(dq_state));
 		action = EV_ADD | EV_DELETE | EV_ENABLE;
 		mask |= DISPATCH_QUEUE_ENQUEUED;
-		break;
-
-	case DISPATCH_WORKLOOP_ASYNC_FORCE_END_OWNERSHIP:
-		// 0 is never a valid queue state, so the knote attach will fail due to
-		// the debounce. However, NOTE_WL_END_OWNERSHIP is always observed even
-		// when ESTALE is returned, which is the side effect we're after here.
-		fflags |= NOTE_WL_END_OWNERSHIP;
-		fflags |= NOTE_WL_IGNORE_ESTALE;
-		action = EV_ADD | EV_ENABLE;
-		mask = ~0ull;
-		dq_state = 0;
-		pp = _dispatch_kevent_workloop_priority(dq, which, qos);
 		break;
 
 	case DISPATCH_WORKLOOP_RETARGET:
@@ -1520,16 +1502,22 @@ _dispatch_kq_fill_workloop_sync_event(dispatch_kevent_t ke, int which,
 	uint16_t action = 0;
 
 	switch (which) {
+	case DISPATCH_WORKLOOP_SYNC_DISCOVER:
+		dispatch_assert(_dq_state_received_sync_wait(dq_state));
+		dispatch_assert(_dq_state_in_uncontended_sync(dq_state));
+		action = EV_ADD | EV_DISABLE;
+		fflags = NOTE_WL_SYNC_WAKE | NOTE_WL_DISCOVER_OWNER |
+				NOTE_WL_IGNORE_ESTALE;
+		mask = DISPATCH_QUEUE_ROLE_MASK | DISPATCH_QUEUE_RECEIVED_SYNC_WAIT |
+				DISPATCH_QUEUE_UNCONTENDED_SYNC;
+		break;
+
 	case DISPATCH_WORKLOOP_SYNC_WAIT:
 		action = EV_ADD | EV_DISABLE;
 		fflags = NOTE_WL_SYNC_WAIT;
 		pp     = _dispatch_get_priority();
 		if (_dispatch_qos_from_pp(pp) == 0) {
 			pp = _dispatch_qos_to_pp(DISPATCH_QOS_DEFAULT);
-		}
-		if (_dq_state_received_sync_wait(dq_state)) {
-			fflags |= NOTE_WL_DISCOVER_OWNER;
-			mask = DISPATCH_QUEUE_ROLE_MASK | DISPATCH_QUEUE_RECEIVED_SYNC_WAIT;
 		}
 		break;
 
@@ -1653,9 +1641,6 @@ _dispatch_event_loop_get_action_for_state(uint64_t dq_state)
 	if (!_dq_state_drain_locked(dq_state)) {
 		return DISPATCH_WORKLOOP_ASYNC;
 	}
-	if (!_dq_state_in_sync_transfer(dq_state)) {
-		return DISPATCH_WORKLOOP_ASYNC_DISCOVER_SYNC;
-	}
 	return DISPATCH_WORKLOOP_ASYNC_QOS_UPDATE;
 }
 
@@ -1729,42 +1714,11 @@ _dispatch_kevent_workloop_poke(dispatch_wlh_t wlh, uint64_t dq_state,
 	dispatch_assert(_dq_state_is_enqueued_on_target(dq_state));
 	dispatch_assert(!_dq_state_is_enqueued_on_manager(dq_state));
 	action = _dispatch_event_loop_get_action_for_state(dq_state);
-override:
 	_dispatch_kq_fill_workloop_event(&ke, action, wlh, dq_state);
 
 	if (_dispatch_kq_poll(wlh, &ke, 1, &ke, 1, NULL, NULL, kev_flags)) {
-		_dispatch_kevent_workloop_drain_error(&ke,
-				DISPATCH_KEVENT_WORKLOOP_ALLOW_ESTALE);
-		dispatch_assert(action == DISPATCH_WORKLOOP_ASYNC_DISCOVER_SYNC);
-		dq_state = ke.ext[EV_EXTIDX_WL_VALUE];
-		//
-		// There are 4 things that can cause an ESTALE for DISCOVER_SYNC:
-		// - the queue role changed, we don't want to redrive
-		// - the queue is no longer enqueued, we don't want to redrive
-		// - the max QoS changed, whoever changed it is doing the same
-		//   transition, so we don't need to redrive
-		// - the DISPATCH_QUEUE_IN_SYNC_TRANFER bit got set
-		//
-		// The interesting case is the last one, and will only happen in the
-		// following chain of events:
-		// 1. uncontended dispatch_sync()
-		// 2. contended dispatch_sync()
-		// 3. contended dispatch_async()
-		//
-		// And this code is running because of (3). It is possible that (1)
-		// hands off to (2) while this call is being made, causing the
-		// DISPATCH_QUEUE_IN_TRANSFER_SYNC to be set, and we don't need to tell
-		// the kernel about the owner anymore. However, the async in that case
-		// will have set a QoS on the queue (since dispatch_sync()s don't but
-		// dispatch_async()s always do), and we need to redrive to tell it
-		// to the kernel.
-		//
-		if (_dq_state_is_base_wlh(dq_state) &&
-				_dq_state_is_enqueued_on_target(dq_state) &&
-				_dq_state_in_sync_transfer(dq_state)) {
-			action = DISPATCH_WORKLOOP_ASYNC;
-			goto override;
-		}
+		_dispatch_kevent_workloop_drain_error(&ke, 0);
+		__builtin_unreachable();
 	}
 
 	if (!(flags & DISPATCH_EVENT_LOOP_OVERRIDE)) {
@@ -2043,11 +1997,25 @@ _dispatch_event_loop_leave_deferred(dispatch_deferred_items_t ddi,
 		uint64_t dq_state)
 {
 #if DISPATCH_USE_KEVENT_WORKLOOP
+	if (_dq_state_received_sync_wait(dq_state)) {
+		dispatch_tid tid = _dq_state_drain_owner(dq_state);
+		int slot = _dispatch_kq_deferred_find_slot(ddi, EVFILT_WORKLOOP,
+				(uint64_t)ddi->ddi_wlh, tid);
+		if (slot == ddi->ddi_nevents) {
+			dispatch_assert(slot < DISPATCH_DEFERRED_ITEMS_EVENT_COUNT);
+			ddi->ddi_nevents++;
+		}
+		_dispatch_kq_fill_workloop_sync_event(&ddi->ddi_eventlist[slot],
+				DISPATCH_WORKLOOP_SYNC_DISCOVER, ddi->ddi_wlh,
+				dq_state, _dq_state_drain_owner(dq_state));
+	}
+
 	int action = _dispatch_event_loop_get_action_for_state(dq_state);
 	dispatch_assert(ddi->ddi_wlh_needs_delete);
 	ddi->ddi_wlh_needs_delete = false;
 	ddi->ddi_wlh_needs_update = false;
 	_dispatch_kq_fill_ddi_workloop_event(ddi, action, ddi->ddi_wlh, dq_state);
+
 #else
 	(void)ddi; (void)dq_state;
 #endif // DISPATCH_USE_KEVENT_WORKLOOP
@@ -2061,11 +2029,24 @@ _dispatch_event_loop_cancel_waiter(dispatch_sync_context_t dsc)
 	uint32_t kev_flags = KEVENT_FLAG_IMMEDIATE | KEVENT_FLAG_ERROR_EVENTS;
 	dispatch_kevent_s ke;
 
+again:
 	_dispatch_kq_fill_workloop_sync_event(&ke, DISPATCH_WORKLOOP_SYNC_END,
 			wlh, 0, dsc->dsc_waiter);
 	if (_dispatch_kq_poll(wlh, &ke, 1, &ke, 1, NULL, NULL, kev_flags)) {
 		_dispatch_kevent_workloop_drain_error(&ke, dsc->dsc_waiter_needs_cancel ?
 				0 : DISPATCH_KEVENT_WORKLOOP_ALLOW_ENOENT);
+		//
+		// quick hack for 78288114
+		//
+		// something with DISPATCH_WORKLOOP_SYNC_FAKE is not quite right
+		// we can at least make the thread in the way finish the syscall
+		// it's trying to make with directed handoffs.
+		//
+		// it's inefficient but doesn't have a priority inversion.
+		//
+		_dispatch_preemption_yield_to(dsc->dsc_waiter, 1);
+		goto again;
+
 		//
 		// Our deletion attempt is opportunistic as in most cases we will find
 		// the matching knote and break the waiter out.
@@ -2099,6 +2080,7 @@ _dispatch_event_loop_wake_owner(dispatch_sync_context_t dsc,
 	int action, n = 0;
 
 	dispatch_assert(_dq_state_drain_locked_by(new_state, dsc->dsc_waiter));
+	dispatch_assert(!dsc->dsc_wlh_self_wakeup);
 
 	if (wlh != DISPATCH_WLH_ANON && ddi && ddi->ddi_wlh == wlh) {
 		dispatch_assert(ddi->ddi_wlh_needs_delete);
@@ -2107,8 +2089,8 @@ _dispatch_event_loop_wake_owner(dispatch_sync_context_t dsc,
 
 		if (wlh == waiter_wlh) { // async -> sync handoff
 			dispatch_assert(_dq_state_is_enqueued_on_target(old_state));
-			dispatch_assert(!_dq_state_in_sync_transfer(old_state));
-			dispatch_assert(_dq_state_in_sync_transfer(new_state));
+			dispatch_assert(!_dq_state_in_uncontended_sync(old_state));
+			dispatch_assert(!_dq_state_in_uncontended_sync(new_state));
 
 			if (_dq_state_is_enqueued_on_target(new_state)) {
 				action = DISPATCH_WORKLOOP_ASYNC_QOS_UPDATE;
@@ -2131,7 +2113,7 @@ _dispatch_event_loop_wake_owner(dispatch_sync_context_t dsc,
 
 	if ((old_state ^ new_state) & DISPATCH_QUEUE_ENQUEUED) {
 		dispatch_assert(_dq_state_is_enqueued_on_target(old_state));
-		dispatch_assert(_dq_state_in_sync_transfer(new_state));
+		dispatch_assert(!_dq_state_in_uncontended_sync(new_state));
 		// During the handoff, the waiter noticed there was no work *after*
 		// that last work item, so we want to kill the thread request while
 		// there's an owner around to avoid races betwen knote_process() and
@@ -2139,7 +2121,7 @@ _dispatch_event_loop_wake_owner(dispatch_sync_context_t dsc,
 		_dispatch_kq_fill_workloop_event(&ke[n++],
 				DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_TRANSFER, wlh, new_state);
 	}
-	if (_dq_state_in_sync_transfer(new_state)) {
+	if (_dq_state_is_base_wlh(new_state)) {
 		// Even when waiter_wlh != wlh we can pretend we got woken up
 		// which is a knote we will be able to delete later with a SYNC_END.
 		// This allows rectifying incorrect ownership sooner, and also happens
@@ -2147,10 +2129,13 @@ _dispatch_event_loop_wake_owner(dispatch_sync_context_t dsc,
 		_dispatch_kq_fill_workloop_sync_event(&ke[n++],
 				DISPATCH_WORKLOOP_SYNC_WAKE, wlh, new_state, dsc->dsc_waiter);
 	}
-	if (_dq_state_in_sync_transfer(old_state)) {
+	if (!dsc->dsc_from_async && _dq_state_is_base_wlh(old_state) &&
+			!_dq_state_in_uncontended_sync(old_state)) {
+		// Note: when coming from dispatch_resume despite having work items
+		//       the caller has an "uncontended sync" ownership
 		dispatch_tid tid = _dispatch_tid_self();
 		_dispatch_kq_fill_workloop_sync_event(&ke[n++],
-				DISPATCH_WORKLOOP_SYNC_END, wlh, new_state, tid);
+				DISPATCH_WORKLOOP_SYNC_END, wlh, old_state, tid);
 	}
 	//
 	// Past this call it is not safe to look at `wlh` anymore as the callers
@@ -2212,6 +2197,10 @@ _dispatch_event_loop_wait_for_ownership(dispatch_sync_context_t dsc)
 		//
 		_dispatch_kq_fill_workloop_event(&ke[n++], DISPATCH_WORKLOOP_ASYNC,
 				wlh, dq_state);
+	} else if (_dq_state_received_sync_wait(dq_state)) {
+		_dispatch_kq_fill_workloop_sync_event(&ke[n++],
+				DISPATCH_WORKLOOP_SYNC_DISCOVER, wlh, dq_state,
+				_dq_state_drain_owner(dq_state));
 	}
 
 again:
@@ -2221,8 +2210,7 @@ again:
 	for (i = 0; i < n; i++) {
 		long flags = 0;
 		if (ke[i].fflags & NOTE_WL_SYNC_WAIT) {
-			flags = DISPATCH_KEVENT_WORKLOOP_ALLOW_EINTR |
-					DISPATCH_KEVENT_WORKLOOP_ALLOW_ESTALE;
+			flags = DISPATCH_KEVENT_WORKLOOP_ALLOW_EINTR;
 		}
 		_dispatch_kevent_workloop_drain_error(&ke[i], flags);
 	}
@@ -2244,13 +2232,31 @@ again:
 }
 
 void
+_dispatch_event_loop_ensure_ownership(dispatch_wlh_t wlh)
+{
+#if DISPATCH_USE_KEVENT_WORKLOOP
+	uint32_t kev_flags = KEVENT_FLAG_IMMEDIATE | KEVENT_FLAG_ERROR_EVENTS;
+	dispatch_tid tid = _dispatch_tid_self();
+	dispatch_kevent_s ke;
+
+	_dispatch_kq_fill_workloop_sync_event(&ke, DISPATCH_WORKLOOP_SYNC_WAKE,
+			wlh, tid, tid);
+	if (_dispatch_kq_poll(wlh, &ke, 1, &ke, 1, NULL, NULL, kev_flags)) {
+		_dispatch_kevent_workloop_drain_error(&ke, 0);
+		__builtin_unreachable();
+	}
+#else
+	(void)wlh;
+#endif
+}
+
+void
 _dispatch_event_loop_end_ownership(dispatch_wlh_t wlh, uint64_t old_state,
 		uint64_t new_state, uint32_t flags)
 {
 #if DISPATCH_USE_KEVENT_WORKLOOP
 	uint32_t kev_flags = KEVENT_FLAG_IMMEDIATE | KEVENT_FLAG_ERROR_EVENTS;
 	dispatch_kevent_s ke[2];
-	bool needs_forceful_end_ownership = false;
 	int n = 0;
 
 	dispatch_assert(_dq_state_is_base_wlh(new_state));
@@ -2258,50 +2264,15 @@ _dispatch_event_loop_end_ownership(dispatch_wlh_t wlh, uint64_t old_state,
 		_dispatch_kq_fill_workloop_event(&ke[n++],
 				DISPATCH_WORKLOOP_ASYNC_FROM_SYNC, wlh, new_state);
 	} else if (_dq_state_is_enqueued_on_target(old_state)) {
-		//
-		// <rdar://problem/41389180> Because the thread request knote may not
-		// have made it, DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_SYNC may silently
-		// turn into a no-op.
-		//
-		// However, the kernel may know about our ownership anyway, so we need
-		// to make sure it is forcefully ended.
-		//
-		needs_forceful_end_ownership = true;
 		dispatch_assert(_dq_state_is_suspended(new_state));
 		_dispatch_kq_fill_workloop_event(&ke[n++],
 				DISPATCH_WORKLOOP_ASYNC_LEAVE_FROM_SYNC, wlh, new_state);
-	} else if (_dq_state_received_sync_wait(old_state)) {
-		//
-		// This case happens when the current workloop got waited on by some
-		// thread calling _dispatch_event_loop_wait_for_ownership.
-		//
-		// When the workloop became IDLE, it didn't find the sync waiter
-		// continuation, didn't have a thread request to cancel either, and so
-		// we need the kernel to forget about the current thread ownership
-		// of the workloop.
-		//
-		// To forget this ownership, we create a fake WAKE knote that can not
-		// coalesce with any meaningful one, just so that we can EV_DELETE it
-		// with the NOTE_WL_END_OWNERSHIP.
-		//
-		// This is a gross hack, but this will really only ever happen for
-		// cases where a sync waiter started to wait on a workloop, but his part
-		// of the graph got mutated and retargeted onto a different workloop.
-		// In doing so, that sync waiter has snitched to the kernel about
-		// ownership, and the workloop he's bogusly waiting on will go through
-		// this codepath.
-		//
-		needs_forceful_end_ownership = true;
 	}
 
-	if (_dq_state_in_sync_transfer(old_state)) {
+	if (!_dq_state_in_uncontended_sync(old_state)) {
 		dispatch_tid tid = _dispatch_tid_self();
 		_dispatch_kq_fill_workloop_sync_event(&ke[n++],
 				DISPATCH_WORKLOOP_SYNC_END, wlh, new_state, tid);
-	} else if (needs_forceful_end_ownership) {
-		kev_flags |= KEVENT_FLAG_DYNAMIC_KQ_MUST_EXIST;
-		_dispatch_kq_fill_workloop_event(&ke[n++],
-				DISPATCH_WORKLOOP_ASYNC_FORCE_END_OWNERSHIP, wlh, new_state);
 	}
 
 	if (_dispatch_kq_poll(wlh, ke, n, ke, n, NULL, NULL, kev_flags)) {
@@ -2482,6 +2453,9 @@ const dispatch_source_type_s _dispatch_source_type_vfs = {
 #if HAVE_DECL_VQ_VERYLOWDISK
 			|VQ_VERYLOWDISK
 #endif
+#if HAVE_DECL_VQ_SERVEREVENT
+			|VQ_SERVEREVENT
+#endif
 #if HAVE_DECL_VQ_QUOTA
 			|VQ_QUOTA
 #endif
@@ -2594,6 +2568,8 @@ _dispatch_memorypressure_handler(void *context)
 	}
 }
 
+DISPATCH_STATIC_GLOBAL(dispatch_source_t _dispatch_memorypressure_source);
+
 static void
 _dispatch_memorypressure_init(void)
 {
@@ -2602,6 +2578,7 @@ _dispatch_memorypressure_init(void)
 			DISPATCH_MEMORYPRESSURE_SOURCE_MASK, _dispatch_mgr_q._as_dq);
 	dispatch_set_context(ds, ds);
 	dispatch_source_set_event_handler_f(ds, _dispatch_memorypressure_handler);
+	_dispatch_memorypressure_source = ds;
 	dispatch_activate(ds);
 }
 #endif // DISPATCH_USE_MEMORYPRESSURE_SOURCE
@@ -2615,7 +2592,7 @@ _dispatch_ios_simulator_memorypressure_init(void *context DISPATCH_UNUSED)
 	if (!e) return;
 	_dispatch_ios_simulator_memory_warnings_fd = open(e, O_EVTONLY);
 	if (_dispatch_ios_simulator_memory_warnings_fd == -1) {
-		(void)dispatch_assume_zero(errno);
+		DISPATCH_INTERNAL_CRASH(errno, "Failed to create fd to simulator memory pressure file");
 	}
 }
 
@@ -2632,7 +2609,11 @@ _dispatch_source_memorypressure_create(dispatch_source_type_t dst,
 
 	dst = &_dispatch_source_type_vnode;
 	handle = (uintptr_t)_dispatch_ios_simulator_memory_warnings_fd;
+	if (handle < 0) {
+		return DISPATCH_UNOTE_NULL;
+	}
 	mask = NOTE_ATTRIB;
+
 
 	dispatch_unote_t du = dux_create(dst, handle, mask);
 	if (du._du) {
@@ -2702,6 +2683,7 @@ static void _dispatch_mach_host_notify_update(void *context);
 DISPATCH_STATIC_GLOBAL(dispatch_once_t _dispatch_mach_notify_port_pred);
 DISPATCH_STATIC_GLOBAL(dispatch_once_t _dispatch_mach_calendar_pred);
 DISPATCH_STATIC_GLOBAL(mach_port_t _dispatch_mach_notify_port);
+DISPATCH_STATIC_GLOBAL(dispatch_unote_t _dispatch_mach_notify_unote);
 
 static void
 _dispatch_timers_calendar_change(void)
@@ -2811,6 +2793,7 @@ _dispatch_mach_notify_port_init(void *context DISPATCH_UNUSED)
 
 	dispatch_assume(_dispatch_unote_register(du, DISPATCH_WLH_ANON,
 			DISPATCH_PRIORITY_FLAG_MANAGER));
+	_dispatch_mach_notify_unote = du;
 }
 
 static void
@@ -3303,14 +3286,18 @@ const dispatch_source_type_s _dispatch_mach_type_recv = {
 DISPATCH_NORETURN
 static void
 _dispatch_mach_reply_merge_evt(dispatch_unote_t du DISPATCH_UNUSED,
-		uint32_t flags, uintptr_t data DISPATCH_UNUSED,
+		uint32_t flags, uintptr_t data,
 		pthread_priority_t pp DISPATCH_UNUSED)
 {
 	if (flags & EV_VANISHED) {
 		DISPATCH_CLIENT_CRASH(0,
 				"Unexpected EV_VANISHED (do not destroy random mach ports)");
 	}
-	DISPATCH_INTERNAL_CRASH(flags, "Unexpected event");
+#if __LP64__
+	data = (uintptr_t)(kern_return_t)data;
+	data |= (uintptr_t)flags << 32;
+#endif
+	DISPATCH_INTERNAL_CRASH(data, "Unexpected event");
 }
 
 const dispatch_source_type_s _dispatch_mach_type_reply = {

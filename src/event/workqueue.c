@@ -243,7 +243,7 @@ _dispatch_workq_init_once(void *context DISPATCH_UNUSED)
 	int i, target_runnable = (int)dispatch_hw_config(active_cpus);
 	foreach_qos_bucket_reverse(i) {
 		dispatch_workq_monitor_t mon = &_dispatch_workq_monitors[i];
-		mon->dq = _dispatch_get_root_queue(DISPATCH_QOS_FOR_BUCKET(i), false);
+		mon->dq = _dispatch_get_root_queue(DISPATCH_QOS_FOR_BUCKET(i), 0);
 		void *buf = _dispatch_calloc(WORKQ_MAX_TRACKED_TIDS, sizeof(dispatch_tid));
 		mon->registered_tids = buf;
 		mon->target_runnable = target_runnable;

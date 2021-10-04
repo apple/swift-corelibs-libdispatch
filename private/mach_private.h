@@ -34,9 +34,10 @@
 
 __BEGIN_DECLS
 
-#define DISPATCH_MACH_SPI_VERSION 20161026
+#define DISPATCH_MACH_SPI_VERSION 20200229
 
 #include <mach/mach.h>
+#include <mach/message.h>
 
 DISPATCH_ASSUME_NONNULL_BEGIN
 
@@ -162,7 +163,7 @@ DISPATCH_ENUM(dispatch_mach_send_flags, unsigned long,
  * Trailer type of mach message received by dispatch mach channels
  */
 
-typedef mach_msg_context_trailer_t dispatch_mach_trailer_t;
+typedef mach_msg_mac_trailer_t dispatch_mach_trailer_t;
 
 /*!
  * @constant DISPATCH_MACH_RECEIVE_MAX_INLINE_MESSAGE_SIZE
@@ -370,13 +371,60 @@ dispatch_mach_create_f(const char *_Nullable label,
  * a "server" peer connection and the no more senders request is armed
  * immediately.
  *
+ * Note that the notification will not be issued if no send right was ever
+ * made for this connection receive right.
+ *
  * @param channel
  * The mach channel to request no senders notifications on.
  */
-API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(4.0))
+API_DEPRECATED("Use dispatch_mach_notify_no_senders instead", macos(10.14, 10.16),
+		ios(12.0, 14.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
 void
 dispatch_mach_request_no_senders(dispatch_mach_t channel);
+
+/*!
+ * @function dispatch_mach_notify_no_senders
+ *
+ * Configure the mach channel to receive no more senders notifications.
+ *
+ * @discussion
+ * This function must be called before dispatch_mach_connect() has been called.
+ *
+ * When a checkin message is passed to dispatch_mach_connect() or
+ * dispatch_mach_reconnect(), the notification is armed after the checkin
+ * message has been sent successfully.
+ *
+ * If no checkin message is passed, then the mach channel is assumed to be
+ * a "server" peer connection and the no more senders request is armed
+ * immediately.
+ *
+ * Requesting a no-senders notification for a listener mach channel is likely a
+ * client error since listener connections will likely have short-lived send
+ * rights (only until a peer connection is established).
+ *
+ * @param channel
+ * The mach channel to request no senders notifications on.
+ *
+ * @param made_sendrights
+ * A boolean representing whether the send right for this connection has been
+ * made before dispatch_mach_connect() is called.
+ *
+ * There are 2 cases of consideration:
+ *
+ * a) The client is initiating the peer connection by creating a receive right
+ * with an inserted send right and shipping the receive right over to the server
+ * in a checkin message. In this case, the server must specify true for
+ * made_sendrights when arming for no-senders notification.
+ *
+ * b) The server is initiating the connection by creating a mach channel with a
+ * receive right and using MACH_MSG_TYPE_MAKE_SEND to create a send right in the
+ * checkin reply for the peer connection. this case, the server should specify
+ * false for made_sendrights while arming for no-senders notification.
+ */
+API_AVAILABLE(macos(10.16), ios(14.0), tvos(14.0), watchos(5.0))
+void
+dispatch_mach_notify_no_senders(dispatch_mach_t channel, bool made_sendrights);
 
 /*!
  * @typedef dispatch_mach_flags_t
@@ -402,7 +450,6 @@ dispatch_mach_request_no_senders(dispatch_mach_t channel);
 DISPATCH_OPTIONS(dispatch_mach_flags, uint64_t,
 	DMF_NONE               = 0x0,
 	DMF_USE_STRICT_REPLY   = 0x1,
-	DMF_REQUEST_NO_SENDERS = 0x2,
 );
 
 /*!
@@ -1228,6 +1275,42 @@ void
 dispatch_mach_handoff_reply(dispatch_queue_t queue, mach_port_t port,
 		dispatch_block_t block);
 #endif /* __BLOCKS__ */
+
+#if DISPATCH_MACH_SPI
+
+/*!
+ * @function dispatch_mach_msg_get_filter_policy_id
+ * Returns the message filter policy id from the message trailer.
+ * This id is added by the kernel during message send and is specific
+ * to the sender and port on which the message is received..
+ *
+ * @discussion
+ * This function should only be called from the context of an IPC handler.
+ *
+ * @param msg
+ * The dispatch mach message object to query. It should have a trailer of type dispatch_mach_trailer_t.
+ *
+ * @param filter_policy_id
+ * Return the filter policy id read from the message.
+ *
+ */
+API_AVAILABLE(macos(10.16), ios(14.0), tvos(14.0), watchos(7.0), bridgeos(5.0))
+DISPATCH_EXPORT DISPATCH_NOTHROW
+void
+dispatch_mach_msg_get_filter_policy_id(dispatch_mach_msg_t msg, mach_msg_filter_id *filter_policy_id);
+
+
+/*!
+ * @function dispatch_mach_can_handoff_4libxpc
+ *
+ * Returns whether the code is running in a context where a handoff is possible.
+ */
+API_AVAILABLE(macos(10.16), ios(14.0), tvos(14.0), watchos(7.0), bridgeos(5.0))
+DISPATCH_EXPORT DISPATCH_NOTHROW
+bool
+dispatch_mach_can_handoff_4libxpc(void);
+
+#endif // DISPATCH_MACH_SPI
 
 DISPATCH_ASSUME_NONNULL_END
 

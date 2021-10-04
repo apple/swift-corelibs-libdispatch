@@ -59,7 +59,7 @@ _dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
 #pragma mark - semaphores
 
 #if USE_MACH_SEM
-#if __has_include(<os/semaphore_private.h>)
+#if __has_include(<os/semaphore_private.h>) && !TARGET_OS_SIMULATOR
 #include <os/semaphore_private.h>
 #define DISPATCH_USE_OS_SEMAPHORE_CACHE 1
 #else
@@ -109,7 +109,7 @@ _dispatch_sema4_create_slow(_dispatch_sema4_t *s4, int policy)
 }
 
 void
-_dispatch_sema4_dispose_slow(_dispatch_sema4_t *sema, int policy)
+_dispatch_sema4_dispose_slow(_dispatch_sema4_t *sema, int __unused policy)
 {
 	semaphore_t sema_port = *sema;
 	*sema = MACH_PORT_DEAD;

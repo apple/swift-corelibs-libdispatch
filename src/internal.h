@@ -35,6 +35,8 @@
 
 #define __DISPATCH_BUILDING_DISPATCH__
 #define __DISPATCH_INDIRECT__
+#define __OS_WORKGROUP_INDIRECT__
+#define __OS_WORKGROUP_PRIVATE_INDIRECT__
 
 #ifdef __APPLE__
 #include <Availability.h>
@@ -96,6 +98,19 @@
 
 #include <dispatch/dispatch.h>
 #include <dispatch/base.h>
+
+#if __has_feature(ptrauth_calls)
+#include <ptrauth.h>
+#define DISPATCH_VTABLE_ENTRY(op) \
+		(* __ptrauth(ptrauth_key_process_independent_code, true, \
+				ptrauth_string_discriminator("dispatch." #op)) const op)
+#define DISPATCH_FUNCTION_POINTER \
+		__ptrauth(ptrauth_key_process_dependent_code, true, \
+				ptrauth_string_discriminator("dispatch.handler"))
+#else
+#define DISPATCH_VTABLE_ENTRY(op) (* const op)
+#define DISPATCH_FUNCTION_POINTER
+#endif
 
 #define __DISPATCH_HIDE_SYMBOL(sym, version) \
 	__asm__(".section __TEXT,__const\n\t" \
@@ -181,6 +196,7 @@ typedef union {
 	struct dispatch_io_s *_dchannel;
 
 	struct dispatch_continuation_s *_dc;
+	struct dispatch_swift_continuation_s *_dsjc;
 	struct dispatch_sync_context_s *_dsc;
 	struct dispatch_operation_s *_doperation;
 	struct dispatch_disk_s *_ddisk;
@@ -203,6 +219,10 @@ upcast(dispatch_object_t dou)
 #endif // __OBJC__
 
 #include <os/object.h>
+#include <os/workgroup_base.h>
+#include <os/workgroup_object.h>
+#include <os/workgroup_interval.h>
+#include <os/workgroup_parallel.h>
 #include <dispatch/time.h>
 #include <dispatch/object.h>
 #include <dispatch/queue.h>
@@ -220,12 +240,17 @@ upcast(dispatch_object_t dou)
 #include <pthread.h>
 #endif
 #include "os/object_private.h"
+#include "os/eventlink_private.h"
+#include "os/workgroup_object_private.h"
+#include "os/workgroup_interval_private.h"
+#include "apply_private.h"
 #include "queue_private.h"
 #include "channel_private.h"
 #include "workloop_private.h"
 #include "source_private.h"
 #include "mach_private.h"
 #include "data_private.h"
+#include "time_private.h"
 #include "os/voucher_private.h"
 #include "os/voucher_activity_private.h"
 #include "io_private.h"
@@ -475,6 +500,7 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 
 #define DISPATCH_MODE_STRICT    (1U << 0)
 #define DISPATCH_MODE_NO_FAULTS (1U << 1)
+#define DISPATCH_COOPERATIVE_POOL_STRICT (1U << 2)
 extern uint8_t _dispatch_mode;
 
 DISPATCH_EXPORT DISPATCH_NOINLINE DISPATCH_COLD
@@ -700,8 +726,7 @@ _dispatch_fork_becomes_unsafe(void)
 
 #ifndef HAVE_PTHREAD_WORKQUEUE_WORKLOOP
 #if HAVE_PTHREAD_WORKQUEUE_KEVENT && defined(WORKQ_FEATURE_WORKLOOP) && \
-		defined(KEVENT_FLAG_WORKLOOP) && \
-		DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101300)
+		defined(KEVENT_FLAG_WORKLOOP)
 #define HAVE_PTHREAD_WORKQUEUE_WORKLOOP 1
 #else
 #define HAVE_PTHREAD_WORKQUEUE_WORKLOOP 0
@@ -709,12 +734,20 @@ _dispatch_fork_becomes_unsafe(void)
 #endif // !defined(HAVE_PTHREAD_WORKQUEUE_WORKLOOP)
 
 #ifndef DISPATCH_USE_WORKQUEUE_NARROWING
-#if HAVE_PTHREAD_WORKQUEUES && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101300)
+#if HAVE_PTHREAD_WORKQUEUES
 #define DISPATCH_USE_WORKQUEUE_NARROWING 1
 #else
 #define DISPATCH_USE_WORKQUEUE_NARROWING 0
 #endif
 #endif // !defined(DISPATCH_USE_WORKQUEUE_NARROWING)
+
+#ifndef DISPATCH_USE_COOPERATIVE_WORKQUEUE
+#if defined(WORKQ_FEATURE_COOPERATIVE_WORKQ) && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(120000)
+#define DISPATCH_USE_COOPERATIVE_WORKQUEUE 1
+#else
+#define DISPATCH_USE_COOPERATIVE_WORKQUEUE 0
+#endif
+#endif
 
 #ifndef DISPATCH_USE_PTHREAD_ROOT_QUEUES
 #if defined(__BLOCKS__) && defined(__APPLE__)
@@ -802,10 +835,10 @@ extern int malloc_engaged_nano(void);
 extern bool _dispatch_memory_warn;
 #endif
 
-#if defined(MACH_SEND_SYNC_OVERRIDE) && defined(MACH_RCV_SYNC_WAIT) && \
-		DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101300) && \
-		!defined(DISPATCH_USE_MACH_SEND_SYNC_OVERRIDE)
-#define DISPATCH_USE_MACH_SEND_SYNC_OVERRIDE 1
+#if defined(MACH_MSG_QOS_LAST) && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101600)
+#define DISPATCH_USE_MACH_MSG_PRIORITY_COMBINED 1
+#else
+#define DISPATCH_USE_MACH_MSG_PRIORITY_COMBINED 0
 #endif
 
 #if defined(F_SETNOSIGPIPE) && defined(F_GETNOSIGPIPE)
@@ -993,7 +1026,7 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 
 #ifndef VOUCHER_USE_PERSONA
 #if VOUCHER_USE_MACH_VOUCHER && defined(BANK_PERSONA_TOKEN) && \
-		!TARGET_OS_SIMULATOR
+		!TARGET_OS_SIMULATOR && !TARGET_CPU_ARM
 #define VOUCHER_USE_PERSONA 1
 #else
 #define VOUCHER_USE_PERSONA 0
@@ -1008,6 +1041,23 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 #define MACH_RCV_VOUCHER 0
 #define VOUCHER_USE_PERSONA 0
 #endif // VOUCHER_USE_MACH_VOUCHER
+
+#ifndef VOUCHER_USE_PERSONA_ADOPT_ANY
+#if VOUCHER_USE_PERSONA && defined(BANK_PERSONA_ADOPT_ANY) &&  \
+	DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(120000)
+#define VOUCHER_USE_PERSONA_ADOPT_ANY 1
+#else
+#define VOUCHER_USE_PERSONA_ADOPT_ANY 0
+#endif
+#endif
+
+#ifndef OS_EVENTLINK_USE_MACH_EVENTLINK
+#if DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101600) && __has_include(<mach/mach_eventlink.h>)
+#define OS_EVENTLINK_USE_MACH_EVENTLINK 1
+#else
+#define OS_EVENTLINK_USE_MACH_EVENTLINK 0
+#endif
+#endif // OS_EVENTLINK_USE_MACH_EVENTLINK
 
 #define _dispatch_hardware_crash() \
 		__asm__(""); __builtin_trap() // <rdar://problem/17464981>
@@ -1130,6 +1180,8 @@ extern bool _dispatch_kevent_workqueue_enabled;
 
 /* #includes dependent on internal.h */
 #include "object_internal.h"
+#include "workgroup_internal.h"
+#include "eventlink_internal.h"
 #include "semaphore_internal.h"
 #include "introspection_internal.h"
 #include "queue_internal.h"
