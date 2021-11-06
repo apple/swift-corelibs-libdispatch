@@ -264,13 +264,35 @@
 #endif
 #endif
 
-#if __has_feature(objc_fixed_enum) || __has_extension(cxx_strong_enums) || defined(_WIN32)
+#if __has_attribute(enum_extensibility)
+#define __DISPATCH_ENUM_ATTR __attribute__((__enum_extensibility__(open)))
+#define __DISPATCH_ENUM_ATTR_CLOSED __attribute__((__enum_extensibility__(closed)))
+#else
+#define __DISPATCH_ENUM_ATTR
+#define __DISPATCH_ENUM_ATTR_CLOSED
+#endif // __has_attribute(enum_extensibility)
+
+#if __has_attribute(flag_enum)
+#define __DISPATCH_OPTIONS_ATTR __attribute__((__flag_enum__))
+#else
+#define __DISPATCH_OPTIONS_ATTR
+#endif // __has_attribute(flag_enum)
+
+
+#if __has_feature(objc_fixed_enum) || __has_extension(cxx_strong_enums) || \
+		__has_extension(cxx_fixed_enum) || defined(_WIN32)
 #define DISPATCH_ENUM(name, type, ...) \
-		typedef enum : type { __VA_ARGS__ } name##_t
+		typedef enum : type { __VA_ARGS__ } __DISPATCH_ENUM_ATTR name##_t
+#define DISPATCH_OPTIONS(name, type, ...) \
+		typedef enum : type { __VA_ARGS__ } __DISPATCH_OPTIONS_ATTR __DISPATCH_ENUM_ATTR name##_t
 #else
 #define DISPATCH_ENUM(name, type, ...) \
-		enum { __VA_ARGS__ }; typedef type name##_t
-#endif
+		enum { __VA_ARGS__ } __DISPATCH_ENUM_ATTR; typedef type name##_t
+#define DISPATCH_OPTIONS(name, type, ...) \
+		enum { __VA_ARGS__ } __DISPATCH_OPTIONS_ATTR __DISPATCH_ENUM_ATTR; typedef type name##_t
+#endif // __has_feature(objc_fixed_enum) ...
+
+
 
 #if __has_feature(enumerator_attributes)
 #define DISPATCH_ENUM_API_AVAILABLE(...) API_AVAILABLE(__VA_ARGS__)
@@ -283,12 +305,11 @@
 #define DISPATCH_ENUM_API_DEPRECATED_WITH_REPLACEMENT(...)
 #endif
 
-#if defined(SWIFT_SDK_OVERLAY_DISPATCH_EPOCH) && \
-		SWIFT_SDK_OVERLAY_DISPATCH_EPOCH >= 2
+#ifdef __swift__
 #define DISPATCH_SWIFT3_OVERLAY 1
-#else
+#else // __swift__
 #define DISPATCH_SWIFT3_OVERLAY 0
-#endif // SWIFT_SDK_OVERLAY_DISPATCH_EPOCH >= 2
+#endif // __swift__
 
 #if __has_feature(attribute_availability_swift)
 #define DISPATCH_SWIFT_UNAVAILABLE(_msg) \

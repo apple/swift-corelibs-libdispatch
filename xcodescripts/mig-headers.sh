@@ -19,6 +19,7 @@
 # @APPLE_APACHE_LICENSE_HEADER_END@
 #
 
+
 export MIGCC="$(xcrun -find cc)"
 export MIGCOM="$(xcrun -find migcom)"
 export PATH="${PLATFORM_DEVELOPER_BIN_DIR}:${DEVELOPER_BIN_DIR}:${PATH}"

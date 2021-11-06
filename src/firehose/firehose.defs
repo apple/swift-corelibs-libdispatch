@@ -28,6 +28,7 @@ serverprefix        firehose_server_;
 userprefix          firehose_send_;
 
 UseSpecialReplyPort 1;
+ConsumeOnSendError Timeout;
 
 simpleroutine register(
             server_port     : mach_port_t;

@@ -99,7 +99,7 @@ typedef struct dispatch_wlh_s *dispatch_wlh_t; // opaque handle
 #define DISPATCH_WLH_ANON       ((dispatch_wlh_t)(void*)(~0x3ul))
 #define DISPATCH_WLH_MANAGER    ((dispatch_wlh_t)(void*)(~0x7ul))
 
-DISPATCH_ENUM(dispatch_unote_timer_flags, uint8_t,
+DISPATCH_OPTIONS(dispatch_unote_timer_flags, uint8_t,
 	/* DISPATCH_TIMER_STRICT 0x1 */
 	/* DISPATCH_TIMER_BACKGROUND = 0x2, */
 	DISPATCH_TIMER_CLOCK_UPTIME = DISPATCH_CLOCK_UPTIME << 2,
@@ -130,7 +130,7 @@ typedef uint32_t dispatch_unote_ident_t;
 #endif
 
 #define DISPATCH_UNOTE_CLASS_HEADER() \
-	dispatch_source_type_t du_type; \
+	dispatch_source_type_t __ptrauth_objc_isa_pointer du_type; \
 	uintptr_t du_owner_wref; /* "weak" back reference to the owner object */ \
 	os_atomic(dispatch_unote_state_t) du_state; \
 	dispatch_unote_ident_t du_ident; \
@@ -251,7 +251,7 @@ void dispatch_debug_machport(mach_port_t name, const char *str);
 // layout must match dispatch_source_refs_s
 struct dispatch_mach_recv_refs_s {
 	DISPATCH_UNOTE_CLASS_HEADER();
-	dispatch_mach_handler_function_t dmrr_handler_func;
+	dispatch_mach_handler_function_t DISPATCH_FUNCTION_POINTER dmrr_handler_func;
 	void *dmrr_handler_ctxt;
 };
 typedef struct dispatch_mach_recv_refs_s *dispatch_mach_recv_refs_t;
@@ -350,6 +350,7 @@ typedef struct dispatch_source_type_s {
 	dispatch_unote_action_t dst_action;
 	uint8_t    dst_per_trigger_qos : 1;
 	uint8_t    dst_strict : 1;
+	uint8_t    dst_allow_empty_mask : 1;
 	uint8_t    dst_timer_flags;
 	uint16_t   dst_flags;
 #if DISPATCH_EVENT_BACKEND_KEVENT
@@ -453,6 +454,34 @@ static inline void
 _dispatch_set_return_to_kernel(void)
 {
 	_dispatch_thread_setspecific(dispatch_r2k_key, (void *)1);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline uintptr_t
+_dispatch_get_quantum_expiry_action(void)
+{
+	return (uintptr_t) _dispatch_thread_getspecific(dispatch_quantum_key);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_ack_quantum_expiry_action(void)
+{
+	return _dispatch_thread_setspecific(dispatch_quantum_key, (void *) 0);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_set_current_dsc(void *dsc)
+{
+	return _dispatch_thread_setspecific(dispatch_dsc_key, dsc);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_clear_current_dsc(void)
+{
+	return _dispatch_thread_setspecific(dispatch_dsc_key, NULL);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -675,6 +704,7 @@ void _dispatch_event_loop_wake_owner(struct dispatch_sync_context_s *dsc,
 		dispatch_wlh_t wlh, uint64_t old_state, uint64_t new_state);
 void _dispatch_event_loop_wait_for_ownership(
 		struct dispatch_sync_context_s *dsc);
+void _dispatch_event_loop_ensure_ownership(dispatch_wlh_t wlh);
 void _dispatch_event_loop_end_ownership(dispatch_wlh_t wlh,
 		uint64_t old_state, uint64_t new_state, uint32_t flags);
 #if DISPATCH_WLH_DEBUG

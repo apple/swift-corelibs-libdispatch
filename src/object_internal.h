@@ -178,10 +178,12 @@
 
 #define DISPATCH_OBJECT_VTABLE_HEADER(x) \
 	unsigned long const do_type; \
-	void (*const do_dispose)(struct x##_s *, bool *allow_free); \
-	size_t (*const do_debug)(struct x##_s *, char *, size_t); \
-	void (*const do_invoke)(struct x##_s *, dispatch_invoke_context_t, \
-			dispatch_invoke_flags_t)
+	void DISPATCH_VTABLE_ENTRY(do_dispose)(struct x##_s *, \
+			bool *allow_free); \
+	size_t DISPATCH_VTABLE_ENTRY(do_debug)(struct x##_s *, \
+			char *, size_t); \
+	void DISPATCH_VTABLE_ENTRY(do_invoke)(struct x##_s *, \
+			dispatch_invoke_context_t, dispatch_invoke_flags_t)
 #else
 #define DISPATCH_VTABLE_SUBCLASS_INSTANCE(name, ctype, ...) \
 		OS_OBJECT_VTABLE_SUBCLASS_INSTANCE(dispatch_##name, dispatch_##ctype, \
@@ -191,19 +193,21 @@
 #define DISPATCH_OBJECT_VTABLE_HEADER(x) \
 	unsigned long const do_type; \
 	const char *const do_kind; \
-	void (*const do_dispose)(struct x##_s *, bool *allow_free); \
-	size_t (*const do_debug)(struct x##_s *, char *, size_t); \
-	void (*const do_invoke)(struct x##_s *, dispatch_invoke_context_t, \
-			dispatch_invoke_flags_t)
+	void DISPATCH_VTABLE_ENTRY(do_dispose)(struct x##_s *, \
+			bool *allow_free); \
+	size_t DISPATCH_VTABLE_ENTRY(do_debug)(struct x##_s *, \
+			char *, size_t); \
+	void DISPATCH_VTABLE_ENTRY(do_invoke)(struct x##_s *, \
+			dispatch_invoke_context_t, dispatch_invoke_flags_t)
 #endif
 
 #define DISPATCH_QUEUE_VTABLE_HEADER(x); \
 	DISPATCH_OBJECT_VTABLE_HEADER(x); \
-	void (*const dq_activate)(dispatch_queue_class_t, bool *allow_resume); \
-	void (*const dq_wakeup)(dispatch_queue_class_t, dispatch_qos_t, \
-			dispatch_wakeup_flags_t); \
-	void (*const dq_push)(dispatch_queue_class_t, dispatch_object_t, \
-			dispatch_qos_t)
+	void DISPATCH_VTABLE_ENTRY(dq_activate)(dispatch_queue_class_t); \
+	void DISPATCH_VTABLE_ENTRY(dq_wakeup)(dispatch_queue_class_t, \
+			dispatch_qos_t, dispatch_wakeup_flags_t); \
+	void DISPATCH_VTABLE_ENTRY(dq_push)(dispatch_queue_class_t, \
+			dispatch_object_t, dispatch_qos_t)
 
 #define dx_vtable(x) (&(x)->do_vtable->_os_obj_vtable)
 #define dx_type(x) dx_vtable(x)->do_type
@@ -240,7 +244,7 @@
 #define DISPATCH_OBJECT_LISTLESS ((void *)0x89abcdef)
 #endif
 
-DISPATCH_ENUM(dispatch_wakeup_flags, uint32_t,
+DISPATCH_OPTIONS(dispatch_wakeup_flags, uint32_t,
 	// The caller of dx_wakeup owns two internal refcounts on the object being
 	// woken up. Two are needed for WLH wakeups where two threads need
 	// the object to remain valid in a non-coordinated way
@@ -262,6 +266,9 @@ DISPATCH_ENUM(dispatch_wakeup_flags, uint32_t,
 
 	// This wakeup may cause the source to leave its DSF_NEEDS_EVENT state
 	DISPATCH_WAKEUP_EVENT                   = 0x00000010,
+
+	// This wakeup is allowed to clear the ACTIVATING state of the object
+	DISPATCH_WAKEUP_CLEAR_ACTIVATING        = 0x00000020,
 );
 
 typedef struct dispatch_invoke_context_s {
@@ -278,17 +285,25 @@ typedef struct dispatch_invoke_context_s {
 #if DISPATCH_USE_WORKQUEUE_NARROWING
 #define DISPATCH_THREAD_IS_NARROWING 1
 
-#define dispatch_with_disabled_narrowing(dic, ...) ({ \
+#if DISPATCH_USE_COOPERATIVE_WORKQUEUE
+#define dispatch_with_disabled_narrowing(dic, flags, ...) ({ \
+	flags |= DISPATCH_INVOKE_DISABLED_NARROWING; \
+	__VA_ARGS__; \
+	flags &= ~DISPATCH_INVOKE_DISABLED_NARROWING; \
+})
+#else /* DISPATCH_USE_COOPERATIVE_WORKQUEUE */
+#define dispatch_with_disabled_narrowing(dic, flags, ...) ({ \
 		uint64_t suspend_narrow_check = dic->dic_next_narrow_check; \
 		dic->dic_next_narrow_check = 0; \
 		__VA_ARGS__; \
 		dic->dic_next_narrow_check = suspend_narrow_check; \
 	})
+#endif /* DISPATCH_USE_COOPERATIVE_WORKQUEUE */
 #else
-#define dispatch_with_disabled_narrowing(dic, ...) __VA_ARGS__
+#define dispatch_with_disabled_narrowing(dic, flags, ...) __VA_ARGS__
 #endif
 
-DISPATCH_ENUM(dispatch_invoke_flags, uint32_t,
+DISPATCH_OPTIONS(dispatch_invoke_flags, uint32_t,
 	DISPATCH_INVOKE_NONE					= 0x00000000,
 
 	// Invoke modes
@@ -335,15 +350,19 @@ DISPATCH_ENUM(dispatch_invoke_flags, uint32_t,
 	// @const DISPATCH_INVOKE_THREAD_BOUND
 	// We're draining from the context of a thread-bound queue (main thread)
 	//
-	// @const DISPATCH_INVOKE_WORKER_DRAIN
+	// @const DISPATCH_INVOKE_WORKLOOP_DRAIN
 	// The queue at the bottom of this drain is a workloop that supports
 	// reordering.
+	//
+	// @const DISPATCH_INVOKE_COOPERATIVE_DRAIN
+	// The queue at the bottom of this drain is a cooperative global queue
 	//
 	DISPATCH_INVOKE_WORKER_DRAIN			= 0x00010000,
 	DISPATCH_INVOKE_REDIRECTING_DRAIN		= 0x00020000,
 	DISPATCH_INVOKE_MANAGER_DRAIN			= 0x00040000,
 	DISPATCH_INVOKE_THREAD_BOUND			= 0x00080000,
 	DISPATCH_INVOKE_WORKLOOP_DRAIN			= 0x00100000,
+	DISPATCH_INVOKE_COOPERATIVE_DRAIN		= 0x00200000,
 #define _DISPATCH_INVOKE_DRAIN_MODE_MASK	  0x00ff0000u
 
 	// Autoreleasing modes
@@ -357,9 +376,13 @@ DISPATCH_ENUM(dispatch_invoke_flags, uint32_t,
 	DISPATCH_INVOKE_AUTORELEASE_ALWAYS		= 0x01000000,
 	DISPATCH_INVOKE_AUTORELEASE_NEVER		= 0x02000000,
 #define _DISPATCH_INVOKE_AUTORELEASE_MASK	  0x03000000u
+
+	// @const DISPATCH_INVOKE_DISABLED_NARROWING
+	// Don't check for narrowing during this invoke
+	DISPATCH_INVOKE_DISABLED_NARROWING		= 0x4000000,
 );
 
-DISPATCH_ENUM(dispatch_object_flags, unsigned long,
+DISPATCH_OPTIONS(dispatch_object_flags, unsigned long,
 	_DISPATCH_META_TYPE_MASK		= 0x000000ff, // mask for object meta-types
 	_DISPATCH_TYPE_CLUSTER_MASK		= 0x000000f0, // mask for the cluster type
 	_DISPATCH_SUB_TYPE_MASK			= 0x0000ff00, // mask for object sub-types
@@ -367,11 +390,12 @@ DISPATCH_ENUM(dispatch_object_flags, unsigned long,
 
 	_DISPATCH_OBJECT_CLUSTER        = 0x00000000, // dispatch object cluster
 	_DISPATCH_CONTINUATION_TYPE		= 0x00000000, // meta-type for continuations
-	_DISPATCH_SEMAPHORE_TYPE		= 0x00000001, // meta-type for semaphores
-	_DISPATCH_NODE_TYPE				= 0x00000002, // meta-type for data node
-	_DISPATCH_IO_TYPE				= 0x00000003, // meta-type for io channels
-	_DISPATCH_OPERATION_TYPE		= 0x00000004, // meta-type for io operations
-	_DISPATCH_DISK_TYPE				= 0x00000005, // meta-type for io disks
+	_DISPATCH_SWIFT_JOB_TYPE		= 0x00000001, // meta-type for swift jobs
+	_DISPATCH_SEMAPHORE_TYPE		= 0x00000002, // meta-type for semaphores
+	_DISPATCH_NODE_TYPE				= 0x00000003, // meta-type for data node
+	_DISPATCH_IO_TYPE				= 0x00000004, // meta-type for io channels
+	_DISPATCH_OPERATION_TYPE		= 0x00000005, // meta-type for io operations
+	_DISPATCH_DISK_TYPE				= 0x00000006, // meta-type for io disks
 
 	_DISPATCH_QUEUE_CLUSTER         = 0x00000010, // dispatch queue cluster
 	_DISPATCH_LANE_TYPE				= 0x00000011, // meta-type for lanes
@@ -400,6 +424,8 @@ DISPATCH_ENUM(dispatch_object_flags, unsigned long,
 	DISPATCH_OPERATION_TYPE				= DISPATCH_OBJECT_SUBTYPE(0, OPERATION),
 	DISPATCH_DISK_TYPE					= DISPATCH_OBJECT_SUBTYPE(0, DISK),
 
+	DISPATCH_SWIFT_JOB_TYPE				= DISPATCH_OBJECT_SUBTYPE(0, SWIFT_JOB),
+
 	DISPATCH_QUEUE_SERIAL_TYPE			= DISPATCH_OBJECT_SUBTYPE(1, LANE),
 	DISPATCH_QUEUE_CONCURRENT_TYPE		= DISPATCH_OBJECT_SUBTYPE(2, LANE),
 	DISPATCH_QUEUE_GLOBAL_ROOT_TYPE		= DISPATCH_OBJECT_SUBTYPE(3, LANE) |
@@ -414,12 +440,15 @@ DISPATCH_ENUM(dispatch_object_flags, unsigned long,
 			_DISPATCH_QUEUE_BASE_TYPEFLAG | _DISPATCH_NO_CONTEXT_TYPEFLAG,
 	DISPATCH_QUEUE_NETWORK_EVENT_TYPE	= DISPATCH_OBJECT_SUBTYPE(8, LANE) |
 			_DISPATCH_QUEUE_BASE_TYPEFLAG,
+	DISPATCH_QUEUE_COOPERATIVE_ROOT_TYPE= DISPATCH_OBJECT_SUBTYPE(9, LANE) |
+			_DISPATCH_QUEUE_ROOT_TYPEFLAG | _DISPATCH_NO_CONTEXT_TYPEFLAG,
 
 	DISPATCH_WORKLOOP_TYPE				= DISPATCH_OBJECT_SUBTYPE(0, WORKLOOP) |
 			_DISPATCH_QUEUE_BASE_TYPEFLAG,
 
 	DISPATCH_SOURCE_KEVENT_TYPE			= DISPATCH_OBJECT_SUBTYPE(1, SOURCE),
-	DISPATCH_MACH_CHANNEL_TYPE			= DISPATCH_OBJECT_SUBTYPE(2, SOURCE),
+	DISPATCH_CHANNEL_TYPE				= DISPATCH_OBJECT_SUBTYPE(2, SOURCE),
+	DISPATCH_MACH_CHANNEL_TYPE			= DISPATCH_OBJECT_SUBTYPE(3, SOURCE),
 );
 
 typedef struct _os_object_vtable_s {
@@ -428,7 +457,7 @@ typedef struct _os_object_vtable_s {
 
 typedef struct _os_object_s {
 	_OS_OBJECT_HEADER(
-	const _os_object_vtable_s *os_obj_isa,
+	const _os_object_vtable_s *__ptrauth_objc_isa_pointer os_obj_isa,
 	os_obj_ref_cnt,
 	os_obj_xref_cnt);
 } _os_object_s;
@@ -443,18 +472,25 @@ typedef struct _os_object_s {
 #else
 #define OS_OBJECT_STRUCT_HEADER(x) \
 	_OS_OBJECT_HEADER(\
-	const struct x##_vtable_s *do_vtable, \
+	const struct x##_vtable_s *__ptrauth_objc_isa_pointer do_vtable, \
 	do_ref_cnt, \
 	do_xref_cnt)
 #endif
 
-#define _DISPATCH_OBJECT_HEADER(x) \
+#define _DISPATCH_OBJECT_HEADER_INTERNAL(x) \
 	struct _os_object_s _as_os_obj[0]; \
 	OS_OBJECT_STRUCT_HEADER(dispatch_##x); \
-	struct dispatch_##x##_s *volatile do_next; \
+	struct dispatch_##x##_s *volatile do_next;
+
+
+#define _DISPATCH_OBJECT_HEADER(x) \
+	_DISPATCH_OBJECT_HEADER_INTERNAL(x) \
 	struct dispatch_queue_s *do_targetq; \
 	void *do_ctxt; \
-	void *do_finalizer
+	union { \
+		dispatch_function_t DISPATCH_FUNCTION_POINTER do_finalizer; \
+		void *do_introspection_ctxt; \
+	}
 
 #define DISPATCH_OBJECT_HEADER(x) \
 	struct dispatch_object_s _as_do[0]; \
@@ -466,6 +502,9 @@ typedef struct _os_object_s {
 		DISPATCH_CLIENT_CRASH(0, "-init called directly"); \
 		return [super init]; \
 	}
+
+#define DISPATCH_OBJECT_USES_XREF_DISPOSE() \
+		OS_OBJECT_USES_XREF_DISPOSE()
 
 _OS_OBJECT_DECL_PROTOCOL(dispatch_object, object);
 DISPATCH_CLASS_DECL_BARE(object, OBJECT);
@@ -480,9 +519,7 @@ size_t _dispatch_object_debug_attr(dispatch_object_t dou, char* buf,
 void *_dispatch_object_alloc(const void *vtable, size_t size);
 void _dispatch_object_finalize(dispatch_object_t dou);
 void _dispatch_object_dealloc(dispatch_object_t dou);
-#if !USE_OBJC
 void _dispatch_xref_dispose(dispatch_object_t dou);
-#endif
 void _dispatch_dispose(dispatch_object_t dou);
 #if DISPATCH_COCOA_COMPAT
 #if USE_OBJC
@@ -528,7 +565,7 @@ OS_OBJECT_OBJC_CLASS_DECL(object);
 // This is required by the dispatch_data_t/NSData bridging, which is not
 // supported on the old runtime.
 #define DISPATCH_OBJECT_TFB(f, o, ...) \
-	if (unlikely(((uintptr_t)((o)._os_obj->os_obj_isa) & 1) || \
+	if (unlikely(((*(uintptr_t *)&((o)._os_obj->os_obj_isa)) & 1) || \
 			(Class)((o)._os_obj->os_obj_isa) < \
 					(Class)OS_OBJECT_VTABLE(dispatch_object) || \
 			(Class)((o)._os_obj->os_obj_isa) >= \
@@ -584,7 +621,7 @@ size_t _dispatch_objc_debug(dispatch_object_t dou, char* buf, size_t bufsiz);
  */
 #define _os_atomic_refcnt_perform2o(o, f, op, n, m)   ({ \
 		__typeof__(o) _o = (o); \
-		int _ref_cnt = _o->f; \
+		int _ref_cnt = os_atomic_load(&_o->f, relaxed); \
 		if (likely(_ref_cnt != _OS_OBJECT_GLOBAL_REFCNT)) { \
 			_ref_cnt = os_atomic_##op##2o(_o, f, n, m); \
 		} \

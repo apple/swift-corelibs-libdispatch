@@ -278,7 +278,7 @@ struct dispatch_magazine_s {
 };
 
 #if DISPATCH_DEBUG
-#define DISPATCH_ALLOCATOR_SCRIBBLE ((uintptr_t)0xAFAFAFAFAFAFAFAF)
+#define DISPATCH_ALLOCATOR_SCRIBBLE ((int)0xAFAFAFAF)
 #endif
 
 

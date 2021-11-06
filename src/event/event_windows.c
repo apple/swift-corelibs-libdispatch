@@ -359,12 +359,11 @@ _dispatch_socket_callback(PTP_CALLBACK_INSTANCE inst, void *context,
 		DWORD dwBytesAvailable = 1;
 		if (lNetworkEvents & FD_CLOSE) {
 			dwBytesAvailable = 0;
-			// Post to all registered read and write handlers
-			lNetworkEvents |= FD_READ | FD_WRITE;
 		} else if (lNetworkEvents & FD_READ) {
 			ioctlsocket(sock, FIONREAD, &dwBytesAvailable);
 		}
-		if (lNetworkEvents & FD_READ) {
+		if ((lNetworkEvents & FD_CLOSE) ||
+			((lNetworkEvents & FD_READ) && (dwBytesAvailable > 0))) {
 			_dispatch_muxnote_retain(dmn);
 			if (!PostQueuedCompletionStatus(hPort, dwBytesAvailable,
 					(ULONG_PTR)DISPATCH_PORT_SOCKET_READ, (LPOVERLAPPED)dmn)) {
@@ -372,9 +371,10 @@ _dispatch_socket_callback(PTP_CALLBACK_INSTANCE inst, void *context,
 						"PostQueuedCompletionStatus");
 			}
 		}
-		if (lNetworkEvents & FD_WRITE) {
+		if ((lNetworkEvents & FD_CLOSE) || (lNetworkEvents & FD_WRITE)) {
 			_dispatch_muxnote_retain(dmn);
-			if (!PostQueuedCompletionStatus(hPort, dwBytesAvailable,
+			if (!PostQueuedCompletionStatus(hPort,
+					lNetworkEvents & FD_CLOSE ? 0 : 1,
 					(ULONG_PTR)DISPATCH_PORT_SOCKET_WRITE, (LPOVERLAPPED)dmn)) {
 				DISPATCH_INTERNAL_CRASH(GetLastError(),
 						"PostQueuedCompletionStatus");

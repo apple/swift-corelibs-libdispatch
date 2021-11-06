@@ -24,20 +24,15 @@
 #error the firehose server requires the objc-runtime, no ARC
 #endif
 
+OS_OBJECT_NONLAZY_CLASS
 @implementation OS_OBJECT_CLASS(firehose_client)
+OS_OBJECT_NONLAZY_CLASS_LOAD
 DISPATCH_UNAVAILABLE_INIT()
-+ (void)load { }
 
-- (void)_xref_dispose
-{
-	_firehose_client_xref_dispose((struct firehose_client_s *)self);
-	[super _xref_dispose];
-}
-
-- (void)_dispose
+- (void)dealloc
 {
 	_firehose_client_dispose((struct firehose_client_s *)self);
-	[super _dispose];
+	[super dealloc];
 }
 
 - (NSString *)debugDescription

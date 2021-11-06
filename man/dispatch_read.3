@@ -27,19 +27,19 @@ The
 .Fn dispatch_read
 and
 .Fn dispatch_write
-functions asynchronously read from and write to POSIX file descriptors. They
-can be thought of as asynchronous, callback-based versions of the
+functions asynchronously read from and write to POSIX file descriptors.
+They can be thought of as asynchronous, callback-based versions of the
 .Fn fread
 and
 .Fn fwrite
-functions provided by the standard C library. They are convenience functions
-based on the
+functions provided by the standard C library.
+They are convenience functions based on the
 .Xr dispatch_io_read 3
 and
 .Xr dispatch_io_write 3
-functions, intended for simple one-shot read or write requests. Multiple
-request on the same file desciptor are better handled with the full underlying
-dispatch I/O channel functions.
+functions, intended for simple one-shot read or write requests.
+Multiple request on the same file desciptor are better handled with the full
+underlying dispatch I/O channel functions.
 .Sh BEHAVIOR
 The
 .Fn dispatch_read
@@ -48,20 +48,21 @@ function schedules an asynchronous read operation on the file descriptor
 Once the file descriptor is readable, the system will read as much data as is
 currently available, up to the specified
 .Va length ,
-starting at the current file pointer position. The given
+starting at the current file pointer position.
+The given
 .Va handler
 block will be submitted to
 .Va queue
-when the operation completes or an error occurs. The block will be passed a
-dispatch
+when the operation completes or an error occurs.
+The block will be passed a dispatch
 .Va data
-object with the result of the read operation. If an error occurred while
-reading from the file descriptor, the
+object with the result of the read operation.
+If an error occurred while reading from the file descriptor, the
 .Va error
 parameter to the block will be set to the appropriate POSIX error code and
 .Va data
-will contain any data that could be read successfully. If the file pointer
-position is at end-of-file, emtpy
+will contain any data that could be read successfully.
+If the file pointer position is at end-of-file, emtpy
 .Va data
 and zero
 .Va error
@@ -75,23 +76,31 @@ The system will attempt to write the entire contents of the provided
 .Va data
 object to
 .Va fd
-at the current file pointer position. The given
+at the current file pointer position.
+The given
 .Va handler
 block will be submitted to
 .Va queue
-when the operation completes or an error occurs. If the write operation
-completed successfully, the
+when the operation completes or an error occurs.
+If the write operation completed successfully, the
 .Va error
 parameter to the block will be set to zero, otherwise it will be set to the
 appropriate POSIX error code and the
 .Va data
 parameter will contain any data that could not be written.
+.Sh SEE ALSO
+.Xr dispatch 3 ,
+.Xr dispatch_data_create 3 ,
+.Xr dispatch_io_create 3 ,
+.Xr dispatch_io_read 3 ,
+.Xr fread 3
 .Sh CAVEATS
 The
 .Va data
 object passed to a
 .Va handler
-block is released by the system when the block returns. If
+block is released by the system when the block returns.
+If
 .Va data
 is needed outside of the handler block, it must concatenate, copy, or retain
 it.
@@ -101,7 +110,8 @@ descriptor
 .Va fd ,
 the system takes control of that file descriptor until the
 .Va handler
-block is executed. During this time the application must not manipulate
+block is executed.
+During this time the application must not manipulate
 .Va fd
 directly, in particular it is only safe to close
 .Va fd
@@ -110,14 +120,9 @@ from the handler block (or after it has returned).
 If multiple asynchronous read or write operations are submitted to the same
 file descriptor, they will be performed in order, but their handlers will only
 be submitted once all operations have completed and control over the file
-descriptor has been relinquished. For details on this and on the interaction
-with dispatch I/O channels created from the same file descriptor, see
+descriptor has been relinquished.
+For details on this and on the interaction with dispatch I/O channels created
+from the same file descriptor, see
 .Sx FILEDESCRIPTOR OWNERSHIP
 in
 .Xr dispatch_io_create 3 .
-.Sh SEE ALSO
-.Xr dispatch 3 ,
-.Xr dispatch_data_create 3 ,
-.Xr dispatch_io_create 3 ,
-.Xr dispatch_io_read 3 ,
-.Xr fread 3
