@@ -61,6 +61,10 @@
    you don't. */
 #define HAVE_DECL_VQ_VERYLOWDISK 1
 
+/* Define to 1 if you have the declaration of `VQ_SERVEREVENT', and to 0 if
+   you don't. */
+#define HAVE_DECL_VQ_SERVEREVENT 1
+
 /* Define to 1 if you have the declaration of `VQ_QUOTA', and to 0 if
  you don't. */
 #define HAVE_DECL_VQ_QUOTA 1
@@ -72,10 +76,6 @@
 /* Define to 1 if you have the declaration of `VQ_DESIRED_DISK', and to 0 if
  you don't. */
 #define HAVE_DECL_VQ_DESIRED_DISK 1
-
-/* Define to 1 if you have the declaration of `VQ_FREE_SPACE_CHANGE', and to 0 if
-   you don't. */
-#define HAVE_DECL_VQ_FREE_SPACE_CHANGE 1
 
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #define HAVE_DLFCN_H 1
@@ -124,6 +124,12 @@
 
 /* Define if you have the Objective-C runtime */
 #define HAVE_OBJC 1
+
+/* Define to 1 if you have the `posix_fadvise' function. */
+#define HAVE_POSIX_FADVISE 0
+
+/* Define to 1 if you have the `posix_spawnp' function. */
+#define HAVE_POSIX_SPAWNP 1
 
 /* Define to 1 if you have the `pthread_key_init_np' function. */
 #define HAVE_PTHREAD_KEY_INIT_NP 1

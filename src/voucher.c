@@ -24,8 +24,6 @@
 #define PERSONA_ID_NONE ((uid_t)-1)
 #endif
 
-#if !DISPATCH_VARIANT_DYLD_STUB
-
 #if VOUCHER_USE_MACH_VOUCHER
 #if !HAVE_PTHREAD_WORKQUEUE_QOS
 #error Unsupported configuration, workqueue QoS support is required
@@ -235,6 +233,7 @@ _voucher_insert(voucher_t v)
 {
 	mach_voucher_t kv = v->v_ipc_kvoucher;
 	if (!kv) return;
+
 	_voucher_hash_lock_lock();
 	if (unlikely(_voucher_hash_is_enqueued(v))) {
 		_dispatch_voucher_debug("corruption", v);
@@ -796,7 +795,9 @@ _voucher_dispose(voucher_t voucher)
 	voucher->v_recipe_extra_size = 0;
 	voucher->v_recipe_extra_offset = 0;
 #endif
+#if !USE_OBJC
 	return _os_object_dealloc((_os_object_t)voucher);
+#endif // !USE_OBJC
 }
 
 void
@@ -827,6 +828,31 @@ _voucher_activity_debug_channel_init(void)
 	}
 }
 
+static bool
+_voucher_hash_is_empty() {
+	_voucher_hash_lock_lock();
+
+	bool empty = true;
+	for (unsigned int i = 0; i < VL_HASH_SIZE; i++) {
+		voucher_hash_head_s *head = &_voucher_hash[i];
+		if (_voucher_hash_get_next(head->vhh_first) != VOUCHER_NULL) {
+			empty = false;
+			break;
+		}
+	}
+	_voucher_hash_lock_unlock();
+
+	return empty;
+}
+
+void
+_voucher_atfork_parent(void)
+{
+	if (!_voucher_hash_is_empty()){
+		_dispatch_fork_becomes_unsafe();
+	}
+}
+
 void
 _voucher_atfork_child(void)
 {
@@ -839,6 +865,39 @@ _voucher_atfork_child(void)
 	_voucher_aid_next = 0;
 	_firehose_task_buffer_pred = 0;
 	_firehose_task_buffer = NULL; // firehose buffer is VM_INHERIT_NONE
+}
+
+static void
+_voucher_process_can_use_arbitrary_personas_init(void *__unused ctxt)
+{
+#if VOUCHER_USE_PERSONA_ADOPT_ANY
+	mach_voucher_t kv = _voucher_get_task_mach_voucher();
+	kern_return_t kr;
+
+	mach_voucher_attr_content_t result_out;
+	mach_msg_type_number_t result_out_size;
+
+	boolean_t local_result;
+	result_out = (mach_voucher_attr_content_t) &local_result;
+	result_out_size = sizeof(local_result);
+
+	kr = mach_voucher_attr_command(kv, MACH_VOUCHER_ATTR_KEY_BANK,
+		BANK_PERSONA_ADOPT_ANY, NULL, 0, result_out, &result_out_size);
+	if (kr != KERN_SUCCESS) {
+		DISPATCH_INTERNAL_CRASH(kr, "mach_voucher_attr_command(BANK_PERSONA_ADOPT_ANY) failed");
+	}
+
+	_voucher_process_can_use_arbitrary_personas = !!local_result;
+#endif /* VOUCHER_USE_PERSONA_ADOPT_ANY */
+}
+
+bool
+voucher_process_can_use_arbitrary_personas(void)
+{
+	dispatch_once_f(&_voucher_process_can_use_arbitrary_personas_pred, NULL,
+		_voucher_process_can_use_arbitrary_personas_init);
+
+	return _voucher_process_can_use_arbitrary_personas;
 }
 
 voucher_t
@@ -913,13 +972,10 @@ mach_voucher_persona_self(mach_voucher_t *persona_mach_voucher)
 	mach_voucher_t bkv = MACH_VOUCHER_NULL;
 	kern_return_t kr = KERN_NOT_SUPPORTED;
 #if VOUCHER_USE_PERSONA
-	mach_voucher_t kv = _voucher_get_task_mach_voucher();
-
 	const mach_voucher_attr_recipe_data_t bank_send_recipe[] = {
 		[0] = {
 			.key = MACH_VOUCHER_ATTR_KEY_BANK,
-			.command = MACH_VOUCHER_ATTR_COPY,
-			.previous_voucher = kv,
+			.command = MACH_VOUCHER_ATTR_BANK_CREATE,
 		},
 		[1] = {
 			.key = MACH_VOUCHER_ATTR_KEY_BANK,
@@ -1156,6 +1212,21 @@ voucher_activity_initialize_4libtrace(voucher_activity_hooks_t hooks)
 		DISPATCH_CLIENT_CRASH(_voucher_libtrace_hooks,
 				"voucher_activity_initialize_4libtrace called twice");
 	}
+
+	// HACK: we can't call into os_variant until after the initialization of
+	// dispatch and XPC, but we want to do it before the end of libsystem
+	// initialization to avoid having to synchronize _dispatch_mode explicitly,
+	// so this happens to be just the right spot
+#if HAVE_OS_FAULT_WITH_PAYLOAD && TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+	if (_dispatch_getenv_bool("LIBDISPATCH_NO_FAULTS", false)) {
+		return;
+	} else if (getpid() == 1 ||
+			!os_variant_has_internal_diagnostics("com.apple.libdispatch")) {
+		return;
+	}
+
+	_dispatch_mode &= ~DISPATCH_MODE_NO_FAULTS;
+#endif // HAVE_OS_FAULT_WITH_PAYLOAD && TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 }
 
 void
@@ -1275,6 +1346,7 @@ DISPATCH_ALWAYS_INLINE
 static inline bool
 _voucher_activity_disabled(void)
 {
+
 	dispatch_once_f(&_firehose_task_buffer_pred,
 			NULL, _firehose_task_buffer_init);
 
@@ -1621,7 +1693,7 @@ _voucher_debug(voucher_t v, char *buf, size_t bufsiz)
 				v->v_activity, v->v_activity_creator, v->v_parent_activity);
 	}
 	bufprintf(" }");
-	
+
 	return offset;
 }
 
@@ -1634,7 +1706,7 @@ format_hex_data(char *prefix, char *desc, uint8_t *data, size_t data_len,
 	uint8_t *pc = data;
 
 	if (desc) {
- 		bufprintf("%s%s:\n", prefix, desc);
+		bufprintf("%s%s:\n", prefix, desc);
 	}
 
 	ssize_t offset_in_row = -1;
@@ -1672,10 +1744,6 @@ format_recipe_detail(mach_voucher_attr_recipe_t recipe, char *buf,
 	bufprintf("Content size: %u\n", recipe->content_size);
 
 	switch (recipe->key) {
-	case MACH_VOUCHER_ATTR_KEY_ATM:
-		bufprintprefix();
-		bufprintf("ATM ID: %llu", *(uint64_t *)(uintptr_t)recipe->content);
-		break;
 	case MACH_VOUCHER_ATTR_KEY_IMPORTANCE:
 		bufprintprefix();
 		bufprintf("IMPORTANCE INFO: %s", (char *)recipe->content);
@@ -1740,7 +1808,7 @@ voucher_kvoucher_debug(mach_port_t task, mach_port_name_t voucher, char *buf,
 	} else {
 		bufprintprefix();
 		bufprintf("Invalid voucher: 0x%x\n", voucher);
-   	}
+	}
 
 done:
 	return offset;
@@ -1919,6 +1987,12 @@ voucher_get_current_persona_proximate_info(struct proc_persona_info *persona_inf
 }
 #endif // __has_include(<mach/mach.h>)
 
+bool
+voucher_process_can_use_arbitrary_personas(void)
+{
+	return false;
+}
+
 void
 _voucher_activity_debug_channel_init(void)
 {
@@ -1938,8 +2012,8 @@ _voucher_init(void)
 void*
 voucher_activity_get_metadata_buffer(size_t *length)
 {
-    *length = 0;
-    return NULL;
+	*length = 0;
+	return NULL;
 }
 
 voucher_t
@@ -2026,17 +2100,3 @@ _voucher_debug(voucher_t v, char* buf, size_t bufsiz)
 }
 
 #endif // VOUCHER_USE_MACH_VOUCHER
-
-#else // DISPATCH_VARIANT_DYLD_STUB
-
-firehose_activity_id_t
-voucher_get_activity_id_4dyld(void)
-{
-#if VOUCHER_USE_MACH_VOUCHER
-	return _voucher_get_activity_id(_voucher_get(), NULL);
-#else
-	return 0;
-#endif
-}
-
-#endif // DISPATCH_VARIANT_DYLD_STUB

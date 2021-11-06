@@ -22,18 +22,19 @@
 
 DISPATCH_NOINLINE
 static void *
-__DISPATCH_WAIT_FOR_ENQUEUER__(void **ptr)
+__DISPATCH_WAIT_FOR_ENQUEUER__(void **ptr, void **tailp)
 {
-	int spins = 0;
+	unsigned int spins = 0;
 	void *value;
 	while ((value = os_atomic_load(ptr, relaxed)) == NULL) {
-		_dispatch_preemption_yield(++spins);
+		/* ptr == &prev->do_next */
+		_dispatch_yield_to_enqueuer(tailp, ++spins);
 	}
 	return value;
 }
 
 void *
-_dispatch_wait_for_enqueuer(void **ptr)
+_dispatch_wait_for_enqueuer(void **ptr, void **tailp)
 {
 #if !DISPATCH_HW_CONFIG_UP
 #if defined(__arm__) || defined(__arm64__)
@@ -57,5 +58,5 @@ _dispatch_wait_for_enqueuer(void **ptr)
 	}
 #endif
 #endif // DISPATCH_HW_CONFIG_UP
-	return __DISPATCH_WAIT_FOR_ENQUEUER__(ptr);
+	return __DISPATCH_WAIT_FOR_ENQUEUER__(ptr, tailp);
 }
