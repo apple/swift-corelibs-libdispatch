@@ -137,7 +137,7 @@ typedef struct { unsigned long __opaque_zero; } os_atomic_dependency_t;
 #define OS_ATOMIC_DEPENDENCY_NONE     ((os_atomic_dependency_t){ 0UL })
 #define os_atomic_make_dependency(v)  ((void)(v), OS_ATOMIC_DEPENDENCY_NONE)
 #define os_atomic_inject_dependency(p, e) \
-	        ((typeof(*(p)) *)((p) + _os_atomic_auto_dependency(e).__opaque_zero))
+	        ((__typeof__(*(p)) *)((p) + _os_atomic_auto_dependency(e).__opaque_zero))
 #define os_atomic_load_with_dependency_on(p, e) \
 	        os_atomic_load(os_atomic_inject_dependency(p, e), dependency)
 

@@ -60,7 +60,7 @@ _dispatch_benchmark_init(void *context)
 	} while (i < cnt);
 	delta = _dispatch_uptime() - start;
 
-	lcost = (typeof(lcost)) delta;
+	lcost = (__typeof__(lcost)) delta;
 #if HAVE_MACH_ABSOLUTE_TIME
 	lcost *= bdata->tbi.numer;
 	lcost /= bdata->tbi.denom;
@@ -113,7 +113,7 @@ dispatch_benchmark_f(size_t count, register void *ctxt,
 	} while (i < count);
 	delta = _dispatch_uptime() - start;
 
-	conversion = (typeof(conversion)) delta;
+	conversion = (__typeof__(conversion)) delta;
 #if HAVE_MACH_ABSOLUTE_TIME
 	conversion *= bdata.tbi.numer;
 	big_denom = bdata.tbi.denom;

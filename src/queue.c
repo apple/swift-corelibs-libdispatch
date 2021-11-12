@@ -5762,11 +5762,11 @@ dispatch_channel_enqueue(dispatch_channel_t dch, void *ctxt)
 
 #ifndef __APPLE__
 #if __BLOCKS__
-void typeof(dispatch_channel_async) dispatch_channel_async
+void __typeof__(dispatch_channel_async) dispatch_channel_async
 		__attribute__((__alias__("dispatch_async")));
 #endif
 
-void typeof(dispatch_channel_async_f) dispatch_channel_async_f
+void __typeof__(dispatch_channel_async_f) dispatch_channel_async_f
 		__attribute__((__alias__("dispatch_async_f")));
 #endif
 
