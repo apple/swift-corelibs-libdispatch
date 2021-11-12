@@ -1,7 +1,14 @@
 #ifndef __OS_CLOCK__
 #define __OS_CLOCK__
 
+#if defined(__APPLE__)
 #include <os/base.h>
+#elif defined(_WIN32)
+#include <os/generic_win_base.h>
+#elif defined(__unix__)
+#include <os/generic_unix_base.h>
+#endif
+
 #include <stdint.h>
 
 /*
