@@ -40,6 +40,14 @@
 #define API_DEPRECATED_WITH_REPLACEMENT(...)
 #endif
 
+#ifndef SPI_AVAILABLE
+#define SPI_AVAILABLE(...)
+#endif
+
+#ifndef SPI_DEPRECATED
+#define SPI_DEPRECATED(...)
+#endif
+
 #if __GNUC__
 #define OS_EXPECT(x, v) __builtin_expect((x), (v))
 #define OS_UNUSED __attribute__((__unused__))
