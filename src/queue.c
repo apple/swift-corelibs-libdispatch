@@ -6988,7 +6988,19 @@ _dispatch_worker_thread(void *context)
 	/* Set it up before the configure block so that it can get overridden by
 	 * client if they want to name their threads differently */
 	if (dq->_as_dq->dq_label) {
+#if defined(__APPLE__)
 		pthread_setname_np(dq->_as_dq->dq_label);
+#elif defined(_WIN32)
+		int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, dq->_as_dq->dq_label, -1, NULL, 0);
+		if (length) {
+			WCHAR *description = calloc(length + 1, sizeof(WCHAR));
+			MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, dq->_as_dq->dq_label, -1, description, length);
+			SetThreadDescription(GetCurrentThread(), description);
+			free(description);
+		}
+#else
+		pthread_setname_np(pthread_self(), dq->_as_dq->dq_label);
+#endif
 	}
 
 	if (pqc->dpq_thread_configure) {
