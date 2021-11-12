@@ -49,7 +49,7 @@ __BEGIN_DECLS
  * dispatch_source_set_timer(ds, t, 10 * NSEC_PER_SEC, 0);
  * dispatch_activate(ds);
  */
-enum {
+enum : unsigned long long {
 	DISPATCH_MONOTONICTIME_NOW DISPATCH_ENUM_API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0)) = (1ull << 63)
 };
 
