@@ -7989,7 +7989,7 @@ _dispatch_context_cleanup(void *ctxt)
 #pragma mark -
 #pragma mark dispatch_init
 
-#if !DISPATCH_USE_COOPERATIVE_WORKQUEUE
+#if !DISPATCH_USE_INTERNAL_WORKQUEUE && !DISPATCH_USE_COOPERATIVE_WORKQUEUE
 static void
 _dispatch_cooperative_root_queue_init_fallback(dispatch_queue_global_t dq)
 {
