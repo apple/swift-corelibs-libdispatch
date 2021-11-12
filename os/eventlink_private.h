@@ -1,8 +1,11 @@
 #ifndef __OS_EVENTLINK__
 #define __OS_EVENTLINK__
 
-#include <os/object.h>
+#if HAVE_MACH
 #include <mach/mach.h>
+#endif
+
+#include <os/object.h>
 #include <os/clock.h>
 
 __BEGIN_DECLS

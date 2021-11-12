@@ -62,7 +62,9 @@
 #endif
 
 #include <os/object.h>
+#if HAVE_MACH
 #include <os/workgroup.h>
+#endif
 #include <dispatch/base.h>
 #include <dispatch/time.h>
 #include <dispatch/object.h>

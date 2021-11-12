@@ -133,6 +133,7 @@ void
 dispatch_workloop_set_autorelease_frequency(dispatch_workloop_t workloop,
 		dispatch_autorelease_frequency_t frequency);
 
+#if HAVE_MACH
 /*!
   * @function dispatch_workloop_set_os_workgroup
   *
@@ -159,6 +160,7 @@ DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_workloop_set_os_workgroup(dispatch_workloop_t workloop,
 		os_workgroup_t workgroup);
+#endif
 
 __END_DECLS
 

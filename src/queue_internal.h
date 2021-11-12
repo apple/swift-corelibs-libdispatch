@@ -482,7 +482,9 @@ typedef struct dispatch_workloop_attr_s {
 		uint8_t percent;
 		uint32_t refillms;
 	} dwla_cpupercent;
+#if HAVE_MACH
 	os_workgroup_t workgroup;
+#endif
 	dispatch_pthread_root_queue_observer_hooks_s dwla_observers;
 } dispatch_workloop_attr_s;
 

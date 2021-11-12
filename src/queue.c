@@ -4056,9 +4056,11 @@ static void
 _dispatch_workloop_attributes_dispose(dispatch_workloop_t dwl)
 {
 	if (dwl->dwl_attr) {
+#if HAVE_MACH
 		if (dwl->dwl_attr->workgroup) {
 			_os_object_release(dwl->dwl_attr->workgroup->_as_os_obj);
 		}
+#endif
 		free(dwl->dwl_attr);
 	}
 }
@@ -4127,6 +4129,7 @@ dispatch_workloop_set_qos_class_floor(dispatch_workloop_t dwl,
 #endif // TARGET_OS_MAC
 }
 
+#if HAVE_MACH
 void
 dispatch_workloop_set_os_workgroup(dispatch_workloop_t dwl, os_workgroup_t wg)
 {
@@ -4142,6 +4145,7 @@ dispatch_workloop_set_os_workgroup(dispatch_workloop_t dwl, os_workgroup_t wg)
 	_os_object_retain(wg->_as_os_obj);
 	dwl->dwl_attr->workgroup = wg;
 }
+#endif
 
 void
 dispatch_workloop_set_qos_class(dispatch_workloop_t dwl,

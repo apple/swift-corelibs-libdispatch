@@ -219,10 +219,12 @@ upcast(dispatch_object_t dou)
 #endif // __OBJC__
 
 #include <os/object.h>
+#if HAVE_MACH
 #include <os/workgroup_base.h>
 #include <os/workgroup_object.h>
 #include <os/workgroup_interval.h>
 #include <os/workgroup_parallel.h>
+#endif
 #include <dispatch/time.h>
 #include <dispatch/object.h>
 #include <dispatch/queue.h>
@@ -241,8 +243,10 @@ upcast(dispatch_object_t dou)
 #endif
 #include "os/object_private.h"
 #include "os/eventlink_private.h"
+#if HAVE_MACH
 #include "os/workgroup_object_private.h"
 #include "os/workgroup_interval_private.h"
+#endif
 #include "apply_private.h"
 #include "queue_private.h"
 #include "channel_private.h"
@@ -1180,7 +1184,9 @@ extern bool _dispatch_kevent_workqueue_enabled;
 
 /* #includes dependent on internal.h */
 #include "object_internal.h"
+#if HAVE_MACH
 #include "workgroup_internal.h"
+#endif
 #include "eventlink_internal.h"
 #include "semaphore_internal.h"
 #include "introspection_internal.h"
