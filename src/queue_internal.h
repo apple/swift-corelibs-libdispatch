@@ -445,6 +445,13 @@ DISPATCH_OPTIONS(dispatch_queue_flags, uint32_t,
 #pragma mark -
 #pragma mark dispatch_queue_t
 
+typedef struct dispatch_pthread_root_queue_observer_hooks_s {
+	void (*queue_will_execute)(dispatch_queue_t queue);
+	void (*queue_did_execute)(dispatch_queue_t queue);
+} dispatch_pthread_root_queue_observer_hooks_s;
+typedef dispatch_pthread_root_queue_observer_hooks_s
+		*dispatch_pthread_root_queue_observer_hooks_t;
+
 typedef struct dispatch_queue_specific_s {
 	const void *dqs_key;
 	void *dqs_ctxt;
@@ -650,13 +657,6 @@ struct dispatch_queue_global_s {
 	DISPATCH_QUEUE_ROOT_CLASS_HEADER(lane);
 } DISPATCH_CACHELINE_ALIGN;
 
-
-typedef struct dispatch_pthread_root_queue_observer_hooks_s {
-	void (*queue_will_execute)(dispatch_queue_t queue);
-	void (*queue_did_execute)(dispatch_queue_t queue);
-} dispatch_pthread_root_queue_observer_hooks_s;
-typedef dispatch_pthread_root_queue_observer_hooks_s
-		*dispatch_pthread_root_queue_observer_hooks_t;
 
 #ifdef __APPLE__
 #define DISPATCH_IOHID_SPI 1
