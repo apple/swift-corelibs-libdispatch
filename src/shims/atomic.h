@@ -143,6 +143,8 @@ typedef struct { unsigned long __opaque_zero; } os_atomic_dependency_t;
 
 #define os_atomic_thread_fence(m)  atomic_thread_fence(memory_order_##m)
 
+#define os_atomic_init(p, v) atomic_init(_os_atomic_c11_atomic(p), v)
+
 #define os_atomic_inc(p, m) \
 		os_atomic_add((p), 1, m)
 #define os_atomic_inc_orig(p, m) \
