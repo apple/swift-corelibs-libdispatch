@@ -7813,6 +7813,7 @@ _dispatch_sig_thread(void *ctxt DISPATCH_UNUSED)
 	_dispatch_clear_stack(0);
 #if defined(_WIN32)
 	Sleep(INFINITE);
+	__assume(0);
 #else
 	_dispatch_sigsuspend();
 #endif
