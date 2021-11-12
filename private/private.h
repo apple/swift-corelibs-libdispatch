@@ -67,7 +67,9 @@
 #endif
 #include <dispatch/workloop_private.h>
 #include <dispatch/source_private.h>
+#if HAVE_MACH
 #include <dispatch/mach_private.h>
+#endif
 #include <dispatch/data_private.h>
 #include <dispatch/io_private.h>
 #include <dispatch/layout_private.h>
