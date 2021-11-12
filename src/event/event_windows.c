@@ -974,6 +974,12 @@ _dispatch_event_loop_end_ownership(dispatch_wlh_t wlh, uint64_t old_state,
 	(void)wlh; (void)old_state; (void)new_state; (void)flags;
 }
 
+void
+_dispatch_event_loop_ensure_ownership(dispatch_wlh_t wlh)
+{
+	(void)wlh;
+}
+
 #if DISPATCH_WLH_DEBUG
 void
 _dispatch_event_loop_assert_not_owned(dispatch_wlh_t wlh)
