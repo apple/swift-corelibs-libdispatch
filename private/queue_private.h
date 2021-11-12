@@ -537,7 +537,7 @@ SPI_AVAILABLE(macos(12.0), ios(15.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL2
 void
 dispatch_async_swift_job(dispatch_queue_t queue, void *swift_job,
-	qos_class_t qos);
+	dispatch_qos_class_t qos);
 
 __END_DECLS
 
