@@ -252,7 +252,9 @@ upcast(dispatch_object_t dou)
 #include "channel_private.h"
 #include "workloop_private.h"
 #include "source_private.h"
+#if HAVE_MACH
 #include "mach_private.h"
+#endif
 #include "data_private.h"
 #include "time_private.h"
 #include "os/voucher_private.h"
