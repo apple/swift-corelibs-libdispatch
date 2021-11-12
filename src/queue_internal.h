@@ -1240,7 +1240,7 @@ struct dispatch_apply_attr_s {
 	uint32_t flags;
 	size_t per_cluster_parallelism;
 	uintptr_t guard; /* To prevent copying */
-#if defined(__LP64__)
+#if DISPATCH_SIZEOF_PTR == 8
 	uint8_t unused[40];
 #else
 	uint8_t unused[48];
