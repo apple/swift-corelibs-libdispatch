@@ -41,7 +41,7 @@ public class DispatchWorkItem {
 
 	public init(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], block: @escaping @convention(block) () -> ()) {
 #if os(Windows) && (arch(arm64) || arch(x86_64))
-		let flags = dispatch_block_flags_t(UInt32(flags.rawValue))
+		let flags = dispatch_block_flags_t(rawValue: UInt32(flags.rawValue))
 #else
 		let flags: dispatch_block_flags_t = numericCast(flags.rawValue)
 #endif
@@ -53,7 +53,7 @@ public class DispatchWorkItem {
 	// dispatch_block_t, as we know the lifetime of the block in question.
 	internal init(flags: DispatchWorkItemFlags = [], noescapeBlock: () -> ()) {
 #if os(Windows) && (arch(arm64) || arch(x86_64))
-		let flags = dispatch_block_flags_t(UInt32(flags.rawValue))
+		let flags = dispatch_block_flags_t(rawValue: UInt32(flags.rawValue))
 #else
 		let flags: dispatch_block_flags_t = numericCast(flags.rawValue)
 #endif
