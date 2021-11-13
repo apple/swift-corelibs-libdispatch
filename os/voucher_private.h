@@ -128,7 +128,7 @@ voucher_adopt(voucher_t _Nullable voucher OS_OBJECT_CONSUMED);
  */
 
 SPI_AVAILABLE(macos(12.0), ios(15.0))
-DISPATCH_ALWAYS_INLINE bool
+DISPATCH_ALWAYS_INLINE static bool
 voucher_needs_adopt(voucher_t _Nullable voucher)
 {
 #if __APPLE__
@@ -136,6 +136,7 @@ voucher_needs_adopt(voucher_t _Nullable voucher)
 		return (((void *) voucher) != _pthread_getspecific_direct(OS_VOUCHER_TSD_KEY));
 	}
 #endif
+	(void)voucher;
 	return true;
 }
 
