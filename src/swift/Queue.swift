@@ -98,13 +98,13 @@ extension DispatchQueue {
 				switch self {
 				case .inherit:
 					// DISPATCH_AUTORELEASE_FREQUENCY_INHERIT
-					return CDispatch.dispatch_queue_attr_make_with_autorelease_frequency(attr, dispatch_autorelease_frequency_t(0))
+					return CDispatch.dispatch_queue_attr_make_with_autorelease_frequency(attr, dispatch_autorelease_frequency_t(rawValue: 0)!)
 				case .workItem:
 					// DISPATCH_AUTORELEASE_FREQUENCY_WORK_ITEM
-					return CDispatch.dispatch_queue_attr_make_with_autorelease_frequency(attr, dispatch_autorelease_frequency_t(1))
+					return CDispatch.dispatch_queue_attr_make_with_autorelease_frequency(attr, dispatch_autorelease_frequency_t(rawValue: 1)!)
 				case .never:
 					// DISPATCH_AUTORELEASE_FREQUENCY_NEVER
-					return CDispatch.dispatch_queue_attr_make_with_autorelease_frequency(attr, dispatch_autorelease_frequency_t(2))
+					return CDispatch.dispatch_queue_attr_make_with_autorelease_frequency(attr, dispatch_autorelease_frequency_t(rawValue: 2)!)
 				}
 			} else {
 				return attr
