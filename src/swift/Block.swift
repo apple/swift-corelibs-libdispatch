@@ -43,7 +43,7 @@ public class DispatchWorkItem {
 #if os(Windows) && (arch(arm64) || arch(x86_64))
 		let flags = dispatch_block_flags_t(rawValue: UInt32(flags.rawValue))
 #else
-		let flags: dispatch_block_flags_t = numericCast(flags.rawValue)
+		let flags = dispatch_block_flags_t(rawValue: flags.rawValue)
 #endif
 		_block =  dispatch_block_create_with_qos_class(flags,
 			qos.qosClass.rawValue.rawValue, Int32(qos.relativePriority), block)
@@ -55,7 +55,7 @@ public class DispatchWorkItem {
 #if os(Windows) && (arch(arm64) || arch(x86_64))
 		let flags = dispatch_block_flags_t(rawValue: UInt32(flags.rawValue))
 #else
-		let flags: dispatch_block_flags_t = numericCast(flags.rawValue)
+		let flags = dispatch_block_flags_t(rawValue: flags.rawValue)
 #endif
 		_block = _swift_dispatch_block_create_noescape(flags, noescapeBlock)
 	}
