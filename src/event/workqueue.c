@@ -22,6 +22,10 @@
 
 #if DISPATCH_USE_INTERNAL_WORKQUEUE
 
+#if defined(_WIN32)
+#include <wct.h>
+#endif
+
 /*
  * dispatch_workq monitors the thread pool that is
  * executing the work enqueued on libdispatch's pthread
@@ -174,6 +178,64 @@ _dispatch_workq_count_runnable_workers(dispatch_workq_monitor_t mon)
 		} else {
 			_dispatch_debug("workq: Failed to read %s", path);
 		}
+	}
+
+	mon->num_runnable = running_count;
+
+	_dispatch_unfair_lock_unlock(&mon->registered_tid_lock);
+}
+#elif defined(_WIN32)
+static void
+_dispatch_workq_init_wct(void *hWCTSession)
+{
+	// TODO(compnerd) this should have an associated CloseThreadWaitChainSession
+	*(HWCT **)hWCTSession = OpenThreadWaitChainSession(0, NULL);
+}
+
+static void
+_dispatch_workq_count_runnable_workers(dispatch_workq_monitor_t mon)
+{
+	static dispatch_once_t _wct_init_pred;
+	static HWCT hWCTSession;
+	static WAITCHAIN_NODE_INFO wait_chain[WCT_MAX_NODE_COUNT];
+
+	dispatch_once_f(&_wct_init_pred, &hWCTSession, &_dispatch_workq_init_wct);
+
+	int running_count = 0;
+
+	_dispatch_unfair_lock_lock(&mon->registered_tid_lock);
+
+	for (int i = 0; i < mon->num_registered_tids; ++i) {
+		/* See _dispatch_tid_self() */
+		dispatch_tid tid = mon->registered_tids[i] >> 2;
+
+		DWORD count = WCT_MAX_NODE_COUNT;
+		BOOL cycle = FALSE;
+		if (GetThreadWaitChain(hWCTSession, 0, 0, tid, &count, wait_chain, &cycle)) {
+			// Check the deepest entry to see what the thread is waiting on.
+			DWORD index = MIN(count, WCT_MAX_NODE_COUNT) - 1;
+			if (wait_chain[index].ObjectType == WctThreadType) {
+				if (wait_chain[index].ObjectStatus != WctStatusRunning) {
+					continue;
+				}
+			}
+		}
+
+		// Ensure that the thread is not waiting on IO
+		// XXX(compnerd) is this needed? The wait chain reports SMB
+		// and Socket IO, but it is unclear if that includes normal IO.
+		HANDLE hThread = OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid);
+		if (hThread == NULL) {
+			_dispatch_debug("workq: unable to open thread %u: %u", tid, GetLastError());
+			continue;
+		}
+
+		BOOL IOPending = TRUE;
+		if (GetThreadIOPendingFlag(hThread, &IOPending))
+			if (!IOPending)
+				++running_count;
+
+		CloseHandle(hThread);
 	}
 
 	mon->num_runnable = running_count;
