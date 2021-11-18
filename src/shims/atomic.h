@@ -35,7 +35,11 @@
 #if defined(__cplusplus)
 #define _Bool bool
 #endif
+#if defined(__ANDROID__) && __NDK_MAJOR__ >= 23
+#include <bits/stdatomic.h>
+#else
 #include <stdatomic.h>
+#endif
 
 #define memory_order_ordered    memory_order_seq_cst
 #define memory_order_dependency memory_order_acquire
