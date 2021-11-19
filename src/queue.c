@@ -7835,6 +7835,15 @@ _dispatch_sig_thread(void *ctxt DISPATCH_UNUSED)
 #endif
 }
 
+#if defined(_WIN32)
+static unsigned WINAPI
+_dispatch_sig_thread_thunk(LPVOID lpParameter)
+{
+	_dispatch_sig_thread(lpParameter);
+	return 0;
+}
+#endif
+
 void
 dispatch_main(void)
 {
@@ -7900,6 +7909,7 @@ _dispatch_queue_cleanup2(void)
 	// See dispatch_main for call to _dispatch_sig_thread on linux.
 #ifndef __linux__
 	if (_dispatch_program_is_probably_callback_driven) {
+#if defined(_POSIX_THREADS)
 		pthread_attr_t attr;
 		pthread_attr_init(&attr);
 		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
@@ -7909,6 +7919,13 @@ _dispatch_queue_cleanup2(void)
 			DISPATCH_CLIENT_CRASH(r, "Unable to create signal thread");
 		}
 		pthread_attr_destroy(&attr);
+#else
+		uintptr_t hThread = 0;
+		if (unlikely(!(hThread = _beginthreadex(NULL, /* stack_size */ 0, _dispatch_sig_thread_thunk, NULL, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL)))) {
+			DISPATCH_CLIENT_CRASH(errno, "unable to create signal thread");
+		}
+		CloseHandle((HANDLE)hThread);
+#endif
 		// this used to be here as a workaround for 6778970
 		// but removing it had bincompat fallouts :'(
 		sleep(1);
