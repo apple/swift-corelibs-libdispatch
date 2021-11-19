@@ -507,7 +507,7 @@ _dispatch_wait_on_address(uint32_t volatile *_address, uint32_t value,
 		return _dispatch_futex_wait(address, value, &ts, FUTEX_PRIVATE_FLAG);
 	}
 	return _dispatch_futex_wait(address, value, NULL, FUTEX_PRIVATE_FLAG);
-#elif defined(_WIN32)
+#elif HAVE_WAIT_ON_ADDRESS
 	return WaitOnAddress(address, &value, sizeof(value), INFINITE) == TRUE;
 #else
 #error _dispatch_wait_on_address unimplemented for this platform
@@ -521,7 +521,7 @@ _dispatch_wake_by_address(uint32_t volatile *address)
 	_dispatch_ulock_wake((uint32_t *)address, ULF_WAKE_ALL);
 #elif HAVE_FUTEX
 	_dispatch_futex_wake((uint32_t *)address, INT_MAX, FUTEX_PRIVATE_FLAG);
-#elif defined(_WIN32)
+#elif HAVE_WAIT_ON_ADDRESS
 	WakeByAddressAll((uint32_t *)address);
 #else
 	(void)address;
@@ -537,6 +537,8 @@ _dispatch_thread_event_signal_slow(dispatch_thread_event_t dte)
 	_dispatch_ulock_wake(&dte->dte_value, 0);
 #elif HAVE_FUTEX
 	_dispatch_futex_wake(&dte->dte_value, 1, FUTEX_PRIVATE_FLAG);
+#elif HAVE_WAIT_ON_ADDRESS
+	WakeByAddressSingle(&dte->dte_value);
 #else
 	_dispatch_sema4_signal(&dte->dte_sema, 1);
 #endif
@@ -545,7 +547,7 @@ _dispatch_thread_event_signal_slow(dispatch_thread_event_t dte)
 void
 _dispatch_thread_event_wait_slow(dispatch_thread_event_t dte)
 {
-#if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
+#if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX || HAVE_WAIT_ON_ADDRESS
 	for (;;) {
 		uint32_t value = os_atomic_load(&dte->dte_value, acquire);
 		if (likely(value == 0)) return;
@@ -558,6 +560,8 @@ _dispatch_thread_event_wait_slow(dispatch_thread_event_t dte)
 #elif HAVE_FUTEX
 		_dispatch_futex_wait(&dte->dte_value, UINT32_MAX,
 				NULL, FUTEX_PRIVATE_FLAG);
+#elif HAVE_WAIT_ON_ADDRESS
+		WaitOnAddress(&dte->dte_value, &value, sizeof(value), INFINITE);
 #endif
 	}
 #else

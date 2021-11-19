@@ -174,6 +174,14 @@ _dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
 #endif
 #endif // HAVE_FUTEX
 
+#ifndef HAVE_WAIT_ON_ADDRESS
+#if defined(_WIN32)
+#define HAVE_WAIT_ON_ADDRESS 1
+#else
+#define HAVE_WIAT_ON_ADDRESS 0
+#endif
+#endif
+
 #if defined(__x86_64__) || defined(__i386__) || defined(__s390x__)
 #define DISPATCH_ONCE_USE_QUIESCENT_COUNTER 0
 #elif __APPLE__
@@ -271,7 +279,7 @@ void _dispatch_wake_by_address(uint32_t volatile *address);
  * This locking primitive has no notion of ownership
  */
 typedef struct dispatch_thread_event_s {
-#if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
+#if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX || HAVE_WAIT_ON_ADDRESS
 	// 1 means signalled but not waited on yet
 	// UINT32_MAX means waited on, but not signalled yet
 	// 0 is the initial and final state
@@ -289,7 +297,7 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_thread_event_init(dispatch_thread_event_t dte)
 {
-#if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
+#if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX || HAVE_WAIT_ON_ADDRESS
 	dte->dte_value = 0;
 #else
 	_dispatch_sema4_init(&dte->dte_sema, _DSEMA4_POLICY_FIFO);
@@ -300,7 +308,7 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_thread_event_signal(dispatch_thread_event_t dte)
 {
-#if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
+#if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX || HAVE_WAIT_ON_ADDRESS
 	if (os_atomic_add_orig(&dte->dte_value, 1u, release) == 0) {
 		// 0 -> 1 transition doesn't need a signal
 		// force a wake even when the value is corrupt,
@@ -318,7 +326,7 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_thread_event_wait(dispatch_thread_event_t dte)
 {
-#if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
+#if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX || HAVE_WAIT_ON_ADDRESS
 	if (os_atomic_sub(&dte->dte_value, 1u, acquire) == 0) {
 		// 1 -> 0 is always a valid transition, so we can return
 		// for any other value, take the slow path which checks it's not corrupt
@@ -334,7 +342,7 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_thread_event_destroy(dispatch_thread_event_t dte)
 {
-#if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
+#if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX || HAVE_WAIT_ON_ADDRESS
 	// nothing to do
 	dispatch_assert(dte->dte_value == 0);
 #else

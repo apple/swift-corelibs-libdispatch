@@ -46,6 +46,14 @@ typedef void pthread_attr_t;
 #define API_DEPRECATED_WITH_REPLACEMENT(...)
 #endif
 
+#ifndef SPI_AVAILABLE
+#define SPI_AVAILABLE(...)
+#endif
+
+#ifndef SPI_DEPRECATED
+#define SPI_DEPRECATED(...)
+#endif
+
 #if !defined(__has_attribute)
 #define __has_attribute(attibute) 0
 #endif
@@ -97,6 +105,18 @@ typedef void pthread_attr_t;
   __attribute__((__availability__(swift, unavailable, message = msg)))
 #else
 #define OS_SWIFT_UNAVAILABLE(msg)
+#endif
+
+#if __has_attribute(swift_private)
+# define OS_REFINED_FOR_SWIFT __attribute__((__swift_private__))
+#else
+# define OS_REFINED_FOR_SWIFT
+#endif
+
+#if __has_attribute(swift_name)
+# define OS_SWIFT_NAME(_name) __attribute__((__swift_name__(#_name)))
+#else
+# define OS_SWIFT_NAME(_name)
 #endif
 
 #define __OS_STRINGIFY(s) #s

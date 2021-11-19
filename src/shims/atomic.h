@@ -134,14 +134,21 @@
 
 typedef struct { unsigned long __opaque_zero; } os_atomic_dependency_t;
 
+#define _os_atomic_auto_dependency(e) \
+		_Generic(e, \
+			os_atomic_dependency_t: (e), \
+			default: os_atomic_make_dependency(e))
+
 #define OS_ATOMIC_DEPENDENCY_NONE     ((os_atomic_dependency_t){ 0UL })
 #define os_atomic_make_dependency(v)  ((void)(v), OS_ATOMIC_DEPENDENCY_NONE)
 #define os_atomic_inject_dependency(p, e) \
-	        ((typeof(*(p)) *)((p) + _os_atomic_auto_dependency(e).__opaque_zero))
+	        ((__typeof__(*(p)) *)((p) + _os_atomic_auto_dependency(e).__opaque_zero))
 #define os_atomic_load_with_dependency_on(p, e) \
 	        os_atomic_load(os_atomic_inject_dependency(p, e), dependency)
 
 #define os_atomic_thread_fence(m)  atomic_thread_fence(memory_order_##m)
+
+#define os_atomic_init(p, v) atomic_init(_os_atomic_c11_atomic(p), v)
 
 #define os_atomic_inc(p, m) \
 		os_atomic_add((p), 1, m)

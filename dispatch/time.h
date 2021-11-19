@@ -66,7 +66,7 @@ struct timespec;
  */
 typedef uint64_t dispatch_time_t;
 
-enum {
+enum : unsigned long long {
 	DISPATCH_WALLTIME_NOW DISPATCH_ENUM_API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))	= ~1ull,
 };
 

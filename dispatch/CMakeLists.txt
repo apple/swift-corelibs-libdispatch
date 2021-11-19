@@ -13,6 +13,7 @@ install(FILES
           semaphore.h
           source.h
           time.h
+          workloop.h
         DESTINATION
           "${INSTALL_DISPATCH_HEADERS_DIR}")
 if(ENABLE_SWIFT)

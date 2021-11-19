@@ -219,10 +219,12 @@ upcast(dispatch_object_t dou)
 #endif // __OBJC__
 
 #include <os/object.h>
+#if HAVE_MACH
 #include <os/workgroup_base.h>
 #include <os/workgroup_object.h>
 #include <os/workgroup_interval.h>
 #include <os/workgroup_parallel.h>
+#endif
 #include <dispatch/time.h>
 #include <dispatch/object.h>
 #include <dispatch/queue.h>
@@ -241,14 +243,18 @@ upcast(dispatch_object_t dou)
 #endif
 #include "os/object_private.h"
 #include "os/eventlink_private.h"
+#if HAVE_MACH
 #include "os/workgroup_object_private.h"
 #include "os/workgroup_interval_private.h"
+#endif
 #include "apply_private.h"
 #include "queue_private.h"
 #include "channel_private.h"
 #include "workloop_private.h"
 #include "source_private.h"
+#if HAVE_MACH
 #include "mach_private.h"
+#endif
 #include "data_private.h"
 #include "time_private.h"
 #include "os/voucher_private.h"
@@ -587,11 +593,11 @@ void _dispatch_log(const char *msg, ...);
  */
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_assert(long e, size_t line) DISPATCH_STATIC_ASSERT_IF(!e)
+_dispatch_assert(long long e, size_t line) DISPATCH_STATIC_ASSERT_IF(!e)
 {
 	if (unlikely(DISPATCH_DEBUG && !e)) _dispatch_abort(line, e);
 }
-#define dispatch_assert(e) _dispatch_assert((long)(e), __LINE__)
+#define dispatch_assert(e) _dispatch_assert((long long)(e), __LINE__)
 
 /*
  * A lot of API return zero upon success and not-zero on fail. Let's capture
@@ -599,11 +605,11 @@ _dispatch_assert(long e, size_t line) DISPATCH_STATIC_ASSERT_IF(!e)
  */
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_assert_zero(long e, size_t line) DISPATCH_STATIC_ASSERT_IF(e)
+_dispatch_assert_zero(long long e, size_t line) DISPATCH_STATIC_ASSERT_IF(e)
 {
 	if (unlikely(DISPATCH_DEBUG && e)) _dispatch_abort(line, e);
 }
-#define dispatch_assert_zero(e) _dispatch_assert_zero((long)(e), __LINE__)
+#define dispatch_assert_zero(e) _dispatch_assert_zero((long long)(e), __LINE__)
 
 /*
  * For reporting bugs or impedance mismatches between libdispatch and external
@@ -613,12 +619,12 @@ _dispatch_assert_zero(long e, size_t line) DISPATCH_STATIC_ASSERT_IF(e)
  */
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_assume(long e, size_t line) DISPATCH_STATIC_ASSERT_IF(!e)
+_dispatch_assume(long long e, size_t line) DISPATCH_STATIC_ASSERT_IF(!e)
 {
 	if (unlikely(!e)) _dispatch_bug(line, e);
 }
 #define dispatch_assume(e) \
-		({ __typeof__(e) _e = (e); _dispatch_assume((long)_e, __LINE__); _e; })
+		({ __typeof__(e) _e = (e); _dispatch_assume((long long)_e, __LINE__); _e; })
 
 /*
  * A lot of API return zero upon success and not-zero on fail. Let's capture
@@ -1180,7 +1186,9 @@ extern bool _dispatch_kevent_workqueue_enabled;
 
 /* #includes dependent on internal.h */
 #include "object_internal.h"
+#if HAVE_MACH
 #include "workgroup_internal.h"
+#endif
 #include "eventlink_internal.h"
 #include "semaphore_internal.h"
 #include "introspection_internal.h"

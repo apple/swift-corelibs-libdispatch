@@ -342,6 +342,7 @@ struct dispatch_queue_global_s _dispatch_root_queues[] = {
 #define _DISPATCH_COOPERATIVE_ROOT_QUEUE_ENTRY(n, flags, ...)  \
 	[_DISPATCH_ROOT_QUEUE_IDX(n, flags)] = { \
 		.do_vtable = DISPATCH_VTABLE(queue_concurrent), \
+		.do_ctxt = _dispatch_root_queue_ctxt(_DISPATCH_ROOT_QUEUE_IDX(n, flags)), \
 		.dq_priority = flags | ((flags & DISPATCH_PRIORITY_FLAG_FALLBACK) ? \
 				_dispatch_priority_make_fallback(DISPATCH_QOS_##n) : \
 				_dispatch_priority_make(DISPATCH_QOS_##n, 0)), \

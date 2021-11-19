@@ -794,7 +794,10 @@ _dispatch_async_redirect_invoke(dispatch_continuation_t dc,
 {
 	dispatch_thread_frame_s dtf;
 	struct dispatch_continuation_s *other_dc = dc->dc_other;
-	dispatch_invoke_flags_t ctxt_flags = (dispatch_invoke_flags_t)dc->dc_ctxt;
+#if DISPATCH_SIZEOF_PTR == 8
+	dispatch_assert(((uintptr_t)dc->dc_ctxt >> 32) == 0);
+#endif
+	dispatch_invoke_flags_t ctxt_flags = (dispatch_invoke_flags_t)(uintptr_t)dc->dc_ctxt;
 	// if we went through _dispatch_root_queue_push_override,
 	// the "right" root queue was stuffed into dc_func
 	dispatch_queue_global_t assumed_rq = (dispatch_queue_global_t)dc->dc_func;
@@ -4056,9 +4059,11 @@ static void
 _dispatch_workloop_attributes_dispose(dispatch_workloop_t dwl)
 {
 	if (dwl->dwl_attr) {
+#if HAVE_MACH
 		if (dwl->dwl_attr->workgroup) {
 			_os_object_release(dwl->dwl_attr->workgroup->_as_os_obj);
 		}
+#endif
 		free(dwl->dwl_attr);
 	}
 }
@@ -4127,6 +4132,7 @@ dispatch_workloop_set_qos_class_floor(dispatch_workloop_t dwl,
 #endif // TARGET_OS_MAC
 }
 
+#if HAVE_MACH
 void
 dispatch_workloop_set_os_workgroup(dispatch_workloop_t dwl, os_workgroup_t wg)
 {
@@ -4142,6 +4148,7 @@ dispatch_workloop_set_os_workgroup(dispatch_workloop_t dwl, os_workgroup_t wg)
 	_os_object_retain(wg->_as_os_obj);
 	dwl->dwl_attr->workgroup = wg;
 }
+#endif
 
 void
 dispatch_workloop_set_qos_class(dispatch_workloop_t dwl,
@@ -5758,11 +5765,11 @@ dispatch_channel_enqueue(dispatch_channel_t dch, void *ctxt)
 
 #ifndef __APPLE__
 #if __BLOCKS__
-void typeof(dispatch_channel_async) dispatch_channel_async
+__typeof__(dispatch_channel_async) dispatch_channel_async
 		__attribute__((__alias__("dispatch_async")));
 #endif
 
-void typeof(dispatch_channel_async_f) dispatch_channel_async_f
+__typeof__(dispatch_channel_async_f) dispatch_channel_async_f
 		__attribute__((__alias__("dispatch_async_f")));
 #endif
 
@@ -6984,7 +6991,19 @@ _dispatch_worker_thread(void *context)
 	/* Set it up before the configure block so that it can get overridden by
 	 * client if they want to name their threads differently */
 	if (dq->_as_dq->dq_label) {
+#if defined(__APPLE__)
 		pthread_setname_np(dq->_as_dq->dq_label);
+#elif defined(_WIN32)
+		int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, dq->_as_dq->dq_label, -1, NULL, 0);
+		if (length) {
+			WCHAR *description = calloc(length + 1, sizeof(WCHAR));
+			MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, dq->_as_dq->dq_label, -1, description, length);
+			SetThreadDescription(GetCurrentThread(), description);
+			free(description);
+		}
+#else
+		pthread_setname_np(pthread_self(), dq->_as_dq->dq_label);
+#endif
 	}
 
 	if (pqc->dpq_thread_configure) {
@@ -7813,10 +7832,20 @@ _dispatch_sig_thread(void *ctxt DISPATCH_UNUSED)
 	_dispatch_clear_stack(0);
 #if defined(_WIN32)
 	Sleep(INFINITE);
+	__assume(0);
 #else
 	_dispatch_sigsuspend();
 #endif
 }
+
+#if defined(_WIN32)
+static unsigned WINAPI
+_dispatch_sig_thread_thunk(LPVOID lpParameter)
+{
+	_dispatch_sig_thread(lpParameter);
+	return 0;
+}
+#endif
 
 void
 dispatch_main(void)
@@ -7883,6 +7912,7 @@ _dispatch_queue_cleanup2(void)
 	// See dispatch_main for call to _dispatch_sig_thread on linux.
 #ifndef __linux__
 	if (_dispatch_program_is_probably_callback_driven) {
+#if defined(_POSIX_THREADS)
 		pthread_attr_t attr;
 		pthread_attr_init(&attr);
 		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
@@ -7892,6 +7922,13 @@ _dispatch_queue_cleanup2(void)
 			DISPATCH_CLIENT_CRASH(r, "Unable to create signal thread");
 		}
 		pthread_attr_destroy(&attr);
+#else
+		uintptr_t hThread = 0;
+		if (unlikely(!(hThread = _beginthreadex(NULL, /* stack_size */ 0, _dispatch_sig_thread_thunk, NULL, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL)))) {
+			DISPATCH_CLIENT_CRASH(errno, "unable to create signal thread");
+		}
+		CloseHandle((HANDLE)hThread);
+#endif
 		// this used to be here as a workaround for 6778970
 		// but removing it had bincompat fallouts :'(
 		sleep(1);
@@ -7955,7 +7992,7 @@ _dispatch_context_cleanup(void *ctxt)
 #pragma mark -
 #pragma mark dispatch_init
 
-#if !DISPATCH_USE_COOPERATIVE_WORKQUEUE
+#if !DISPATCH_USE_INTERNAL_WORKQUEUE && !DISPATCH_USE_COOPERATIVE_WORKQUEUE
 static void
 _dispatch_cooperative_root_queue_init_fallback(dispatch_queue_global_t dq)
 {

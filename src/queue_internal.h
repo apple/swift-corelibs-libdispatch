@@ -445,6 +445,13 @@ DISPATCH_OPTIONS(dispatch_queue_flags, uint32_t,
 #pragma mark -
 #pragma mark dispatch_queue_t
 
+typedef struct dispatch_pthread_root_queue_observer_hooks_s {
+	void (*queue_will_execute)(dispatch_queue_t queue);
+	void (*queue_did_execute)(dispatch_queue_t queue);
+} dispatch_pthread_root_queue_observer_hooks_s;
+typedef dispatch_pthread_root_queue_observer_hooks_s
+		*dispatch_pthread_root_queue_observer_hooks_t;
+
 typedef struct dispatch_queue_specific_s {
 	const void *dqs_key;
 	void *dqs_ctxt;
@@ -475,7 +482,9 @@ typedef struct dispatch_workloop_attr_s {
 		uint8_t percent;
 		uint32_t refillms;
 	} dwla_cpupercent;
+#if HAVE_MACH
 	os_workgroup_t workgroup;
+#endif
 	dispatch_pthread_root_queue_observer_hooks_s dwla_observers;
 } dispatch_workloop_attr_s;
 
@@ -650,13 +659,6 @@ struct dispatch_queue_global_s {
 	DISPATCH_QUEUE_ROOT_CLASS_HEADER(lane);
 } DISPATCH_CACHELINE_ALIGN;
 
-
-typedef struct dispatch_pthread_root_queue_observer_hooks_s {
-	void (*queue_will_execute)(dispatch_queue_t queue);
-	void (*queue_did_execute)(dispatch_queue_t queue);
-} dispatch_pthread_root_queue_observer_hooks_s;
-typedef dispatch_pthread_root_queue_observer_hooks_s
-		*dispatch_pthread_root_queue_observer_hooks_t;
 
 #ifdef __APPLE__
 #define DISPATCH_IOHID_SPI 1
@@ -1240,7 +1242,7 @@ struct dispatch_apply_attr_s {
 	uint32_t flags;
 	size_t per_cluster_parallelism;
 	uintptr_t guard; /* To prevent copying */
-#if defined(__LP64__)
+#if DISPATCH_SIZEOF_PTR == 8
 	uint8_t unused[40];
 #else
 	uint8_t unused[48];

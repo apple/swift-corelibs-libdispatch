@@ -259,7 +259,7 @@ dispatch_channel_create(const char *_Nullable label,
 API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(4.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW DISPATCH_NONNULL_ALL
 void
-dispatch_channel_wakeup(dispatch_channel_t channel, qos_class_t qos_class);
+dispatch_channel_wakeup(dispatch_channel_t channel, dispatch_qos_class_t qos_class);
 
 /*! @typedef dispatch_channel_enumerator_handler_t
  *

@@ -62,7 +62,7 @@
 #define DISPATCH_CONST __attribute__((__const__))
 #define DISPATCH_WARN_RESULT __attribute__((__warn_unused_result__))
 #define DISPATCH_MALLOC __attribute__((__malloc__))
-#define DISPATCH_ALWAYS_INLINE __attribute__((__always_inline__))
+#define DISPATCH_ALWAYS_INLINE __attribute__((unused, __always_inline__))
 #define DISPATCH_UNAVAILABLE __attribute__((__unavailable__))
 #define DISPATCH_UNAVAILABLE_MSG(msg) __attribute__((__unavailable__(msg)))
 #elif defined(_MSC_VER)

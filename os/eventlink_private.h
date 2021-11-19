@@ -1,8 +1,11 @@
 #ifndef __OS_EVENTLINK__
 #define __OS_EVENTLINK__
 
-#include <os/object.h>
+#if HAVE_MACH
 #include <mach/mach.h>
+#endif
+
+#include <os/object.h>
 #include <os/clock.h>
 
 __BEGIN_DECLS
@@ -108,6 +111,7 @@ OS_EXPORT OS_OBJECT_WARN_UNUSED_RESULT
 int
 os_eventlink_activate(os_eventlink_t eventlink);
 
+#if HAVE_MACH
 /*!
  * @function os_eventlink_extract_remote_port
  *
@@ -138,6 +142,7 @@ os_eventlink_extract_remote_port(os_eventlink_t eventlink, mach_port_t *port_out
 OS_EXPORT OS_OBJECT_RETURNS_RETAINED
 os_eventlink_t _Nullable
 os_eventlink_create_with_port(const char *name, mach_port_t mach_port);
+#endif
 
 /*!
  * @function os_eventlink_create_remote_with_eventlink
