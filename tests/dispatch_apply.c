@@ -81,7 +81,7 @@ static void busythread(void *ignored)
 static void test_apply_contended(dispatch_queue_t dq)
 {
 	uint32_t activecpu;
-#if defined(__linux__) || defined(__OpenBSD__)
+#if defined(__linux__) || defined(__OpenBSD__) || defined(__FreeBSD__)
 	activecpu = (uint32_t)sysconf(_SC_NPROCESSORS_ONLN);
 #elif defined(_WIN32)
 	SYSTEM_INFO si;

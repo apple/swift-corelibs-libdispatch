@@ -6467,7 +6467,7 @@ _dispatch_runloop_handle_is_valid(dispatch_runloop_handle_t handle)
 {
 #if TARGET_OS_MAC
 	return MACH_PORT_VALID(handle);
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__FreeBSD__)
 	return handle >= 0;
 #elif defined(_WIN32)
 	return handle != NULL;
@@ -6482,7 +6482,7 @@ _dispatch_runloop_queue_get_handle(dispatch_lane_t dq)
 {
 #if TARGET_OS_MAC
 	return ((dispatch_runloop_handle_t)(uintptr_t)dq->do_ctxt);
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__FreeBSD__)
 	// decode: 0 is a valid fd, so offset by 1 to distinguish from NULL
 	return ((dispatch_runloop_handle_t)(uintptr_t)dq->do_ctxt) - 1;
 #elif defined(_WIN32)
@@ -6499,7 +6499,7 @@ _dispatch_runloop_queue_set_handle(dispatch_lane_t dq,
 {
 #if TARGET_OS_MAC
 	dq->do_ctxt = (void *)(uintptr_t)handle;
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__FreeBSD__)
 	// encode: 0 is a valid fd, so offset by 1 to distinguish from NULL
 	dq->do_ctxt = (void *)(uintptr_t)(handle + 1);
 #elif defined(_WIN32)
@@ -6535,7 +6535,7 @@ _dispatch_runloop_queue_handle_init(void *ctxt)
 	(void)dispatch_assume_zero(kr);
 
 	handle = mp;
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__FreeBSD__)
 	int fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
 	if (fd == -1) {
 		int err = errno;
@@ -6589,7 +6589,7 @@ _dispatch_runloop_queue_handle_dispose(dispatch_lane_t dq)
 	kr = mach_port_destruct(mach_task_self(), mp, -1, guard);
 	DISPATCH_VERIFY_MIG(kr);
 	(void)dispatch_assume_zero(kr);
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__FreeBSD__)
 	int rc = close(handle);
 	(void)dispatch_assume_zero(rc);
 #elif defined(_WIN32)
@@ -6622,7 +6622,7 @@ _dispatch_runloop_queue_class_poke(dispatch_lane_t dq)
 		(void)dispatch_assume_zero(kr);
 		break;
 	}
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__FreeBSD__)
 	int result;
 	do {
 		result = eventfd_write(handle, 1);

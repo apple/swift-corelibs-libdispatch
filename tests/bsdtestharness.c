@@ -144,7 +144,7 @@ main(int argc, char *argv[])
 	//fprintf(stderr, "pid = %d\n", pid);
 	assert(pid > 0);
 
-#if defined(__linux__)
+#if defined(__linux__) || defined(__FreeBSD__)
 	int status;
 	struct rusage usage;
 	struct timeval tv_stop, tv_wall;
@@ -211,7 +211,7 @@ main(int argc, char *argv[])
 #else
 	dispatch_queue_t main_q = dispatch_get_main_queue();
 
-	dispatch_source_t tmp_ds = dispatch_source_create(DISPATCH_SOURCE_TYPE_PROC, pid, DISPATCH_PROC_EXIT, main_q);
+	dispatch_source_t tmp_ds = dispatch_source_create(DISPATCH_SOURCE_TYPE_PROC, (uintptr_t)pid, DISPATCH_PROC_EXIT, main_q);
 	assert(tmp_ds);
 	dispatch_source_set_event_handler(tmp_ds, ^{
 		int status;
