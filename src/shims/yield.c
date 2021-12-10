@@ -36,7 +36,7 @@ void *
 _dispatch_wait_for_enqueuer(void **ptr)
 {
 #if !DISPATCH_HW_CONFIG_UP
-#if defined(__arm__) || defined(__arm64__)
+#if (defined(__arm__) && defined(__APPLE__)) || defined(__arm64__)
 	int spins = DISPATCH_WAIT_SPINS_WFE;
 	void *value;
 	while (unlikely(spins-- > 0)) {
