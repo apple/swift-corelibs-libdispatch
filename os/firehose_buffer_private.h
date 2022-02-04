@@ -97,9 +97,11 @@ static inline const uint8_t *
 _firehose_tracepoint_reader_init(firehose_chunk_t fc, const uint8_t **endptr)
 {
 	const uint8_t *start = fc->fc_data;
-	const uint8_t *end = fc->fc_start + fc->fc_pos.fcp_next_entry_offs;
+	const uint8_t *end;
 
-	if (end > fc->fc_start + FIREHOSE_CHUNK_SIZE) {
+	if (fc->fc_pos.fcp_next_entry_offs <= FIREHOSE_CHUNK_SIZE) {
+		end = fc->fc_start + fc->fc_pos.fcp_next_entry_offs;
+	} else {
 		end = start;
 	}
 	*endptr = end;

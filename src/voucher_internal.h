@@ -89,6 +89,7 @@ voucher_get_mach_voucher(voucher_t voucher);
 
 void _voucher_init(void);
 void _voucher_atfork_child(void);
+void _voucher_atfork_parent(void);
 void _voucher_activity_debug_channel_init(void);
 #if OS_VOUCHER_ACTIVITY_SPI && OS_VOUCHER_ACTIVITY_GENERATE_SWAPS
 void _voucher_activity_swap(firehose_activity_id_t old_id,
@@ -450,6 +451,10 @@ _voucher_get_activity_id(voucher_t v, uint64_t *creator_pid)
 void _voucher_task_mach_voucher_init(void* ctxt);
 extern dispatch_once_t _voucher_task_mach_voucher_pred;
 extern mach_voucher_t _voucher_task_mach_voucher;
+
+extern dispatch_once_t _voucher_process_can_use_arbitrary_personas_pred;
+extern bool _voucher_process_can_use_arbitrary_personas;
+
 #if VOUCHER_USE_EMPTY_MACH_BASE_VOUCHER
 #define _voucher_default_task_mach_voucher MACH_VOUCHER_NULL
 #else

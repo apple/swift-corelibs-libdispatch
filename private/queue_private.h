@@ -41,10 +41,27 @@ __BEGIN_DECLS
  *
  * @constant DISPATCH_QUEUE_OVERCOMMIT
  * The queue will create a new thread for invoking blocks, regardless of how
- * busy the computer is.
+ * busy the computer is. It is invalid to pass in both the
+ * DISPATCH_QUEUE_OVERCOMMIT as well as the DISPATCH_QUEUE_COOPERATIVE
+ * flags.
+ *
+ * @constant DISPATCH_QUEUE_COOPERATIVE
+ * The queue will not bring up threads beyond a specific limit even if
+ * there are pending work items on the queue.
+ *
+ * The width of the queue is determined based on the hardware the code is
+ * running on and may change dynamically depending on the load of the system.
+ * Blocking any thread working on this queue will therefore reduce the
+ * throughput of the queue as a whole.  Work running on this queue should be
+ * able to make progress till completion even if just 1 thread is available to
+ * process this queue.
+ *
+ * It is invalid to pass in both the DISPATCH_QUEUE_OVERCOMMIT as well as the
+ * DISPATCH_QUEUE_COOPERATIVE flags.
  */
 enum {
 	DISPATCH_QUEUE_OVERCOMMIT = 0x2ull,
+	DISPATCH_QUEUE_COOPERATIVE = 0x4ull,
 };
 
 /*!
@@ -451,6 +468,76 @@ dispatch_async_enforce_qos_class_f(dispatch_queue_t queue,
 DISPATCH_EXPORT
 void _dispatch_install_thread_detach_callback(void (*cb)(void));
 #endif
+
+/* The SPIs below are for the use of the Swift Concurrency Runtime ONLY */
+
+DISPATCH_OPTIONS(dispatch_swift_job_invoke_flags, uint32_t,
+	/*!
+	 * @const DISPATCH_SWIFT_JOB_INVOKE_NONE
+	 *
+	 * No specific requirements for how the object invokes itself.
+	 */
+	DISPATCH_SWIFT_JOB_INVOKE_NONE,
+
+	/*!
+	 * @const DISPATCH_SWIFT_JOB_INVOKE_COOPERATIVE
+	 *
+	 * This swift job is invoked on a cooperative queue. It should periodically
+	 * check dispatch_swift_job_should_yield() to determine if the object
+	 * ought to yield the thread to other objects in the cooperative queue
+	 */
+	DISPATCH_SWIFT_JOB_INVOKE_COOPERATIVE,
+);
+
+/*!
+ * @function dispatch_swift_job_should_yield()
+ *
+ * @abstract
+ * This function is only to be called by the Swift concurrency runtime.
+ *
+ * If this function returns true, then the currently draining object
+ * should reach the next safest stopping point, perform necessary cleanups, and
+ * return from its invocation.
+ *
+ * If more work is present, it should reenqueue itself using the
+ * dispatch_enqueue_swift_job SPI.
+ */
+SPI_AVAILABLE(macos(12.0), ios(15.0))
+DISPATCH_EXPORT
+bool
+dispatch_swift_job_should_yield(void);
+
+/*!
+ * @function dispatch_async_swift_job
+ *
+ * @abstract
+ * This function is only to be called by the Swift concurrency runtime to
+ * enqueue work to run on dispatch's thread pool.
+ *
+ * @param queue
+ * The queue onto which to enqueue the swift object. All enqueues are
+ * asynchronous and do not block the thread.
+ *
+ * @param swift_job
+ * The swift concurrency runtime job that is to be enqueued into dispatch. This
+ * object needs to adhere to a specific structure and have a specific vtable
+ * layout that dispatch expects.
+ *
+ * The refcount and lifetime of the object is managed by the enqueuer and who
+ * needs need to make sure that it is live for the duration it is enqueued on
+ * the dispatch queue.
+ *
+ * The swift job can only be enqueued on a single queue at any
+ * given time.
+ *
+ * @param qos
+ * The QoS of at which the object should be enqueued.
+ */
+SPI_AVAILABLE(macos(12.0), ios(15.0))
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL2
+void
+dispatch_async_swift_job(dispatch_queue_t queue, void *swift_job,
+	qos_class_t qos);
 
 __END_DECLS
 

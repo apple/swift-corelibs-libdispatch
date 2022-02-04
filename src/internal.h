@@ -36,6 +36,7 @@
 #define __DISPATCH_BUILDING_DISPATCH__
 #define __DISPATCH_INDIRECT__
 #define __OS_WORKGROUP_INDIRECT__
+#define __OS_WORKGROUP_PRIVATE_INDIRECT__
 
 #ifdef __APPLE__
 #include <Availability.h>
@@ -195,6 +196,7 @@ typedef union {
 	struct dispatch_io_s *_dchannel;
 
 	struct dispatch_continuation_s *_dc;
+	struct dispatch_swift_continuation_s *_dsjc;
 	struct dispatch_sync_context_s *_dsc;
 	struct dispatch_operation_s *_doperation;
 	struct dispatch_disk_s *_ddisk;
@@ -241,6 +243,7 @@ upcast(dispatch_object_t dou)
 #include "os/eventlink_private.h"
 #include "os/workgroup_object_private.h"
 #include "os/workgroup_interval_private.h"
+#include "apply_private.h"
 #include "queue_private.h"
 #include "channel_private.h"
 #include "workloop_private.h"
@@ -497,6 +500,7 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 
 #define DISPATCH_MODE_STRICT    (1U << 0)
 #define DISPATCH_MODE_NO_FAULTS (1U << 1)
+#define DISPATCH_COOPERATIVE_POOL_STRICT (1U << 2)
 extern uint8_t _dispatch_mode;
 
 DISPATCH_EXPORT DISPATCH_NOINLINE DISPATCH_COLD
@@ -736,6 +740,14 @@ _dispatch_fork_becomes_unsafe(void)
 #define DISPATCH_USE_WORKQUEUE_NARROWING 0
 #endif
 #endif // !defined(DISPATCH_USE_WORKQUEUE_NARROWING)
+
+#ifndef DISPATCH_USE_COOPERATIVE_WORKQUEUE
+#if defined(WORKQ_FEATURE_COOPERATIVE_WORKQ) && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(120000)
+#define DISPATCH_USE_COOPERATIVE_WORKQUEUE 1
+#else
+#define DISPATCH_USE_COOPERATIVE_WORKQUEUE 0
+#endif
+#endif
 
 #ifndef DISPATCH_USE_PTHREAD_ROOT_QUEUES
 #if defined(__BLOCKS__) && defined(__APPLE__)
@@ -1029,6 +1041,15 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 #define MACH_RCV_VOUCHER 0
 #define VOUCHER_USE_PERSONA 0
 #endif // VOUCHER_USE_MACH_VOUCHER
+
+#ifndef VOUCHER_USE_PERSONA_ADOPT_ANY
+#if VOUCHER_USE_PERSONA && defined(BANK_PERSONA_ADOPT_ANY) &&  \
+	DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(120000)
+#define VOUCHER_USE_PERSONA_ADOPT_ANY 1
+#else
+#define VOUCHER_USE_PERSONA_ADOPT_ANY 0
+#endif
+#endif
 
 #ifndef OS_EVENTLINK_USE_MACH_EVENTLINK
 #if DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101600) && __has_include(<mach/mach_eventlink.h>)

@@ -256,9 +256,9 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 	} else if (func == _dispatch_apply_invoke ||
 			func == _dispatch_apply_redirect_invoke) {
 		dispatch_apply_t da = ctxt;
-		if (da->da_todo) {
+		if (os_atomic_load2o(da, da_todo, relaxed)) {
 			dc = da->da_dc;
-			dq = dc->dc_data;
+			dq = dc->dc_other;
 			ctxt = dc->dc_ctxt;
 			func = dc->dc_func;
 			apply = true;

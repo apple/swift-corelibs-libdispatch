@@ -559,8 +559,8 @@ _dispatch_kevent_drain(dispatch_kevent_t ke)
 			// when the process exists but is a zombie. As a workaround, we
 			// simulate an exit event for any EVFILT_PROC with an invalid pid.
 			ke->flags  = EV_UDATA_SPECIFIC | EV_ONESHOT | EV_DELETE;
-			ke->fflags = NOTE_EXIT;
-			ke->data   = 0;
+			ke->fflags = NOTE_EXIT | NOTE_EXITSTATUS;
+			ke->data   = 0; // Fake exit status
 			_dispatch_kevent_debug("synthetic NOTE_EXIT", ke);
 		} else {
 			return _dispatch_kevent_print_error(ke);
@@ -1402,6 +1402,11 @@ _dispatch_kevent_workloop_priority(dispatch_queue_t dq, int which,
 		qos = DISPATCH_QOS_MAINTENANCE;
 	}
 	pthread_priority_t pp = _dispatch_qos_to_pp(qos);
+
+	if (rq_pri & DISPATCH_PRIORITY_FLAG_COOPERATIVE) {
+		DISPATCH_INTERNAL_CRASH(rq_pri, "Waking up a kq with cooperative thread request is not supported");
+	}
+
 	return pp | (rq_pri & DISPATCH_PRIORITY_FLAG_OVERCOMMIT);
 }
 
@@ -2024,11 +2029,24 @@ _dispatch_event_loop_cancel_waiter(dispatch_sync_context_t dsc)
 	uint32_t kev_flags = KEVENT_FLAG_IMMEDIATE | KEVENT_FLAG_ERROR_EVENTS;
 	dispatch_kevent_s ke;
 
+again:
 	_dispatch_kq_fill_workloop_sync_event(&ke, DISPATCH_WORKLOOP_SYNC_END,
 			wlh, 0, dsc->dsc_waiter);
 	if (_dispatch_kq_poll(wlh, &ke, 1, &ke, 1, NULL, NULL, kev_flags)) {
 		_dispatch_kevent_workloop_drain_error(&ke, dsc->dsc_waiter_needs_cancel ?
 				0 : DISPATCH_KEVENT_WORKLOOP_ALLOW_ENOENT);
+		//
+		// quick hack for 78288114
+		//
+		// something with DISPATCH_WORKLOOP_SYNC_FAKE is not quite right
+		// we can at least make the thread in the way finish the syscall
+		// it's trying to make with directed handoffs.
+		//
+		// it's inefficient but doesn't have a priority inversion.
+		//
+		_dispatch_preemption_yield_to(dsc->dsc_waiter, 1);
+		goto again;
+
 		//
 		// Our deletion attempt is opportunistic as in most cases we will find
 		// the matching knote and break the waiter out.
@@ -2435,6 +2453,9 @@ const dispatch_source_type_s _dispatch_source_type_vfs = {
 #if HAVE_DECL_VQ_VERYLOWDISK
 			|VQ_VERYLOWDISK
 #endif
+#if HAVE_DECL_VQ_SERVEREVENT
+			|VQ_SERVEREVENT
+#endif
 #if HAVE_DECL_VQ_QUOTA
 			|VQ_QUOTA
 #endif
@@ -2571,7 +2592,7 @@ _dispatch_ios_simulator_memorypressure_init(void *context DISPATCH_UNUSED)
 	if (!e) return;
 	_dispatch_ios_simulator_memory_warnings_fd = open(e, O_EVTONLY);
 	if (_dispatch_ios_simulator_memory_warnings_fd == -1) {
-		(void)dispatch_assume_zero(errno);
+		DISPATCH_INTERNAL_CRASH(errno, "Failed to create fd to simulator memory pressure file");
 	}
 }
 
@@ -2588,7 +2609,11 @@ _dispatch_source_memorypressure_create(dispatch_source_type_t dst,
 
 	dst = &_dispatch_source_type_vnode;
 	handle = (uintptr_t)_dispatch_ios_simulator_memory_warnings_fd;
+	if (handle < 0) {
+		return DISPATCH_UNOTE_NULL;
+	}
 	mask = NOTE_ATTRIB;
+
 
 	dispatch_unote_t du = dux_create(dst, handle, mask);
 	if (du._du) {
@@ -3261,14 +3286,18 @@ const dispatch_source_type_s _dispatch_mach_type_recv = {
 DISPATCH_NORETURN
 static void
 _dispatch_mach_reply_merge_evt(dispatch_unote_t du DISPATCH_UNUSED,
-		uint32_t flags, uintptr_t data DISPATCH_UNUSED,
+		uint32_t flags, uintptr_t data,
 		pthread_priority_t pp DISPATCH_UNUSED)
 {
 	if (flags & EV_VANISHED) {
 		DISPATCH_CLIENT_CRASH(0,
 				"Unexpected EV_VANISHED (do not destroy random mach ports)");
 	}
-	DISPATCH_INTERNAL_CRASH(flags, "Unexpected event");
+#if __LP64__
+	data = (uintptr_t)(kern_return_t)data;
+	data |= (uintptr_t)flags << 32;
+#endif
+	DISPATCH_INTERNAL_CRASH(data, "Unexpected event");
 }
 
 const dispatch_source_type_s _dispatch_mach_type_reply = {

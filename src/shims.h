@@ -55,8 +55,12 @@
 #endif
 
 #ifndef DISPATCH_WORKQ_MAX_PTHREAD_COUNT
+#if defined(__APPLE__)
+#define DISPATCH_WORKQ_MAX_PTHREAD_COUNT 64
+#else
 #define DISPATCH_WORKQ_MAX_PTHREAD_COUNT 255
 #endif
+#endif /* DISPATCH_WORKQ_MAX_PTHREAD_COUNT */
 
 #include "shims/hw_config.h"
 #include "shims/priority.h"
@@ -190,6 +194,98 @@ _dispatch_qos_max_parallelism(dispatch_qos_t qos, unsigned long flags)
 		if (active_cpus < p) p = active_cpus;
 	}
 	return p;
+}
+
+#if DISPATCH_USE_PTHREAD_QOS_MAX_PARALLELISM && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(120000) && !TARGET_OS_SIMULATOR
+#include <pthread/bsdthread_private.h>
+
+#if defined(_PTHREAD_QOS_PARALLELISM_CLUSTER_SHARED_RSRC) && __arm64__
+#define DISPATCH_USE_PTHREAD_CLUSTER_PARALLELISM 1
+#else // defined(_PTHREAD_QOS_PARALLELISM_CLUSTER_SHARED_RSRC) && __arm64__
+#define DISPATCH_USE_PTHREAD_CLUSTER_PARALLELISM 0
+#endif // defined(_PTHREAD_QOS_PARALLELISM_CLUSTER_SHARED_RSRC) && __arm64__
+
+#else // DISPATCH_USE_PTHREAD_QOS_MAX_PARALLELISM && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(120000) && !TARGET_OS_SIMULATOR
+#define DISPATCH_USE_PTHREAD_CLUSTER_PARALLELISM 0
+#endif // DISPATCH_USE_PTHREAD_QOS_MAX_PARALLELISM && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(120000) && !TARGET_OS_SIMULATOR
+
+#if DISPATCH_USE_PTHREAD_CLUSTER_PARALLELISM
+extern int __bsdthread_ctl(uintptr_t cmd, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3);
+#include <sys/qos_private.h>
+// the sysctl wants thread_qos_t not dispatch_qos_t
+DISPATCH_ALWAYS_INLINE
+static inline uint8_t
+_dispatch_qos2threadqos(dispatch_qos_t q)
+{
+	switch (q) {
+	case DISPATCH_QOS_USER_INTERACTIVE: return THREAD_QOS_USER_INTERACTIVE;
+	case DISPATCH_QOS_USER_INITIATED:   return THREAD_QOS_USER_INITIATED;
+	case DISPATCH_QOS_DEFAULT:          return THREAD_QOS_LEGACY;
+	case DISPATCH_QOS_UTILITY:          return THREAD_QOS_UTILITY;
+	case DISPATCH_QOS_BACKGROUND:       return THREAD_QOS_BACKGROUND;
+	case DISPATCH_QOS_MAINTENANCE:      return THREAD_QOS_MAINTENANCE;
+	default: return THREAD_QOS_UNSPECIFIED;
+	}
+}
+#endif
+
+DISPATCH_ALWAYS_INLINE
+static inline uint32_t
+_dispatch_cluster_max_parallelism(dispatch_qos_t qos)
+{
+	uint32_t cluster_count = 0;
+
+#if DISPATCH_USE_PTHREAD_CLUSTER_PARALLELISM
+	int r = pthread_qos_max_parallelism(_dispatch_qos_to_qos_class(qos), PTHREAD_MAX_PARALLELISM_CLUSTER);
+	if (likely(r > 0)) {
+		cluster_count = (uint32_t) r;
+	}
+#else
+	(void)qos;
+#endif
+	return cluster_count;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_attr_apply_cluster_set(size_t worker_index, size_t cluster_concurrency)
+{
+#if DISPATCH_USE_PTHREAD_CLUSTER_PARALLELISM
+	int rc = 0;
+	rc = __bsdthread_ctl(BSDTHREAD_CTL_DISPATCH_APPLY_ATTR, _PTHREAD_DISPATCH_APPLY_ATTR_CLUSTER_SHARED_RSRC_SET, worker_index, cluster_concurrency);
+	if (rc != 0) {
+		if (errno != ENOTSUP) {
+			/* ENOTSUP = Trying to get on a cluster it is not recommended for.
+			 *
+			 * Other error means something very bad has happened! On things
+			 * like the Simulator we shouldn't even be in here.
+			 * DISPATCH_INTERNAL_CRASH isn't available here
+			 */
+			__builtin_trap();
+		}
+	}
+#else
+	(void)worker_index;
+	(void)cluster_concurrency;
+#endif
+	return;
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_attr_apply_cluster_clear(size_t worker_index, size_t cluster_concurrency)
+{
+#if DISPATCH_USE_PTHREAD_CLUSTER_PARALLELISM
+	int rc = 0;
+	rc = __bsdthread_ctl(BSDTHREAD_CTL_DISPATCH_APPLY_ATTR, _PTHREAD_DISPATCH_APPLY_ATTR_CLUSTER_SHARED_RSRC_CLEAR, worker_index, cluster_concurrency);
+	if (rc != 0) {
+		__builtin_trap();
+	}
+#else
+	(void)worker_index;
+	(void)cluster_concurrency;
+#endif
+	return;
 }
 
 #if !HAVE_NORETURN_BUILTIN_TRAP

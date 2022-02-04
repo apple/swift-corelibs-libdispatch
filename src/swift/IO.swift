@@ -67,7 +67,7 @@ extension DispatchIO {
 
 	public convenience init(
 		type: StreamType,
-		fileDescriptor: Int32,
+		fileDescriptor: dispatch_fd_t,
 		queue: DispatchQueue,
 		cleanupHandler: @escaping (_ error: Int32) -> Void)
 	{

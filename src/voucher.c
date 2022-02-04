@@ -233,6 +233,7 @@ _voucher_insert(voucher_t v)
 {
 	mach_voucher_t kv = v->v_ipc_kvoucher;
 	if (!kv) return;
+
 	_voucher_hash_lock_lock();
 	if (unlikely(_voucher_hash_is_enqueued(v))) {
 		_dispatch_voucher_debug("corruption", v);
@@ -827,6 +828,31 @@ _voucher_activity_debug_channel_init(void)
 	}
 }
 
+static bool
+_voucher_hash_is_empty() {
+	_voucher_hash_lock_lock();
+
+	bool empty = true;
+	for (unsigned int i = 0; i < VL_HASH_SIZE; i++) {
+		voucher_hash_head_s *head = &_voucher_hash[i];
+		if (_voucher_hash_get_next(head->vhh_first) != VOUCHER_NULL) {
+			empty = false;
+			break;
+		}
+	}
+	_voucher_hash_lock_unlock();
+
+	return empty;
+}
+
+void
+_voucher_atfork_parent(void)
+{
+	if (!_voucher_hash_is_empty()){
+		_dispatch_fork_becomes_unsafe();
+	}
+}
+
 void
 _voucher_atfork_child(void)
 {
@@ -839,6 +865,39 @@ _voucher_atfork_child(void)
 	_voucher_aid_next = 0;
 	_firehose_task_buffer_pred = 0;
 	_firehose_task_buffer = NULL; // firehose buffer is VM_INHERIT_NONE
+}
+
+static void
+_voucher_process_can_use_arbitrary_personas_init(void *__unused ctxt)
+{
+#if VOUCHER_USE_PERSONA_ADOPT_ANY
+	mach_voucher_t kv = _voucher_get_task_mach_voucher();
+	kern_return_t kr;
+
+	mach_voucher_attr_content_t result_out;
+	mach_msg_type_number_t result_out_size;
+
+	boolean_t local_result;
+	result_out = (mach_voucher_attr_content_t) &local_result;
+	result_out_size = sizeof(local_result);
+
+	kr = mach_voucher_attr_command(kv, MACH_VOUCHER_ATTR_KEY_BANK,
+		BANK_PERSONA_ADOPT_ANY, NULL, 0, result_out, &result_out_size);
+	if (kr != KERN_SUCCESS) {
+		DISPATCH_INTERNAL_CRASH(kr, "mach_voucher_attr_command(BANK_PERSONA_ADOPT_ANY) failed");
+	}
+
+	_voucher_process_can_use_arbitrary_personas = !!local_result;
+#endif /* VOUCHER_USE_PERSONA_ADOPT_ANY */
+}
+
+bool
+voucher_process_can_use_arbitrary_personas(void)
+{
+	dispatch_once_f(&_voucher_process_can_use_arbitrary_personas_pred, NULL,
+		_voucher_process_can_use_arbitrary_personas_init);
+
+	return _voucher_process_can_use_arbitrary_personas;
 }
 
 voucher_t
@@ -1927,6 +1986,12 @@ voucher_get_current_persona_proximate_info(struct proc_persona_info *persona_inf
 	return -1;
 }
 #endif // __has_include(<mach/mach.h>)
+
+bool
+voucher_process_can_use_arbitrary_personas(void)
+{
+	return false;
+}
 
 void
 _voucher_activity_debug_channel_init(void)

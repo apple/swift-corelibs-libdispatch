@@ -38,8 +38,31 @@ void _os_workgroup_interval_xref_dispose(os_workgroup_interval_t wgi);
 void _os_workgroup_interval_dispose(os_workgroup_interval_t wgi);
 void _os_workgroup_debug(os_workgroup_t wg, char *buf, size_t size);
 
+#if !USE_OBJC
+void _os_workgroup_explicit_xref_dispose(os_workgroup_t wg);
+void _os_workgroup_interval_explicit_xref_dispose(os_workgroup_interval_t wgi);
+void _os_workgroup_interval_explicit_dispose(os_workgroup_interval_t wgi);
+#endif
+
 extern pthread_key_t _os_workgroup_key;
 void _os_workgroup_tsd_cleanup(void *ctxt);
+
+void _workgroup_init(void);
+
+#if 1 || DISPATCH_DEBUG // log workload_id API adoption errors by default for now
+#define OS_WORKGROUP_LOG_ERRORS 1
+#endif
+
+#if 1 || DISPATCH_DEBUG // log workload_id lookup failures by default for now
+#define OS_WORKGROUP_LOG_UKNOWN_WORKLOAD_ID 1
+#endif
+
+#if OS_WORKGROUP_LOG_ERRORS
+#define _os_workgroup_error_log(m, ...) \
+		_dispatch_log("BUG IN CLIENT of %s: " m, __func__, ##__VA_ARGS__);
+#else
+#define _os_workgroup_error_log(m, ...) (void)m;
+#endif
 
 /*
  * os_workgroup_type_t is an internal representation that is a superset of types

@@ -26,7 +26,7 @@
 #include <endian.h>
 #define OSLittleEndian __LITTLE_ENDIAN
 #define OSBigEndian __BIG_ENDIAN
-#elif defined(__FreeBSD__)
+#elif defined(__FreeBSD__) || defined(__OpenBSD__)
 #include <sys/endian.h>
 #define OSLittleEndian _LITTLE_ENDIAN
 #define OSBigEndian _BIG_ENDIAN
@@ -35,7 +35,7 @@
 #define OSBigEndian 4321
 #endif
 
-#if defined(__linux__) || defined(__FreeBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__)
 #define OSSwapLittleToHostInt16 le16toh
 #define OSSwapBigToHostInt16 be16toh
 #define OSSwapHostToLittleInt16 htole16
@@ -781,11 +781,14 @@ _dispatch_transform_to_base32_with_table(dispatch_data_t data, const unsigned ch
 			case 1:
 				*ptr++ = '='; // c
 				*ptr++ = '='; // d
+				DISPATCH_FALLTHROUGH;
 			case 2:
 				*ptr++ = '='; // e
+				DISPATCH_FALLTHROUGH;
 			case 3:
 				*ptr++ = '='; // f
 				*ptr++ = '='; // g
+				DISPATCH_FALLTHROUGH;
 			case 4:
 				*ptr++ = '='; // h
 				break;

@@ -136,9 +136,14 @@ _dispatch_set_priority_and_mach_voucher_slow(pthread_priority_t pp,
 				// it from the defaultpri, see _dispatch_priority_compute_update
 				pp |= (_dispatch_get_basepri() &
 						DISPATCH_PRIORITY_FLAG_OVERCOMMIT);
+
+				// TODO (rokhinip): Right now there is no binding and unbinding
+				// to a kqueue for a cooperative thread. We'll need to do this
+				// right once we get that support
 			} else {
-				// else we need to keep the one that is set in the current pri
-				pp |= (old_pri & _PTHREAD_PRIORITY_OVERCOMMIT_FLAG);
+				// else we need to keep the overcommit/cooperative one that is set on the current
+				// thread
+				pp |= (old_pri & _PTHREAD_PRIORITY_THREAD_TYPE_MASK);
 			}
 			if (likely(old_pri & ~_PTHREAD_PRIORITY_FLAGS_MASK)) {
 				pflags |= _PTHREAD_SET_SELF_QOS_FLAG;
@@ -300,6 +305,22 @@ static inline bool
 _dispatch_block_flags_valid(dispatch_block_flags_t flags)
 {
 	return ((flags & ~DISPATCH_BLOCK_API_MASK) == 0);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_block_remember_async_queue(dispatch_block_private_data_t dbpd,
+		dispatch_queue_t dq)
+{
+	// balanced in d_block_sync_invoke or d_block_wait
+	//
+	// Note: we need to retain _before_ we publish it,
+	//       because dispatch_block_wait() will eagerly
+	//       consume the refcounts.
+	_dispatch_retain_2(dq);
+	if (!os_atomic_cmpxchg2o(dbpd, dbpd_queue, NULL, dq, relaxed)) {
+		_dispatch_release_2(dq);
+	}
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -666,10 +687,7 @@ _dispatch_continuation_init_slow(dispatch_continuation_t dc,
 	uintptr_t dc_flags = dc->dc_flags;
 	pthread_priority_t pp = 0;
 
-	// balanced in d_block_async_invoke_and_release or d_block_wait
-	if (os_atomic_cmpxchg2o(dbpd, dbpd_queue, NULL, dq, relaxed)) {
-		_dispatch_retain_2(dq);
-	}
+	_dispatch_block_remember_async_queue(dbpd, dq);
 
 	if (dc_flags & DC_FLAG_CONSUME) {
 		dc->dc_func = _dispatch_block_async_invoke_and_release;
@@ -1645,13 +1663,19 @@ __DISPATCH_WAIT_FOR_QUEUE__(dispatch_sync_context_t dsc, dispatch_queue_t dq)
 				(uint8_t)_dispatch_get_basepri_override_qos_floor();
 		_dispatch_thread_event_init(&dsc->dsc_event);
 	}
+
+	_dispatch_set_current_dsc((void *) dsc);
 	dx_push(dq, dsc, _dispatch_qos_from_pp(dsc->dc_priority));
+
 	_dispatch_trace_runtime_event(sync_wait, dq, 0);
 	if (dsc->dc_data == DISPATCH_WLH_ANON) {
 		_dispatch_thread_event_wait(&dsc->dsc_event); // acquire
 	} else if (!dsc->dsc_wlh_self_wakeup) {
 		_dispatch_event_loop_wait_for_ownership(dsc);
 	}
+
+	_dispatch_clear_current_dsc();
+
 	if (dsc->dc_data == DISPATCH_WLH_ANON) {
 		_dispatch_thread_event_destroy(&dsc->dsc_event);
 		// If _dispatch_sync_waiter_wake() gave this thread an override,
@@ -1896,10 +1920,8 @@ _dispatch_sync_block_with_privdata(dispatch_queue_t dq, dispatch_block_t work,
 	}
 	ov = _dispatch_set_priority_and_voucher(p, v, 0);
 
-	// balanced in d_block_sync_invoke or d_block_wait
-	if (os_atomic_cmpxchg2o(dbpd, dbpd_queue, NULL, dq, relaxed)) {
-		_dispatch_retain_2(dq);
-	}
+	_dispatch_block_remember_async_queue(dbpd, dq);
+
 	if (dc_flags & DC_FLAG_BARRIER) {
 		_dispatch_barrier_sync_f(dq, work, _dispatch_block_sync_invoke,
 				dc_flags);
@@ -2177,10 +2199,7 @@ _dispatch_async_and_wait_block_with_privdata(dispatch_queue_t dq,
 		v = _voucher_get();
 	}
 
-	// balanced in d_block_sync_invoke or d_block_wait
-	if (os_atomic_cmpxchg2o(dbpd, dbpd_queue, NULL, dq, relaxed)) {
-		_dispatch_retain_2(dq);
-	}
+	_dispatch_block_remember_async_queue(dbpd, dq);
 
 	dispatch_tid tid = _dispatch_tid_self();
 	struct dispatch_sync_context_s dsc = {
@@ -2453,6 +2472,11 @@ _dispatch_lane_inherit_wlh_from_target(dispatch_lane_t dq, dispatch_queue_t tq)
 {
 	uint64_t old_state, new_state, role;
 
+	/* TODO (rokhinip): We're going to have to change this in the future when we
+	 * allow targetting queues to a cooperative pool and need to figure out what
+	 * kind of a role that gives the queue */
+	dispatch_assert(!_dispatch_queue_is_cooperative(tq));
+
 	if (!dx_hastypeflag(tq, QUEUE_ROOT)) {
 		role = DISPATCH_QUEUE_ROLE_INNER;
 	} else if (_dispatch_base_lane_is_wlh(dq, tq)) {
@@ -2560,7 +2584,7 @@ _dispatch_queue_compute_priority_and_wlh(dispatch_queue_t dq,
 		rqp &= DISPATCH_PRIORITY_REQUESTED_MASK;
 		if (p < rqp) p = rqp;
 
-		p |= (tq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT);
+		p |= (tq->dq_priority & DISPATCH_PRIORITY_THREAD_TYPE_MASK);
 		if ((dpri & DISPATCH_PRIORITY_FLAG_FLOOR) ||
 				!(dpri & DISPATCH_PRIORITY_REQUESTED_MASK)) {
 			p |= (dpri & DISPATCH_PRIORITY_FLAG_FLOOR);
@@ -2664,8 +2688,12 @@ _dispatch_queue_priority_inherit_from_target(dispatch_lane_class_t dq,
 		if (_dispatch_is_in_root_queues_array(tq)) {
 			dispatch_qos_t qos = _dispatch_priority_qos(pri);
 			if (!qos) qos = DISPATCH_QOS_DEFAULT;
-			tq = _dispatch_get_root_queue(qos,
-					pri & DISPATCH_PRIORITY_FLAG_OVERCOMMIT)->_as_dq;
+
+			// TODO (rokhinip): In future, might want to consider whether dq
+			// itself might be tagged cooperative and therefore we need to
+			// adjust tq accordingly
+			uintptr_t flags = (pri & DISPATCH_PRIORITY_FLAG_OVERCOMMIT) ? DISPATCH_QUEUE_OVERCOMMIT : 0;
+			tq = _dispatch_get_root_queue(qos, flags)->_as_dq;
 		}
 		return tq;
 	}
@@ -2731,6 +2759,8 @@ _dispatch_lane_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 			qos = _dispatch_priority_qos(tq->dq_priority);
 		}
 		tq = NULL;
+	} else if (tq && _dispatch_queue_is_cooperative(tq)) {
+		DISPATCH_CLIENT_CRASH(tq, "Cannot target object to cooperative root queue - not implemented");
 	} else if (tq && !tq->do_targetq) {
 		// target is a pthread or runloop root queue, setting QoS or overcommit
 		// is disallowed
@@ -2747,9 +2777,10 @@ _dispatch_lane_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 		}
 	}
 	if (!tq) {
+		uintptr_t flags = (overcommit == _dispatch_queue_attr_overcommit_enabled) ? DISPATCH_QUEUE_OVERCOMMIT : 0;
 		tq = _dispatch_get_root_queue(
 				qos == DISPATCH_QOS_UNSPECIFIED ? DISPATCH_QOS_DEFAULT : qos,
-				overcommit == _dispatch_queue_attr_overcommit_enabled)->_as_dq;
+					flags)->_as_dq;
 		if (unlikely(!tq)) {
 			DISPATCH_CLIENT_CRASH(qos, "Invalid queue attribute");
 		}
@@ -3513,11 +3544,13 @@ _dispatch_poll_for_events_4launchd(void)
 }
 
 #if DISPATCH_USE_WORKQUEUE_NARROWING
+
+#if !DISPATCH_USE_COOPERATIVE_WORKQUEUE
 DISPATCH_STATIC_GLOBAL(os_atomic(uint64_t)
 _dispatch_narrowing_deadlines[DISPATCH_QOS_NBUCKETS]);
 #if !DISPATCH_TIME_UNIT_USES_NANOSECONDS
 DISPATCH_STATIC_GLOBAL(uint64_t _dispatch_narrow_check_interval_cache);
-#endif
+#endif /* !DISPATCH_TIME_UNIT_USES_NANOSECONDS */
 
 DISPATCH_ALWAYS_INLINE
 static inline uint64_t
@@ -3588,9 +3621,50 @@ _dispatch_queue_drain_should_narrow(dispatch_invoke_context_t dic)
 	}
 	return false;
 }
+
+bool
+dispatch_swift_job_should_yield(void)
+{
+	return false;
+}
+
+#else /* !DISPATCH_USE_COOPERATIVE_WORKQUEUE */
+
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_queue_drain_should_narrow(dispatch_invoke_context_t __unused dic)
+{
+	uint64_t quantum_expiry_action = _dispatch_get_quantum_expiry_action();
+	return (quantum_expiry_action & PTHREAD_WQ_QUANTUM_EXPIRY_NARROW) != 0;
+}
+#define _dispatch_queue_drain_init_narrowing_check_deadline(rq, dic) ((void)0)
+
+bool
+dispatch_swift_job_should_yield(void)
+{
+	uint64_t quantum_expiry_action = _dispatch_get_quantum_expiry_action();
+	/* We want to return true here regardless of what the quantum expiry action
+	 * is. There will be specific logic in root queue drain to handle the
+	 * various specific reasons.
+	 *
+	 * TODO (rokhinip): There is room for some potential optmization to return
+	 * false here if there is nothing else enqueued on the root queue we're
+	 * draining
+	 */
+	return quantum_expiry_action != 0;
+}
+
+#endif /* !DISPATCH_USE_COOPERATIVE_WORKQUEUE */
+
 #else
 #define _dispatch_queue_drain_init_narrowing_check_deadline(rq, dic) ((void)0)
 #define _dispatch_queue_drain_should_narrow(dic)  false
+
+bool
+dispatch_swift_job_should_yield(void)
+{
+	return false;
+}
 #endif
 
 /*
@@ -3660,7 +3734,8 @@ _dispatch_lane_drain(dispatch_lane_t dq, dispatch_invoke_context_t dic,
 		if (unlikely(serial_drain != (dq->dq_width == 1))) {
 			break;
 		}
-		if (unlikely(_dispatch_queue_drain_should_narrow(dic))) {
+		if (unlikely(!(flags & DISPATCH_INVOKE_DISABLED_NARROWING) &&
+				_dispatch_queue_drain_should_narrow(dic))) {
 			break;
 		}
 		if (likely(flags & DISPATCH_INVOKE_WORKLOOP_DRAIN)) {
@@ -4129,18 +4204,6 @@ _dispatch_workloop_activate_simulator_fallback(dispatch_workloop_t dwl,
 		new_state |= DISPATCH_QUEUE_ROLE_BASE_ANON;
 	});
 }
-
-static const struct dispatch_queue_global_s _dispatch_custom_workloop_root_queue = {
-	DISPATCH_GLOBAL_OBJECT_HEADER(queue_global),
-	.dq_state = DISPATCH_ROOT_QUEUE_STATE_INIT_VALUE,
-	.do_ctxt = NULL,
-	.dq_label = "com.apple.root.workloop-custom",
-	.dq_atomic_flags = DQF_WIDTH(DISPATCH_QUEUE_WIDTH_POOL),
-	.dq_priority = _dispatch_priority_make_fallback(DISPATCH_QOS_DEFAULT) |
-			DISPATCH_PRIORITY_SATURATED_OVERRIDE,
-	.dq_serialnum = DISPATCH_QUEUE_SERIAL_NUMBER_WLF,
-	.dgq_thread_pool_size = 1,
-};
 #endif // TARGET_OS_MAC
 
 static void
@@ -4771,7 +4834,12 @@ _dispatch_queue_override_invoke(dispatch_continuation_t dc,
 	}
 	_dispatch_continuation_pop_forwarded(dc, dc_flags, assumed_rq, {
 		if (_dispatch_object_has_vtable(dou._do)) {
-			dx_invoke(dou._dq, dic, flags);
+			if (dx_type(dou._do) == DISPATCH_SWIFT_JOB_TYPE) {
+				dx_invoke(dou._dsjc, NULL,
+						_dispatch_invoke_flags_to_swift_invoke_flags(flags));
+			} else {
+				dx_invoke(dou._dq, dic, flags);
+			}
 		} else {
 			_dispatch_continuation_invoke_inline(dou, flags, assumed_rq);
 		}
@@ -4799,8 +4867,13 @@ static void
 _dispatch_root_queue_push_override(dispatch_queue_global_t orig_rq,
 		dispatch_object_t dou, dispatch_qos_t qos)
 {
-	bool overcommit = orig_rq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT;
-	dispatch_queue_global_t rq = _dispatch_get_root_queue(qos, overcommit);
+	uintptr_t flags = 0;
+	if (orig_rq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT) {
+		flags |= DISPATCH_QUEUE_OVERCOMMIT;
+	} else if (_dispatch_queue_is_cooperative(orig_rq)) {
+		flags |= DISPATCH_QUEUE_COOPERATIVE;
+	}
+	dispatch_queue_global_t rq = _dispatch_get_root_queue(qos, flags);
 	dispatch_continuation_t dc = dou._dc;
 
 	if (_dispatch_object_is_redirection(dc)) {
@@ -4824,8 +4897,13 @@ static void
 _dispatch_root_queue_push_override_stealer(dispatch_queue_global_t orig_rq,
 		dispatch_queue_t dq, dispatch_qos_t qos)
 {
-	bool overcommit = orig_rq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT;
-	dispatch_queue_global_t rq = _dispatch_get_root_queue(qos, overcommit);
+	uintptr_t flags = 0;
+	if (orig_rq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT) {
+		flags |= DISPATCH_QUEUE_OVERCOMMIT;
+	} else if (_dispatch_queue_is_cooperative(orig_rq)) {
+		flags |= DISPATCH_QUEUE_COOPERATIVE;
+	}
+	dispatch_queue_global_t rq = _dispatch_get_root_queue(qos, flags);
 	dispatch_continuation_t dc = _dispatch_continuation_alloc();
 
 	dc->do_vtable = DC_VTABLE(OVERRIDE_STEALING);
@@ -5284,6 +5362,15 @@ void
 _dispatch_lane_concurrent_push(dispatch_lane_t dq, dispatch_object_t dou,
 		dispatch_qos_t qos)
 {
+	if (unlikely(_dispatch_queue_is_cooperative(dq))) {
+		/* If we're here, means that we're in the simulator fallback case. We
+		 * still restrict what can target the cooperative thread pool */
+		if (_dispatch_object_has_vtable(dou) &&
+				dx_type(dou._do) != DISPATCH_SWIFT_JOB_TYPE) {
+			DISPATCH_CLIENT_CRASH(dou._do, "Cannot target the cooperative global queue - not implemented");
+		}
+	}
+
 	// <rdar://problem/24738102&24743140> reserving non barrier width
 	// doesn't fail if only the ENQUEUED bit is set (unlike its barrier
 	// width equivalent), so we have to check that this thread hasn't
@@ -5296,6 +5383,21 @@ _dispatch_lane_concurrent_push(dispatch_lane_t dq, dispatch_object_t dou,
 	}
 
 	_dispatch_lane_push(dq, dou, qos);
+}
+
+void
+dispatch_async_swift_job(dispatch_queue_t dq, void *object, qos_class_t qos)
+{
+	dispatch_swift_continuation_t swift_dc;
+	swift_dc = (dispatch_swift_continuation_t) object;
+
+	dispatch_object_flags_t object_flags = dx_type(swift_dc);
+	if (object_flags != DISPATCH_SWIFT_JOB_TYPE) {
+		DISPATCH_CLIENT_CRASH(object_flags,
+			"Used Swift only SPI to enqueue non-Swift runtime objects into dispatch");
+	}
+
+	dx_push(dq, swift_dc->_as_do, _dispatch_qos_from_qos_class(qos));
 }
 
 #pragma mark -
@@ -5474,7 +5576,7 @@ dispatch_channel_foreach_work_item_peek_f(
 		if (dc == dch->dq_items_tail) {
 			break;
 		}
-		dc = os_mpsc_get_next(dc, do_next);
+		dc = os_mpsc_get_next(dc, do_next, &dch->dq_items_tail);
 	}
 }
 
@@ -6082,7 +6184,8 @@ _dispatch_wlh_worker_thread_init(dispatch_deferred_items_t ddi)
 		//
 		// Also add the NEEDS_UNBIND flag so that
 		// _dispatch_priority_compute_update knows it has to unbind
-		pp &= _PTHREAD_PRIORITY_OVERCOMMIT_FLAG | ~_PTHREAD_PRIORITY_FLAGS_MASK;
+
+		pp &= _PTHREAD_PRIORITY_THREAD_TYPE_MASK | ~_PTHREAD_PRIORITY_FLAGS_MASK;
 		if (ddi->ddi_wlh == DISPATCH_WLH_ANON) {
 			pp |= _PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG;
 		} else {
@@ -6163,6 +6266,15 @@ _dispatch_wlh_worker_thread(dispatch_wlh_t wlh, dispatch_kevent_t events,
 		int *nevents)
 {
 	_dispatch_introspection_thread_add();
+#if DISPATCH_USE_COOPERATIVE_WORKQUEUE
+	/* If this thread is not part of the cooperative workq quantum world,
+	 * clearing this field will make sure that we have no bad state lingering.
+	 *
+	 * If the thread is part of the cooperative workq quantum world, we know
+	 * that the thread has just had its workq quantum armed before coming out to
+	 * userspace, so we clobber this to make sure that we start fresh */
+	_dispatch_ack_quantum_expiry_action();
+#endif
 
 	DISPATCH_PERF_MON_VAR_INIT
 
@@ -6223,6 +6335,15 @@ _dispatch_wlh_worker_thread(dispatch_wlh_t wlh, dispatch_kevent_t events,
 	}
 	_dispatch_debug("returning %d deferred kevents", ddi.ddi_nevents);
 	_dispatch_clear_return_to_kernel();
+#if DISPATCH_USE_COOPERATIVE_WORKQUEUE
+	/* If this thread is not part of the cooperative workq quantum world,
+	 * clearing this field should be a noop.
+	 *
+	 * If the thread is part of the cooperative workq quantum world, the thread
+	 * is not going to take any action on the workq quantum action regardless
+	 * since it is going to park so we clear it anyways */
+	_dispatch_ack_quantum_expiry_action();
+#endif
 	*nevents = ddi.ddi_nevents;
 
 	_dispatch_trace_runtime_event(worker_park, NULL, 0);
@@ -6319,6 +6440,15 @@ _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 				_dispatch_priority_to_pp_prefer_fallback(dq->dq_priority));
 		(void)dispatch_assume_zero(r);
 		return;
+#if DISPATCH_USE_COOPERATIVE_WORKQUEUE
+	} else if (dx_type(dq) == DISPATCH_QUEUE_COOPERATIVE_ROOT_TYPE) {
+		_dispatch_root_queue_debug("requesting new worker thread for cooperative global "
+				"queue: %p", dq);
+		r = _pthread_workqueue_add_cooperativethreads(remaining,
+				_dispatch_priority_to_pp_prefer_fallback(dq->dq_priority));
+		(void)dispatch_assume_zero(r);
+		return;
+#endif /* DISPATCH_USE_COOPERATIVE_WORKQUEUE */
 	}
 #endif // !DISPATCH_USE_INTERNAL_WORKQUEUE
 #if DISPATCH_USE_PTHREAD_POOL
@@ -6388,13 +6518,8 @@ _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 #endif
 	do {
 		_dispatch_retain(dq); // released in _dispatch_worker_thread
-#if DISPATCH_DEBUG
-		unsigned dwStackSize = 0;
-#else
-		unsigned dwStackSize = 64 * 1024;
-#endif
 		uintptr_t hThread = 0;
-		while (!(hThread = _beginthreadex(NULL, dwStackSize, _dispatch_worker_thread_thunk, dq, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL))) {
+		while (!(hThread = _beginthreadex(NULL, /* stack_size */ 0, _dispatch_worker_thread_thunk, dq, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL))) {
 			if (errno != EAGAIN) {
 				(void)dispatch_assume(hThread);
 			}
@@ -6422,7 +6547,8 @@ _dispatch_root_queue_poke(dispatch_queue_global_t dq, int n, int floor)
 	}
 #if !DISPATCH_USE_INTERNAL_WORKQUEUE
 #if DISPATCH_USE_PTHREAD_POOL
-	if (likely(dx_type(dq) == DISPATCH_QUEUE_GLOBAL_ROOT_TYPE))
+	if (likely(dx_type(dq) == DISPATCH_QUEUE_GLOBAL_ROOT_TYPE ||
+			dx_type(dq) == DISPATCH_QUEUE_COOPERATIVE_ROOT_TYPE))
 #endif
 	{
 		if (unlikely(!os_atomic_cmpxchg2o(dq, dgq_pending, 0, n, relaxed))) {
@@ -6559,7 +6685,7 @@ start:
 			goto out;
 		}
 		// There must be a next item now.
-		next = os_mpsc_get_next(head, do_next);
+		next = os_mpsc_get_next(head, do_next, &dq->dq_items_tail);
 	}
 
 	os_atomic_store2o(dq, dq_items_head, next, relaxed);
@@ -6733,6 +6859,16 @@ _dispatch_root_queue_drain(dispatch_queue_global_t dq,
 		if (unlikely(_dispatch_queue_drain_should_narrow(&dic))) {
 			break;
 		}
+
+#if DISPATCH_USE_COOPERATIVE_WORKQUEUE
+		/* There is no need to check to see if we need to shuffle since by
+		 * virtue of the fact that we're here, we're timesharing between the
+		 * work items anyways - just eat the quantum expiry action.
+		 *
+		 * In the future, we'd expand this to include more checks for various
+		 * other quantum expiry actions */
+		_dispatch_ack_quantum_expiry_action();
+#endif
 	}
 
 	// overcommit or not. worker thread
@@ -6754,22 +6890,42 @@ _dispatch_root_queue_drain(dispatch_queue_global_t dq,
 static void
 _dispatch_worker_thread2(pthread_priority_t pp)
 {
-	bool overcommit = pp & _PTHREAD_PRIORITY_OVERCOMMIT_FLAG;
-	dispatch_queue_global_t dq;
+#if DISPATCH_USE_COOPERATIVE_WORKQUEUE
+	_dispatch_ack_quantum_expiry_action();
+#endif
 
-	pp &= _PTHREAD_PRIORITY_OVERCOMMIT_FLAG | ~_PTHREAD_PRIORITY_FLAGS_MASK;
+	bool overcommit = pp & _PTHREAD_PRIORITY_OVERCOMMIT_FLAG;
+	bool cooperative = pp & _PTHREAD_PRIORITY_COOPERATIVE_FLAG;
+
+	pp &= (_PTHREAD_PRIORITY_THREAD_TYPE_MASK | ~_PTHREAD_PRIORITY_FLAGS_MASK);
 	_dispatch_thread_setspecific(dispatch_priority_key, (void *)(uintptr_t)pp);
-	dq = _dispatch_get_root_queue(_dispatch_qos_from_pp(pp), overcommit);
+
+	dispatch_queue_global_t dq;
+	dispatch_invoke_flags_t invoke_flags = 0;
+
+	uintptr_t rq_flags = 0;
+	if (cooperative) {
+		rq_flags |= DISPATCH_QUEUE_COOPERATIVE;
+		invoke_flags |= DISPATCH_INVOKE_COOPERATIVE_DRAIN;
+	} else {
+		rq_flags |= (overcommit ? DISPATCH_QUEUE_OVERCOMMIT : 0);
+	}
+	dq = _dispatch_get_root_queue(_dispatch_qos_from_pp(pp), rq_flags);
 
 	_dispatch_introspection_thread_add();
 	_dispatch_trace_runtime_event(worker_unpark, dq, 0);
 
 	int pending = os_atomic_dec2o(dq, dgq_pending, relaxed);
 	dispatch_assert(pending >= 0);
-	_dispatch_root_queue_drain(dq, dq->dq_priority,
-			DISPATCH_INVOKE_WORKER_DRAIN | DISPATCH_INVOKE_REDIRECTING_DRAIN);
+
+	invoke_flags |= DISPATCH_INVOKE_WORKER_DRAIN | DISPATCH_INVOKE_REDIRECTING_DRAIN;
+	_dispatch_root_queue_drain(dq, dq->dq_priority, invoke_flags);
 	_dispatch_voucher_debug("root queue clear", NULL);
 	_dispatch_reset_voucher(NULL, DISPATCH_THREAD_PARK);
+
+#if DISPATCH_USE_COOPERATIVE_WORKQUEUE
+	_dispatch_ack_quantum_expiry_action();
+#endif
 	_dispatch_trace_runtime_event(worker_park, NULL, 0);
 }
 #endif // !DISPATCH_USE_INTERNAL_WORKQUEUE
@@ -6824,6 +6980,13 @@ _dispatch_worker_thread(void *context)
 		_dispatch_set_pthread_root_queue_observer_hooks(
 				&pqc->dpq_observer_hooks);
 	}
+
+	/* Set it up before the configure block so that it can get overridden by
+	 * client if they want to name their threads differently */
+	if (dq->_as_dq->dq_label) {
+		pthread_setname_np(dq->_as_dq->dq_label);
+	}
+
 	if (pqc->dpq_thread_configure) {
 		pqc->dpq_thread_configure();
 	}
@@ -6913,6 +7076,15 @@ _dispatch_root_queue_push(dispatch_queue_global_t rq, dispatch_object_t dou,
 		dispatch_priority_t rq_overcommit;
 		rq_overcommit = rq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT;
 
+		// TODO (rokhinip): When we add kevent support for the cooperative pool,
+		// we need to fix this logic to make sure that we have the following
+		// ranking:
+		//
+		// non_overcommit < cooperative < overcommit
+
+		// After parsing kevents, we could have stashed a non-overcommit work
+		// item to do but if an overcommit/cooperative request comes in, prefer
+		// that.
 		if (likely(!old_dou._do || rq_overcommit)) {
 			dispatch_queue_global_t old_rq = ddi->ddi_stashed_rq;
 			dispatch_qos_t old_qos = ddi->ddi_stashed_qos;
@@ -6934,6 +7106,16 @@ _dispatch_root_queue_push(dispatch_queue_global_t rq, dispatch_object_t dou,
 		}
 	}
 #endif
+
+	if (_dispatch_queue_is_cooperative(rq)) {
+		/* We only allow enqueueing of continuations or swift job objects on the
+		 * cooperative pool, no other objects */
+		if (_dispatch_object_has_vtable(dou) &&
+				dx_type(dou._do) != DISPATCH_SWIFT_JOB_TYPE) {
+			DISPATCH_CLIENT_CRASH(dou._do, "Cannot target the cooperative global queue - not implemented");
+		}
+	}
+
 #if HAVE_PTHREAD_WORKQUEUE_QOS
 	if (_dispatch_root_queue_push_needs_override(rq, qos)) {
 		return _dispatch_root_queue_push_override(rq, dou, qos);
@@ -7177,7 +7359,7 @@ _dispatch_runloop_queue_handle_init(void *ctxt)
 	handle = fd;
 #elif defined(_WIN32)
 	HANDLE hEvent;
-	hEvent = CreateEventW(NULL, /*bManualReset=*/TRUE,
+	hEvent = CreateEventW(NULL, /*bManualReset=*/FALSE,
 		/*bInitialState=*/FALSE, NULL);
 	if (hEvent == NULL) {
 		DISPATCH_INTERNAL_CRASH(GetLastError(), "CreateEventW");
@@ -7271,6 +7453,7 @@ _dispatch_runloop_queue_poke(dispatch_lane_t dq, dispatch_qos_t qos,
 				_dispatch_runloop_queue_handle_init);
 	}
 
+	qos = _dispatch_queue_wakeup_qos(dq, qos);
 	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, relaxed, {
 		new_state = _dq_state_merge_qos(old_state, qos);
 		if (old_state == new_state) {
@@ -7772,6 +7955,38 @@ _dispatch_context_cleanup(void *ctxt)
 #pragma mark -
 #pragma mark dispatch_init
 
+#if !DISPATCH_USE_COOPERATIVE_WORKQUEUE
+static void
+_dispatch_cooperative_root_queue_init_fallback(dispatch_queue_global_t dq)
+{
+	uint16_t max_cpus = (uint16_t) dispatch_hw_config(logical_cpus);
+	uint16_t width_per_cooperative_queue;
+
+	if (_dispatch_mode & DISPATCH_COOPERATIVE_POOL_STRICT) {
+		/* We want width 1 for a strict runtime - implement it as a width 1
+		 * concurrent queue */
+		width_per_cooperative_queue = 1;
+	} else {
+		/* Concurrent queue with limited width */
+		width_per_cooperative_queue = MAX(max_cpus/DISPATCH_QOS_NBUCKETS, 1);
+	}
+
+	dispatch_priority_t pri = dq->dq_priority;
+	dispatch_qos_t qos = (pri & DISPATCH_PRIORITY_FLAG_FALLBACK) ?
+		_dispatch_priority_fallback_qos(pri) : _dispatch_priority_qos(pri);
+
+	/* _dispatch_queue_init will clobber the serial num so just save it and
+	 * restore it back */
+	unsigned long dq_serialnum = dq->dq_serialnum;
+	_dispatch_queue_init(dq, 0, width_per_cooperative_queue, DISPATCH_QUEUE_ROLE_BASE_ANON);
+	dq->dq_serialnum = dq_serialnum;
+
+	dispatch_queue_t tq = _dispatch_get_root_queue(qos, 0)->_as_dq;
+	_dispatch_retain(tq);
+	dq->do_targetq = tq;
+}
+#endif
+
 static void
 _dispatch_root_queues_init_once(void *context DISPATCH_UNUSED)
 {
@@ -7790,6 +8005,14 @@ _dispatch_root_queues_init_once(void *context DISPATCH_UNUSED)
 		DISPATCH_INTERNAL_CRASH(wq_supported,
 				"QoS Maintenance support required");
 	}
+
+#if !DISPATCH_USE_COOPERATIVE_WORKQUEUE
+	for (int i = DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS_COOPERATIVE;
+		i < _DISPATCH_ROOT_QUEUE_IDX_COUNT; i += DISPATCH_ROOT_QUEUE_FLAVORS)
+	{
+		_dispatch_cooperative_root_queue_init_fallback(&_dispatch_root_queues[i]);
+	}
+#endif
 
 #if DISPATCH_USE_KEVENT_SETUP
 	struct pthread_workqueue_config cfg = {
@@ -7853,6 +8076,19 @@ _dispatch_root_queues_init_once(void *context DISPATCH_UNUSED)
 		DISPATCH_INTERNAL_CRASH((r << 16) | wq_supported,
 				"Root queue initialization failed");
 	}
+
+#if DISPATCH_USE_COOPERATIVE_WORKQUEUE
+	if (_dispatch_mode & DISPATCH_COOPERATIVE_POOL_STRICT) {
+		int pool_size_limit = -1; /* strict per QoS bucket */
+		r = sysctlbyname("kern.wq_limit_cooperative_threads", NULL, NULL, &pool_size_limit,
+				sizeof(int));
+
+		if (r != 0) {
+			DISPATCH_INTERNAL_CRASH(errno, "Unable to limit cooperative pool size");
+		}
+	}
+#endif
+
 #endif // DISPATCH_USE_INTERNAL_WORKQUEUE
 }
 
@@ -7865,6 +8101,38 @@ _dispatch_root_queues_init(void)
 			_dispatch_root_queues_init_once);
 }
 
+dispatch_queue_global_t
+dispatch_get_global_queue(intptr_t priority, uintptr_t flags)
+{
+	if (flags & ~(unsigned long)(DISPATCH_QUEUE_OVERCOMMIT | DISPATCH_QUEUE_COOPERATIVE)) {
+		return DISPATCH_BAD_INPUT;
+	}
+
+	if ((flags & DISPATCH_QUEUE_OVERCOMMIT) && (flags & DISPATCH_QUEUE_COOPERATIVE)) {
+		return DISPATCH_BAD_INPUT;
+	}
+
+	dispatch_qos_t qos = _dispatch_qos_from_queue_priority(priority);
+#if !HAVE_PTHREAD_WORKQUEUE_QOS
+	if (qos == QOS_CLASS_MAINTENANCE) {
+		qos = DISPATCH_QOS_BACKGROUND;
+	} else if (qos == QOS_CLASS_USER_INTERACTIVE) {
+		qos = DISPATCH_QOS_USER_INITIATED;
+	}
+#endif
+	if (qos == DISPATCH_QOS_UNSPECIFIED) {
+		return DISPATCH_BAD_INPUT;
+	}
+
+#if !DISPATCH_USE_COOPERATIVE_WORKQUEUE
+	/* The fallback implementation of the cooperative root queues need to be
+	 * fully initialized before work can be enqueued on these queues */
+	_dispatch_root_queues_init();
+#endif
+
+	return _dispatch_get_root_queue(qos, flags);
+}
+
 DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 libdispatch_init(void)
@@ -7874,6 +8142,10 @@ libdispatch_init(void)
 
 	if (_dispatch_getenv_bool("LIBDISPATCH_STRICT", false)) {
 		_dispatch_mode |= DISPATCH_MODE_STRICT;
+	}
+
+	if (_dispatch_getenv_bool("LIBDISPATCH_COOPERATIVE_POOL_STRICT", false)) {
+		_dispatch_mode |= DISPATCH_COOPERATIVE_POOL_STRICT;
 	}
 
 
@@ -7916,8 +8188,11 @@ libdispatch_init(void)
 	_dispatch_thread_key_create(&dispatch_voucher_key, _voucher_thread_cleanup);
 	_dispatch_thread_key_create(&dispatch_deferred_items_key,
 			_dispatch_deferred_items_cleanup);
+	_dispatch_thread_key_create(&dispatch_quantum_key, NULL);
+	_dispatch_thread_key_create(&dispatch_dsc_key, NULL);
+	_dispatch_thread_key_create(&os_workgroup_key, _os_workgroup_tsd_cleanup);
+	_dispatch_thread_key_create(&dispatch_enqueue_key, NULL);
 #endif
-	pthread_key_create(&_os_workgroup_key, _os_workgroup_tsd_cleanup);
 #if DISPATCH_USE_RESOLVERS // rdar://problem/8541707
 	_dispatch_main_q.do_targetq = _dispatch_get_default_queue(true);
 #endif
@@ -7934,6 +8209,9 @@ libdispatch_init(void)
 	_dispatch_vtable_init();
 	_os_object_init();
 	_voucher_init();
+#if TARGET_OS_MAC
+	_workgroup_init();
+#endif
 	_dispatch_introspection_init();
 }
 
@@ -8059,6 +8337,9 @@ _libdispatch_tsd_cleanup(void *ctx)
 	_tsd_call_cleanup(dispatch_voucher_key, _voucher_thread_cleanup);
 	_tsd_call_cleanup(dispatch_deferred_items_key,
 			_dispatch_deferred_items_cleanup);
+	_tsd_call_cleanup(dispatch_quantum_key, NULL);
+	_tsd_call_cleanup(dispatch_enqueue_key, NULL);
+	_tsd_call_cleanup(dispatch_dsc_key, NULL);
 #ifdef __ANDROID__
 	if (_dispatch_thread_detach_callback) {
 		_dispatch_thread_detach_callback();

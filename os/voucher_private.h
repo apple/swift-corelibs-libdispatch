@@ -24,6 +24,9 @@
 #if __APPLE__
 #include <os/base.h>
 #include <os/availability.h>
+
+#include <pthread/tsd_private.h>
+#define OS_VOUCHER_TSD_KEY __PTK_LIBDISPATCH_KEY8
 #endif
 #if __has_include(<mach/mach.h>)
 #include <os/object.h>
@@ -101,11 +104,40 @@ OS_OBJECT_DECL_CLASS(voucher);
  * @result
  * The previously adopted voucher object.
  */
-API_AVAILABLE(macos(10.10), ios(8.0))
+SPI_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT_NEEDS_RELEASE
 OS_NOTHROW
 voucher_t _Nullable
 voucher_adopt(voucher_t _Nullable voucher OS_OBJECT_CONSUMED);
+
+/*!
+ * @function voucher_needs_adopt
+ *
+ * @abstract
+ * An inline check to determine if the input voucher matches the one
+ * on the current thread. This can be used to shortcircuit calls to
+ * voucher_adopt() and avoid a cross library jump. If this function returns
+ * true, then the client should make sure to follow up with a voucher_adopt()
+ * call.
+ *
+ * This check must only be in code that ships with the operating system since
+ * the TSD key assignment is not ABI.
+ *
+ * @param voucher
+ * The input voucher being tested
+ */
+
+SPI_AVAILABLE(macos(12.0), ios(15.0))
+__header_always_inline bool
+voucher_needs_adopt(voucher_t _Nullable voucher)
+{
+#if __APPLE__
+	if (_pthread_has_direct_tsd()) {
+		return (((void *) voucher) != _pthread_getspecific_direct(OS_VOUCHER_TSD_KEY));
+	}
+#endif
+	return true;
+}
 
 /*!
  * @function voucher_copy
@@ -117,7 +149,7 @@ voucher_adopt(voucher_t _Nullable voucher OS_OBJECT_CONSUMED);
  * @result
  * The currently adopted voucher object.
  */
-API_AVAILABLE(macos(10.10), ios(8.0))
+SPI_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t _Nullable
 voucher_copy(void);
@@ -136,7 +168,7 @@ voucher_copy(void);
  * @result
  * A copy of the currently adopted voucher object, with importance removed.
  */
-API_AVAILABLE(macos(10.10), ios(8.0))
+SPI_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t _Nullable
 voucher_copy_without_importance(void);
@@ -162,7 +194,7 @@ voucher_copy_without_importance(void);
  *
  * CAUTION: Do NOT use this SPI without contacting the Darwin Runtime team.
  */
-API_AVAILABLE(macos(10.10), ios(8.0))
+SPI_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_NOTHROW
 void
 voucher_replace_default_voucher(void);
@@ -180,7 +212,7 @@ voucher_replace_default_voucher(void);
  *
  * CAUTION: Do NOT use this SPI without contacting the Darwin Runtime team.
  */
-API_AVAILABLE(macos(10.10), ios(8.0))
+SPI_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_NOTHROW
 void
 voucher_decrement_importance_count4CF(voucher_t _Nullable voucher);
@@ -264,7 +296,7 @@ voucher_decrement_importance_count4CF(voucher_t _Nullable voucher);
  * When not building with Objective-C ARC, must be released with a -[release]
  * message or the Block_release() function.
  */
-API_AVAILABLE(macos(10.10), ios(8.0))
+SPI_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_RETURNS_RETAINED_BLOCK
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_block_t
@@ -345,7 +377,7 @@ dispatch_block_create_with_voucher(dispatch_block_flags_t flags,
  * When not building with Objective-C ARC, must be released with a -[release]
  * message or the Block_release() function.
  */
-API_AVAILABLE(macos(10.10), ios(8.0))
+SPI_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_NONNULL5 DISPATCH_RETURNS_RETAINED_BLOCK
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_block_t
@@ -363,7 +395,7 @@ dispatch_block_create_with_voucher_and_qos_class(dispatch_block_flags_t flags,
  * @abstract
  * Deprecated, do not use, will abort process if called.
  */
-API_DEPRECATED("removed SPI", \
+SPI_DEPRECATED("removed SPI", \
 		macos(10.11,10.13), ios(9.0,11.0), watchos(2.0,4.0), tvos(9.0,11.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
@@ -397,7 +429,7 @@ dispatch_queue_create_with_accounting_override_voucher(
  * The newly created voucher object or NULL if the message was not carrying a
  * mach voucher.
  */
-API_AVAILABLE(macos(10.10), ios(8.0))
+SPI_AVAILABLE(macos(10.10), ios(8.0))
 OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t _Nullable
 voucher_create_with_mach_msg(mach_msg_header_t *msg);
@@ -444,7 +476,7 @@ voucher_create_with_mach_msg(mach_msg_header_t *msg);
  * The offset of the first byte in the buffer following the formatted voucher
  * representation.
  */
-API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+SPI_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW DISPATCH_COLD
 size_t
 voucher_kvoucher_debug(mach_port_t task, mach_port_name_t voucher, char *buf,
@@ -479,7 +511,7 @@ struct proc_persona_info;
  * or the persona identifier of the current process
  * or PERSONA_ID_NONE
  */
-API_AVAILABLE(macos(10.14), ios(9.2))
+SPI_AVAILABLE(macos(10.15), ios(9.2))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW
 uid_t
 voucher_get_current_persona(void);
@@ -502,7 +534,7 @@ voucher_get_current_persona(void);
  * 0 on success: currently adopted voucher has a PERSONA_TOKEN
  * -1 on failure: persona_info is untouched/uninitialized
  */
-API_AVAILABLE(macos(10.14), ios(9.2))
+SPI_AVAILABLE(macos(10.15), ios(9.2))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL1
 int
 voucher_get_current_persona_originator_info(
@@ -526,11 +558,22 @@ voucher_get_current_persona_originator_info(
  * 0 on success: currently adopted voucher has a PERSONA_TOKEN
  * -1 on failure: persona_info is untouched/uninitialized
  */
-API_AVAILABLE(macos(10.14), ios(9.2))
+SPI_AVAILABLE(macos(10.15), ios(9.2))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL1
 int
 voucher_get_current_persona_proximate_info(
 	struct proc_persona_info *persona_info);
+
+/*!
+ * @function voucher_process_can_use_arbitrary_personas
+ *
+ * @abstract
+ * Returns true if the current process is able to use arbitrary personas
+ */
+SPI_AVAILABLE(macos(12.0), ios(15.0))
+OS_VOUCHER_EXPORT OS_WARN_RESULT
+bool
+voucher_process_can_use_arbitrary_personas(void);
 
 /*!
  * @function voucher_copy_with_persona_mach_voucher
@@ -578,7 +621,7 @@ voucher_copy_with_persona_mach_voucher(
  * KERN_RESOURCE_SHORTAGE: mach voucher creation failed due to
  * lack of free space
  */
-API_AVAILABLE(macos(10.14), ios(12))
+SPI_AVAILABLE(macos(10.15), ios(12))
 OS_VOUCHER_EXPORT OS_WARN_RESULT OS_NOTHROW OS_NONNULL1
 kern_return_t
 mach_voucher_persona_self(mach_voucher_t *persona_mach_voucher);

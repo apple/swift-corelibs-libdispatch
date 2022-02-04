@@ -124,8 +124,7 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 	PSYSTEM_LOGICAL_PROCESSOR_INFORMATION slpiInfo = NULL;
 	PSYSTEM_LOGICAL_PROCESSOR_INFORMATION slpiCurrent = NULL;
 	DWORD dwProcessorLogicalCount = 0;
-	DWORD dwProcessorPackageCount = 0;
-	DWORD dwProcessorCoreCount = 0;
+	DWORD dwProcessorPhysicalCount = 0;
 	DWORD dwSize = 0;
 
 	while (true) {
@@ -154,13 +153,17 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 	     slpiCurrent++, dwSize -= sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION)) {
 		switch (slpiCurrent->Relationship) {
 		case RelationProcessorCore:
-			++dwProcessorCoreCount;
+			++dwProcessorPhysicalCount;
 			dwProcessorLogicalCount += __popcnt64(slpiCurrent->ProcessorMask);
 			break;
+#if defined(RelationProcessorDie)
+		case RelationProcessorDie:
+#endif
 		case RelationProcessorPackage:
-			++dwProcessorPackageCount;
-			break;
 		case RelationNumaNode:
+#if defined(RelationNumaNodeEx)
+		case RelationNumaNodeEx:
+#endif
 		case RelationCache:
 		case RelationGroup:
 		case RelationAll:
@@ -172,11 +175,10 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 
 	switch (c) {
 	case _dispatch_hw_config_logical_cpus:
+	case _dispatch_hw_config_active_cpus:
 		return dwProcessorLogicalCount;
 	case _dispatch_hw_config_physical_cpus:
-		return dwProcessorPackageCount;
-	case _dispatch_hw_config_active_cpus:
-		return dwProcessorCoreCount;
+		return dwProcessorPhysicalCount;
 	}
 #else
 	const char *name = NULL;
@@ -191,12 +193,16 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 		name = "hw.activecpu"; break;
 	}
 #elif defined(__FreeBSD__)
-	 (void)c; name = "kern.smp.cpus";
+	(void)c; name = "kern.smp.cpus";
+#elif defined(__OpenBSD__)
+	(void)c;
 #endif
 	if (name) {
 		size_t valsz = sizeof(val);
+#if !defined(__OpenBSD__)
 		r = sysctlbyname(name, &val, &valsz, NULL, 0);
 		(void)dispatch_assume_zero(r);
+#endif
 		dispatch_assert(valsz == sizeof(uint32_t));
 	} else {
 #if HAVE_SYSCONF && defined(_SC_NPROCESSORS_ONLN)

@@ -457,6 +457,34 @@ _dispatch_set_return_to_kernel(void)
 }
 
 DISPATCH_ALWAYS_INLINE
+static inline uintptr_t
+_dispatch_get_quantum_expiry_action(void)
+{
+	return (uintptr_t) _dispatch_thread_getspecific(dispatch_quantum_key);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_ack_quantum_expiry_action(void)
+{
+	return _dispatch_thread_setspecific(dispatch_quantum_key, (void *) 0);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_set_current_dsc(void *dsc)
+{
+	return _dispatch_thread_setspecific(dispatch_dsc_key, dsc);
+}
+
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_clear_current_dsc(void)
+{
+	return _dispatch_thread_setspecific(dispatch_dsc_key, NULL);
+}
+
+DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_clear_return_to_kernel(void)
 {

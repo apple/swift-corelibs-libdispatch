@@ -285,14 +285,22 @@ typedef struct dispatch_invoke_context_s {
 #if DISPATCH_USE_WORKQUEUE_NARROWING
 #define DISPATCH_THREAD_IS_NARROWING 1
 
-#define dispatch_with_disabled_narrowing(dic, ...) ({ \
+#if DISPATCH_USE_COOPERATIVE_WORKQUEUE
+#define dispatch_with_disabled_narrowing(dic, flags, ...) ({ \
+	flags |= DISPATCH_INVOKE_DISABLED_NARROWING; \
+	__VA_ARGS__; \
+	flags &= ~DISPATCH_INVOKE_DISABLED_NARROWING; \
+})
+#else /* DISPATCH_USE_COOPERATIVE_WORKQUEUE */
+#define dispatch_with_disabled_narrowing(dic, flags, ...) ({ \
 		uint64_t suspend_narrow_check = dic->dic_next_narrow_check; \
 		dic->dic_next_narrow_check = 0; \
 		__VA_ARGS__; \
 		dic->dic_next_narrow_check = suspend_narrow_check; \
 	})
+#endif /* DISPATCH_USE_COOPERATIVE_WORKQUEUE */
 #else
-#define dispatch_with_disabled_narrowing(dic, ...) __VA_ARGS__
+#define dispatch_with_disabled_narrowing(dic, flags, ...) __VA_ARGS__
 #endif
 
 DISPATCH_OPTIONS(dispatch_invoke_flags, uint32_t,
@@ -346,11 +354,15 @@ DISPATCH_OPTIONS(dispatch_invoke_flags, uint32_t,
 	// The queue at the bottom of this drain is a workloop that supports
 	// reordering.
 	//
+	// @const DISPATCH_INVOKE_COOPERATIVE_DRAIN
+	// The queue at the bottom of this drain is a cooperative global queue
+	//
 	DISPATCH_INVOKE_WORKER_DRAIN			= 0x00010000,
 	DISPATCH_INVOKE_REDIRECTING_DRAIN		= 0x00020000,
 	DISPATCH_INVOKE_MANAGER_DRAIN			= 0x00040000,
 	DISPATCH_INVOKE_THREAD_BOUND			= 0x00080000,
 	DISPATCH_INVOKE_WORKLOOP_DRAIN			= 0x00100000,
+	DISPATCH_INVOKE_COOPERATIVE_DRAIN		= 0x00200000,
 #define _DISPATCH_INVOKE_DRAIN_MODE_MASK	  0x00ff0000u
 
 	// Autoreleasing modes
@@ -364,6 +376,10 @@ DISPATCH_OPTIONS(dispatch_invoke_flags, uint32_t,
 	DISPATCH_INVOKE_AUTORELEASE_ALWAYS		= 0x01000000,
 	DISPATCH_INVOKE_AUTORELEASE_NEVER		= 0x02000000,
 #define _DISPATCH_INVOKE_AUTORELEASE_MASK	  0x03000000u
+
+	// @const DISPATCH_INVOKE_DISABLED_NARROWING
+	// Don't check for narrowing during this invoke
+	DISPATCH_INVOKE_DISABLED_NARROWING		= 0x4000000,
 );
 
 DISPATCH_OPTIONS(dispatch_object_flags, unsigned long,
@@ -374,11 +390,12 @@ DISPATCH_OPTIONS(dispatch_object_flags, unsigned long,
 
 	_DISPATCH_OBJECT_CLUSTER        = 0x00000000, // dispatch object cluster
 	_DISPATCH_CONTINUATION_TYPE		= 0x00000000, // meta-type for continuations
-	_DISPATCH_SEMAPHORE_TYPE		= 0x00000001, // meta-type for semaphores
-	_DISPATCH_NODE_TYPE				= 0x00000002, // meta-type for data node
-	_DISPATCH_IO_TYPE				= 0x00000003, // meta-type for io channels
-	_DISPATCH_OPERATION_TYPE		= 0x00000004, // meta-type for io operations
-	_DISPATCH_DISK_TYPE				= 0x00000005, // meta-type for io disks
+	_DISPATCH_SWIFT_JOB_TYPE		= 0x00000001, // meta-type for swift jobs
+	_DISPATCH_SEMAPHORE_TYPE		= 0x00000002, // meta-type for semaphores
+	_DISPATCH_NODE_TYPE				= 0x00000003, // meta-type for data node
+	_DISPATCH_IO_TYPE				= 0x00000004, // meta-type for io channels
+	_DISPATCH_OPERATION_TYPE		= 0x00000005, // meta-type for io operations
+	_DISPATCH_DISK_TYPE				= 0x00000006, // meta-type for io disks
 
 	_DISPATCH_QUEUE_CLUSTER         = 0x00000010, // dispatch queue cluster
 	_DISPATCH_LANE_TYPE				= 0x00000011, // meta-type for lanes
@@ -407,6 +424,8 @@ DISPATCH_OPTIONS(dispatch_object_flags, unsigned long,
 	DISPATCH_OPERATION_TYPE				= DISPATCH_OBJECT_SUBTYPE(0, OPERATION),
 	DISPATCH_DISK_TYPE					= DISPATCH_OBJECT_SUBTYPE(0, DISK),
 
+	DISPATCH_SWIFT_JOB_TYPE				= DISPATCH_OBJECT_SUBTYPE(0, SWIFT_JOB),
+
 	DISPATCH_QUEUE_SERIAL_TYPE			= DISPATCH_OBJECT_SUBTYPE(1, LANE),
 	DISPATCH_QUEUE_CONCURRENT_TYPE		= DISPATCH_OBJECT_SUBTYPE(2, LANE),
 	DISPATCH_QUEUE_GLOBAL_ROOT_TYPE		= DISPATCH_OBJECT_SUBTYPE(3, LANE) |
@@ -421,6 +440,8 @@ DISPATCH_OPTIONS(dispatch_object_flags, unsigned long,
 			_DISPATCH_QUEUE_BASE_TYPEFLAG | _DISPATCH_NO_CONTEXT_TYPEFLAG,
 	DISPATCH_QUEUE_NETWORK_EVENT_TYPE	= DISPATCH_OBJECT_SUBTYPE(8, LANE) |
 			_DISPATCH_QUEUE_BASE_TYPEFLAG,
+	DISPATCH_QUEUE_COOPERATIVE_ROOT_TYPE= DISPATCH_OBJECT_SUBTYPE(9, LANE) |
+			_DISPATCH_QUEUE_ROOT_TYPEFLAG | _DISPATCH_NO_CONTEXT_TYPEFLAG,
 
 	DISPATCH_WORKLOOP_TYPE				= DISPATCH_OBJECT_SUBTYPE(0, WORKLOOP) |
 			_DISPATCH_QUEUE_BASE_TYPEFLAG,
@@ -456,10 +477,14 @@ typedef struct _os_object_s {
 	do_xref_cnt)
 #endif
 
-#define _DISPATCH_OBJECT_HEADER(x) \
+#define _DISPATCH_OBJECT_HEADER_INTERNAL(x) \
 	struct _os_object_s _as_os_obj[0]; \
 	OS_OBJECT_STRUCT_HEADER(dispatch_##x); \
-	struct dispatch_##x##_s *volatile do_next; \
+	struct dispatch_##x##_s *volatile do_next;
+
+
+#define _DISPATCH_OBJECT_HEADER(x) \
+	_DISPATCH_OBJECT_HEADER_INTERNAL(x) \
 	struct dispatch_queue_s *do_targetq; \
 	void *do_ctxt; \
 	union { \
@@ -596,7 +621,7 @@ size_t _dispatch_objc_debug(dispatch_object_t dou, char* buf, size_t bufsiz);
  */
 #define _os_atomic_refcnt_perform2o(o, f, op, n, m)   ({ \
 		__typeof__(o) _o = (o); \
-		int _ref_cnt = _o->f; \
+		int _ref_cnt = os_atomic_load(&_o->f, relaxed); \
 		if (likely(_ref_cnt != _OS_OBJECT_GLOBAL_REFCNT)) { \
 			_ref_cnt = os_atomic_##op##2o(_o, f, n, m); \
 		} \

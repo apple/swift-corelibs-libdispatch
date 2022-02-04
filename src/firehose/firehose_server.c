@@ -764,7 +764,8 @@ firehose_client_create(firehose_buffer_t fb, firehose_token_t token,
 		server_config.fs_mem_drain_queue,
 		server_config.fs_io_drain_queue
 	};
-	fc->fc_mach_channel_refcnt = FIREHOSE_BUFFER_NPUSHPORTS;
+
+	os_atomic_init(&fc->fc_mach_channel_refcnt, FIREHOSE_BUFFER_NPUSHPORTS);
 	for (int i = 0; i < FIREHOSE_BUFFER_NPUSHPORTS; i++) {
 		fc->fc_recvp[i] = recvp[i];
 		firehose_mach_port_guard(fc->fc_recvp[i], true, &fc->fc_recvp[i]);

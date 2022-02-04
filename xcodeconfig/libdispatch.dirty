@@ -34,6 +34,8 @@ _OBJC_CLASS_$_OS_dispatch_queue_serial
 __OS_dispatch_queue_serial_vtable
 _OBJC_CLASS_$_OS_dispatch_queue_concurrent
 __OS_dispatch_queue_concurrent_vtable
+_OBJC_CLASS_$_OS_dispatch_queue_cooperative
+__OS_dispatch_queue_cooperative_vtable
 _OBJC_CLASS_$_OS_dispatch_queue_global
 __OS_dispatch_queue_global_vtable
 _OBJC_CLASS_$_OS_dispatch_queue_pthread_root
@@ -79,6 +81,7 @@ _OBJC_METACLASS_$_OS_dispatch_queue
 _OBJC_METACLASS_$_OS_dispatch_workloop
 _OBJC_METACLASS_$_OS_dispatch_queue_serial
 _OBJC_METACLASS_$_OS_dispatch_queue_concurrent
+_OBJC_METACLASS_$_OS_dispatch_queue_cooperative
 _OBJC_METACLASS_$_OS_dispatch_queue_global
 _OBJC_METACLASS_$_OS_dispatch_queue_pthread_root
 _OBJC_METACLASS_$_OS_dispatch_queue_main
@@ -143,6 +146,7 @@ __firehose_task_buffer_pred
 __voucher_activity_debug_channel
 __voucher_libtrace_hooks
 __voucher_task_mach_voucher_pred
+__voucher_process_can_use_arbitrary_personas_pred
 
 # 32bits
 __dispatch_mach_host_port
@@ -150,7 +154,6 @@ __dispatch_mach_notify_port
 __voucher_default_task_mach_voucher
 __voucher_hash_lock
 __voucher_task_mach_voucher
-__os_workgroup_key
 
 # byte-sized
 __dispatch_is_daemon
@@ -165,5 +168,5 @@ __dispatch_io_fds
 __dispatch_io_devs_lockq
 __dispatch_io_fds_lockq
 __dispatch_io_init_pred
-
 __voucher_activity_disabled.disabled
+__voucher_process_can_use_arbitrary_personas

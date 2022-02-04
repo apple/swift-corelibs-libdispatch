@@ -226,9 +226,11 @@ _dispatch_xref_dispose(dispatch_object_t dou)
 			_dispatch_mach_xref_dispose(dou._dm);
 			break;
 #endif
+#if DISPATCH_COCOA_COMPAT
 		case DISPATCH_QUEUE_RUNLOOP_TYPE:
 			_dispatch_runloop_queue_xref_dispose(dou._dl);
 			break;
+#endif
 		}
 	}
 	return _dispatch_release_tailcall(dou._os_obj);
@@ -249,7 +251,7 @@ _dispatch_dispose(dispatch_object_t dou)
 	if (unlikely(tq && tq->dq_serialnum == DISPATCH_QUEUE_SERIAL_NUMBER_WLF)) {
 		// the workloop fallback global queue is never serviced, so redirect
 		// the finalizer onto a global queue
-		tq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, false)->_as_dq;
+		tq = _dispatch_get_root_queue(DISPATCH_QOS_DEFAULT, 0)->_as_dq;
 	}
 
 	dx_dispose(dou._do, &allow_free);
@@ -312,6 +314,10 @@ dispatch_set_target_queue(dispatch_object_t dou, dispatch_queue_t tq)
 	}
 	if (tq == DISPATCH_TARGET_QUEUE_DEFAULT) {
 		tq = _dispatch_get_default_queue(false);
+	}
+
+	if (_dispatch_queue_is_cooperative(tq)) {
+		DISPATCH_CLIENT_CRASH(tq, "Cannot target object to cooperative root queue - not implemented");
 	}
 	_dispatch_object_set_target_queue_inline(dou._do, tq);
 }

@@ -142,23 +142,23 @@ dispatch_time_to_nsecs(dispatch_time_t time,
 		dispatch_clockid_t *clock_out, uint64_t *nsecs_out)
 {
 	dispatch_clock_t clock;
-	uint64_t nsecs;
+	uint64_t value;
 
-	_dispatch_time_to_clock_and_value(time, true, &clock, &nsecs);
+	if (time != DISPATCH_TIME_FOREVER) {
+		_dispatch_time_to_clock_and_value(time, true, &clock, &value);
 
-	if (nsecs != DISPATCH_TIME_FOREVER) {
 		switch (clock) {
 		case DISPATCH_CLOCK_WALL:
 			*clock_out = DISPATCH_CLOCKID_WALLTIME;
-			*nsecs_out = nsecs;
+			*nsecs_out = value;
 			return true;
 		case DISPATCH_CLOCK_UPTIME:
 			*clock_out = DISPATCH_CLOCKID_UPTIME;
-			*nsecs_out = nsecs;
+			*nsecs_out = _dispatch_time_mach2nano(value);
 			return true;
 		case DISPATCH_CLOCK_MONOTONIC:
 			*clock_out = DISPATCH_CLOCKID_MONOTONIC;
-			*nsecs_out = nsecs;
+			*nsecs_out = _dispatch_time_mach2nano(value);
 			return true;
 		}
 	}

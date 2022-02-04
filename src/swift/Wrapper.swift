@@ -91,7 +91,7 @@ public class DispatchIO : DispatchObject {
 		return unsafeBitCast(__wrapped, to: dispatch_object_t.self)
 	}
 
-	internal init(__type: UInt, fd: Int32, queue: DispatchQueue,
+	internal init(__type: UInt, fd: dispatch_fd_t, queue: DispatchQueue,
 				  handler: @escaping (_ error: Int32) -> Void) {
 		__wrapped = dispatch_io_create(dispatch_io_type_t(__type), dispatch_fd_t(fd), queue.__wrapped, handler)
 	}

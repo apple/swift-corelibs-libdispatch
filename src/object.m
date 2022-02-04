@@ -405,6 +405,7 @@ DISPATCH_CLASS_IMPL(queue_global)
 #if DISPATCH_USE_PTHREAD_ROOT_QUEUES
 DISPATCH_CLASS_IMPL(queue_pthread_root)
 #endif
+DISPATCH_CLASS_IMPL(queue_cooperative)
 DISPATCH_CLASS_IMPL(queue_mgr)
 DISPATCH_CLASS_IMPL(queue_attr)
 DISPATCH_CLASS_IMPL(mach_msg)
@@ -603,6 +604,18 @@ _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 	}
 }
 #endif // HAVE_MACH
+
+#undef _dispatch_client_callout3_a
+void
+_dispatch_client_callout3_a(void *ctxt, size_t i, size_t w, dispatch_apply_attr_function_t f)
+{
+	@try {
+		return f(ctxt, i, w);
+	}
+	@catch (...) {
+		objc_terminate();
+	}
+}
 
 #endif // DISPATCH_USE_CLIENT_CALLOUT
 

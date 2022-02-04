@@ -66,6 +66,7 @@ void
 dispatch_atfork_parent(void)
 {
 	_os_object_atfork_parent();
+	_voucher_atfork_parent();
 }
 
 DISPATCH_EXPORT DISPATCH_NOTHROW
@@ -141,9 +142,10 @@ pthread_key_t dispatch_bcounter_key;
 pthread_key_t dispatch_wlh_key;
 pthread_key_t dispatch_voucher_key;
 pthread_key_t dispatch_deferred_items_key;
+pthread_key_t dispatch_enqueue_key;
+pthread_key_t os_workgroup_key;
 #endif // !DISPATCH_USE_DIRECT_TSD && !DISPATCH_USE_THREAD_LOCAL_STORAGE
 
-pthread_key_t _os_workgroup_key;
 
 #if VOUCHER_USE_MACH_VOUCHER
 dispatch_once_t _voucher_task_mach_voucher_pred;
@@ -158,6 +160,10 @@ uint64_t _voucher_unique_pid;
 voucher_activity_hooks_t _voucher_libtrace_hooks;
 dispatch_mach_t _voucher_activity_debug_channel;
 #endif
+
+dispatch_once_t _voucher_process_can_use_arbitrary_personas_pred;
+bool _voucher_process_can_use_arbitrary_personas = false;
+
 #if HAVE_PTHREAD_WORKQUEUE_QOS && DISPATCH_DEBUG
 bool _dispatch_set_qos_class_enabled;
 #endif
@@ -301,10 +307,12 @@ static struct dispatch_pthread_root_queue_context_s
 //         renaming this symbol
 struct dispatch_queue_global_s _dispatch_root_queues[] = {
 #define _DISPATCH_ROOT_QUEUE_IDX(n, flags) \
-		((flags & DISPATCH_PRIORITY_FLAG_OVERCOMMIT) ? \
+		(((flags) & DISPATCH_PRIORITY_FLAG_OVERCOMMIT) ? \
 		DISPATCH_ROOT_QUEUE_IDX_##n##_QOS_OVERCOMMIT : \
-		DISPATCH_ROOT_QUEUE_IDX_##n##_QOS)
-#define _DISPATCH_ROOT_QUEUE_ENTRY(n, flags, ...) \
+		(((flags) & DISPATCH_PRIORITY_FLAG_COOPERATIVE) ? \
+		DISPATCH_ROOT_QUEUE_IDX_##n##_QOS_COOPERATIVE : \
+		DISPATCH_ROOT_QUEUE_IDX_##n##_QOS))
+#define _DISPATCH_GLOBAL_ROOT_QUEUE_ENTRY(n, flags, ...) \
 	[_DISPATCH_ROOT_QUEUE_IDX(n, flags)] = { \
 		DISPATCH_GLOBAL_OBJECT_HEADER(queue_global), \
 		.dq_state = DISPATCH_ROOT_QUEUE_STATE_INIT_VALUE, \
@@ -315,83 +323,127 @@ struct dispatch_queue_global_s _dispatch_root_queues[] = {
 				_dispatch_priority_make(DISPATCH_QOS_##n, 0)), \
 		__VA_ARGS__ \
 	}
-	_DISPATCH_ROOT_QUEUE_ENTRY(MAINTENANCE, 0,
+
+#if DISPATCH_USE_COOPERATIVE_WORKQUEUE
+#define _DISPATCH_COOPERATIVE_ROOT_QUEUE_ENTRY(n, flags, ...) \
+	[_DISPATCH_ROOT_QUEUE_IDX(n, flags)] = { \
+		DISPATCH_GLOBAL_OBJECT_HEADER(queue_cooperative), \
+		.dq_state = DISPATCH_ROOT_QUEUE_STATE_INIT_VALUE, \
+		.do_ctxt = NULL, \
+		.dq_atomic_flags = DQF_WIDTH(DISPATCH_QUEUE_WIDTH_POOL), \
+		.dq_priority = flags | ((flags & DISPATCH_PRIORITY_FLAG_FALLBACK) ? \
+				_dispatch_priority_make_fallback(DISPATCH_QOS_##n) : \
+				_dispatch_priority_make(DISPATCH_QOS_##n, 0)), \
+		__VA_ARGS__ \
+	}
+#else /* DISPATCH_USE_COOPERATIVE_WORKQUEUE */
+	/* We initialize the rest of the fields in
+	 * _dispatch_cooperative_root_queue_init_fallback */
+#define _DISPATCH_COOPERATIVE_ROOT_QUEUE_ENTRY(n, flags, ...)  \
+	[_DISPATCH_ROOT_QUEUE_IDX(n, flags)] = { \
+		.do_vtable = DISPATCH_VTABLE(queue_concurrent), \
+		.dq_priority = flags | ((flags & DISPATCH_PRIORITY_FLAG_FALLBACK) ? \
+				_dispatch_priority_make_fallback(DISPATCH_QOS_##n) : \
+				_dispatch_priority_make(DISPATCH_QOS_##n, 0)), \
+		__VA_ARGS__ \
+	}
+#endif /* DISPATCH_USE_COOPERATIVE_WORKQUEUE */
+
+	_DISPATCH_GLOBAL_ROOT_QUEUE_ENTRY(MAINTENANCE, 0,
 		.dq_label = "com.apple.root.maintenance-qos",
 		.dq_serialnum = 4,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(MAINTENANCE, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
+	_DISPATCH_GLOBAL_ROOT_QUEUE_ENTRY(MAINTENANCE, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
 		.dq_label = "com.apple.root.maintenance-qos.overcommit",
 		.dq_serialnum = 5,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(BACKGROUND, 0,
-		.dq_label = "com.apple.root.background-qos",
+	_DISPATCH_COOPERATIVE_ROOT_QUEUE_ENTRY(MAINTENANCE, DISPATCH_PRIORITY_FLAG_COOPERATIVE,
+		.dq_label = "com.apple.root.maintenance-qos.cooperative",
 		.dq_serialnum = 6,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(BACKGROUND, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
-		.dq_label = "com.apple.root.background-qos.overcommit",
+	_DISPATCH_GLOBAL_ROOT_QUEUE_ENTRY(BACKGROUND, 0,
+		.dq_label = "com.apple.root.background-qos",
 		.dq_serialnum = 7,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(UTILITY, 0,
-		.dq_label = "com.apple.root.utility-qos",
+	_DISPATCH_GLOBAL_ROOT_QUEUE_ENTRY(BACKGROUND, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
+		.dq_label = "com.apple.root.background-qos.overcommit",
 		.dq_serialnum = 8,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(UTILITY, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
-		.dq_label = "com.apple.root.utility-qos.overcommit",
+	_DISPATCH_COOPERATIVE_ROOT_QUEUE_ENTRY(BACKGROUND, DISPATCH_PRIORITY_FLAG_COOPERATIVE,
+		.dq_label = "com.apple.root.background-qos.cooperative",
 		.dq_serialnum = 9,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(DEFAULT, DISPATCH_PRIORITY_FLAG_FALLBACK,
-		.dq_label = "com.apple.root.default-qos",
+	_DISPATCH_GLOBAL_ROOT_QUEUE_ENTRY(UTILITY, 0,
+		.dq_label = "com.apple.root.utility-qos",
 		.dq_serialnum = 10,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(DEFAULT,
-			DISPATCH_PRIORITY_FLAG_FALLBACK | DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
-		.dq_label = "com.apple.root.default-qos.overcommit",
+	_DISPATCH_GLOBAL_ROOT_QUEUE_ENTRY(UTILITY, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
+		.dq_label = "com.apple.root.utility-qos.overcommit",
 		.dq_serialnum = 11,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INITIATED, 0,
-		.dq_label = "com.apple.root.user-initiated-qos",
+	_DISPATCH_COOPERATIVE_ROOT_QUEUE_ENTRY(UTILITY, DISPATCH_PRIORITY_FLAG_COOPERATIVE,
+		.dq_label = "com.apple.root.utility-qos.cooperative",
 		.dq_serialnum = 12,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INITIATED, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
-		.dq_label = "com.apple.root.user-initiated-qos.overcommit",
+	_DISPATCH_GLOBAL_ROOT_QUEUE_ENTRY(DEFAULT, DISPATCH_PRIORITY_FLAG_FALLBACK,
+		.dq_label = "com.apple.root.default-qos",
 		.dq_serialnum = 13,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INTERACTIVE, 0,
-		.dq_label = "com.apple.root.user-interactive-qos",
+	_DISPATCH_GLOBAL_ROOT_QUEUE_ENTRY(DEFAULT,
+			DISPATCH_PRIORITY_FLAG_FALLBACK | DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
+		.dq_label = "com.apple.root.default-qos.overcommit",
 		.dq_serialnum = 14,
 	),
-	_DISPATCH_ROOT_QUEUE_ENTRY(USER_INTERACTIVE, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
-		.dq_label = "com.apple.root.user-interactive-qos.overcommit",
+	_DISPATCH_COOPERATIVE_ROOT_QUEUE_ENTRY(DEFAULT,
+		DISPATCH_PRIORITY_FLAG_COOPERATIVE | DISPATCH_PRIORITY_FLAG_FALLBACK,
+		.dq_label = "com.apple.root.default-qos.cooperative",
 		.dq_serialnum = 15,
 	),
+	_DISPATCH_GLOBAL_ROOT_QUEUE_ENTRY(USER_INITIATED, 0,
+		.dq_label = "com.apple.root.user-initiated-qos",
+		.dq_serialnum = 16,
+	),
+	_DISPATCH_GLOBAL_ROOT_QUEUE_ENTRY(USER_INITIATED, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
+		.dq_label = "com.apple.root.user-initiated-qos.overcommit",
+		.dq_serialnum = 17,
+	),
+	_DISPATCH_COOPERATIVE_ROOT_QUEUE_ENTRY(USER_INITIATED, DISPATCH_PRIORITY_FLAG_COOPERATIVE,
+		.dq_label = "com.apple.root.user-initiated-qos.cooperative",
+		.dq_serialnum = 18,
+	),
+	_DISPATCH_GLOBAL_ROOT_QUEUE_ENTRY(USER_INTERACTIVE, 0,
+		.dq_label = "com.apple.root.user-interactive-qos",
+		.dq_serialnum = 19,
+	),
+	_DISPATCH_GLOBAL_ROOT_QUEUE_ENTRY(USER_INTERACTIVE, DISPATCH_PRIORITY_FLAG_OVERCOMMIT,
+		.dq_label = "com.apple.root.user-interactive-qos.overcommit",
+		.dq_serialnum = 20,
+	),
+	_DISPATCH_COOPERATIVE_ROOT_QUEUE_ENTRY(USER_INTERACTIVE, DISPATCH_PRIORITY_FLAG_COOPERATIVE,
+		.dq_label = "com.apple.root.user-interactive-qos.cooperative",
+		.dq_serialnum = 21,
+	),
+};
+
+__dispatch_is_array(_dispatch_root_queues);
+_Static_assert(sizeof(_dispatch_root_queues) ==
+		sizeof(struct dispatch_queue_global_s) * DISPATCH_ROOT_QUEUE_COUNT,
+		"_dispatch_root_queues array size mismatch");
+
+const struct dispatch_queue_global_s _dispatch_custom_workloop_root_queue = {
+	DISPATCH_GLOBAL_OBJECT_HEADER(queue_global),
+	.dq_state = DISPATCH_ROOT_QUEUE_STATE_INIT_VALUE,
+	.do_ctxt = NULL,
+	.dq_label = "com.apple.root.workloop-custom",
+	.dq_atomic_flags = DQF_WIDTH(DISPATCH_QUEUE_WIDTH_POOL),
+	.dq_priority = _dispatch_priority_make_fallback(DISPATCH_QOS_DEFAULT) |
+			DISPATCH_PRIORITY_SATURATED_OVERRIDE,
+	.dq_serialnum = DISPATCH_QUEUE_SERIAL_NUMBER_WLF,
+	.dgq_thread_pool_size = 1,
 };
 
 unsigned long volatile _dispatch_queue_serial_numbers =
 		DISPATCH_QUEUE_SERIAL_NUMBER_INIT;
-
-
-dispatch_queue_global_t
-dispatch_get_global_queue(intptr_t priority, uintptr_t flags)
-{
-	dispatch_assert(countof(_dispatch_root_queues) ==
-			DISPATCH_ROOT_QUEUE_COUNT);
-
-	if (flags & ~(unsigned long)DISPATCH_QUEUE_OVERCOMMIT) {
-		return DISPATCH_BAD_INPUT;
-	}
-	dispatch_qos_t qos = _dispatch_qos_from_queue_priority(priority);
-#if !HAVE_PTHREAD_WORKQUEUE_QOS
-	if (qos == QOS_CLASS_MAINTENANCE) {
-		qos = DISPATCH_QOS_BACKGROUND;
-	} else if (qos == QOS_CLASS_USER_INTERACTIVE) {
-		qos = DISPATCH_QOS_USER_INITIATED;
-	}
-#endif
-	if (qos == DISPATCH_QOS_UNSPECIFIED) {
-		return DISPATCH_BAD_INPUT;
-	}
-	return _dispatch_get_root_queue(qos, flags & DISPATCH_QUEUE_OVERCOMMIT);
-}
 
 dispatch_queue_t
 dispatch_get_current_queue(void)
@@ -697,6 +749,17 @@ DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_concurrent, lane,
 
 DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_global, lane,
 	.do_type        = DISPATCH_QUEUE_GLOBAL_ROOT_TYPE,
+	.do_dispose     = _dispatch_object_no_dispose,
+	.do_debug       = _dispatch_queue_debug,
+	.do_invoke      = _dispatch_object_no_invoke,
+
+	.dq_activate    = _dispatch_queue_no_activate,
+	.dq_wakeup      = _dispatch_root_queue_wakeup,
+	.dq_push        = _dispatch_root_queue_push,
+);
+
+DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_cooperative, lane,
+	.do_type        = DISPATCH_QUEUE_COOPERATIVE_ROOT_TYPE,
 	.do_dispose     = _dispatch_object_no_dispose,
 	.do_debug       = _dispatch_queue_debug,
 	.do_invoke      = _dispatch_object_no_invoke,
@@ -1528,6 +1591,20 @@ _dispatch_client_callout4(void *ctxt, dispatch_mach_reason_t reason,
 	_dispatch_set_unwind_tsd(u);
 }
 #endif // HAVE_MACH
+
+#undef _dispatch_client_callout3_a
+DISPATCH_NOINLINE
+void
+_dispatch_client_callout3_a(void *ctxt, size_t i, size_t w, dispatch_apply_attr_function_t f)
+{
+	_dispatch_get_tsd_base();
+	void *u = _dispatch_get_unwind_tsd();
+	if (likely(!u)) return f(ctxt, i, w);
+	_dispatch_set_unwind_tsd(NULL);
+	f(ctxt, i, w);
+	_dispatch_free_unwind_tsd();
+	_dispatch_set_unwind_tsd(u);
+}
 
 #endif // DISPATCH_USE_CLIENT_CALLOUT
 

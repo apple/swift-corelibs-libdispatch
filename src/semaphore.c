@@ -116,8 +116,8 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 		if (!_dispatch_sema4_timedwait(&dsema->dsema_sema, timeout)) {
 			break;
 		}
-		// Fall through and try to undo what the fast path did to
-		// dsema->dsema_value
+		// Try to undo what the fast path did to dsema->dsema_value
+		DISPATCH_FALLTHROUGH;
 	case DISPATCH_TIME_NOW:
 		orig = dsema->dsema_value;
 		while (orig < 0) {
@@ -126,8 +126,8 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 				return _DSEMA4_TIMEOUT();
 			}
 		}
-		// Another thread called semaphore_signal().
-		// Fall through and drain the wakeup.
+		// Another thread called semaphore_signal(). Drain the wakeup.
+		DISPATCH_FALLTHROUGH;
 	case DISPATCH_TIME_FOREVER:
 		_dispatch_sema4_wait(&dsema->dsema_sema);
 		break;

@@ -146,6 +146,9 @@ _dispatch_mach_create(const char *label, dispatch_queue_t q, void *context,
 	if (unlikely(!q)) {
 		q = _dispatch_get_default_queue(true);
 	} else {
+		if (_dispatch_queue_is_cooperative(q)) {
+			DISPATCH_CLIENT_CRASH(q, "Cannot target object to cooperative root queue - not implemented");
+		}
 		_dispatch_retain(q);
 	}
 	dm->do_targetq = q;
@@ -1186,6 +1189,24 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 		}
 	}
 	if (kr == MACH_SEND_TIMED_OUT && (opts & MACH_SEND_TIMEOUT)) {
+		if (msg->msgh_remote_port == MACH_PORT_DEAD) {
+			// It's possible that the remote port may have died after the
+			// attempt to enqueue the message timed out.  In this case, the
+			// pseudo-receive will copy-out MOVE_SEND over the disposition and
+			// MACH_PORT_DEAD for the remote port name, without giving us a
+			// deadname ref for the send right name.
+			//
+			// When we next attempt to resend this message, we'll overwrite the
+			// remote port back to the channel send right.  It is therefore
+			// crucial that we reset the disposition to COPY_SEND, since the ref
+			// the MOVE_SEND was referring to never actually arrived.
+			//
+			// rdar://77994175
+
+			msg->msgh_bits &= ~((mach_msg_bits_t)MACH_MSGH_BITS_REMOTE_MASK);
+			msg->msgh_bits |= MACH_MSG_TYPE_COPY_SEND;
+		}
+
 		if (opts & MACH_SEND_NOTIFY) {
 			_dispatch_mach_notification_set_armed(dsrr);
 		} else {
@@ -3178,7 +3199,9 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
 	tmp_options = options;
 	// XXX FIXME -- change this to not starve out the target queue
 	for (;;) {
-		if (DISPATCH_QUEUE_IS_SUSPENDED(ds) || (--cnt == 0)) {
+		dispatch_queue_flags_t dqf = _dispatch_queue_atomic_flags(ds);
+		if (DISPATCH_QUEUE_IS_SUSPENDED(ds) || (dqf & DSF_CANCELED) ||
+				(--cnt == 0)) {
 			options &= ~MACH_RCV_MSG;
 			tmp_options &= ~MACH_RCV_MSG;
 

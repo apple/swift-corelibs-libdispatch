@@ -91,8 +91,13 @@ static const unsigned long dispatch_introspection_key = __PTK_LIBDISPATCH_KEY6;
 static const unsigned long dispatch_bcounter_key	= __PTK_LIBDISPATCH_KEY6;
 #endif
 static const unsigned long dispatch_wlh_key			= __PTK_LIBDISPATCH_KEY7;
-static const unsigned long dispatch_voucher_key		= __PTK_LIBDISPATCH_KEY8;
+static const unsigned long dispatch_voucher_key		= OS_VOUCHER_TSD_KEY;
 static const unsigned long dispatch_deferred_items_key = __PTK_LIBDISPATCH_KEY9;
+static const unsigned long dispatch_quantum_key = __PTK_LIBDISPATCH_KEY10;
+static const unsigned long dispatch_dsc_key = __PTK_LIBDISPATCH_KEY11;
+static const unsigned long dispatch_enqueue_key = __PTK_LIBDISPATCH_KEY12;
+
+static const unsigned long os_workgroup_key = __PTK_LIBDISPATCH_WORKGROUP_KEY0;
 
 DISPATCH_TSD_INLINE
 static inline void
@@ -150,6 +155,11 @@ struct dispatch_tsd {
 	void *dispatch_wlh_key;
 	void *dispatch_voucher_key;
 	void *dispatch_deferred_items_key;
+	void *dispatch_quantum_key;
+	void *dispatch_dsc_key;
+	void *dispatch_enqueue_key;
+
+	void *os_workgroup_key;
 };
 
 extern _Thread_local struct dispatch_tsd __dispatch_tsd;
@@ -206,6 +216,11 @@ extern pthread_key_t dispatch_bcounter_key;
 extern pthread_key_t dispatch_wlh_key;
 extern pthread_key_t dispatch_voucher_key;
 extern pthread_key_t dispatch_deferred_items_key;
+extern pthread_key_t dispatch_quantum_key;
+extern pthread_key_t dispatch_dsc_key;
+extern pthread_key_t dispatch_enqueue_key;
+
+extern pthread_key_t os_workgroup_key;
 
 DISPATCH_TSD_INLINE
 static inline void
@@ -350,7 +365,11 @@ DISPATCH_TSD_INLINE DISPATCH_CONST
 static inline unsigned int
 _dispatch_cpu_number(void)
 {
-#if __has_include(<os/tsd.h>)
+#if TARGET_OS_SIMULATOR
+	size_t n;
+	pthread_cpu_number_np(&n);
+	return (unsigned int)n;
+#elif __has_include(<os/tsd.h>)
 	return _os_cpu_number();
 #elif defined(__x86_64__) || defined(__i386__)
 	struct { uintptr_t p1, p2; } p;

@@ -60,6 +60,9 @@ dispatch_source_create(dispatch_source_type_t dst, uintptr_t handle,
 	if (unlikely(!dq)) {
 		dq = _dispatch_get_default_queue(true);
 	} else {
+		if (_dispatch_queue_is_cooperative(dq)) {
+			DISPATCH_CLIENT_CRASH(dq, "Cannot target object to cooperative root queue - not implemented");
+		}
 		_dispatch_retain((dispatch_queue_t _Nonnull)dq);
 	}
 	ds->do_targetq = dq;
@@ -441,7 +444,10 @@ _dispatch_source_registration_callout(dispatch_source_t ds, dispatch_queue_t cq,
 	dc = _dispatch_source_handler_take(ds->ds_refs, DS_REGISTN_HANDLER);
 	if (ds->dq_atomic_flags & (DSF_CANCELED | DQF_RELEASED)) {
 		// no registration callout if source is canceled rdar://problem/8955246
-		return _dispatch_source_handler_dispose(dc);
+		dispatch_invoke_with_autoreleasepool(flags, {
+			_dispatch_source_handler_dispose(dc);
+		});
+		return;
 	}
 	if (dc->dc_flags & DC_FLAG_FETCH_CONTEXT) {
 		dc->dc_ctxt = ds->do_ctxt;
@@ -458,22 +464,33 @@ _dispatch_source_cancel_callout(dispatch_source_t ds, dispatch_queue_t cq,
 	dispatch_source_refs_t dr = ds->ds_refs;
 	dispatch_continuation_t dc;
 
-	dc = _dispatch_source_handler_take(dr, DS_CANCEL_HANDLER);
-	dr->ds_pending_data = 0;
-	dr->ds_data = 0;
-	_dispatch_source_handler_free(dr, DS_EVENT_HANDLER);
-	_dispatch_source_handler_free(dr, DS_REGISTN_HANDLER);
-	if (!dc) {
-		return;
-	}
-	if (!(ds->dq_atomic_flags & DSF_CANCELED)) {
-		return _dispatch_source_handler_dispose(dc);
-	}
-	if (dc->dc_flags & DC_FLAG_FETCH_CONTEXT) {
-		dc->dc_ctxt = ds->do_ctxt;
-	}
-	_dispatch_trace_source_callout_entry(ds, DS_CANCEL_HANDLER, cq, dc);
-	_dispatch_continuation_pop(dc, NULL, flags, cq);
+	dispatch_invoke_with_autoreleasepool(flags, {
+		dc = _dispatch_source_handler_take(dr, DS_CANCEL_HANDLER);
+		dr->ds_pending_data = 0;
+		dr->ds_data = 0;
+		_dispatch_source_handler_free(dr, DS_EVENT_HANDLER);
+		_dispatch_source_handler_free(dr, DS_REGISTN_HANDLER);
+		if (!dc) {
+			/* nothing to do here */
+		} else if (!(ds->dq_atomic_flags & DSF_CANCELED)) {
+			_dispatch_source_handler_dispose(dc);
+		} else {
+			if (dc->dc_flags & DC_FLAG_FETCH_CONTEXT) {
+				dc->dc_ctxt = ds->do_ctxt;
+			}
+			_dispatch_trace_source_callout_entry(ds, DS_CANCEL_HANDLER, cq, dc);
+
+			//
+			// Make sure _dispatch_continuation_pop() will not
+			// add its own autoreleasepool since we have one,
+			// and there's magic in objc that makes _one_
+			// autoreleasepool cheap.
+			//
+			flags &= ~DISPATCH_INVOKE_AUTORELEASE_ALWAYS;
+			_dispatch_continuation_pop(dc, NULL, flags, cq);
+		}
+
+	});
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -580,7 +597,9 @@ _dispatch_source_latch_and_call(dispatch_source_t ds, dispatch_queue_t cq,
 		}
 		if (dr->du_timer_flags & DISPATCH_TIMER_AFTER) {
 			_dispatch_trace_item_complete(dc); // see _dispatch_after
-			_dispatch_source_handler_free(dr, DS_EVENT_HANDLER);
+			dispatch_invoke_with_autoreleasepool(flags, {
+				_dispatch_source_handler_free(dr, DS_EVENT_HANDLER);
+			});
 			dispatch_release(ds); // dispatch_after sources are one-shot
 		}
 	}
@@ -730,7 +749,7 @@ _dispatch_source_invoke2(dispatch_source_t ds, dispatch_invoke_context_t dic,
 		// Intentionally always drain even when on the manager queue
 		// and not the source's regular target queue: we need to be able
 		// to drain timer setting and the like there.
-		dispatch_with_disabled_narrowing(dic, {
+		dispatch_with_disabled_narrowing(dic, flags, {
 			retq = _dispatch_lane_serial_drain(ds, dic, flags, owned);
 		});
 	}

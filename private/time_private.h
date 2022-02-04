@@ -32,6 +32,8 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+__BEGIN_DECLS
+
 /*
  * @constant DISPATCH_MONOTONICTIME_NOW
  * A dispatch_time_t value that corresponds to the current value of the
@@ -113,6 +115,8 @@ DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 bool
 dispatch_time_to_nsecs(dispatch_time_t time,
 		dispatch_clockid_t *clock, uint64_t *nsecs);
+
+__END_DECLS
 
 #endif
 

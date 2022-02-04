@@ -1,29 +1,53 @@
+/*
+ * Copyright (c) 2019-2021 Apple Inc. All rights reserved.
+ *
+ * @APPLE_APACHE_LICENSE_HEADER_START@
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * @APPLE_APACHE_LICENSE_HEADER_END@
+ */
+
+#define PTHREAD_WORKGROUP_SPI 1
+
 #include "internal.h"
 
 #include <os/assumes.h>
 #include <mach/mach_port.h>
+#include <pthread/workgroup_private.h>
 
 /* Declares struct symbols */
+
 OS_OBJECT_CLASS_DECL(os_workgroup);
 #if !USE_OBJC
 OS_OBJECT_VTABLE_INSTANCE(os_workgroup,
-		(void (*)(_os_object_t))_os_workgroup_xref_dispose,
+		(void (*)(_os_object_t))_os_workgroup_explicit_xref_dispose,
 		(void (*)(_os_object_t))_os_workgroup_dispose);
-#endif // USE_OBJC
+#endif // !USE_OBJC
 #define WORKGROUP_CLASS OS_OBJECT_VTABLE(os_workgroup)
 
 OS_OBJECT_CLASS_DECL(os_workgroup_interval);
 #if !USE_OBJC
 OS_OBJECT_VTABLE_INSTANCE(os_workgroup_interval,
-		(void (*)(_os_object_t))_os_workgroup_interval_xref_dispose,
-		(void (*)(_os_object_t))_os_workgroup_interval_dispose);
+		(void (*)(_os_object_t))_os_workgroup_interval_explicit_xref_dispose,
+		(void (*)(_os_object_t))_os_workgroup_interval_explicit_dispose);
 #endif // USE_OBJC
 #define WORKGROUP_INTERVAL_CLASS OS_OBJECT_VTABLE(os_workgroup_interval)
 
 OS_OBJECT_CLASS_DECL(os_workgroup_parallel);
 #if !USE_OBJC
 OS_OBJECT_VTABLE_INSTANCE(os_workgroup_parallel,
-		(void (*)(_os_object_t))_os_workgroup_xref_dispose,
+		(void (*)(_os_object_t))_os_workgroup_explicit_xref_dispose,
 		(void (*)(_os_object_t))_os_workgroup_dispose);
 #endif // USE_OBJC
 #define WORKGROUP_PARALLEL_CLASS OS_OBJECT_VTABLE(os_workgroup_parallel)
@@ -50,6 +74,12 @@ static const struct os_workgroup_attr_s _os_workgroup_attr_default = {
 	.sig = _OS_WORKGROUP_ATTR_RESOLVED_INIT,
 	.wg_type = OS_WORKGROUP_TYPE_DEFAULT,
 	.wg_attr_flags = 0,
+};
+
+static const struct os_workgroup_attr_s _os_workgroup_with_workload_id_attr_default = {
+	.sig = _OS_WORKGROUP_ATTR_RESOLVED_INIT,
+	.wg_type = OS_WORKGROUP_TYPE_DEFAULT,
+	.wg_attr_flags = OS_WORKGROUP_ATTR_NONPROPAGATING,
 };
 
 static const struct os_workgroup_attr_s _os_workgroup_interval_attr_default = {
@@ -88,6 +118,22 @@ _os_workgroup_interval_xref_dispose(os_workgroup_interval_t wgi)
 	}
 }
 
+#if !USE_OBJC
+void
+_os_workgroup_explicit_xref_dispose(os_workgroup_t wg)
+{
+	_os_workgroup_xref_dispose(wg);
+	_os_object_release_internal(wg->_as_os_obj);
+}
+
+void
+_os_workgroup_interval_explicit_xref_dispose(os_workgroup_interval_t wgi)
+{
+	_os_workgroup_interval_xref_dispose(wgi);
+	_os_workgroup_explicit_xref_dispose(wgi->_as_wg);
+}
+#endif
+
 static inline bool
 _os_workgroup_is_configurable(uint64_t wg_state)
 {
@@ -125,6 +171,15 @@ _os_workgroup_interval_dispose(os_workgroup_interval_t wgi)
 	work_interval_instance_free(wgi->wii);
 }
 
+#if !USE_OBJC
+void
+_os_workgroup_interval_explicit_dispose(os_workgroup_interval_t wgi)
+{
+	_os_workgroup_interval_dispose(wgi);
+	_os_workgroup_dispose(wgi->_as_wg);
+}
+#endif
+
 #define os_workgroup_inc_refcount(wg)  \
 	_os_object_retain_internal(wg->_as_os_obj);
 
@@ -146,7 +201,7 @@ _os_workgroup_tsd_cleanup(void *ctxt) /* Destructor for the tsd key */
 static os_workgroup_t
 _os_workgroup_get_current(void)
 {
-	return (os_workgroup_t) pthread_getspecific(_os_workgroup_key);
+	return (os_workgroup_t) _dispatch_thread_getspecific(os_workgroup_key);
 }
 
 static void
@@ -157,7 +212,7 @@ _os_workgroup_set_current(os_workgroup_t new_wg)
 	}
 
 	os_workgroup_t old_wg = _os_workgroup_get_current();
-	pthread_setspecific(_os_workgroup_key, new_wg);
+	_dispatch_thread_setspecific(os_workgroup_key, new_wg);
 
 	if (old_wg != NULL) {
 		os_workgroup_dec_refcount(old_wg);
@@ -193,7 +248,7 @@ static inline bool
 _os_workgroup_type_is_interval_type(os_workgroup_type_t wg_type)
 {
 	return (wg_type >= OS_WORKGROUP_INTERVAL_TYPE_DEFAULT) &&
-			(wg_type <= OS_WORKGROUP_INTERVAL_TYPE_COREMEDIA);
+			(wg_type <= OS_WORKGROUP_INTERVAL_TYPE_ARKIT);
 }
 
 static bool
@@ -222,11 +277,17 @@ _os_workgroup_has_backing_workinterval(os_workgroup_t wg)
 	return wg->wi != NULL;
 }
 
+static inline uint32_t
+_wi_flags_to_wi_type(uint32_t wi_flags)
+{
+	return wi_flags & WORK_INTERVAL_TYPE_MASK;
+}
+
 #if !TARGET_OS_SIMULATOR
 static os_workgroup_type_t
 _wi_flags_to_wg_type(uint32_t wi_flags)
 {
-	uint32_t type = wi_flags & WORK_INTERVAL_TYPE_MASK;
+	uint32_t type = _wi_flags_to_wi_type(wi_flags);
 	bool is_unrestricted = (wi_flags & WORK_INTERVAL_FLAG_UNRESTRICTED);
 
 	switch (type) {
@@ -252,6 +313,8 @@ _wi_flags_to_wg_type(uint32_t wi_flags)
 		return OS_WORKGROUP_INTERVAL_TYPE_HID_DELIVERY;
 	case WORK_INTERVAL_TYPE_COREMEDIA:
 		return OS_WORKGROUP_INTERVAL_TYPE_COREMEDIA;
+	case WORK_INTERVAL_TYPE_ARKIT:
+		return OS_WORKGROUP_INTERVAL_TYPE_ARKIT;
 	case WORK_INTERVAL_TYPE_CA_CLIENT:
 		return OS_WORKGROUP_INTERVAL_TYPE_CA_CLIENT;
 	default:
@@ -264,48 +327,79 @@ _wi_flags_to_wg_type(uint32_t wi_flags)
 }
 #endif
 
+static uint32_t
+_wg_type_to_wi_flags(os_workgroup_type_t wg_type)
+{
+	switch (wg_type) {
+	case OS_WORKGROUP_INTERVAL_TYPE_DEFAULT:
+		return WORK_INTERVAL_TYPE_DEFAULT | WORK_INTERVAL_FLAG_UNRESTRICTED;
+	case OS_WORKGROUP_INTERVAL_TYPE_COREAUDIO:
+		return (WORK_INTERVAL_TYPE_COREAUDIO |
+				WORK_INTERVAL_FLAG_ENABLE_AUTO_JOIN |
+				WORK_INTERVAL_FLAG_ENABLE_DEFERRED_FINISH);
+	case OS_WORKGROUP_INTERVAL_TYPE_COREANIMATION:
+		return WORK_INTERVAL_TYPE_COREANIMATION;
+	case OS_WORKGROUP_INTERVAL_TYPE_CA_RENDER_SERVER:
+		return WORK_INTERVAL_TYPE_CA_RENDER_SERVER;
+	case OS_WORKGROUP_INTERVAL_TYPE_HID_DELIVERY:
+		return WORK_INTERVAL_TYPE_HID_DELIVERY;
+	case OS_WORKGROUP_INTERVAL_TYPE_COREMEDIA:
+		return WORK_INTERVAL_TYPE_COREMEDIA;
+	case OS_WORKGROUP_INTERVAL_TYPE_ARKIT:
+		return (WORK_INTERVAL_TYPE_ARKIT |
+				WORK_INTERVAL_FLAG_FINISH_AT_DEADLINE);
+	case OS_WORKGROUP_INTERVAL_TYPE_AUDIO_CLIENT:
+		return (WORK_INTERVAL_TYPE_COREAUDIO | WORK_INTERVAL_FLAG_UNRESTRICTED |
+				WORK_INTERVAL_FLAG_ENABLE_AUTO_JOIN |
+				WORK_INTERVAL_FLAG_ENABLE_DEFERRED_FINISH);
+	case OS_WORKGROUP_INTERVAL_TYPE_CA_CLIENT:
+		return WORK_INTERVAL_TYPE_CA_CLIENT | WORK_INTERVAL_FLAG_UNRESTRICTED;
+	case OS_WORKGROUP_TYPE_DEFAULT:
+		/* Non-interval workgroup types */
+		return WORK_INTERVAL_FLAG_UNRESTRICTED;
+	default:
+		os_crash("Creating an os_workgroup of unknown type");
+	}
+}
+
+static inline uint32_t
+_wg_type_to_wi_type(os_workgroup_type_t wg_type)
+{
+	return _wi_flags_to_wi_type(_wg_type_to_wi_flags(wg_type));
+}
+
+static inline int
+_os_workgroup_get_wg_wi_types_from_port(mach_port_t port,
+		os_workgroup_type_t *out_wg_type, uint32_t *out_wi_type)
+{
+	os_workgroup_type_t wg_type = OS_WORKGROUP_TYPE_DEFAULT;
+	uint32_t wi_type = WORK_INTERVAL_TYPE_DEFAULT;
+
+#if !TARGET_OS_SIMULATOR
+	uint32_t wi_flags = 0;
+	int ret = work_interval_get_flags_from_port(port, &wi_flags);
+	if (ret != 0) {
+		return ret;
+	}
+	wg_type = _wi_flags_to_wg_type(wi_flags);
+	wi_type = _wi_flags_to_wi_type(wi_flags);
+#else
+	(void)port;
+#endif
+
+	if (out_wg_type) *out_wg_type = wg_type;
+	if (out_wi_type) *out_wi_type = wi_type;
+
+	return 0;
+}
+
 static work_interval_t
 _os_workgroup_create_work_interval(os_workgroup_attr_t attr)
 {
 	/* All workgroups are joinable */
 	uint32_t flags = WORK_INTERVAL_FLAG_JOINABLE;
 
-	switch (attr->wg_type) {
-	case OS_WORKGROUP_INTERVAL_TYPE_DEFAULT:
-		flags |= WORK_INTERVAL_TYPE_DEFAULT | WORK_INTERVAL_FLAG_UNRESTRICTED;
-		break;
-	case OS_WORKGROUP_INTERVAL_TYPE_COREAUDIO:
-		flags |= (WORK_INTERVAL_TYPE_COREAUDIO |
-				WORK_INTERVAL_FLAG_ENABLE_AUTO_JOIN |
-				WORK_INTERVAL_FLAG_ENABLE_DEFERRED_FINISH);
-		break;
-	case OS_WORKGROUP_INTERVAL_TYPE_COREANIMATION:
-		flags |= WORK_INTERVAL_TYPE_COREANIMATION;
-		break;
-	case OS_WORKGROUP_INTERVAL_TYPE_CA_RENDER_SERVER:
-		flags |= WORK_INTERVAL_TYPE_CA_RENDER_SERVER;
-		break;
-	case OS_WORKGROUP_INTERVAL_TYPE_HID_DELIVERY:
-		flags |= WORK_INTERVAL_TYPE_HID_DELIVERY;
-		break;
-	case OS_WORKGROUP_INTERVAL_TYPE_COREMEDIA:
-		flags |= WORK_INTERVAL_TYPE_COREMEDIA;
-		break;
-	case OS_WORKGROUP_INTERVAL_TYPE_AUDIO_CLIENT:
-		flags |= (WORK_INTERVAL_TYPE_COREAUDIO | WORK_INTERVAL_FLAG_UNRESTRICTED |
-				WORK_INTERVAL_FLAG_ENABLE_AUTO_JOIN |
-				WORK_INTERVAL_FLAG_ENABLE_DEFERRED_FINISH);
-		break;
-	case OS_WORKGROUP_INTERVAL_TYPE_CA_CLIENT:
-		flags |= WORK_INTERVAL_TYPE_CA_CLIENT | WORK_INTERVAL_FLAG_UNRESTRICTED;
-		break;
-	case OS_WORKGROUP_TYPE_DEFAULT:
-		/* Non-interval workgroup types */
-		flags |= WORK_INTERVAL_FLAG_UNRESTRICTED;
-		break;
-	default:
-		os_crash("Creating an os_workgroup of unknown type");
-	}
+	flags |= _wg_type_to_wi_flags(attr->wg_type);
 
 	if (_os_workgroup_attr_is_differentiated(attr)) {
 		flags |= WORK_INTERVAL_FLAG_GROUP;
@@ -314,11 +408,99 @@ _os_workgroup_create_work_interval(os_workgroup_attr_t attr)
 	work_interval_t wi;
 	int rv = work_interval_create(&wi, flags);
 	if (rv) {
-		errno = rv;
 		return NULL;
 	}
 
 	return wi;
+}
+
+struct os_workgroup_workload_id_table_entry_s {
+	const char* wl_id;
+	os_workgroup_type_t wl_type;
+};
+
+#if !TARGET_OS_SIMULATOR
+static const struct os_workgroup_workload_id_table_entry_s
+		_os_workgroup_workload_id_table[] = {
+	{
+		.wl_id = "com.apple.coreaudio.hal.iothread",
+		.wl_type = OS_WORKGROUP_INTERVAL_TYPE_COREAUDIO,
+	},
+	{
+		.wl_id = "com.apple.coreaudio.hal.clientthread",
+		.wl_type = OS_WORKGROUP_INTERVAL_TYPE_AUDIO_CLIENT,
+	},
+};
+#endif // !TARGET_OS_SIMULATOR
+
+static os_workgroup_type_t
+_os_workgroup_lookup_type_from_workload_id(const char *workload_id)
+{
+	os_workgroup_type_t workload_type = OS_WORKGROUP_TYPE_DEFAULT;
+
+	if (!workload_id) {
+		DISPATCH_CLIENT_CRASH(0, "Workload identifier must not be NULL");
+	}
+#if !TARGET_OS_SIMULATOR
+	for (size_t i = 0; i < countof(_os_workgroup_workload_id_table); i++) {
+		if (!strcasecmp(workload_id, _os_workgroup_workload_id_table[i].wl_id)){
+			workload_type = _os_workgroup_workload_id_table[i].wl_type;
+			if (_os_workgroup_type_is_default_type(workload_type)) {
+				DISPATCH_INTERNAL_CRASH(i, "Invalid workload ID type");
+			}
+			break;
+		}
+	}
+#if OS_WORKGROUP_LOG_UKNOWN_WORKLOAD_ID
+	if (_os_workgroup_type_is_default_type(workload_type)) {
+		_dispatch_log("WARNING: os_workgroup: Unknown workload ID \"%s\"",
+				workload_id);
+	}
+#endif
+#endif // !TARGET_OS_SIMULATOR
+	return workload_type;
+}
+
+static inline os_workgroup_attr_t
+_os_workgroup_workload_id_attr_resolve(const char *workload_id,
+		os_workgroup_attr_t attr,
+		const os_workgroup_attr_s *default_attr)
+{
+	/* N.B: expects to be called with the attr pointer returned by
+	 *      _os_workgroup_client_attr_resolve() (i.e. a mutable local copy) */
+	os_workgroup_type_t wl_type =
+			_os_workgroup_lookup_type_from_workload_id(workload_id);
+	if (_os_workgroup_type_is_default_type(wl_type)) {
+		/* Unknown workload ID, fallback to attribute type */
+		return attr;
+	}
+	/* Require matching types between workload ID and attribute.
+	 * Use workload ID type as the type implied by the default attribute */
+	if (attr->wg_type == default_attr->wg_type) {
+		attr->wg_type = wl_type;
+	} else if (wl_type != attr->wg_type) {
+		/* Workload ID and attribute type mismatch */
+		return NULL;
+	}
+	return attr;
+}
+
+static inline bool
+_os_workgroup_workload_id_is_valid_for_wi_type(const char *workload_id,
+		uint32_t wi_type)
+{
+	os_workgroup_type_t wl_type =
+			_os_workgroup_lookup_type_from_workload_id(workload_id);
+	if (_os_workgroup_type_is_default_type(wl_type)) {
+		/* Unknown workload ID, nothing to match */
+		return true;
+	}
+	/* Require matching workinterval types between workload ID and passed in
+	 * type of port or workgroup object. */
+	if (_wg_type_to_wi_type(wl_type) != wi_type) {
+		return false;
+	}
+	return true;
 }
 
 static inline bool
@@ -346,6 +528,46 @@ _os_workgroup_client_attr_is_valid(os_workgroup_attr_t attr)
 	return (attr && _os_workgroup_client_attr_initialized(attr));
 }
 
+static inline os_workgroup_attr_t
+_os_workgroup_client_attr_resolve(os_workgroup_attr_t attr,
+		os_workgroup_attr_t client_attr,
+		const os_workgroup_attr_s *default_attr)
+{
+	if (client_attr == NULL) {
+		*attr = *default_attr;
+	} else {
+		if (!_os_workgroup_client_attr_is_valid(client_attr)) {
+			return NULL;
+		}
+
+		// Make a local copy of the attr
+		*attr = *client_attr;
+
+		switch (attr->sig) {
+			case _OS_WORKGROUP_ATTR_SIG_DEFAULT_INIT:
+				/* For any fields which are 0, we fill in with default values */
+				if (attr->wg_attr_flags == 0) {
+					attr->wg_attr_flags = default_attr->wg_attr_flags;
+				}
+				if (attr->wg_type == 0) {
+					attr->wg_type = default_attr->wg_type;
+				}
+				break;
+			case _OS_WORKGROUP_ATTR_SIG_EMPTY_INIT:
+				/* Nothing to do, the client built the attr up from scratch */
+				break;
+			default:
+				return NULL;
+		}
+
+		/* Mark it as resolved */
+		attr->sig = _OS_WORKGROUP_ATTR_RESOLVED_INIT;
+	}
+
+	os_assert(_os_workgroup_attr_is_resolved(attr));
+	return attr;
+}
+
 static inline bool
 _start_time_is_in_past(os_clockid_t clock, uint64_t start)
 {
@@ -353,6 +575,69 @@ _start_time_is_in_past(os_clockid_t clock, uint64_t start)
 		case OS_CLOCK_MACH_ABSOLUTE_TIME:
 			return start <= mach_absolute_time();
 	}
+}
+
+struct os_workgroup_pthread_ctx_s {
+	os_workgroup_t wg;
+	void *(*start_routine)(void *);
+	void *arg;
+};
+
+static void *
+_os_workgroup_pthread_start(void *wrapper_arg)
+{
+	struct os_workgroup_pthread_ctx_s *ctx = wrapper_arg;
+	os_workgroup_t wg = ctx->wg;
+	void *(*start_routine)(void *) = ctx->start_routine;
+	void *arg = ctx->arg;
+
+	free(ctx);
+
+	os_workgroup_join_token_s token;
+	int rc = os_workgroup_join(wg, &token);
+	if (rc != 0) {
+		DISPATCH_CLIENT_CRASH(rc, "pthread_start os_workgroup_join failed");
+	}
+
+	void *result = start_routine(arg);
+
+	os_workgroup_leave(wg, &token);
+	os_workgroup_dec_refcount(wg);
+
+	return result;
+}
+
+static int
+_os_workgroup_pthread_create_with_workgroup(pthread_t *thread,
+		os_workgroup_t wg, const pthread_attr_t *attr,
+		void *(*start_routine)(void *), void *arg)
+{
+	struct os_workgroup_pthread_ctx_s *ctx = _dispatch_calloc(1, sizeof(*ctx));
+
+	os_workgroup_inc_refcount(wg);
+
+	ctx->wg = wg;
+	ctx->start_routine = start_routine;
+	ctx->arg = arg;
+
+	int rc = pthread_create(thread, attr, _os_workgroup_pthread_start, ctx);
+	if (rc != 0) {
+		os_workgroup_dec_refcount(wg);
+		free(ctx);
+	}
+
+	return rc;
+}
+
+static const struct pthread_workgroup_functions_s _os_workgroup_pthread_functions = {
+	.pwgf_version = PTHREAD_WORKGROUP_FUNCTIONS_VERSION,
+	.pwgf_create_with_workgroup = _os_workgroup_pthread_create_with_workgroup,
+};
+
+void
+_workgroup_init(void)
+{
+	pthread_install_workgroup_functions_np(&_os_workgroup_pthread_functions);
 }
 
 #pragma mark Private functions
@@ -411,46 +696,15 @@ os_workgroup_create(const char *name, os_workgroup_attr_t attr)
 
 	/* Resolve the input attributes */
 	os_workgroup_attr_s wga;
+	attr = _os_workgroup_client_attr_resolve(&wga, attr,
+			&_os_workgroup_attr_default);
 	if (attr == NULL) {
-		wga = _os_workgroup_attr_default;
-		attr = &wga;
-	} else {
-		if (!_os_workgroup_client_attr_is_valid(attr)) {
-			errno = EINVAL;
-			return NULL;
-		}
-
-		// Make a local copy of the attr
-		wga = *attr;
-		attr = &wga;
-
-		switch (attr->sig) {
-			case _OS_WORKGROUP_ATTR_SIG_DEFAULT_INIT:
-			{
-				/* For any fields which are 0, we fill in with default values */
-				if (attr->wg_attr_flags == 0) {
-					attr->wg_attr_flags = _os_workgroup_attr_default.wg_attr_flags;
-				}
-				if (attr->wg_type == 0) {
-					attr->wg_type = _os_workgroup_attr_default.wg_type;
-				}
-			}
-			// Fallthrough
-			case _OS_WORKGROUP_ATTR_SIG_EMPTY_INIT:
-				break;
-			default:
-				errno = EINVAL;
-				return NULL;
-		}
-
-		/* Mark it as resolved */
-		attr->sig = _OS_WORKGROUP_ATTR_RESOLVED_INIT;
+		errno = EINVAL;
+		return NULL;
 	}
 
-	os_assert(_os_workgroup_attr_is_resolved(attr));
-
 	/* Do some sanity checks */
-	if (!_os_workgroup_type_is_default_type(attr->wg_type)){
+	if (!_os_workgroup_type_is_default_type(attr->wg_type)) {
 		errno = EINVAL;
 		return NULL;
 	}
@@ -486,50 +740,174 @@ os_workgroup_interval_create(const char *name, os_clockid_t clock,
 
 	/* Resolve the input attributes */
 	os_workgroup_attr_s wga;
+	attr = _os_workgroup_client_attr_resolve(&wga, attr,
+			&_os_workgroup_interval_attr_default);
 	if (attr == NULL) {
-		wga = _os_workgroup_interval_attr_default;
-		attr = &wga;
-	} else {
-		if (!_os_workgroup_client_attr_is_valid(attr)) {
-			errno = EINVAL;
-			return NULL;
-		}
-
-		// Make a local copy of the attr
-		wga = *attr;
-		attr = &wga;
-
-		if (attr->sig == _OS_WORKGROUP_ATTR_SIG_EMPTY_INIT) {
-			/* Nothing to do, the client built the attr up from scratch */
-		} else if (attr->sig == _OS_WORKGROUP_ATTR_SIG_DEFAULT_INIT) {
-			/* For any fields which are 0, we fill in with default values */
-
-			if (attr->wg_attr_flags == 0) {
-				attr->wg_attr_flags = _os_workgroup_interval_attr_default.wg_attr_flags;
-			}
-			if (attr->wg_type == 0) {
-				attr->wg_type = _os_workgroup_interval_attr_default.wg_type;
-			}
-		} else {
-			errno = EINVAL;
-			return NULL;
-		}
-
-		/* Mark it as resolved */
-		attr->sig = _OS_WORKGROUP_ATTR_RESOLVED_INIT;
+		errno = EINVAL;
+		return NULL;
 	}
 
-	os_assert(_os_workgroup_attr_is_resolved(attr));
-
 	/* Do some sanity checks */
-	if (!_os_workgroup_type_is_interval_type(attr->wg_type) ||
-		!_os_workgroup_attr_is_differentiated(attr)){
+	if (!_os_workgroup_type_is_interval_type(attr->wg_type)) {
+		errno = EINVAL;
+		return NULL;
+	}
+
+	if (!_os_workgroup_attr_is_differentiated(attr)) {
 		errno = EINVAL;
 		return NULL;
 	}
 
 	/* We don't support propagating workgroup yet */
 	if (_os_workgroup_attr_is_propagating(attr)) {
+		errno = ENOTSUP;
+		return NULL;
+	}
+
+	wi = _os_workgroup_create_work_interval(attr);
+	if (wi == NULL) {
+		return NULL;
+	}
+
+	wgi = (os_workgroup_interval_t) _os_object_alloc(WORKGROUP_INTERVAL_CLASS,
+			sizeof(struct os_workgroup_interval_s));
+	wgi->wi = wi;
+	wgi->clock = clock;
+	wgi->wii = work_interval_instance_alloc(wi);
+	wgi->wii_lock = OS_UNFAIR_LOCK_INIT;
+	wgi->wg_type = attr->wg_type;
+	wgi->wg_state = OS_WORKGROUP_OWNER;
+
+	_os_workgroup_set_name(wgi->_as_wg, name);
+
+	return wgi;
+}
+
+os_workgroup_t
+os_workgroup_create_with_workload_id(const char * name,
+		const char *workload_id, os_workgroup_attr_t attr)
+{
+	os_workgroup_t wg = NULL;
+	work_interval_t wi = NULL;
+
+	const os_workgroup_attr_s *default_attr =
+			&_os_workgroup_with_workload_id_attr_default;
+
+	/* Resolve the input attributes */
+	os_workgroup_attr_s wga;
+	attr = _os_workgroup_client_attr_resolve(&wga, attr, default_attr);
+	if (attr == NULL) {
+		_os_workgroup_error_log("Invalid attribute pointer");
+		errno = EINVAL;
+		return NULL;
+	}
+
+	/* Resolve workload ID */
+	attr = _os_workgroup_workload_id_attr_resolve(workload_id, attr,
+			default_attr);
+	if (attr == NULL) {
+		_os_workgroup_error_log("Mismatched workload ID and attribute "
+				"interval type: %s vs %hd", workload_id, wga.wg_type);
+		errno = EINVAL;
+		return NULL;
+	}
+
+	/* Require default attribute flags. */
+	if (attr->wg_attr_flags != default_attr->wg_attr_flags) {
+		_os_workgroup_error_log("Non-default attribute flags: 0x%x",
+				attr->wg_attr_flags);
+		errno = EINVAL;
+		return NULL;
+	}
+
+	/* Do some sanity checks */
+	if (!_os_workgroup_type_is_default_type(attr->wg_type)) {
+		_os_workgroup_error_log("Non-default workload type: %s (%hd)",
+				workload_id, attr->wg_type);
+		errno = EINVAL;
+		return NULL;
+	}
+
+	/* We don't support propagating workgroups yet */
+	if (_os_workgroup_attr_is_propagating(attr)) {
+		_os_workgroup_error_log("Unsupported attribute flags: 0x%x",
+				attr->wg_attr_flags);
+		errno = ENOTSUP;
+		return NULL;
+	}
+
+	wi = _os_workgroup_create_work_interval(attr);
+	if (wi == NULL) {
+		return NULL;
+	}
+
+	wg = (os_workgroup_t) _os_object_alloc(WORKGROUP_CLASS,
+			sizeof(struct os_workgroup_s));
+	wg->wi = wi;
+	wg->wg_state = OS_WORKGROUP_OWNER;
+	wg->wg_type = attr->wg_type;
+
+	_os_workgroup_set_name(wg, name);
+
+	return wg;
+}
+
+os_workgroup_interval_t
+os_workgroup_interval_create_with_workload_id(const char *name,
+		const char *workload_id, os_clockid_t clock, os_workgroup_attr_t attr)
+{
+	os_workgroup_interval_t wgi = NULL;
+	work_interval_t wi = NULL;
+
+	const os_workgroup_attr_s *default_attr =
+			&_os_workgroup_interval_attr_default;
+
+	/* Resolve the input attributes */
+	os_workgroup_attr_s wga;
+	attr = _os_workgroup_client_attr_resolve(&wga, attr, default_attr);
+	if (attr == NULL) {
+		_os_workgroup_error_log("Invalid attribute pointer");
+		errno = EINVAL;
+		return NULL;
+	}
+
+	/* Resolve workload ID */
+	attr = _os_workgroup_workload_id_attr_resolve(workload_id, attr,
+			default_attr);
+	if (attr == NULL) {
+		_os_workgroup_error_log("Mismatched workload ID and attribute "
+				"interval type: %s vs %hd", workload_id, wga.wg_type);
+		errno = EINVAL;
+		return NULL;
+	}
+
+	/* Require default attribute flags. */
+	if (attr->wg_attr_flags != default_attr->wg_attr_flags) {
+		_os_workgroup_error_log("Non-default attribute flags: 0x%x",
+				attr->wg_attr_flags);
+		errno = EINVAL;
+		return NULL;
+	}
+
+	/* Do some sanity checks */
+	if (!_os_workgroup_type_is_interval_type(attr->wg_type)) {
+		_os_workgroup_error_log("Invalid workload interval type: %s (%hd)",
+				workload_id, attr->wg_type);
+		errno = EINVAL;
+		return NULL;
+	}
+
+	if (!_os_workgroup_attr_is_differentiated(attr)) {
+		_os_workgroup_error_log("Invalid attribute flags: 0x%x",
+				attr->wg_attr_flags);
+		errno = EINVAL;
+		return NULL;
+	}
+
+	/* We don't support propagating workgroup yet */
+	if (_os_workgroup_attr_is_propagating(attr)) {
+		_os_workgroup_error_log("Unsupported attribute flags: 0x%x",
+				attr->wg_attr_flags);
 		errno = ENOTSUP;
 		return NULL;
 	}
@@ -642,6 +1020,7 @@ os_workgroup_copy_port(os_workgroup_t wg, mach_port_t *mach_port_out)
 	os_assert(mach_port_out != NULL);
 
 	*mach_port_out = MACH_PORT_NULL;
+	int rv = 0;
 
 	uint64_t wg_state = os_atomic_load(&wg->wg_state, relaxed);
 	if (wg_state & OS_WORKGROUP_CANCELED) {
@@ -653,31 +1032,33 @@ os_workgroup_copy_port(os_workgroup_t wg, mach_port_t *mach_port_out)
 	}
 
 	if (_os_workgroup_is_configurable(wg_state)) {
-		return work_interval_copy_port(wg->wi, mach_port_out);
+		rv = work_interval_copy_port(wg->wi, mach_port_out);
+		if (rv < 0) {
+			rv = errno;
+		}
+		return rv;
 	}
 
 	kern_return_t kr = mach_port_mod_refs(mach_task_self(), wg->port,
 			MACH_PORT_RIGHT_SEND, 1);
 	os_assumes(kr == KERN_SUCCESS);
 	*mach_port_out = wg->port;
-	return 0;
+	return rv;
 }
 
 os_workgroup_t
 os_workgroup_create_with_port(const char *name, mach_port_t port)
 {
 	if (!MACH_PORT_VALID(port)) {
+		errno = EINVAL;
 		return NULL;
 	}
 
-#if !TARGET_OS_SIMULATOR
-	uint32_t wi_flags = 0;
-	int ret = work_interval_get_flags_from_port(port, &wi_flags);
+	os_workgroup_type_t wg_type;
+	int ret = _os_workgroup_get_wg_wi_types_from_port(port, &wg_type, NULL);
 	if (ret != 0) {
-		errno = ret;
 		return NULL;
 	}
-#endif
 
 	os_workgroup_t wg = NULL;
 	wg = (os_workgroup_t) _os_object_alloc(WORKGROUP_CLASS,
@@ -688,11 +1069,47 @@ os_workgroup_create_with_port(const char *name, mach_port_t port)
 	kr = mach_port_mod_refs(mach_task_self(), port, MACH_PORT_RIGHT_SEND, 1);
 	os_assumes(kr == KERN_SUCCESS);
 	wg->port = port;
-#if !TARGET_OS_SIMULATOR
-	wg->wg_type = _wi_flags_to_wg_type(wi_flags);
-#else
-	wg->wg_type = OS_WORKGROUP_TYPE_DEFAULT;
-#endif
+	wg->wg_type = wg_type;
+
+	return wg;
+}
+
+os_workgroup_t
+os_workgroup_create_with_workload_id_and_port(const char *name,
+		const char *workload_id, mach_port_t port)
+{
+	if (!MACH_PORT_VALID(port)) {
+		_os_workgroup_error_log("Invalid mach port 0x%x", port);
+		errno = EINVAL;
+		return NULL;
+	}
+
+	os_workgroup_type_t wg_type;
+	uint32_t wi_type;
+	int ret = _os_workgroup_get_wg_wi_types_from_port(port, &wg_type, &wi_type);
+	if (ret != 0) {
+		_os_workgroup_error_log("Invalid mach port 0x%x", port);
+		return NULL;
+	}
+
+	/* Validate workload ID is compatible with port workinterval type */
+	if (!_os_workgroup_workload_id_is_valid_for_wi_type(workload_id, wi_type)) {
+		_os_workgroup_error_log("Mismatched workload ID and port "
+				"interval type: %s vs %hd", workload_id, wg_type);
+		errno = EINVAL;
+		return NULL;
+	}
+
+	os_workgroup_t wg = NULL;
+	wg = (os_workgroup_t) _os_object_alloc(WORKGROUP_CLASS,
+			sizeof(struct os_workgroup_s));
+	_os_workgroup_set_name(wg, name);
+
+	kern_return_t kr;
+	kr = mach_port_mod_refs(mach_task_self(), port, MACH_PORT_RIGHT_SEND, 1);
+	os_assumes(kr == KERN_SUCCESS);
+	wg->port = port;
+	wg->wg_type = wg_type;
 
 	return wg;
 }
@@ -717,18 +1134,95 @@ os_workgroup_create_with_workgroup(const char *name, os_workgroup_t wg)
 
 	if (_os_workgroup_has_backing_workinterval(wg)) {
 
-		kern_return_t kr;
 		if (_os_workgroup_is_configurable(wg_state)) {
-			kr = work_interval_copy_port(wg->wi, &new_wg->port);
+			int rv = work_interval_copy_port(wg->wi, &new_wg->port);
+
+			if (rv < 0) {
+				goto error;
+			}
 		} else {
+			kern_return_t kr;
 			kr = mach_port_mod_refs(mach_task_self(), wg->port, MACH_PORT_RIGHT_SEND, 1);
+
+			if (kr != KERN_SUCCESS) {
+				goto error;
+			}
 			new_wg->port = wg->port;
 		}
-		os_assumes(kr == KERN_SUCCESS);
-
 	}
 
 	return new_wg;
+
+error:
+	wg_state = os_atomic_load(&new_wg->wg_state, relaxed);
+	if (wg_state & OS_WORKGROUP_LABEL_NEEDS_FREE) {
+		free((void *)new_wg->name);
+	}
+	free(new_wg);
+
+	return NULL;
+}
+
+os_workgroup_t
+os_workgroup_create_with_workload_id_and_workgroup(const char *name,
+		const char *workload_id, os_workgroup_t wg)
+{
+	uint64_t wg_state = os_atomic_load(&wg->wg_state, relaxed);
+	if (wg_state & OS_WORKGROUP_CANCELED) {
+		_os_workgroup_error_log("Workgroup already cancelled");
+		errno = EINVAL;
+		return NULL;
+	}
+
+	/* Validate workload ID is compatible with workgroup workinterval type */
+	if (!_os_workgroup_workload_id_is_valid_for_wi_type(workload_id,
+			_wg_type_to_wi_type(wg->wg_type))) {
+		_os_workgroup_error_log("Mismatched workload ID and workgroup "
+				"interval type: %s vs %hd", workload_id, wg->wg_type);
+		errno = EINVAL;
+		return NULL;
+	}
+
+	os_workgroup_t new_wg = NULL;
+
+	new_wg = (os_workgroup_t) _os_object_alloc(WORKGROUP_CLASS,
+			sizeof(struct os_workgroup_s));
+	_os_workgroup_set_name(new_wg, name);
+	new_wg->wg_type = wg->wg_type;
+
+	/* We intentionally don't copy the context */
+
+	if (_os_workgroup_has_backing_workinterval(wg)) {
+
+		if (_os_workgroup_is_configurable(wg_state)) {
+			int rv = work_interval_copy_port(wg->wi, &new_wg->port);
+
+			if (rv < 0) {
+				_os_workgroup_error_log("Invalid workgroup work_interval");
+				goto error;
+			}
+		} else {
+			kern_return_t kr;
+			kr = mach_port_mod_refs(mach_task_self(), wg->port, MACH_PORT_RIGHT_SEND, 1);
+
+			if (kr != KERN_SUCCESS) {
+				_os_workgroup_error_log("Invalid workgroup port 0x%x", wg->port);
+				goto error;
+			}
+			new_wg->port = wg->port;
+		}
+	}
+
+	return new_wg;
+
+error:
+	wg_state = os_atomic_load(&new_wg->wg_state, relaxed);
+	if (wg_state & OS_WORKGROUP_LABEL_NEEDS_FREE) {
+		free((void *)new_wg->name);
+	}
+	free(new_wg);
+
+	return NULL;
 }
 
 int
@@ -753,12 +1247,14 @@ os_workgroup_join(os_workgroup_t wg, os_workgroup_join_token_t token)
 	os_workgroup_t cur_wg = _os_workgroup_get_current();
 	if (cur_wg) {
 		// We currently don't allow joining multiple workgroups at all, period
-		return EALREADY;
+		errno = EALREADY;
+		return errno;
 	}
 
 	uint64_t wg_state = os_atomic_load(&wg->wg_state, relaxed);
 	if (wg_state & OS_WORKGROUP_CANCELED) {
-		return EINVAL;
+		errno = EINVAL;
+		return errno;
 	}
 
 	int rv = 0;
@@ -772,7 +1268,7 @@ os_workgroup_join(os_workgroup_t wg, os_workgroup_join_token_t token)
 	}
 
 	if (rv) {
-		errno = rv;
+		rv = errno;
 		return rv;
 	}
 
@@ -786,7 +1282,7 @@ os_workgroup_join(os_workgroup_t wg, os_workgroup_join_token_t token)
 	token->new_wg = wg;
 
 	_os_workgroup_set_current(wg);
-	return 0;
+	return rv;
 }
 
 void
@@ -853,8 +1349,8 @@ os_workgroup_set_working_arena(os_workgroup_t wg, void * _Nullable client_arena,
 	});
 
 	if (!success) {
-		errno = EBUSY;
 		free(wg_arena);
+		errno = EBUSY;
 		return errno;
 	}
 
@@ -939,14 +1435,16 @@ os_workgroup_interval_start(os_workgroup_interval_t wgi, uint64_t start,
 	}
 
 	if (deadline < start || (!_start_time_is_in_past(wgi->clock, start))) {
-		return EINVAL;
+		errno = EINVAL;
+		return errno;
 	}
 
 	bool success = os_unfair_lock_trylock(&wgi->wii_lock);
 	if (!success) {
 		// Someone else is concurrently in a start, update or finish method. We
 		// can't make progress here
-		return EBUSY;
+		errno = EBUSY;
+		return errno;
 	}
 
 	int rv = 0;
@@ -965,6 +1463,7 @@ os_workgroup_interval_start(os_workgroup_interval_t wgi, uint64_t start,
 
 	if (rv) {
 		os_unfair_lock_unlock(&wgi->wii_lock);
+		errno = rv;
 		return rv;
 	}
 
@@ -977,7 +1476,6 @@ os_workgroup_interval_start(os_workgroup_interval_t wgi, uint64_t start,
 	if (rv != 0) {
 		/* If we failed to start the interval in the kernel, clear the started
 		 * field */
-		rv = errno;
 		os_atomic_and(&wgi->wg_state, ~OS_WORKGROUP_INTERVAL_STARTED, relaxed);
 	}
 
@@ -999,13 +1497,15 @@ os_workgroup_interval_update(os_workgroup_interval_t wgi, uint64_t deadline,
 	if (!success) {
 		// Someone else is concurrently in a start, update or finish method. We
 		// can't make progress here
-		return EBUSY;
+		errno = EBUSY;
+		return errno;
 	}
 
 	uint64_t wg_state = os_atomic_load(&wgi->wg_state, relaxed);
 	if (!_os_workgroup_is_configurable(wg_state)) {
 		os_unfair_lock_unlock(&wgi->wii_lock);
-		return EPERM;
+		errno = EPERM;
+		return errno;
 	}
 
 	/* Note: We allow updating and finishing an workgroup_interval that has
@@ -1014,7 +1514,8 @@ os_workgroup_interval_update(os_workgroup_interval_t wgi, uint64_t deadline,
 	 * intervals. However a subsequent new interval cannot be started */
 	if (!(wg_state & OS_WORKGROUP_INTERVAL_STARTED)) {
 		os_unfair_lock_unlock(&wgi->wii_lock);
-		return EINVAL;
+		errno = EINVAL;
+		return errno;
 	}
 
 	work_interval_instance_t wii = wgi->wii;
@@ -1041,17 +1542,20 @@ os_workgroup_interval_finish(os_workgroup_interval_t wgi,
 	if (!success) {
 		// Someone else is concurrently in a start, update or finish method. We
 		// can't make progress here
-		return EBUSY;
+		errno = EBUSY;
+		return errno;
 	}
 
 	uint64_t wg_state = os_atomic_load(&wgi->wg_state, relaxed);
 	if (!_os_workgroup_is_configurable(wg_state)) {
 		os_unfair_lock_unlock(&wgi->wii_lock);
-		return EPERM;
+		errno = EPERM;
+		return errno;
 	}
 	if (!(wg_state & OS_WORKGROUP_INTERVAL_STARTED)) {
 		os_unfair_lock_unlock(&wgi->wii_lock);
-		return EINVAL;
+		errno = EINVAL;
+		return errno;
 	}
 
 	work_interval_instance_t wii = wgi->wii;
