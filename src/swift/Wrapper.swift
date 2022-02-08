@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 import CDispatch
-import _SwiftDispatchOverlayShims
+@_implementationOnly import _DispatchOverlayShims
 
 // This file contains declarations that are provided by the
 // importer via Dispatch.apinote when the platform has Objective-C support

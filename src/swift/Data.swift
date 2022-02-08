@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 import CDispatch
-import _SwiftDispatchOverlayShims
+@_implementationOnly import _DispatchOverlayShims
 
 public struct DispatchData : RandomAccessCollection {
 	public typealias Iterator = DispatchDataIterator
