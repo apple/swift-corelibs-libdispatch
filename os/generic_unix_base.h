@@ -25,6 +25,14 @@
 
 #if __has_include(<sys/cdefs.h>)
 #include <sys/cdefs.h>
+#else
+#if defined(__cplusplus)
+#define	__BEGIN_DECLS extern "C" {
+#define	__END_DECLS }
+#else
+#define	__BEGIN_DECLS
+#define	__END_DECLS
+#endif
 #endif
 
 #ifndef API_AVAILABLE

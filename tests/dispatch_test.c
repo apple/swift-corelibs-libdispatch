@@ -34,7 +34,7 @@
 #define HAS_SYS_EVENT_H 1
 #include <sys/event.h>
 #else
-#include <sys/poll.h>
+#include <poll.h>
 #endif
 #elif defined(_WIN32)
 #include <Windows.h>

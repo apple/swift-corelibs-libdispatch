@@ -37,7 +37,7 @@ const char *getprogname(void);
 static inline char *
 getprogname(void)
 {
-# if HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME
+# if HAVE_DECL_PROGRAM_INVOCATION_SHORT_NAME || defined(__linux__)
 	return program_invocation_short_name;
 # elif defined(__ANDROID__)
 	return __progname;
