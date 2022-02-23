@@ -24,6 +24,9 @@
 // NOTE: this file must not contain any atomic operations
 
 #include "internal.h"
+#if __linux__
+#include <linux/limits.h> // for PATH_MAX
+#endif
 
 #if HAVE_MACH
 #include "protocolServer.h"
