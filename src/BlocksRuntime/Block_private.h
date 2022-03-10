@@ -11,7 +11,18 @@
 #ifndef _BLOCK_PRIVATE_H_
 #define _BLOCK_PRIVATE_H_
 
+#ifndef __STDC_VERSION__
+#define __STDC_VERSION__ 0
+#endif
+#if defined(_MSC_VER) || (__STDC_VERSION__ < 199901L)
+/* `MSVC' and `Before c99' doesn't have <stdbool.h>. Compensate. */
+typedef char bool;
+#define true (bool) 1
+#define false (bool) 0
+#else
 #include <stdbool.h>
+#endif
+
 #include <stdint.h>
 #include <stdio.h>
 
@@ -59,7 +70,7 @@ struct Block_descriptor_3 {
 struct Block_layout {
     void *isa;
     volatile int32_t flags; // contains ref count
-    int32_t reserved; 
+    int32_t reserved;
     void (*invoke)(void *, ...);
     struct Block_descriptor_1 *descriptor;
     // imported variables
@@ -109,11 +120,11 @@ struct Block_byref_3 {
 // Values for Block_descriptor_3->layout with BLOCK_HAS_EXTENDED_LAYOUT
 // and for Block_byref_3->layout with BLOCK_BYREF_LAYOUT_EXTENDED
 
-// If the layout field is less than 0x1000, then it is a compact encoding 
-// of the form 0xXYZ: X strong pointers, then Y byref pointers, 
+// If the layout field is less than 0x1000, then it is a compact encoding
+// of the form 0xXYZ: X strong pointers, then Y byref pointers,
 // then Z weak pointers.
 
-// If the layout field is 0x1000 or greater, it points to a 
+// If the layout field is 0x1000 or greater, it points to a
 // string of layout bytes. Each byte is of the form 0xPN.
 // Operator P is from the list below. Value N is a parameter for the operator.
 // Byte 0x00 terminates the layout; remaining block data is non-pointer bytes.
@@ -151,7 +162,7 @@ enum {
 };
 
 enum {
-    BLOCK_ALL_COPY_DISPOSE_FLAGS = 
+    BLOCK_ALL_COPY_DISPOSE_FLAGS =
         BLOCK_FIELD_IS_OBJECT | BLOCK_FIELD_IS_BLOCK | BLOCK_FIELD_IS_BYREF |
         BLOCK_FIELD_IS_WEAK | BLOCK_BYREF_CALLER
 };
