@@ -40,8 +40,12 @@ public class DispatchWorkItem {
 	internal var _block: _DispatchBlock
 
 	public init(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], block: @escaping @convention(block) () -> ()) {
-#if os(Windows) && (arch(arm64) || arch(x86_64))
+#if os(Windows)
+#if arch(arm64) || arch(x86_64)
 		let flags = dispatch_block_flags_t(UInt32(flags.rawValue))
+#else
+		let flags = dispatch_block_flags_t(UInt(flags.rawValue))
+#endif
 #else
 		let flags: dispatch_block_flags_t = numericCast(flags.rawValue)
 #endif
@@ -52,8 +56,12 @@ public class DispatchWorkItem {
 	// Used by DispatchQueue.synchronously<T> to provide a path through
 	// dispatch_block_t, as we know the lifetime of the block in question.
 	internal init(flags: DispatchWorkItemFlags = [], noescapeBlock: () -> ()) {
-#if os(Windows) && (arch(arm64) || arch(x86_64))
+#if os(Windows)
+#if arch(arm64) || arch(x86_64)
 		let flags = dispatch_block_flags_t(UInt32(flags.rawValue))
+#else
+		let flags = dispatch_block_flags_t(UInt(flags.rawValue))
+#endif
 #else
 		let flags: dispatch_block_flags_t = numericCast(flags.rawValue)
 #endif
