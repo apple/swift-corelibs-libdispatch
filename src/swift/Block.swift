@@ -40,15 +40,7 @@ public class DispatchWorkItem {
 	internal var _block: _DispatchBlock
 
 	public init(qos: DispatchQoS = .unspecified, flags: DispatchWorkItemFlags = [], block: @escaping @convention(block) () -> ()) {
-#if os(Windows)
-#if arch(arm64) || arch(x86_64)
-		let flags = dispatch_block_flags_t(UInt32(flags.rawValue))
-#else
-		let flags = dispatch_block_flags_t(UInt(flags.rawValue))
-#endif
-#else
-		let flags: dispatch_block_flags_t = numericCast(flags.rawValue)
-#endif
+		let flags: dispatch_block_flags_t = dispatch_block_flags_t(CUnsignedLong(flags.rawValue))
 		_block =  dispatch_block_create_with_qos_class(flags,
 			qos.qosClass.rawValue.rawValue, Int32(qos.relativePriority), block)
 	}
@@ -56,15 +48,7 @@ public class DispatchWorkItem {
 	// Used by DispatchQueue.synchronously<T> to provide a path through
 	// dispatch_block_t, as we know the lifetime of the block in question.
 	internal init(flags: DispatchWorkItemFlags = [], noescapeBlock: () -> ()) {
-#if os(Windows)
-#if arch(arm64) || arch(x86_64)
-		let flags = dispatch_block_flags_t(UInt32(flags.rawValue))
-#else
-		let flags = dispatch_block_flags_t(UInt(flags.rawValue))
-#endif
-#else
-		let flags: dispatch_block_flags_t = numericCast(flags.rawValue)
-#endif
+		let flags: dispatch_block_flags_t = dispatch_block_flags_t(CUnsignedLong(flags.rawValue))
 		_block = _swift_dispatch_block_create_noescape(flags, noescapeBlock)
 	}
 
