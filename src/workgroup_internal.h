@@ -40,6 +40,8 @@ void _os_workgroup_debug(os_workgroup_t wg, char *buf, size_t size);
 
 #if !USE_OBJC
 void _os_workgroup_explicit_xref_dispose(os_workgroup_t wg);
+void _os_workgroup_explicit_dispose(os_workgroup_t wg);
+
 void _os_workgroup_interval_explicit_xref_dispose(os_workgroup_interval_t wgi);
 void _os_workgroup_interval_explicit_dispose(os_workgroup_interval_t wgi);
 #endif

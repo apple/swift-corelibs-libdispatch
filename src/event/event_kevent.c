@@ -959,7 +959,7 @@ void
 _dispatch_sync_ipc_handoff_begin(dispatch_wlh_t wlh, mach_port_t port,
 		uint64_t _Atomic *addr)
 {
-#if DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+#if DISPATCH_USE_KEVENT_WORKLOOP
 	dispatch_kevent_s ke = {
 		.ident  = port,
 		.filter = EVFILT_WORKLOOP,
@@ -976,13 +976,13 @@ _dispatch_sync_ipc_handoff_begin(dispatch_wlh_t wlh, mach_port_t port,
 	}
 #else
 	(void)wlh; (void)port; (void)addr;
-#endif // DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 }
 
 void
 _dispatch_sync_ipc_handoff_end(dispatch_wlh_t wlh, mach_port_t port)
 {
-#if DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+#if DISPATCH_USE_KEVENT_WORKLOOP
 	dispatch_kevent_s ke = {
 		.ident  = port,
 		.filter = EVFILT_WORKLOOP,
@@ -993,7 +993,7 @@ _dispatch_sync_ipc_handoff_end(dispatch_wlh_t wlh, mach_port_t port)
 	_dispatch_kq_deferred_update(wlh, &ke);
 #else
 	(void)wlh; (void)port;
-#endif // DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 }
 #endif
 
@@ -1651,12 +1651,12 @@ _dispatch_kevent_workloop_poke_drain(dispatch_kevent_t ke)
 	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
 	dispatch_wlh_t wlh = (dispatch_wlh_t)ke->udata;
 
-#if DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+#if DISPATCH_USE_KEVENT_WORKLOOP
 	if (ke->fflags & NOTE_WL_SYNC_IPC) {
 		dispatch_assert((ke->flags & EV_ERROR) && ke->data == ENOENT);
 		return _dispatch_kevent_wlh_debug("ignoring", ke);
 	}
-#endif // DISPATCH_USE_WL_SYNC_IPC_HANDOFF
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 
 	dispatch_assert(ke->fflags & NOTE_WL_THREAD_REQUEST);
 	if (ke->flags & EV_ERROR) {

@@ -102,18 +102,11 @@ void DISPATCH_TSD_DTOR_CC _voucher_thread_cleanup(void *voucher);
 mach_voucher_t _voucher_get_mach_voucher(voucher_t voucher);
 voucher_t _voucher_create_without_importance(voucher_t voucher);
 voucher_t _voucher_create_accounting_voucher(voucher_t voucher);
-mach_voucher_t _voucher_create_mach_voucher_with_priority(voucher_t voucher,
-		pthread_priority_t priority);
-voucher_t _voucher_create_with_priority_and_mach_voucher(voucher_t voucher,
-		pthread_priority_t priority, mach_voucher_t kv);
 void _voucher_dealloc_mach_voucher(mach_voucher_t kv);
 
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
 _OS_OBJECT_DECL_SUBCLASS_INTERFACE(voucher_recipe, object)
 #endif
-
-voucher_t voucher_retain(voucher_t voucher);
-void voucher_release(voucher_t voucher);
 
 #define VOUCHER_NO_MACH_VOUCHER MACH_PORT_DEAD
 
@@ -144,8 +137,7 @@ typedef struct _voucher_mach_udata_s {
 OS_ENUM(voucher_fields, uint16_t,
 	VOUCHER_FIELD_NONE		= 0,
 	VOUCHER_FIELD_KVOUCHER	= 1u << 0,
-	VOUCHER_FIELD_PRIORITY	= 1u << 1,
-	VOUCHER_FIELD_ACTIVITY	= 1u << 2,
+	VOUCHER_FIELD_ACTIVITY	= 1u << 1,
 
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
 	VOUCHER_FIELD_EXTRA		= 1u << 15,
@@ -168,7 +160,6 @@ typedef struct voucher_s {
 	firehose_activity_id_t v_activity;
 	uint64_t v_activity_creator;
 	firehose_activity_id_t v_parent_activity;
-	_voucher_priority_t v_priority;
 	unsigned int v_kv_has_importance:1;
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
 	size_t v_recipe_extra_offset;
@@ -434,13 +425,6 @@ _voucher_clear(void)
 }
 
 DISPATCH_ALWAYS_INLINE
-static inline pthread_priority_t
-_voucher_get_priority(voucher_t v)
-{
-	return v ? (pthread_priority_t)v->v_priority : 0;
-}
-
-DISPATCH_ALWAYS_INLINE
 static inline firehose_activity_id_t
 _voucher_get_activity_id(voucher_t v, uint64_t *creator_pid)
 {
@@ -697,14 +681,6 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _voucher_clear(void)
 {
-}
-
-DISPATCH_ALWAYS_INLINE
-static inline pthread_priority_t
-_voucher_get_priority(voucher_t voucher)
-{
-	(void)voucher;
-	return 0;
 }
 
 DISPATCH_ALWAYS_INLINE

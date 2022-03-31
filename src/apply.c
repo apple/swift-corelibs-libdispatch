@@ -616,16 +616,23 @@ dispatch_apply_with_attr_f(size_t iterations, dispatch_apply_attr_t attr, void *
 void
 dispatch_apply(size_t iterations, dispatch_queue_t dq, void (^work)(size_t))
 {
+	// We need to do Block_copy here since any __block variables in work need to
+	// be copied over to the heap in a single threaded context. See
+	// rdar://77167979
+	work = _dispatch_Block_copy(work);
 	dispatch_apply_f(iterations, dq, work,
 			(dispatch_apply_function_t)_dispatch_Block_invoke(work));
+	Block_release(work);
 }
 
 void
 dispatch_apply_with_attr(size_t iterations, dispatch_apply_attr_t attr,
 	void (^work)(size_t iteration, size_t worker_index))
 {
+	work = _dispatch_Block_copy(work);
 	dispatch_apply_with_attr_f(iterations, attr, work,
 			(dispatch_apply_attr_function_t)_dispatch_Block_invoke(work));
+	Block_release(work);
 }
 #endif
 

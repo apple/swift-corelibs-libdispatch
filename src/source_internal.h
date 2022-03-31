@@ -69,6 +69,7 @@ struct dispatch_channel_s {
 dispatch_assert_valid_lane_type(dispatch_channel_s);
 dispatch_static_assert(sizeof(struct dispatch_channel_s) <= 128);
 
+bool _dispatch_source_is_timer(dispatch_source_t ds);
 void _dispatch_source_xref_dispose(dispatch_source_t ds);
 void _dispatch_source_dispose(dispatch_source_t ds, bool *allow_free);
 void _dispatch_source_activate(dispatch_source_t ds);

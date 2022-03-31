@@ -27,7 +27,7 @@ OS_OBJECT_CLASS_DECL(os_eventlink);
 #if !USE_OBJC
 OS_OBJECT_VTABLE_INSTANCE(os_eventlink,
 		(void (*)(_os_object_t))_os_eventlink_xref_dispose,
-		(void (*)(_os_object_t))_os_eventlink_dispose);
+		(void (*)(_os_object_t))_os_eventlink_explicit_dispose);
 #endif // USE_OBJC
 #define EVENTLINK_CLASS OS_OBJECT_VTABLE(os_eventlink)
 
@@ -55,6 +55,12 @@ _os_eventlink_dispose(os_eventlink_t ev) {
 	if (MACH_PORT_VALID(ev->ev_remote_port)) {
 		mach_port_deallocate(mach_task_self(), ev->ev_remote_port);
 	}
+}
+
+void
+_os_eventlink_explicit_dispose(os_eventlink_t ev) {
+	_os_eventlink_dispose(ev);
+	free(ev);
 }
 
 static inline os_eventlink_t

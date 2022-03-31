@@ -795,22 +795,6 @@ _dispatch_fork_becomes_unsafe(void)
 #endif
 #endif // !defined(DISPATCH_USE_KEVENT_WORKLOOP)
 
-#ifndef DISPATCH_USE_WL_SYNC_IPC_HANDOFF
-#if DISPATCH_USE_KEVENT_WORKLOOP && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(109900)
-#define DISPATCH_USE_WL_SYNC_IPC_HANDOFF 1
-#else
-#define DISPATCH_USE_WL_SYNC_IPC_HANDOFF 0
-#endif
-#endif // !defined DISPATCH_USE_WL_SYNC_IPC_HANDOFF
-
-#ifndef DISPATCH_USE_KEVENT_SETUP
-#if DISPATCH_USE_KEVENT_WORKLOOP && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(109900)
-#define DISPATCH_USE_KEVENT_SETUP 1
-#else
-#define DISPATCH_USE_KEVENT_SETUP 0
-#endif
-#endif // !defined(DISPATCH_USE_KEVENT_SETUP)
-
 #ifdef EVFILT_MEMORYSTATUS
 #ifndef DISPATCH_USE_MEMORYSTATUS
 #define DISPATCH_USE_MEMORYSTATUS 1
@@ -833,12 +817,6 @@ extern int malloc_engaged_nano(void);
 #endif // __has_include(<malloc_private.h)
 #if DISPATCH_USE_MEMORYPRESSURE_SOURCE
 extern bool _dispatch_memory_warn;
-#endif
-
-#if defined(MACH_MSG_QOS_LAST) && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101600)
-#define DISPATCH_USE_MACH_MSG_PRIORITY_COMBINED 1
-#else
-#define DISPATCH_USE_MACH_MSG_PRIORITY_COMBINED 0
 #endif
 
 #if defined(F_SETNOSIGPIPE) && defined(F_GETNOSIGPIPE)
@@ -1052,7 +1030,7 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 #endif
 
 #ifndef OS_EVENTLINK_USE_MACH_EVENTLINK
-#if DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101600) && __has_include(<mach/mach_eventlink.h>)
+#if __has_include(<mach/mach_eventlink.h>)
 #define OS_EVENTLINK_USE_MACH_EVENTLINK 1
 #else
 #define OS_EVENTLINK_USE_MACH_EVENTLINK 0

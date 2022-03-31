@@ -1039,34 +1039,19 @@ _dispatch_mach_msg_not_sent(dispatch_mach_t dm, dispatch_object_t dou,
 }
 
 DISPATCH_ALWAYS_INLINE
-static inline bool
-_dispatch_mach_send_priority_in_voucher(void)
-{
-	return DISPATCH_USE_MACH_MSG_PRIORITY_COMBINED;
-}
-
-DISPATCH_ALWAYS_INLINE
 static inline mach_msg_priority_t
 _dispatch_mach_send_priority(dispatch_mach_msg_t dmsg,
 		dispatch_qos_t qos_ovr, mach_msg_option_t *opts)
 {
 	qos_ovr = _dispatch_qos_propagate(qos_ovr);
 	if (qos_ovr) {
-#if DISPATCH_USE_MACH_MSG_PRIORITY_COMBINED
-		if (!_dispatch_mach_send_priority_in_voucher()) {
-			mach_msg_qos_t qos;
-			int relpri;
+		mach_msg_qos_t qos;
+		int relpri;
 
-			qos = (mach_msg_qos_t)_dispatch_qos_from_pp(dmsg->dmsg_priority);
-			relpri = _pthread_priority_relpri(dmsg->dmsg_priority);
-			*opts |= MACH_SEND_OVERRIDE;
-			return mach_msg_priority_encode((mach_msg_qos_t)qos_ovr, qos, relpri);
-		}
-#else
-		(void)dmsg;
-#endif
+		qos = (mach_msg_qos_t)_dispatch_qos_from_pp(dmsg->dmsg_priority);
+		relpri = _pthread_priority_relpri(dmsg->dmsg_priority);
 		*opts |= MACH_SEND_OVERRIDE;
-		return (mach_msg_priority_t)_dispatch_qos_to_pp(qos_ovr);
+		return mach_msg_priority_encode((mach_msg_qos_t)qos_ovr, qos, relpri);
 	}
 	return MACH_MSG_PRIORITY_UNSPECIFIED;
 }
@@ -1081,9 +1066,8 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 	dispatch_mach_msg_t dmsg = dou._dmsg, dmsgr = NULL;
 	voucher_t voucher = dmsg->dmsg_voucher;
 	dispatch_queue_t drq = NULL;
-	mach_voucher_t ipc_kvoucher = MACH_VOUCHER_NULL;
 	uint32_t send_status = 0;
-	bool clear_voucher = false, kvoucher_move_send = false;
+	bool clear_voucher = false;
 	mach_msg_header_t *msg = _dispatch_mach_msg_get_msg(dmsg);
 	bool is_reply = (MACH_MSGH_BITS_REMOTE(msg->msgh_bits) ==
 			MACH_MSG_TYPE_MOVE_SEND_ONCE);
@@ -1140,19 +1124,8 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 				opts |= MACH_SEND_NOTIFY;
 			}
 			opts |= MACH_SEND_TIMEOUT;
-			if (_dispatch_mach_send_priority_in_voucher() &&
-					dmsg->dmsg_priority != _voucher_get_priority(voucher)) {
-				ipc_kvoucher = _voucher_create_mach_voucher_with_priority(
-						voucher, dmsg->dmsg_priority);
-			}
 			_dispatch_voucher_debug("mach-msg[%p] msg_set", voucher, dmsg);
-			if (_dispatch_mach_send_priority_in_voucher() && ipc_kvoucher) {
-				kvoucher_move_send = true;
-				clear_voucher = _voucher_mach_msg_set_mach_voucher(msg,
-						ipc_kvoucher, kvoucher_move_send);
-			} else {
-				clear_voucher = _voucher_mach_msg_set(msg, voucher);
-			}
+			clear_voucher = _voucher_mach_msg_set(msg, voucher);
 			msg_priority = _dispatch_mach_send_priority(dmsg, qos, &opts);
 			if (reply_port && dm->dm_strict_reply) {
 				opts |= MACH_MSG_STRICT_REPLY;
@@ -1184,8 +1157,7 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 				DISPATCH_CLIENT_CRASH(kr, "Voucher port corruption");
 			}
 			mach_voucher_t kv;
-			kv = _voucher_mach_msg_clear(msg, kvoucher_move_send);
-			if (kvoucher_move_send) ipc_kvoucher = kv;
+			kv = _voucher_mach_msg_clear(msg, false);
 		}
 	}
 	if (kr == MACH_SEND_TIMED_OUT && (opts & MACH_SEND_TIMEOUT)) {
@@ -1213,19 +1185,7 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 			// send kevent must be installed on the manager queue
 			dm->dm_needs_mgr = true;
 		}
-		if (_dispatch_mach_send_priority_in_voucher() && ipc_kvoucher) {
-			_dispatch_kvoucher_debug("reuse on re-send", ipc_kvoucher);
-			voucher_t ipc_voucher;
-			ipc_voucher = _voucher_create_with_priority_and_mach_voucher(
-					voucher, dmsg->dmsg_priority, ipc_kvoucher);
-			_dispatch_voucher_debug("mach-msg[%p] replace voucher[%p]",
-					ipc_voucher, dmsg, voucher);
-			if (dmsg->dmsg_voucher) _voucher_release(dmsg->dmsg_voucher);
-			dmsg->dmsg_voucher = ipc_voucher;
-		}
 		goto out;
-	} else if (ipc_kvoucher && (kr || !kvoucher_move_send)) {
-		_voucher_dealloc_mach_voucher(ipc_kvoucher);
 	}
 	dispatch_mach_recv_refs_t dmrr = dm->dm_recv_refs;
 	if (!(msg_opts & DISPATCH_MACH_WAIT_FOR_REPLY) && !kr && reply_port &&

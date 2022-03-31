@@ -99,9 +99,6 @@ _voucher_clone(const voucher_t ov, voucher_fields_t ignore_fields)
 			v->v_kvoucher = kvb->v_kvoucher;
 			v->v_kv_has_importance = kvb->v_kv_has_importance;
 		}
-		if (fields & VOUCHER_FIELD_PRIORITY) {
-			v->v_priority = ov->v_priority;
-		}
 		if (fields & VOUCHER_FIELD_ACTIVITY) {
 			v->v_activity = ov->v_activity;
 			v->v_activity_creator = ov->v_activity_creator;
@@ -354,14 +351,10 @@ voucher_replace_default_voucher(void)
 DISPATCH_ALWAYS_INLINE
 static inline mach_voucher_attr_recipe_size_t
 _voucher_mach_recipe_init(mach_voucher_attr_recipe_t mvar_buf, voucher_s *v,
-		mach_voucher_t kvb, pthread_priority_t pp)
+		mach_voucher_t kvb)
 {
 	mach_voucher_attr_recipe_size_t extra = _voucher_extra_size(v);
 	mach_voucher_attr_recipe_size_t size = 0;
-
-	// normalize to just the QoS class and 0 relative priority
-	pp &= _PTHREAD_PRIORITY_QOS_CLASS_MASK;
-	if (pp) pp |= _PTHREAD_PRIORITY_PRIORITY_MASK;
 
 	*mvar_buf++ = (mach_voucher_attr_recipe_data_t){
 		.key = MACH_VOUCHER_ATTR_KEY_ALL,
@@ -370,18 +363,7 @@ _voucher_mach_recipe_init(mach_voucher_attr_recipe_t mvar_buf, voucher_s *v,
 	};
 	size += _voucher_mach_recipe_size(0);
 
-	if (pp) {
-		ipc_pthread_priority_value_t value = (ipc_pthread_priority_value_t)pp;
-		*mvar_buf++ = (mach_voucher_attr_recipe_data_t){
-			.key = MACH_VOUCHER_ATTR_KEY_PTHPRIORITY,
-			.command = MACH_VOUCHER_ATTR_PTHPRIORITY_CREATE,
-			.content_size = sizeof(value),
-		};
-		mvar_buf = _dispatch_memappend(mvar_buf, &value);
-		size += _voucher_mach_recipe_size(sizeof(value));
-	}
-
-	if ((v && v->v_activity) || pp) {
+	if (v && v->v_activity) {
 		_voucher_mach_udata_s *udata_buf;
 		unsigned udata_size = 0;
 
@@ -397,20 +379,12 @@ _voucher_mach_recipe_init(mach_voucher_attr_recipe_t mvar_buf, voucher_s *v,
 		};
 		udata_buf = (_voucher_mach_udata_s *)(mvar_buf->content);
 
-		if (v && v->v_activity) {
-			*udata_buf = (_voucher_mach_udata_s){
-				.vmu_magic = VOUCHER_MAGIC_V3,
-				.vmu_priority = (_voucher_priority_t)pp,
-				.vmu_activity = v->v_activity,
-				.vmu_activity_pid = v->v_activity_creator,
-				.vmu_parent_activity = v->v_parent_activity,
-			};
-		} else {
-			*udata_buf = (_voucher_mach_udata_s){
-				.vmu_magic = VOUCHER_MAGIC_V3,
-				.vmu_priority = (_voucher_priority_t)pp,
-			};
-		}
+		*udata_buf = (_voucher_mach_udata_s){
+			.vmu_magic = VOUCHER_MAGIC_V3,
+			.vmu_activity = v->v_activity,
+			.vmu_activity_pid = v->v_activity_creator,
+			.vmu_parent_activity = v->v_parent_activity,
+		};
 
 		mvar_buf = (mach_voucher_attr_recipe_t)(mvar_buf->content + udata_size);
 		size += _voucher_mach_recipe_size(udata_size);
@@ -430,8 +404,7 @@ _voucher_get_mach_voucher(voucher_t voucher)
 	if (voucher->v_ipc_kvoucher) return voucher->v_ipc_kvoucher;
 	mach_voucher_t kvb = voucher->v_kvoucher;
 	if (!kvb) kvb = _voucher_get_task_mach_voucher();
-	if (!voucher->v_activity && !voucher->v_priority &&
-			!_voucher_extra_size(voucher)) {
+	if (!voucher->v_activity && !_voucher_extra_size(voucher)) {
 		return kvb;
 	}
 
@@ -440,7 +413,7 @@ _voucher_get_mach_voucher(voucher_t voucher)
 	mach_voucher_t kv, kvo;
 	kern_return_t kr;
 
-	size = _voucher_mach_recipe_init(mvar, voucher, kvb, voucher->v_priority);
+	size = _voucher_mach_recipe_init(mvar, voucher, kvb);
 	kr = _voucher_create_mach_voucher(mvar, size, &kv);
 	if (dispatch_assume_zero(kr) || !kv) {
 		return MACH_VOUCHER_NULL;
@@ -457,30 +430,6 @@ _voucher_get_mach_voucher(voucher_t voucher)
 		_voucher_insert(voucher);
 		_dispatch_voucher_debug("kvoucher[0x%08x] create", voucher, kv);
 	}
-	return kv;
-}
-
-mach_voucher_t
-_voucher_create_mach_voucher_with_priority(voucher_t voucher,
-		pthread_priority_t priority)
-{
-	if (priority == _voucher_get_priority(voucher)) {
-		return MACH_VOUCHER_NULL; // caller will use _voucher_get_mach_voucher
-	}
-	kern_return_t kr;
-	mach_voucher_t kv, kvb = voucher ? voucher->v_kvoucher : MACH_VOUCHER_NULL;
-	if (!kvb) kvb = _voucher_get_task_mach_voucher();
-
-	mach_voucher_attr_recipe_t mvar = _voucher_mach_recipe_alloca(voucher);
-	mach_voucher_attr_recipe_size_t size;
-
-	size = _voucher_mach_recipe_init(mvar, voucher, kvb, priority);
-	kr = _voucher_create_mach_voucher(mvar, size, &kv);
-	if (dispatch_assume_zero(kr) || !kv) {
-		return MACH_VOUCHER_NULL;
-	}
-	_dispatch_kvoucher_debug("create with priority from voucher[%p]", kv,
-			voucher);
 	return kv;
 }
 
@@ -519,11 +468,6 @@ _voucher_create_with_mach_voucher(mach_voucher_t kv, mach_msg_bits_t msgh_bits)
 	v->v_ipc_kvoucher = v->v_kvoucher = kv;
 	v->v_kv_has_importance = !!(msgh_bits & MACH_MSGH_BITS_RAISEIMP);
 
-	if (udata_sz >= offsetof(_voucher_mach_udata_s,_vmu_after_priority)){
-		if (udata->vmu_magic == VOUCHER_MAGIC_V3) {
-			v->v_priority = udata->vmu_priority;
-		}
-	}
 	bool remove_kv_userdata = false;
 	if (udata_sz >= offsetof(_voucher_mach_udata_s, _vmu_after_activity)) {
 #if !RDAR_25050791
@@ -574,39 +518,6 @@ _voucher_create_with_mach_voucher(mach_voucher_t kv, mach_msg_bits_t msgh_bits)
 	_voucher_trace(CREATE, v, v->v_kvoucher, v->v_activity);
 	_voucher_insert(v);
 	_dispatch_voucher_debug("kvoucher[0x%08x] create", v, kv);
-	return v;
-}
-
-voucher_t
-_voucher_create_with_priority_and_mach_voucher(voucher_t ov,
-		pthread_priority_t priority, mach_voucher_t kv)
-{
-	if (priority == _voucher_get_priority(ov)) {
-		if (kv) _voucher_dealloc_mach_voucher(kv);
-		return ov ? _voucher_retain(ov) : NULL;
-	}
-	voucher_t v = _voucher_find_and_retain(kv);
-	voucher_fields_t ignore_fields = VOUCHER_FIELD_PRIORITY;
-
-	if (v) {
-		_dispatch_voucher_debug("kvoucher[0x%08x] find", v, kv);
-		_voucher_dealloc_mach_voucher(kv);
-		return v;
-	}
-
-	if (kv) ignore_fields |= VOUCHER_FIELD_KVOUCHER;
-	v = _voucher_clone(ov, ignore_fields);
-	if (priority) {
-		v->v_priority = (_voucher_priority_t)priority;
-	}
-	if (kv) {
-		v->v_ipc_kvoucher = v->v_kvoucher = kv;
-		_voucher_insert(v);
-		_dispatch_voucher_debug("kvoucher[0x%08x] create with priority from "
-				"voucher[%p]", v, kv, ov);
-		_dispatch_voucher_debug_machport(kv);
-	}
-	_voucher_trace(CREATE, v, v->v_kvoucher, v->v_activity);
 	return v;
 }
 
@@ -790,7 +701,6 @@ _voucher_dispose(voucher_t voucher)
 	voucher->v_activity = 0;
 	voucher->v_activity_creator = 0;
 	voucher->v_parent_activity = 0;
-	voucher->v_priority = 0;
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
 	voucher->v_recipe_extra_size = 0;
 	voucher->v_recipe_extra_offset = 0;
@@ -1024,7 +934,7 @@ mach_voucher_persona_for_originator(uid_t persona_id,
 	_dispatch_memappend(bank_modify_recipe[1].content, &modify_info);
 	kr = _voucher_create_mach_voucher(bank_modify_recipe,
 			bank_modify_recipe_size, &bkv);
-	if (dispatch_assume_zero(kr)) {
+	if (kr) {
 		bkv = MACH_VOUCHER_NULL;
 	}
 #else // VOUCHER_USE_PERSONA
@@ -1685,9 +1595,6 @@ _voucher_debug(voucher_t v, char *buf, size_t bufsiz)
 				buf, bufsiz, offset, VOUCHER_DETAIL_PREFIX, MAX_HEX_DATA_SIZE);
 		bufprintf("]");
 	}
-	if (v->v_priority) {
-		bufprintf(", QOS 0x%x", v->v_priority);
-	}
 	if (v->v_activity) {
 		bufprintf(", activity 0x%llx (pid: 0x%16llx, parent 0x%llx)",
 				v->v_activity, v->v_activity_creator, v->v_parent_activity);
@@ -1886,22 +1793,6 @@ _voucher_get_mach_voucher(voucher_t voucher)
 {
 	(void)voucher;
 	return MACH_VOUCHER_NULL;
-}
-
-mach_voucher_t
-_voucher_create_mach_voucher_with_priority(voucher_t voucher,
-		pthread_priority_t priority)
-{
-	(void)voucher; (void)priority;
-	return MACH_VOUCHER_NULL;
-}
-
-voucher_t
-_voucher_create_with_priority_and_mach_voucher(voucher_t voucher,
-		pthread_priority_t priority, mach_voucher_t kv)
-{
-	(void)voucher; (void)priority; (void)kv;
-	return NULL;
 }
 
 voucher_t

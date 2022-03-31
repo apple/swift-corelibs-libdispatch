@@ -138,7 +138,7 @@ dispatch_time(dispatch_time_t inval, int64_t delta)
 }
 
 bool
-dispatch_time_to_nsecs(dispatch_time_t time,
+dispatch_time_to_nsec(dispatch_time_t time,
 		dispatch_clockid_t *clock_out, uint64_t *nsecs_out)
 {
 	dispatch_clock_t clock;
@@ -166,6 +166,29 @@ dispatch_time_to_nsecs(dispatch_time_t time,
 	*clock_out = 0;
 	*nsecs_out = UINT64_MAX;
 	return false;
+}
+
+dispatch_time_t
+dispatch_time_from_nsec(dispatch_clockid_t clock, uint64_t deadline)
+{
+	// We can't easily make sense of whether deadline 0 is DISPATCH_TIME_NOW or
+	// DISPATCH_TIME_FOREVER. dispatch_time() uses underflow/overflow logic to
+	// differentiate but we don't have that information available so we always
+	// reject values of 0 or  1 and round them up to 2.
+	if (deadline < 2) {
+		deadline = 2;
+	}
+
+	uint64_t value = _dispatch_time_nano2mach((uint64_t)deadline);
+
+	switch (clock) {
+	case DISPATCH_CLOCKID_WALLTIME:
+		return _dispatch_clock_and_value_to_time(DISPATCH_CLOCK_WALL, deadline);
+	case DISPATCH_CLOCKID_MONOTONIC:
+		return _dispatch_clock_and_value_to_time(DISPATCH_CLOCK_MONOTONIC, value);
+	case DISPATCH_CLOCKID_UPTIME:
+		return _dispatch_clock_and_value_to_time(DISPATCH_CLOCK_UPTIME, value);
+	}
 }
 
 dispatch_time_t

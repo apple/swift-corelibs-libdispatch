@@ -86,7 +86,7 @@ enum {
 #endif // __APPLE__
 
 /*!
- * @function dispatch_time_to_nsecs
+ * @function dispatch_time_to_nsec
  *
  * @abstract
  * Returns the clock and nanoseconds of a given dispatch_time_t.
@@ -110,11 +110,38 @@ enum {
  * Returns false if the dispatch_time_t value was invalid,
  * or DISPATCH_TIME_FOREVER.
  */
-API_AVAILABLE(macos(10.16), ios(14.0), tvos(14.0), watchos(7.0))
+SPI_AVAILABLE(macos(10.16), ios(14.0), tvos(14.0), watchos(7.0))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 bool
-dispatch_time_to_nsecs(dispatch_time_t time,
+dispatch_time_to_nsec(dispatch_time_t time,
 		dispatch_clockid_t *clock, uint64_t *nsecs);
+
+
+/*!
+ * @function dispatch_time_from_nsec
+ *
+ * @abstract
+ * Returns a dispatch_time_t given a clock and an absolute deadline in
+ * nanoseconds. This is the opposite of dispatch_time_to_nsec.
+ *
+ * @discussion
+ * This interface allows to encode dispatch_time_t when given an absolute
+ * deadline and a clock.
+ *
+ * @param clock
+ * A clockid for this time.
+ *
+ * @param deadline
+ * Number of nanoseconds denoting the absolute deadline in time starting from to
+ * the epoch of the clock ID
+ *
+ * @result
+ * The dispatch_time_t encoding of the deadline in the clock id given.
+ */
+SPI_AVAILABLE(macos(12.3), ios(15.4), tvos(15.4), watchos(8.4))
+DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+dispatch_time_t
+dispatch_time_from_nsec(dispatch_clockid_t clock, uint64_t deadline);
 
 __END_DECLS
 

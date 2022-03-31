@@ -154,6 +154,7 @@ OS_VOUCHER_EXPORT OS_OBJECT_RETURNS_RETAINED OS_WARN_RESULT OS_NOTHROW
 voucher_t _Nullable
 voucher_copy(void);
 
+
 /*!
  * @function voucher_copy_without_importance
  *
@@ -672,6 +673,24 @@ mach_voucher_persona_for_originator(uid_t persona_id,
 	uint64_t originator_unique_pid, mach_voucher_t *persona_mach_voucher);
 
 #endif // __has_include(<mach/mach.h>)
+
+/*!
+ * @function voucher_retain, voucher_release
+ *
+ * @discussion
+ * Functions to retain and release a voucher reference. This should only be
+ * used by the Swift concurrency runtime. All other clients should use
+ * os_retain/os_release to manipulate the lifetime of vouchers
+ */
+SPI_AVAILABLE(macos(12.4), ios(15.4))
+OS_VOUCHER_EXPORT OS_SWIFT_UNAVAILABLE("Can't be used with ARC")
+void
+voucher_release(voucher_t voucher);
+
+SPI_AVAILABLE(macos(12.4), ios(15.4))
+OS_VOUCHER_EXPORT OS_SWIFT_UNAVAILABLE("Can't be used with ARC")
+voucher_t
+voucher_retain(voucher_t voucher);
 
 __END_DECLS
 

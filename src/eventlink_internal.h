@@ -63,5 +63,6 @@ _os_eventlink_is_cancelled(uint64_t ev_state)
 
 void _os_eventlink_xref_dispose(os_eventlink_t ev);
 void _os_eventlink_dispose(os_eventlink_t ev);
+void _os_eventlink_explicit_dispose(os_eventlink_t ev);
 
 #endif /* __OS_EVENTLINK_INTERNAL */

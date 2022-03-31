@@ -32,7 +32,7 @@ OS_OBJECT_CLASS_DECL(os_workgroup);
 #if !USE_OBJC
 OS_OBJECT_VTABLE_INSTANCE(os_workgroup,
 		(void (*)(_os_object_t))_os_workgroup_explicit_xref_dispose,
-		(void (*)(_os_object_t))_os_workgroup_dispose);
+		(void (*)(_os_object_t))_os_workgroup_explicit_dispose);
 #endif // !USE_OBJC
 #define WORKGROUP_CLASS OS_OBJECT_VTABLE(os_workgroup)
 
@@ -48,7 +48,7 @@ OS_OBJECT_CLASS_DECL(os_workgroup_parallel);
 #if !USE_OBJC
 OS_OBJECT_VTABLE_INSTANCE(os_workgroup_parallel,
 		(void (*)(_os_object_t))_os_workgroup_explicit_xref_dispose,
-		(void (*)(_os_object_t))_os_workgroup_dispose);
+		(void (*)(_os_object_t))_os_workgroup_explicit_dispose);
 #endif // USE_OBJC
 #define WORKGROUP_PARALLEL_CLASS OS_OBJECT_VTABLE(os_workgroup_parallel)
 
@@ -140,6 +140,15 @@ _os_workgroup_is_configurable(uint64_t wg_state)
 	return (wg_state & OS_WORKGROUP_OWNER) == OS_WORKGROUP_OWNER;
 }
 
+#if !USE_OBJC
+void
+_os_workgroup_explicit_dispose(os_workgroup_t wg)
+{
+	_os_workgroup_dispose(wg);
+	free(wg);
+}
+#endif
+
 void
 _os_workgroup_dispose(os_workgroup_t wg)
 {
@@ -176,7 +185,7 @@ void
 _os_workgroup_interval_explicit_dispose(os_workgroup_interval_t wgi)
 {
 	_os_workgroup_interval_dispose(wgi);
-	_os_workgroup_dispose(wgi->_as_wg);
+	_os_workgroup_explicit_dispose(wgi->_as_wg);
 }
 #endif
 

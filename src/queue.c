@@ -168,6 +168,18 @@ _dispatch_set_priority_and_mach_voucher_slow(pthread_priority_t pp,
 		pflags |= _PTHREAD_SET_SELF_VOUCHER_FLAG;
 #endif
 	}
+
+#if DISPATCH_USE_KEVENT_WORKQUEUE
+	dispatch_deferred_items_t ddi = _dispatch_deferred_items_get();
+	if (ddi && ddi->ddi_wlh_needs_update) {
+		/* If we have deferred creation of TR for the current thread, make sure
+		 * to do that first before we do anything to adjust our priority.
+		 * rdar://86110240
+		 */
+		_dispatch_event_loop_drain(KEVENT_FLAG_IMMEDIATE);
+	}
+#endif
+
 	if (!pflags) return;
 	int r = _pthread_set_properties_self(pflags, pp, kv);
 	if (r == EINVAL) {
@@ -2471,11 +2483,6 @@ static void
 _dispatch_lane_inherit_wlh_from_target(dispatch_lane_t dq, dispatch_queue_t tq)
 {
 	uint64_t old_state, new_state, role;
-
-	/* TODO (rokhinip): We're going to have to change this in the future when we
-	 * allow targetting queues to a cooperative pool and need to figure out what
-	 * kind of a role that gives the queue */
-	dispatch_assert(!_dispatch_queue_is_cooperative(tq));
 
 	if (!dx_hastypeflag(tq, QUEUE_ROOT)) {
 		role = DISPATCH_QUEUE_ROLE_INNER;
@@ -5362,13 +5369,11 @@ void
 _dispatch_lane_concurrent_push(dispatch_lane_t dq, dispatch_object_t dou,
 		dispatch_qos_t qos)
 {
-	if (unlikely(_dispatch_queue_is_cooperative(dq))) {
-		/* If we're here, means that we're in the simulator fallback case. We
-		 * still restrict what can target the cooperative thread pool */
-		if (_dispatch_object_has_vtable(dou) &&
-				dx_type(dou._do) != DISPATCH_SWIFT_JOB_TYPE) {
-			DISPATCH_CLIENT_CRASH(dou._do, "Cannot target the cooperative global queue - not implemented");
-		}
+	/* Simulator fallback path for cooperative queue */
+	if (unlikely(_dispatch_queue_is_cooperative(dq) &&
+			!_dispatch_object_supported_on_cooperative_queue(dou))) {
+		DISPATCH_CLIENT_CRASH(dou._do,
+			"Cannot target the cooperative root queue - not implemented");
 	}
 
 	// <rdar://problem/24738102&24743140> reserving non barrier width
@@ -7107,13 +7112,10 @@ _dispatch_root_queue_push(dispatch_queue_global_t rq, dispatch_object_t dou,
 	}
 #endif
 
-	if (_dispatch_queue_is_cooperative(rq)) {
-		/* We only allow enqueueing of continuations or swift job objects on the
-		 * cooperative pool, no other objects */
-		if (_dispatch_object_has_vtable(dou) &&
-				dx_type(dou._do) != DISPATCH_SWIFT_JOB_TYPE) {
-			DISPATCH_CLIENT_CRASH(dou._do, "Cannot target the cooperative global queue - not implemented");
-		}
+	if (unlikely(_dispatch_queue_is_cooperative(rq) &&
+			!_dispatch_object_supported_on_cooperative_queue(dou))) {
+		DISPATCH_CLIENT_CRASH(dou._do,
+			"Cannot target the cooperative root queue - not implemented");
 	}
 
 #if HAVE_PTHREAD_WORKQUEUE_QOS
@@ -7825,6 +7827,15 @@ dispatch_main(void)
 #if HAVE_PTHREAD_MAIN_NP
 	if (pthread_main_np()) {
 #endif
+		// Make sure to drain the main queue before exiting main thread.
+		// rdar://80474924&52978527.
+		//
+		// We also need to guard against reentrant calls back to drain the main
+		// queue
+		_dispatch_main_q.dq_side_suspend_cnt = true;
+		_dispatch_main_queue_drain(&_dispatch_main_q);
+		_dispatch_main_q.dq_side_suspend_cnt = false;
+
 		_dispatch_object_debug(&_dispatch_main_q, "%s", __func__);
 		_dispatch_program_is_probably_callback_driven = true;
 		_dispatch_ktrace0(ARIADNE_ENTER_DISPATCH_MAIN_CODE);
@@ -8014,7 +8025,7 @@ _dispatch_root_queues_init_once(void *context DISPATCH_UNUSED)
 	}
 #endif
 
-#if DISPATCH_USE_KEVENT_SETUP
+#if DISPATCH_USE_KEVENT_WORKLOOP
 	struct pthread_workqueue_config cfg = {
 		.version = PTHREAD_WORKQUEUE_CONFIG_VERSION,
 		.flags = 0,
@@ -8031,32 +8042,23 @@ _dispatch_root_queues_init_once(void *context DISPATCH_UNUSED)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunreachable-code"
 	if (unlikely(!_dispatch_kevent_workqueue_enabled)) {
-#if DISPATCH_USE_KEVENT_SETUP
+#if DISPATCH_USE_KEVENT_WORKLOOP
 		cfg.workq_cb = _dispatch_worker_thread2;
 		r = pthread_workqueue_setup(&cfg, sizeof(cfg));
 #else
 		r = _pthread_workqueue_init(_dispatch_worker_thread2,
 				offsetof(struct dispatch_queue_s, dq_serialnum), 0);
-#endif // DISPATCH_USE_KEVENT_SETUP
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 #if DISPATCH_USE_KEVENT_WORKLOOP
 	} else if (wq_supported & WORKQ_FEATURE_WORKLOOP) {
-#if DISPATCH_USE_KEVENT_SETUP
 		cfg.workq_cb = _dispatch_worker_thread2;
 		cfg.kevent_cb = (pthread_workqueue_function_kevent_t) _dispatch_kevent_worker_thread;
 		cfg.workloop_cb = (pthread_workqueue_function_workloop_t) _dispatch_workloop_worker_thread;
 		r = pthread_workqueue_setup(&cfg, sizeof(cfg));
-#else
-		r = _pthread_workqueue_init_with_workloop(_dispatch_worker_thread2,
-				(pthread_workqueue_function_kevent_t)
-				_dispatch_kevent_worker_thread,
-				(pthread_workqueue_function_workloop_t)
-				_dispatch_workloop_worker_thread,
-				offsetof(struct dispatch_queue_s, dq_serialnum), 0);
-#endif // DISPATCH_USE_KEVENT_SETUP
 #endif // DISPATCH_USE_KEVENT_WORKLOOP
 #if DISPATCH_USE_KEVENT_WORKQUEUE
 	} else if (wq_supported & WORKQ_FEATURE_KEVENT) {
-#if DISPATCH_USE_KEVENT_SETUP
+#if DISPATCH_USE_KEVENT_WORKLOOP
 		cfg.workq_cb = _dispatch_worker_thread2;
 		cfg.kevent_cb = (pthread_workqueue_function_kevent_t) _dispatch_kevent_worker_thread;
 		r = pthread_workqueue_setup(&cfg, sizeof(cfg));
@@ -8065,7 +8067,7 @@ _dispatch_root_queues_init_once(void *context DISPATCH_UNUSED)
 				(pthread_workqueue_function_kevent_t)
 				_dispatch_kevent_worker_thread,
 				offsetof(struct dispatch_queue_s, dq_serialnum), 0);
-#endif // DISPATCH_USE_KEVENT_SETUP
+#endif // DISPATCH_USE_KEVENT_WORKLOOP
 #endif
 	} else {
 		DISPATCH_INTERNAL_CRASH(wq_supported, "Missing Kevent WORKQ support");

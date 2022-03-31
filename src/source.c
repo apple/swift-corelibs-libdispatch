@@ -60,9 +60,12 @@ dispatch_source_create(dispatch_source_type_t dst, uintptr_t handle,
 	if (unlikely(!dq)) {
 		dq = _dispatch_get_default_queue(true);
 	} else {
-		if (_dispatch_queue_is_cooperative(dq)) {
-			DISPATCH_CLIENT_CRASH(dq, "Cannot target object to cooperative root queue - not implemented");
+		// Should match up with conditions checked in
+		// dispatch_object_supported_on_cooperative_queue()
+		if (_dispatch_queue_is_cooperative(dq) && !dr->du_is_timer) {
+			DISPATCH_CLIENT_CRASH(ds, "Cannot target source to the cooperative root queue - not implemented");
 		}
+
 		_dispatch_retain((dispatch_queue_t _Nonnull)dq);
 	}
 	ds->do_targetq = dq;
@@ -71,6 +74,12 @@ dispatch_source_create(dispatch_source_type_t dst, uintptr_t handle,
 	}
 	_dispatch_object_debug(ds, "%s", __func__);
 	return ds;
+}
+
+bool
+_dispatch_source_is_timer(dispatch_source_t ds)
+{
+	return ds->ds_refs->du_is_timer;
 }
 
 void

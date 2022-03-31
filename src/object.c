@@ -305,6 +305,13 @@ dispatch_set_target_queue(dispatch_object_t dou, dispatch_queue_t tq)
 			_dispatch_object_is_root_or_base_queue(dou))) {
 		return;
 	}
+
+	if (unlikely(tq && _dispatch_queue_is_cooperative(tq) &&
+			!_dispatch_object_supported_on_cooperative_queue(dou))) {
+		DISPATCH_CLIENT_CRASH(dou._do,
+			"Cannot target the cooperative root queue - not implemented");
+	}
+
 	if (dx_cluster(dou._do) == _DISPATCH_QUEUE_CLUSTER) {
 		return _dispatch_lane_set_target_queue(dou._dl, tq);
 	}
@@ -316,9 +323,6 @@ dispatch_set_target_queue(dispatch_object_t dou, dispatch_queue_t tq)
 		tq = _dispatch_get_default_queue(false);
 	}
 
-	if (_dispatch_queue_is_cooperative(tq)) {
-		DISPATCH_CLIENT_CRASH(tq, "Cannot target object to cooperative root queue - not implemented");
-	}
 	_dispatch_object_set_target_queue_inline(dou._do, tq);
 }
 

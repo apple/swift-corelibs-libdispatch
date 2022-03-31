@@ -2006,6 +2006,27 @@ _dispatch_queue_is_cooperative(dispatch_queue_class_t dqu)
 	return (dqu._dgq)->dq_priority & DISPATCH_PRIORITY_FLAG_COOPERATIVE;
 }
 
+DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_object_supported_on_cooperative_queue(dispatch_object_t dou)
+{
+	/* We only allow enqueueing of objects of a few types on the cooperative
+	 * pool:
+	 *
+	 * (a) continuations
+	 * (b) swift jobs
+	 * (c) kevent timer sources
+	 */
+	if (_dispatch_object_has_vtable(dou)) {
+		return (dx_type(dou._do) == DISPATCH_SWIFT_JOB_TYPE) ||
+			((dx_metatype(dou._do) == _DISPATCH_SOURCE_TYPE) &&
+			_dispatch_source_is_timer(dou._ds));
+	} else {
+		return true;
+	}
+}
+
+
 DISPATCH_ALWAYS_INLINE DISPATCH_CONST
 static inline dispatch_queue_global_t
 _dispatch_get_root_queue(dispatch_qos_t qos, uintptr_t flags)
