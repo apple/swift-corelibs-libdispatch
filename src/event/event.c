@@ -766,9 +766,9 @@ _dispatch_timer_heap_update(dispatch_timer_heap_t dth,
 #pragma mark timer unote
 
 #define _dispatch_timer_du_debug(what, du) \
-		_dispatch_debug("kevent-source[%p]: %s kevent[%p] { ident = 0x%x }", \
+		_dispatch_debug("kevent-source[%p]: %s kevent[%p] { ident = 0x%llx }", \
 				_dispatch_wref2ptr((du)->du_owner_wref), what, \
-				(du), (du)->du_ident)
+				(du), (unsigned long long)((du)->du_ident))
 
 DISPATCH_ALWAYS_INLINE
 static inline unsigned int
