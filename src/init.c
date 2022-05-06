@@ -931,15 +931,14 @@ _dispatch_fault(const char *reason, const char *fmt, ...)
 	})
 
 void
-_dispatch_bug(size_t line, intptr_t val)
+_dispatch_bug(size_t line, uintptr_t val)
 {
 	dispatch_once_f(&_dispatch_build_pred, NULL, _dispatch_build_init);
 
 	if (_dispatch_bug_log_is_repeated()) return;
 
 	_dispatch_log("BUG in libdispatch: %s - %lu - 0x%llx",
-			_dispatch_build, (unsigned long)line,
-			(unsigned long long)(uintptr_t)val);
+			_dispatch_build, (unsigned long)line, (unsigned long long)val);
 }
 
 #if HAVE_MACH
@@ -1067,7 +1066,7 @@ _dispatch_bug_deprecated(const char *msg)
 }
 
 void
-_dispatch_abort(size_t line, intptr_t val)
+_dispatch_abort(size_t line, uintptr_t val)
 {
 	_dispatch_bug(line, val);
 	abort();
