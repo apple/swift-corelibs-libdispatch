@@ -508,7 +508,13 @@ _dispatch_wait_on_address(uint32_t volatile *_address, uint32_t value,
 	}
 	return _dispatch_futex_wait(address, value, NULL, FUTEX_PRIVATE_FLAG);
 #elif defined(_WIN32)
-	return WaitOnAddress(address, &value, sizeof(value), INFINITE) == TRUE;
+	// Round up to the nearest ms as `WaitOnAddress` takes a timeout in ms.
+	// Integral division will truncate, so make sure that we do the roundup.
+	DWORD dwMilliseconds =
+		nsecs == DISPATCH_TIME_FOREVER
+			? INFINITE : ((nsecs + 1000000) / 1000000);
+	if (dwMilliseconds == 0) return ETIMEDOUT;
+	return WaitOnAddress(address, &value, sizeof(value), dwMilliseconds) == TRUE;
 #else
 #error _dispatch_wait_on_address unimplemented for this platform
 #endif
