@@ -16,6 +16,9 @@ install(FILES
         DESTINATION
           "${INSTALL_DISPATCH_HEADERS_DIR}")
 if(ENABLE_SWIFT)
+  # NOTE(etcwilde) need to see more output to find a flaky failing modulemap copy
+  set(CMAKE_VERBOSE_MAKEFILE YES)
+
   set(base_dir "${CMAKE_CURRENT_SOURCE_DIR}")
   if(NOT BUILD_SHARED_LIBS)
     set(base_dir "${CMAKE_CURRENT_SOURCE_DIR}/generic_static")
