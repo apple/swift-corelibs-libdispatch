@@ -1,7 +1,4 @@
 
-# Remove once underlying clang warning is fixed (rdar://93596069)
-set_source_files_properties(shims/yield.c PROPERTIES COMPILE_FLAGS -Wno-error=unused-but-set-variable)
-
 if(NOT CMAKE_SYSTEM_NAME STREQUAL Darwin)
   add_subdirectory(BlocksRuntime)
 endif()
