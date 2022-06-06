@@ -25,6 +25,11 @@ static void *
 __DISPATCH_WAIT_FOR_ENQUEUER__(void **ptr)
 {
 	int spins = 0;
+        // Different platforms may expand `_dispatch_preemption_yield` to a
+        // no-op, but `(void)++spins` is not considered a use like
+        // `(void)spins` is. Add a use to avoid unused var warnings.
+        (void)spins;
+
 	void *value;
 	while ((value = os_atomic_load(ptr, relaxed)) == NULL) {
 		_dispatch_preemption_yield(++spins);
