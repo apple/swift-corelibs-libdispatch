@@ -466,7 +466,7 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 extern uint8_t _dispatch_mode;
 
 DISPATCH_EXPORT DISPATCH_NOINLINE DISPATCH_COLD
-void _dispatch_bug(size_t line, long val);
+void _dispatch_bug(size_t line, uintptr_t val);
 
 #if HAVE_MACH
 DISPATCH_NOINLINE DISPATCH_COLD
@@ -489,7 +489,7 @@ DISPATCH_NOINLINE DISPATCH_COLD
 void _dispatch_bug_deprecated(const char *msg);
 
 DISPATCH_NOINLINE DISPATCH_NORETURN DISPATCH_COLD
-void _dispatch_abort(size_t line, long val);
+void _dispatch_abort(size_t line, uintptr_t val);
 
 #if !defined(DISPATCH_USE_OS_DEBUG_LOG) && DISPATCH_DEBUG
 #if __has_include(<os/debug_private.h>)
@@ -549,11 +549,11 @@ void _dispatch_log(const char *msg, ...);
  */
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_assert(long e, size_t line) DISPATCH_STATIC_ASSERT_IF(!e)
+_dispatch_assert(uintptr_t e, size_t line) DISPATCH_STATIC_ASSERT_IF(!e)
 {
 	if (unlikely(DISPATCH_DEBUG && !e)) _dispatch_abort(line, e);
 }
-#define dispatch_assert(e) _dispatch_assert((long)(e), __LINE__)
+#define dispatch_assert(e) _dispatch_assert((uintptr_t)(e), __LINE__)
 
 /*
  * A lot of API return zero upon success and not-zero on fail. Let's capture
@@ -561,11 +561,11 @@ _dispatch_assert(long e, size_t line) DISPATCH_STATIC_ASSERT_IF(!e)
  */
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_assert_zero(long e, size_t line) DISPATCH_STATIC_ASSERT_IF(e)
+_dispatch_assert_zero(uintptr_t e, size_t line) DISPATCH_STATIC_ASSERT_IF(e)
 {
 	if (unlikely(DISPATCH_DEBUG && e)) _dispatch_abort(line, e);
 }
-#define dispatch_assert_zero(e) _dispatch_assert_zero((long)(e), __LINE__)
+#define dispatch_assert_zero(e) _dispatch_assert_zero((uintptr_t)(e), __LINE__)
 
 /*
  * For reporting bugs or impedance mismatches between libdispatch and external
@@ -575,12 +575,12 @@ _dispatch_assert_zero(long e, size_t line) DISPATCH_STATIC_ASSERT_IF(e)
  */
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_assume(long e, size_t line) DISPATCH_STATIC_ASSERT_IF(!e)
+_dispatch_assume(uintptr_t e, size_t line) DISPATCH_STATIC_ASSERT_IF(!e)
 {
 	if (unlikely(!e)) _dispatch_bug(line, e);
 }
 #define dispatch_assume(e) \
-		({ __typeof__(e) _e = (e); _dispatch_assume((long)_e, __LINE__); _e; })
+		({ __typeof__(e) _e = (e); _dispatch_assume((uintptr_t)_e, __LINE__); _e; })
 
 /*
  * A lot of API return zero upon success and not-zero on fail. Let's capture
@@ -588,12 +588,12 @@ _dispatch_assume(long e, size_t line) DISPATCH_STATIC_ASSERT_IF(!e)
  */
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_assume_zero(long e, size_t line) DISPATCH_STATIC_ASSERT_IF(e)
+_dispatch_assume_zero(uintptr_t e, size_t line) DISPATCH_STATIC_ASSERT_IF(e)
 {
 	if (unlikely(e)) _dispatch_bug(line, e);
 }
 #define dispatch_assume_zero(e) \
-		({ __typeof__(e) _e = (e); _dispatch_assume_zero((long)_e, __LINE__); _e; })
+		({ __typeof__(e) _e = (e); _dispatch_assume_zero((uintptr_t)_e, __LINE__); _e; })
 
 /* Make sure the debug statments don't get too stale */
 #define _dispatch_debug(x, args...) do { \

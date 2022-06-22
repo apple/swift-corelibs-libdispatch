@@ -226,7 +226,7 @@ _dispatch_workq_count_runnable_workers(dispatch_workq_monitor_t mon)
 		// and Socket IO, but it is unclear if that includes normal IO.
 		HANDLE hThread = OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid);
 		if (hThread == NULL) {
-			_dispatch_debug("workq: unable to open thread %u: %u", tid, GetLastError());
+			_dispatch_debug("workq: unable to open thread %lu: %lu", tid, GetLastError());
 			continue;
 		}
 

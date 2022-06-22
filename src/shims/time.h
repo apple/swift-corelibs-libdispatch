@@ -263,7 +263,7 @@ _dispatch_time_to_clock_and_value(dispatch_time_t time,
 		if (time & DISPATCH_WALLTIME_MASK) {
 			// Wall time (value 11 in bits 63, 62)
 			*clock = DISPATCH_CLOCK_WALL;
-			actual_value = time == DISPATCH_WALLTIME_NOW ?
+			actual_value = time == (dispatch_time_t)DISPATCH_WALLTIME_NOW ?
 					_dispatch_get_nanoseconds() : (uint64_t)-time;
 		} else {
 			// Continuous time (value 10 in bits 63, 62).
