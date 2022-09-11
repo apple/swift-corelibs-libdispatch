@@ -460,12 +460,14 @@ _dispatch_transform_from_utf16(dispatch_data_t data, int32_t byteOrder)
 				ch =  _dispatch_transform_swap_to_host(src[i], byteOrder);
 			}
 
-			if (ch == 0xfffe && offset == 0 && i == 0) {
-				// Wrong-endian BOM at beginning of data
-				return (bool)false;
-			} else if (ch == 0xfeff && offset == 0 && i == 0) {
-				// Correct-endian BOM, skip it
-				continue;
+			if (offset == 0 && i == 0) {
+				if (ch == 0xfffe) {
+					// Wrong-endian BOM at beginning of data
+					return (bool) false;
+				} else if (ch == 0xfeff) {
+					// Correct-endian BOM, skip it
+					continue;
+				}
 			}
 
 			if ((ch >= 0xd800) && (ch <= 0xdbff)) {

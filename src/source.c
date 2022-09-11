@@ -1204,7 +1204,7 @@ _dispatch_timer_config_create(dispatch_time_t start,
 	}
 
 	if (clock != DISPATCH_CLOCK_WALL) {
-		// uptime or monotonic clock
+		// Up time or monotonic clock
 		interval = _dispatch_time_nano2mach(interval);
 		if (interval < 1) {
 			// rdar://problem/7287561 interval must be at least one in

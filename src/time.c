@@ -110,17 +110,18 @@ dispatch_time(dispatch_time_t inval, int64_t delta)
 			if ((int64_t)(value += offset) <= 0) {
 				return DISPATCH_TIME_FOREVER; // overflow
 			}
+			return _dispatch_clock_and_value_to_time(DISPATCH_CLOCK_WALL, value);
 		} else {
 			if ((int64_t)(value += offset) < 1) {
 				// -1 is special == DISPATCH_TIME_FOREVER == forever, so
 				// return -2 (after conversion to dispatch_time_t) instead.
 				value = 2; // underflow.
 			}
+			return _dispatch_clock_and_value_to_time(DISPATCH_CLOCK_WALL, value);
 		}
-		return _dispatch_clock_and_value_to_time(DISPATCH_CLOCK_WALL, value);
 	}
 
-	// up time or monotonic time. "value" has the clock type removed,
+	// uptime or monotonic time. "value" has the clock type removed,
 	// so the test against DISPATCH_TIME_NOW is correct for either clock.
 	if (value == DISPATCH_TIME_NOW) {
 		if (clock == DISPATCH_CLOCK_UPTIME) {
