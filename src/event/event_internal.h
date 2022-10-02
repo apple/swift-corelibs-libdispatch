@@ -445,7 +445,7 @@ DISPATCH_ALWAYS_INLINE
 static inline bool
 _dispatch_needs_to_return_to_kernel(void)
 {
-	return (uintptr_t)_dispatch_thread_getspecific(dispatch_r2k_key) != 0;
+	return _dispatch_thread_getspecific(dispatch_r2k_key) != (void *)0;
 }
 
 DISPATCH_ALWAYS_INLINE
