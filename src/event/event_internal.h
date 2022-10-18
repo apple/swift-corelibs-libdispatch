@@ -323,7 +323,7 @@ typedef union dispatch_unote_u {
 
 #define DISPATCH_UNOTE_NULL ((dispatch_unote_t){ ._du = NULL })
 
-#if TARGET_OS_IPHONE
+#if TARGET_OS_IPHONE || DISPATCH_TARGET_DK_EMBEDDED
 #define DSL_HASH_SIZE  64u // must be a power of two
 #else
 #define DSL_HASH_SIZE 256u // must be a power of two
@@ -369,7 +369,7 @@ typedef struct dispatch_source_type_s {
 			pthread_priority_t pp);
 #if HAVE_MACH
 	void (*dst_merge_msg)(dispatch_unote_t du, uint32_t flags,
-			mach_msg_header_t *msg, mach_msg_size_t sz,
+			mach_msg_header_t *msg, mach_msg_size_t sz, mach_msg_aux_header_t *aux,
 			pthread_priority_t msg_pp, pthread_priority_t override_pp);
 #endif
 } dispatch_source_type_s;

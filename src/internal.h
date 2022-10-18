@@ -122,10 +122,10 @@
 
 #ifndef DISPATCH_HIDE_SYMBOL
 #if TARGET_OS_MAC && !TARGET_OS_IPHONE
-#define DISPATCH_HIDE_SYMBOL(sym, osx, ios, tvos, watchos) \
+#define DISPATCH_HIDE_SYMBOL(sym, osx, ios, tvos, watchos, ros) \
 		__DISPATCH_HIDE_SYMBOL(sym, osx)
 #else
-#define DISPATCH_HIDE_SYMBOL(sym, osx, ios, tvos, watchos)
+#define DISPATCH_HIDE_SYMBOL(sym, osx, ios, tvos, watchos, ros)
 #endif
 #endif
 
@@ -251,6 +251,7 @@ upcast(dispatch_object_t dou)
 #include "mach_private.h"
 #include "data_private.h"
 #include "time_private.h"
+#include "swift_concurrency_private.h"
 #include "os/voucher_private.h"
 #include "os/voucher_activity_private.h"
 #include "io_private.h"
@@ -501,6 +502,7 @@ DISPATCH_EXPORT DISPATCH_NOTHROW void dispatch_atfork_child(void);
 #define DISPATCH_MODE_STRICT    (1U << 0)
 #define DISPATCH_MODE_NO_FAULTS (1U << 1)
 #define DISPATCH_COOPERATIVE_POOL_STRICT (1U << 2)
+#define DISPATCH_MODE_VOUCHER_DYNAMIC    (1U << 3)
 extern uint8_t _dispatch_mode;
 
 DISPATCH_EXPORT DISPATCH_NOINLINE DISPATCH_COLD
@@ -1036,6 +1038,15 @@ _dispatch_ktrace_impl(uint32_t code, uint64_t a, uint64_t b,
 #define OS_EVENTLINK_USE_MACH_EVENTLINK 0
 #endif
 #endif // OS_EVENTLINK_USE_MACH_EVENTLINK
+
+#ifndef DISPATCH_SEND_ACTIVITY_IN_MSGV
+#error __OPEN_SOURCE__ unhandled OS version check
+#if DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(130000) && (defined(__arm64__) || defined(__LP64__))
+#define DISPATCH_SEND_ACTIVITY_IN_MSGV 1
+#else
+#define DISPATCH_SEND_ACTIVITY_IN_MSGV 0
+#endif
+#endif // DISPATCH_SEND_ACTIVITY_IN_MSGV
 
 #define _dispatch_hardware_crash() \
 		__asm__(""); __builtin_trap() // <rdar://problem/17464981>

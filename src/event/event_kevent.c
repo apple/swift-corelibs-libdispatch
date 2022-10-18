@@ -320,15 +320,24 @@ _dispatch_kevent_mach_msg_size(dispatch_kevent_t ke)
 {
 	// buffer size in the successful receive case, but message size (like
 	// msgh_size) in the MACH_RCV_TOO_LARGE case, i.e. add trailer size.
+
+	/* reserve top 32 bits for future */
 	return (mach_msg_size_t)ke->ext[1];
+}
+
+static inline mach_msg_size_t
+_dispatch_kevent_mach_msg_aux_size(dispatch_kevent_t ke)
+{
+	/* reserve top 32 bits for future */
+	return (mach_msg_size_t)ke->ext[3];
 }
 
 static inline bool
 _dispatch_kevent_has_machmsg_rcv_error(dispatch_kevent_t ke)
 {
-#define MACH_ERROR_RCV_SUB 0x4
+#define MACH_ERROR_RCV_SUB 0x1
 	mach_error_t kr = (mach_error_t) ke->fflags;
-	return (err_get_system(kr) == err_mach_ipc) &&
+	return ((kr & system_emask) == err_mach_ipc) &&
 			(err_get_sub(kr) == MACH_ERROR_RCV_SUB);
 #undef MACH_ERROR_RCV_SUB
 }
@@ -518,7 +527,7 @@ _dispatch_kevent_merge(dispatch_unote_t du, dispatch_kevent_t ke)
 
 	_dispatch_kevent_merge_ev_flags(du, ke->flags);
 #if DISPATCH_USE_KEVENT_QOS
-	pp = ((pthread_priority_t)ke->qos) & ~_PTHREAD_PRIORITY_FLAGS_MASK;
+	pp = _pthread_priority_strip_all_flags((pthread_priority_t)ke->qos);
 #endif
 	return dux_merge_evt(du._du, ke->flags, data, pp);
 }
@@ -1407,7 +1416,7 @@ _dispatch_kevent_workloop_priority(dispatch_queue_t dq, int which,
 		DISPATCH_INTERNAL_CRASH(rq_pri, "Waking up a kq with cooperative thread request is not supported");
 	}
 
-	return pp | (rq_pri & DISPATCH_PRIORITY_FLAG_OVERCOMMIT);
+	return _pthread_priority_modify_flags(pp, 0, rq_pri & DISPATCH_PRIORITY_FLAG_OVERCOMMIT);
 }
 
 DISPATCH_ALWAYS_INLINE_NDEBUG
@@ -2493,6 +2502,9 @@ const dispatch_source_type_s _dispatch_source_type_sock = {
 #ifdef NOTE_NOTIFY_ACK
 			|NOTE_NOTIFY_ACK
 #endif
+#ifdef NOTE_WAKE_PKT
+			|NOTE_WAKE_PKT
+#endif
 		,
 	.dst_action     = DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS,
 	.dst_size       = sizeof(struct dispatch_source_refs_s),
@@ -2731,6 +2743,7 @@ DISPATCH_NOINLINE
 static void
 _dispatch_mach_notification_merge_msg(dispatch_unote_t du, uint32_t flags,
 		mach_msg_header_t *hdr, mach_msg_size_t msgsz DISPATCH_UNUSED,
+		mach_msg_aux_header_t *aux_hdr DISPATCH_UNUSED,
 		pthread_priority_t msg_pp DISPATCH_UNUSED,
 		pthread_priority_t ovr_pp DISPATCH_UNUSED)
 {
@@ -3124,8 +3137,8 @@ const dispatch_source_type_s _dispatch_mach_type_send = {
 
 static void
 _dispatch_kevent_mach_msg_recv(dispatch_unote_t du, uint32_t flags,
-		mach_msg_header_t *hdr, pthread_priority_t msg_pp,
-		pthread_priority_t ovr_pp)
+		mach_msg_header_t *hdr, mach_msg_aux_header_t *aux_hdr, /* Nullable */
+		pthread_priority_t msg_pp, pthread_priority_t ovr_pp)
 {
 	mach_port_t name = hdr->msgh_local_port;
 	mach_msg_size_t siz;
@@ -3142,7 +3155,7 @@ _dispatch_kevent_mach_msg_recv(dispatch_unote_t du, uint32_t flags,
 	// consumed by dux_merge_evt()
 	_dispatch_retain_unote_owner(du);
 	_dispatch_kevent_merge_ev_flags(du, flags);
-	return dux_merge_msg(du._du, flags, hdr, siz, msg_pp, ovr_pp);
+	return dux_merge_msg(du._du, flags, hdr, siz, aux_hdr, msg_pp, ovr_pp);
 }
 
 DISPATCH_NOINLINE
@@ -3151,6 +3164,8 @@ _dispatch_kevent_mach_msg_drain(dispatch_kevent_t ke)
 {
 	mach_msg_header_t *hdr = _dispatch_kevent_mach_msg_buf(ke);
 	mach_msg_size_t siz = _dispatch_kevent_mach_msg_size(ke);
+	mach_msg_aux_header_t *aux_hdr = NULL;
+	mach_msg_size_t aux_siz = _dispatch_kevent_mach_msg_aux_size(ke);
 	dispatch_unote_t du = _dispatch_kevent_get_unote(ke);
 	pthread_priority_t msg_pp = (pthread_priority_t)(ke->ext[2] >> 32);
 	pthread_priority_t ovr_pp = (pthread_priority_t)ke->qos;
@@ -3169,7 +3184,8 @@ _dispatch_kevent_mach_msg_drain(dispatch_kevent_t ke)
 			DISPATCH_INTERNAL_CRASH(kr, "EVFILT_MACHPORT with no message");
 		}
 		if (likely(!kr)) {
-			return _dispatch_kevent_mach_msg_recv(du, flags, hdr, msg_pp, ovr_pp);
+			aux_hdr = aux_siz ? (mach_msg_aux_header_t *)((uintptr_t)hdr + siz) : NULL;
+			return _dispatch_kevent_mach_msg_recv(du, flags, hdr, aux_hdr, msg_pp, ovr_pp);
 		}
 		goto out;
 	}
@@ -3177,8 +3193,10 @@ _dispatch_kevent_mach_msg_drain(dispatch_kevent_t ke)
 	if (!ke->data) {
 		DISPATCH_INTERNAL_CRASH(0, "MACH_RCV_LARGE_IDENTITY with no identity");
 	}
-	if (unlikely(ke->ext[1] > (UINT_MAX - DISPATCH_MACH_TRAILER_SIZE))) {
-		DISPATCH_INTERNAL_CRASH(ke->ext[1],
+
+	/* iOS 16: Changed to use accessor function so we can reuse top 32 bits of ext[1] in future */
+	if (unlikely(_dispatch_kevent_mach_msg_size(ke) > (UINT_MAX - DISPATCH_MACH_TRAILER_SIZE))) {
+		DISPATCH_INTERNAL_CRASH(_dispatch_kevent_mach_msg_size(ke),
 				"EVFILT_MACHPORT with overlarge message");
 	}
 
@@ -3188,14 +3206,47 @@ _dispatch_kevent_mach_msg_drain(dispatch_kevent_t ke)
 	}
 	const mach_msg_option_t options = ((DISPATCH_MACH_RCV_OPTIONS |
 			MACH_RCV_TIMEOUT | extra_options) & ~MACH_RCV_LARGE);
-	siz += DISPATCH_MACH_TRAILER_SIZE;
+	siz += DISPATCH_MACH_TRAILER_SIZE; /* if TOO_LARGE, ext1 does not account for trailer */
 	hdr = malloc(siz); // mach_msg will return TOO_LARGE if hdr/siz is NULL/0
+
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
+	mach_msg_vector_t rcv_vects[2];
+
+	aux_siz = DISPATCH_MSGV_AUX_MAX_SIZE;
+	aux_hdr = alloca(aux_siz); /* on stack */
+
+	rcv_vects[MACH_MSGV_IDX_MSG] = (mach_msg_vector_t){
+		.msgv_data = (mach_vm_address_t)hdr,
+		.msgv_rcv_addr = 0,
+		.msgv_send_size = 0,
+		.msgv_rcv_size = dispatch_assume(hdr) ? siz : 0,
+	};
+	rcv_vects[MACH_MSGV_IDX_AUX] = (mach_msg_vector_t){
+		.msgv_data = (mach_vm_address_t)aux_hdr,
+		.msgv_rcv_addr = 0,
+		.msgv_send_size = 0,
+		.msgv_rcv_size = dispatch_assume(aux_hdr) ? aux_siz: 0,
+	};
+
+	kr = mach_msg2(rcv_vects, (mach_msg_option64_t)options | MACH64_MSG_VECTOR,
+		MACH_MSG_HEADER_EMPTY, 0, 2, (mach_port_name_t)ke->data, MACH_MSG_TIMEOUT_NONE, 0);
+
+	if (likely(!kr)) {
+		flags |= DISPATCH_EV_MSG_NEEDS_FREE;
+		if (aux_hdr->msgdh_size == 0) {
+			aux_hdr = NULL;
+		}
+		return _dispatch_kevent_mach_msg_recv(du, flags, hdr, aux_hdr, msg_pp, ovr_pp);
+	}
+#else
+	/* silently drop auxiliary data on the floor */
 	kr = mach_msg(hdr, options, 0, dispatch_assume(hdr) ? siz : 0,
 			(mach_port_name_t)ke->data, MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL);
 	if (likely(!kr)) {
 		flags |= DISPATCH_EV_MSG_NEEDS_FREE;
-		return _dispatch_kevent_mach_msg_recv(du, flags, hdr, msg_pp, ovr_pp);
+		return _dispatch_kevent_mach_msg_recv(du, flags, hdr, NULL, msg_pp, ovr_pp);
 	}
+#endif
 
 	if (kr == MACH_RCV_TOO_LARGE) {
 		_dispatch_log("BUG in libdispatch client: "

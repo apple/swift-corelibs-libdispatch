@@ -27,6 +27,7 @@
 #endif
 
 DISPATCH_ASSUME_NONNULL_BEGIN
+DISPATCH_ASSUME_ABI_SINGLE_BEGIN
 
 __BEGIN_DECLS
 
@@ -256,8 +257,8 @@ DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_io_t
 dispatch_io_create_with_path(dispatch_io_type_t type,
-	const char *path, int oflag, mode_t mode,
-	dispatch_queue_t queue,
+	const char *DISPATCH_UNSAFE_INDEXABLE path, int oflag,
+	mode_t mode, dispatch_queue_t queue,
 	void (^cleanup_handler)(int error));
 
 /*!
@@ -592,6 +593,7 @@ dispatch_io_set_interval(dispatch_io_t channel,
 
 __END_DECLS
 
+DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
 #endif /* __DISPATCH_IO__ */

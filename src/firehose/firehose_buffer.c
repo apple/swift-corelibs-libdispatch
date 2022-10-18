@@ -296,7 +296,11 @@ firehose_buffer_update_limits_unlocked(firehose_buffer_t fb)
 	}
 	total = MAX(total, FIREHOSE_BUFFER_CHUNK_PREALLOCATED_COUNT);
 	if (!(fbb_flags & FIREHOSE_BUFFER_BANK_FLAG_LOW_MEMORY)) {
-		total = MAX(total, TARGET_OS_IPHONE ? 8 : 12);
+#if TARGET_OS_IPHONE || DISPATCH_TARGET_DK_EMBEDDED
+		total = MAX(total, 8);
+#else // TARGET_OS_IPHONE || DISPATCH_TARGET_DK_EMBEDDED
+		total = MAX(total, 12);
+#endif // TARGET_OS_IPHONE || DISPATCH_TARGET_DK_EMBEDDED
 	}
 
 	new = (firehose_bank_state_u) {
@@ -1175,10 +1179,7 @@ firehose_buffer_ring_enqueue(firehose_buffer_t fb, firehose_chunk_ref_t ref)
 		}));
 	}
 
-	pthread_priority_t pp = fc_pos.fcp_qos;
-	pp <<= _PTHREAD_PRIORITY_QOS_CLASS_SHIFT;
-	firehose_client_send_push_async(fb, _pthread_qos_class_decode(pp, NULL, NULL),
-			for_io);
+	firehose_client_send_push_async(fb, QOS_CLASS_UNSPECIFIED, for_io);
 #endif
 }
 

@@ -348,6 +348,7 @@ voucher_replace_default_voucher(void)
 		_voucher_mach_recipe_size(sizeof(_voucher_mach_udata_s)) + \
 		_voucher_extra_size(v)))
 
+#if !DISPATCH_SEND_ACTIVITY_IN_MSGV
 DISPATCH_ALWAYS_INLINE
 static inline mach_voucher_attr_recipe_size_t
 _voucher_mach_recipe_init(mach_voucher_attr_recipe_t mvar_buf, voucher_s *v,
@@ -396,6 +397,7 @@ _voucher_mach_recipe_init(mach_voucher_attr_recipe_t mvar_buf, voucher_s *v,
 	}
 	return size;
 }
+#endif
 
 mach_voucher_t
 _voucher_get_mach_voucher(voucher_t voucher)
@@ -404,6 +406,9 @@ _voucher_get_mach_voucher(voucher_t voucher)
 	if (voucher->v_ipc_kvoucher) return voucher->v_ipc_kvoucher;
 	mach_voucher_t kvb = voucher->v_kvoucher;
 	if (!kvb) kvb = _voucher_get_task_mach_voucher();
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
+	return kvb;
+#else
 	if (!voucher->v_activity && !_voucher_extra_size(voucher)) {
 		return kvb;
 	}
@@ -431,10 +436,63 @@ _voucher_get_mach_voucher(voucher_t voucher)
 		_dispatch_voucher_debug("kvoucher[0x%08x] create", voucher, kv);
 	}
 	return kv;
+#endif
 }
 
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
 static voucher_t
-_voucher_create_with_mach_voucher(mach_voucher_t kv, mach_msg_bits_t msgh_bits)
+_voucher_create_with_mach_voucher(mach_voucher_t kv, mach_msg_bits_t msgh_bits,
+	_voucher_mach_udata_s *udata, mach_msg_size_t udata_sz)
+{
+	voucher_t v;
+	voucher_t bv = VOUCHER_NULL;
+
+	if (kv) {
+		bv = _voucher_find_and_retain(kv);
+		if (bv) {
+			_dispatch_voucher_debug("kvoucher[0x%08x] found", bv, kv);
+			_voucher_dealloc_mach_voucher(kv);
+		} else {
+			bv = _voucher_alloc(0);
+			bv->v_ipc_kvoucher = bv->v_kvoucher = kv;
+			bv->v_kv_has_importance = !!(msgh_bits & MACH_MSGH_BITS_RAISEIMP);
+			_voucher_insert(bv);
+			_voucher_trace(CREATE, bv, kv, 0);
+		}
+	}
+
+	if (udata_sz < offsetof(_voucher_mach_udata_s, _vmu_after_activity) ||
+		udata->vmu_magic != VOUCHER_MAGIC_V3 || !udata->vmu_activity) {
+		return bv;
+	}
+
+	if (bv) {
+		/* base voucher should not contain activity data */
+		if (bv->v_activity != 0) {
+			DISPATCH_INTERNAL_CRASH(bv->v_activity, "base voucher has non-zero activity value");
+		}
+		if (bv->v_kvbase != VOUCHER_NULL) {
+			DISPATCH_INTERNAL_CRASH(bv->v_kvbase, "base voucher has nested base voucher");
+		}
+		v = _voucher_clone(bv, VOUCHER_FIELD_ACTIVITY);
+		voucher_release(bv);
+	} else {
+		v = _voucher_alloc(0);
+	}
+
+	/* set up activity data on voucher_t */
+	v->v_activity = udata->vmu_activity;
+	v->v_activity_creator = udata->vmu_activity_pid;
+	v->v_parent_activity = udata->vmu_parent_activity;
+
+	_voucher_trace(CREATE, v, v->v_kvoucher, v->v_activity);
+	_dispatch_voucher_debug("kvoucher[0x%08x] create", v, kv);
+	return v;
+}
+#else
+static voucher_t
+_voucher_create_with_mach_voucher(mach_voucher_t kv, mach_msg_bits_t msgh_bits,
+	DISPATCH_UNUSED _voucher_mach_udata_s *unused_udata, DISPATCH_UNUSED mach_msg_size_t unused_udata_sz)
 {
 	if (!kv) return NULL;
 	kern_return_t kr;
@@ -520,6 +578,7 @@ _voucher_create_with_mach_voucher(mach_voucher_t kv, mach_msg_bits_t msgh_bits)
 	_dispatch_voucher_debug("kvoucher[0x%08x] create", v, kv);
 	return v;
 }
+#endif /* DISPATCH_SEND_ACTIVITY_IN_MSGV */
 
 voucher_t
 _voucher_create_without_importance(voucher_t ov)
@@ -619,11 +678,32 @@ _voucher_create_accounting_voucher(voucher_t ov)
 }
 
 voucher_t
+_voucher_create_with_mach_msgv(mach_msg_header_t *msg, mach_msg_aux_header_t *aux)
+{
+	mach_msg_bits_t msgh_bits;
+
+	_voucher_mach_udata_aux_s *msgv_aux = (_voucher_mach_udata_aux_s *)aux;
+	_voucher_mach_udata_s *udata = NULL;
+	mach_msg_size_t udata_sz = 0, aux_sz = 0;
+	mach_voucher_t kv = _voucher_mach_msg_get(msg, &msgh_bits);
+
+	if (msgv_aux) {
+		aux_sz = msgv_aux->header.msgdh_size;
+		if (unlikely(aux_sz < sizeof(mach_msg_aux_header_t))) {
+			DISPATCH_INTERNAL_CRASH(aux_sz, "Invalid msg aux data size.");
+		}
+		udata_sz = aux_sz - sizeof(mach_msg_aux_header_t);
+		udata = udata_sz ? &msgv_aux->udata: NULL;
+	}
+	return _voucher_create_with_mach_voucher(kv, msgh_bits, udata, udata_sz);
+}
+
+voucher_t
 voucher_create_with_mach_msg(mach_msg_header_t *msg)
 {
 	mach_msg_bits_t msgh_bits;
 	mach_voucher_t kv = _voucher_mach_msg_get(msg, &msgh_bits);
-	return _voucher_create_with_mach_voucher(kv, msgh_bits);
+	return _voucher_create_with_mach_voucher(kv, msgh_bits, NULL, 0);
 }
 
 void
@@ -1076,9 +1156,25 @@ voucher_mach_msg_state_t
 voucher_mach_msg_adopt(mach_msg_header_t *msg)
 {
 	mach_msg_bits_t msgh_bits;
+	_voucher_mach_udata_s *udata = NULL;
+	mach_msg_size_t udata_sz = 0;
+
 	mach_voucher_t kv = _voucher_mach_msg_get(msg, &msgh_bits);
 	if (!kv) return VOUCHER_MACH_MSG_STATE_UNCHANGED;
-	voucher_t v = _voucher_create_with_mach_voucher(kv, msgh_bits);
+
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
+	_voucher_mach_udata_aux_s *aux = _dispatch_thread_getspecific(dispatch_msgv_aux_key);
+	if (aux) {
+		mach_msg_size_t aux_sz = aux->header.msgdh_size;
+		if (aux_sz >= sizeof(mach_msg_aux_header_t)) {
+			udata_sz = aux_sz - sizeof(mach_msg_aux_header_t);
+			udata = udata_sz ? &aux->udata : NULL;
+		}
+	}
+#endif
+
+	voucher_t v = _voucher_create_with_mach_voucher(kv, msgh_bits, udata, udata_sz);
+
 	return (voucher_mach_msg_state_t)_voucher_adopt(v);
 }
 
@@ -1092,13 +1188,48 @@ voucher_mach_msg_revert(voucher_mach_msg_state_t state)
 #if DISPATCH_USE_LIBKERNEL_VOUCHER_INIT
 #include <_libkernel_init.h>
 
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
+static mach_msg_size_t
+voucher_mach_msg_fill_aux(mach_msg_aux_header_t *aux, mach_msg_size_t aux_sz)
+{
+	voucher_t v = _voucher_get();
+
+	if (!(v && v->v_activity)) return 0;
+	if (aux_sz < DISPATCH_MSGV_AUX_MAX_SIZE) return 0;
+
+	_Static_assert(LIBSYSCALL_MSGV_AUX_MAX_SIZE >= DISPATCH_MSGV_AUX_MAX_SIZE,
+			"aux buffer size in libsyscall too small");
+	_voucher_mach_udata_aux_s *udata_aux = (_voucher_mach_udata_aux_s *)aux;
+
+	udata_aux->header.msgdh_size = DISPATCH_MSGV_AUX_MAX_SIZE;
+	udata_aux->header.msgdh_reserved = 0;
+
+	udata_aux->udata = (_voucher_mach_udata_s){
+		.vmu_magic           = VOUCHER_MAGIC_V3,
+		/* .vmu_priority is unused */
+		.vmu_activity        = v->v_activity,
+		.vmu_activity_pid    = v->v_activity_creator,
+		.vmu_parent_activity = v->v_parent_activity,
+	};
+
+	return DISPATCH_MSGV_AUX_MAX_SIZE;
+}
+#endif
+
 static const struct _libkernel_voucher_functions _voucher_libkernel_functions =
 {
-	.version = 1,
+	.version = 3,
 	.voucher_mach_msg_set = voucher_mach_msg_set,
 	.voucher_mach_msg_clear = voucher_mach_msg_clear,
 	.voucher_mach_msg_adopt = voucher_mach_msg_adopt,
 	.voucher_mach_msg_revert = voucher_mach_msg_revert,
+
+	/* available starting version 3 */
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
+	.voucher_mach_msg_fill_aux = voucher_mach_msg_fill_aux,
+#else
+	.voucher_mach_msg_fill_aux = NULL,
+#endif
 };
 
 static void
@@ -1111,6 +1242,7 @@ _voucher_libkernel_init(void)
 #define _voucher_libkernel_init()
 #endif
 
+
 void
 voucher_activity_initialize_4libtrace(voucher_activity_hooks_t hooks)
 {
@@ -1122,6 +1254,7 @@ voucher_activity_initialize_4libtrace(voucher_activity_hooks_t hooks)
 		DISPATCH_CLIENT_CRASH(_voucher_libtrace_hooks,
 				"voucher_activity_initialize_4libtrace called twice");
 	}
+
 
 	// HACK: we can't call into os_variant until after the initialization of
 	// dispatch and XPC, but we want to do it before the end of libsystem
@@ -1252,6 +1385,7 @@ _firehose_task_buffer_init(void *ctx OS_UNUSED)
 	}
 }
 
+
 DISPATCH_ALWAYS_INLINE
 static inline bool
 _voucher_activity_disabled(void)
@@ -1349,6 +1483,7 @@ voucher_activity_create_with_data(firehose_tracepoint_id_t *trace_id,
 	if (_voucher_activity_disabled()) {
 		goto done;
 	}
+
 
 	static const firehose_stream_t streams[2] = {
 		firehose_stream_metadata,

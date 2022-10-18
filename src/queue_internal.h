@@ -644,7 +644,46 @@ struct dispatch_queue_static_s {
 			struct dispatch_object_s *volatile dq_items_tail); \
 	int volatile dgq_thread_pool_size; \
 	struct dispatch_object_s *volatile dq_items_head; \
-	int volatile dgq_pending
+	int volatile dgq_pending;
+
+// 97049903: dgq_pending has semaphore-like like semantics:
+//
+//	dgq_pending = 0 means semaphore is available
+//		If we are on the push side, take the semaphore and also the responsibility
+//		of moving state machine forward by requesting for a thread.
+//
+//		If we are a drainer for the root queue who has just come out and we
+//		see dgq_pending = 0, there has been an underflow, error out.
+//
+//	dgq_pending > 0 means semaphore is taken.
+//		If we are on the push side, dgq_pending > 0 has a dirty-bit like
+//		semantic since the enqueuer has updated the queue head/tail, sees that
+//		there are {concurrent contended, requested} drainers and therefore lets
+//		the drainers do a rest of the evaluation. We don't need an
+//		explicit DIRTY_BIT for enqueuers to set in this case since we know that we
+//		are racing with drainers who are already doing loads off the dq_items_tail
+//		and head which is what the enqueuer modified.
+//
+//		We however need to make sure that the publish to the dq_items_tail is
+//		always visible for the enqueuer.
+//
+//		If we're on the drain side,
+//
+//			(1) If we have just entered userspace, we drop the semaphore (ie
+//			decrement dqg_pending with acquire) and attempt to drain the
+//			specified global root queue
+//
+//			(2) If we don't hit contention and get to drain an item, great - we are
+//			now working on the workitem and we have already released our hold on
+//			the semaphore.
+//
+//			(3) If we hit contention, we retake the semaphore (store release
+//			dgq_pending increment) so that more threads aren't requested by
+//			enqueuers. We now hold the responsibility of taking state machine
+//			forward due to any changes done to the queue including by concurrent
+//			enqueuers. Spin/backoff and evaluate if the queue has quiesced enough.
+//			If it looks to have elements on it, goto (1) as if we had just entered
+//			userspace and repeat. Else return and park.
 
 struct dispatch_queue_global_s {
 	DISPATCH_QUEUE_ROOT_CLASS_HEADER(lane);
@@ -819,6 +858,7 @@ void _dispatch_workloop_wakeup(dispatch_workloop_t dwl, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
 
 void _dispatch_root_queue_poke(dispatch_queue_global_t dq, int n, int floor);
+void _dispatch_root_queue_poke_and_wakeup(dispatch_queue_global_t dq, int n, int floor);
 void _dispatch_root_queue_wakeup(dispatch_queue_global_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
 void _dispatch_root_queue_push(dispatch_queue_global_t dq,
@@ -1130,7 +1170,7 @@ typedef struct dispatch_continuation_vtable_s {
 } const *dispatch_continuation_vtable_t;
 
 #ifndef DISPATCH_CONTINUATION_CACHE_LIMIT
-#if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+#if (TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR) || DISPATCH_TARGET_DK_EMBEDDED
 #define DISPATCH_CONTINUATION_CACHE_LIMIT 112 // one 256k heap for 64 threads
 #define DISPATCH_CONTINUATION_CACHE_LIMIT_MEMORYPRESSURE_PRESSURE_WARN 16
 #else

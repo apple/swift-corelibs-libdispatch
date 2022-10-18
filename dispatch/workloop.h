@@ -27,6 +27,7 @@
 #endif
 
 DISPATCH_ASSUME_NONNULL_BEGIN
+DISPATCH_ASSUME_ABI_SINGLE_BEGIN
 
 __BEGIN_DECLS
 
@@ -39,7 +40,9 @@ __BEGIN_DECLS
  * @discussion
  * A dispatch workloop is a flavor of dispatch_queue_t that is a priority
  * ordered queue (using the QOS class of the submitted workitems as the
- * ordering).
+ * ordering). Dispatch workloops are an exclusion context and it is guaranteed
+ * that only one work item submitted to the dispatch workloop will be invoked at
+ * a time.
  *
  * Between each workitem invocation, the workloop will evaluate whether higher
  * priority workitems have since been submitted, either directly to the
@@ -79,7 +82,7 @@ API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_workloop_t
-dispatch_workloop_create(const char *_Nullable label);
+dispatch_workloop_create(const char *DISPATCH_UNSAFE_INDEXABLE _Nullable label);
 
 /*!
  * @function dispatch_workloop_create_inactive
@@ -105,7 +108,7 @@ API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_workloop_t
-dispatch_workloop_create_inactive(const char *_Nullable label);
+dispatch_workloop_create_inactive(const char *DISPATCH_UNSAFE_INDEXABLE _Nullable label);
 
 /*!
  * @function dispatch_workloop_set_autorelease_frequency
@@ -162,6 +165,7 @@ dispatch_workloop_set_os_workgroup(dispatch_workloop_t workloop,
 
 __END_DECLS
 
+DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
 #endif

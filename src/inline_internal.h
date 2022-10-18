@@ -1621,7 +1621,8 @@ _dispatch_queue_move_to_contended_sync(dispatch_queue_t dq)
 // Multi Producer calls, can be used safely concurrently
 //
 
-// Returns true when the queue was empty and the head must be set
+// Returns true when the queue was empty and the head must be set. xchg with
+// release forces visibility of updates to the item before update to the tail
 #define os_mpsc_push_update_tail(Q, tail, _o_next)  ({ \
 		os_mpsc_node_type(Q) _tl = (tail); \
 		os_atomic_store2o(_tl, _o_next, NULL, relaxed); \
@@ -1835,7 +1836,7 @@ _dispatch_root_queue_push_inline(dispatch_queue_global_t dq,
 {
 	struct dispatch_object_s *hd = _head._do, *tl = _tail._do;
 	if (unlikely(os_mpsc_push_list(os_mpsc(dq, dq_items), hd, tl, do_next))) {
-		return _dispatch_root_queue_poke(dq, n, 0);
+		return _dispatch_root_queue_poke_and_wakeup(dq, n, 0);
 	}
 }
 
@@ -1940,7 +1941,7 @@ attempt_running_slow_head:
 			// Either dc is set, which is a deferred invoke case
 			//
 			// or only tq is and it means a reenqueue is required, because of:
-			// a retarget, a suspension, or a width change.
+			// a retarget, a suspension, a width change or narrowing.
 			//
 			// In both cases, we want to bypass the check for DIRTY.
 			// That may cause us to leave DIRTY in place but all drain lock
@@ -2125,8 +2126,18 @@ _dispatch_get_basepri_override_qos_floor(void)
 {
 	dispatch_priority_t dbp = _dispatch_get_basepri();
 	dispatch_qos_t qos = _dispatch_priority_qos(dbp);
+	// The fallback QoS is considered here because this function is only used in
+	// the path of taking the drain lock on dispatch objects and determining
+	// whether to self override or not. The fallback QoS therefore does factor
+	// in here since we want the current priority of the thread - whether that
+	// came from requested QoS, fallback QoS or override QoS.
+	//
+	// Otherwise, we could have a DEF thread (UN req with DEF fallback) trying
+	// to take the drain lock on a UT queue and applying a UT override on itself
+	// in the drain lock path when it doesn't need to.
+	dispatch_qos_t fallback_qos = _dispatch_priority_fallback_qos(dbp);
 	dispatch_qos_t oqos = _dispatch_priority_override_qos(dbp);
-	return MAX(qos, oqos);
+	return MAX(MAX(qos, fallback_qos), oqos);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -2244,11 +2255,10 @@ _dispatch_priority_adopt(pthread_priority_t pp, unsigned long flags)
 #if HAVE_PTHREAD_WORKQUEUE_QOS
 	dispatch_priority_t dbp = _dispatch_get_basepri();
 	pthread_priority_t basepp = _dispatch_priority_to_pp_strip_flags(dbp);
-	pthread_priority_t minbasepp = basepp &
-			~(pthread_priority_t)_PTHREAD_PRIORITY_PRIORITY_MASK;
+	pthread_priority_t minbasepp = _pthread_priority_strip_relpri(basepp);
 	bool enforce = (flags & DISPATCH_PRIORITY_ENFORCE) ||
 			(pp & _PTHREAD_PRIORITY_ENFORCE_FLAG);
-	pp &= ~_PTHREAD_PRIORITY_FLAGS_MASK;
+	pp = _pthread_priority_strip_all_flags(pp);
 
 	if (unlikely(!pp)) {
 		dispatch_qos_t fallback = _dispatch_priority_fallback_qos(dbp);
@@ -2294,7 +2304,7 @@ _dispatch_priority_compute_update(pthread_priority_t pp)
 	//
 	// the manager bit is invalid input, but we keep it to get meaningful
 	// assertions in _dispatch_set_priority_and_voucher_slow()
-	pp &= _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG | ~_PTHREAD_PRIORITY_FLAGS_MASK;
+	pp = _pthread_priority_strip_flags(pp, ~_PTHREAD_PRIORITY_EVENT_MANAGER_FLAG);
 	pthread_priority_t cur_priority = _dispatch_get_priority();
 	pthread_priority_t unbind = _PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG;
 	pthread_priority_t thread_type = _PTHREAD_PRIORITY_THREAD_TYPE_MASK;
@@ -2307,9 +2317,9 @@ _dispatch_priority_compute_update(pthread_priority_t pp)
 		// if the NEEDS_UNBIND flag is set, we always need to update and take
 		// the slow path in _dispatch_set_priority_and_voucher_slow() which will
 		// adjust the priority further with the proper overcommitness
-		return pp ? pp : (cur_priority & ~unbind);
+		return pp ? pp : _pthread_priority_strip_flags(cur_priority, unbind);
 	} else {
-		cur_priority &= ~thread_type;
+		cur_priority = _pthread_priority_strip_flags(cur_priority, thread_type);
 	}
 	if (unlikely(pp != cur_priority)) return pp;
 	return 0;
@@ -2439,7 +2449,7 @@ _dispatch_priority_compute_propagated(pthread_priority_t pp,
 	if (flags & DISPATCH_PRIORITY_PROPAGATE_CURRENT) {
 		pp = _dispatch_get_priority();
 	}
-	pp &= ~_PTHREAD_PRIORITY_FLAGS_MASK;
+	pp = _pthread_priority_strip_all_flags(pp);
 	if (!(flags & DISPATCH_PRIORITY_PROPAGATE_FOR_SYNC_IPC) &&
 			pp > _dispatch_qos_to_pp(DISPATCH_QOS_USER_INITIATED)) {
 		// Cap QOS for propagation at user-initiated <rdar://16681262&16998036>
@@ -2494,8 +2504,8 @@ _dispatch_block_invoke_should_set_priority(dispatch_block_flags_t flags,
 	if ((flags & DISPATCH_BLOCK_HAS_PRIORITY)
 			&& ((flags & DISPATCH_BLOCK_ENFORCE_QOS_CLASS) ||
 			!(flags & DISPATCH_BLOCK_INHERIT_QOS_CLASS))) {
-		new_pri &= ~_PTHREAD_PRIORITY_FLAGS_MASK;
-		old_pri = _dispatch_get_priority() & ~_PTHREAD_PRIORITY_FLAGS_MASK;
+		new_pri = _pthread_priority_strip_all_flags(new_pri);
+		old_pri = _pthread_priority_strip_all_flags(_dispatch_get_priority());
 		if (old_pri && old_pri < new_pri) p = old_pri;
 	}
 	return p;

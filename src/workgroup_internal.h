@@ -55,10 +55,6 @@ void _workgroup_init(void);
 #define OS_WORKGROUP_LOG_ERRORS 1
 #endif
 
-#if 1 || DISPATCH_DEBUG // log workload_id lookup failures by default for now
-#define OS_WORKGROUP_LOG_UKNOWN_WORKLOAD_ID 1
-#endif
-
 #if OS_WORKGROUP_LOG_ERRORS
 #define _os_workgroup_error_log(m, ...) \
 		_dispatch_log("BUG IN CLIENT of %s: " m, __func__, ##__VA_ARGS__);
@@ -86,7 +82,8 @@ struct os_workgroup_attr_s {
 	uint32_t wg_attr_flags;
 	os_workgroup_type_t wg_type;
 	uint16_t empty;
-	uint32_t reserved[13];
+	uint32_t internal_wl_id_flags;
+	uint32_t reserved[12];
 };
 
 #define _OS_WORKGROUP_JOIN_TOKEN_SIG_INIT 0x4D5F5A58
@@ -98,9 +95,15 @@ struct os_workgroup_join_token_s {
 	uint64_t reserved[2];
 };
 
+#define OS_WORKGROUP_INTERVAL_DATA_FLAGS_MASK ( \
+		OS_WORKGROUP_INTERVAL_DATA_COMPLEXITY_DEFAULT | \
+		OS_WORKGROUP_INTERVAL_DATA_COMPLEXITY_HIGH \
+		)
+
 struct os_workgroup_interval_data_s {
 	uint32_t sig;
-	uint32_t reserved[14];
+	uint32_t wgid_flags;
+	uint32_t reserved[13];
 };
 
 /* This is lazily allocated if the arena is used by clients */
@@ -116,7 +119,7 @@ typedef struct os_workgroup_arena_s {
 #define OS_WORKGROUP_CANCELED (1 << 1)
 #define OS_WORKGROUP_LABEL_NEEDS_FREE (1 << 2)
 #define OS_WORKGROUP_INTERVAL_STARTED (1 << 3)
-
+#define OS_WORKGROUP_HAS_WORKLOAD_ID (1 << 4)
 
 /* Note that os_workgroup_type_t doesn't have to be in the wg_atomic_flags, we
  * just put it there to pack the struct.
@@ -191,10 +194,8 @@ _wg_arena(_os_workgroup_atomic_flags wgaf)
 	OS_OBJECT_STRUCT_HEADER(workgroup); \
 	const char *name; \
 	uint64_t volatile wg_state; \
-	union { \
-		work_interval_t wi; \
-		mach_port_t port; \
-	}; \
+	work_interval_t wi; \
+	mach_port_t port; \
 	OS_WORKGROUP_HEADER_INTERNAL;
 
 struct os_workgroup_s {

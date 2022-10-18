@@ -189,7 +189,7 @@
 #	define EV_VANISHED				0x0000
 #endif
 
-#define DISPATCH_EV_MSG_NEEDS_FREE	0x10000 // mach message needs to be freed()
+#define DISPATCH_EV_MSG_NEEDS_FREE	0x10000 // mach message and aux needs to be freed()
 
 #define DISPATCH_EVFILT_TIMER				(-EVFILT_SYSCOUNT - 1)
 #define DISPATCH_EVFILT_TIMER_WITH_CLOCK	(-EVFILT_SYSCOUNT - 2)

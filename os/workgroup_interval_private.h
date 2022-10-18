@@ -40,6 +40,7 @@ OS_ENUM(os_workgroup_interval_type, uint16_t,
 	OS_WORKGROUP_INTERVAL_TYPE_COREMEDIA,
 
 	OS_WORKGROUP_INTERVAL_TYPE_ARKIT,
+	OS_WORKGROUP_INTERVAL_TYPE_FRAME_COMPOSITOR,
 );
 
 /*
@@ -66,6 +67,70 @@ OS_WORKGROUP_EXPORT
 int
 os_workgroup_attr_set_interval_type(os_workgroup_attr_t attr,
 		os_workgroup_interval_type_t type);
+
+/*
+ * @typedef os_workgroup_interval_data_flags_t
+ *
+ * @abstract
+ * Set of flags that can be passed to os_workgroup_interval_data_set_flags() to
+ * configure calls to os_workgroup_interval_start(),
+ * os_workgroup_interval_update() and os_workgroup_interval_finish() to
+ * indicate to the system that a specific instance of a repeatable workload
+ * has one of the following properties:
+ *
+ * OS_WORKGROUP_INTERVAL_DATA_COMPLEXITY_DEFAULT:
+ *     specific instance has default complexity (same as using data initialized
+ *     with OS_WORKGROUP_INTERVAL_DATA_INITIALIZER resp not calling
+ *     os_workgroup_interval_data_set_flags(), or specifying NULL
+ *     os_workgroup_interval_data_t).
+ * OS_WORKGROUP_INTERVAL_DATA_COMPLEXITY_HIGH:
+ *     specific instance has high complexity. May only be called on an
+ *     os_workgroup_interval_t created with a workload identifier that is known
+ *     and is configured by the system to be allowed to use complexity.
+ */
+OS_OPTIONS(os_workgroup_interval_data_flags, uint32_t,
+	OS_WORKGROUP_INTERVAL_DATA_COMPLEXITY_DEFAULT = 0x0u,
+	OS_WORKGROUP_INTERVAL_DATA_COMPLEXITY_HIGH = 0x1u,
+);
+
+/*
+ * @function os_workgroup_interval_data_set_flags
+ *
+ * @abstract
+ * Setter for os_workgroup_interval_data_t, can specify an ORd combination of
+ * flags from os_workgroup_interval_data_flags_t to indicate to the system that
+ * a specific instance of a repeatable workload has custom properties by
+ * passing the resulting data pointer to os_workgroup_interval_start(),
+ * os_workgroup_interval_update() and os_workgroup_interval_finish().
+ *
+ * The flags chosen for a given instance of the repeatable workload are allowed
+ * to be different at each of these three calls made for the instance, and they
+ * are determined wholly by the `data` value passed to the specific call.
+ *
+ * @discussion
+ * In particular this means that once a non-default flag is set with this
+ * function, the resulting data pointer must be passed to every subsequent
+ * call of update() or finish() for that instance if the goal is to keep that
+ * flag present (as opposed to e.g. being reset to the default by passing a
+ * NULL data pointer).
+ *
+ * @param data
+ * Pointer to workgroup interval data structure initialized with
+ * OS_WORKGROUP_INTERVAL_DATA_INITIALIZER.
+ *
+ * @param flags
+ * ORd combination of flags from os_workgroup_interval_data_flags_t to set in
+ * the specified interval data.
+ *
+ * @result
+ * EINVAL is returned if the interval data passed in hasn't been initialized,
+ * or if unknown or an invalid combination of flag values are passed.
+ */
+API_AVAILABLE(macos(13.0), ios(16.0), tvos(16.0), watchos(9.0))
+OS_WORKGROUP_EXPORT
+int
+os_workgroup_interval_data_set_flags(os_workgroup_interval_data_t data,
+		os_workgroup_interval_data_flags_t flags);
 
 /*
  * @function os_workgroup_interval_create
@@ -179,7 +244,7 @@ os_workgroup_interval_create_with_workload_id(const char * _Nullable name,
  */
 API_AVAILABLE(macos(10.16), ios(14.0), tvos(14.0), watchos(7.0))
 OS_WORKGROUP_EXPORT OS_WORKGROUP_RETURNS_RETAINED
-os_workgroup_t
+os_workgroup_t _Nullable
 os_workgroup_interval_copy_current_4AudioToolbox(void);
 
 OS_WORKGROUP_ASSUME_NONNULL_END

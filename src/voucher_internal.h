@@ -134,6 +134,13 @@ typedef struct _voucher_mach_udata_s {
 	uint8_t _vmu_after_activity[0];
 } _voucher_mach_udata_s;
 
+typedef struct _voucher_mach_udata_aux_s {
+	mach_msg_aux_header_t header;
+	_voucher_mach_udata_s udata;
+} _voucher_mach_udata_aux_s;
+
+#define DISPATCH_MSGV_AUX_MAX_SIZE sizeof(_voucher_mach_udata_aux_s)
+
 OS_ENUM(voucher_fields, uint16_t,
 	VOUCHER_FIELD_NONE		= 0,
 	VOUCHER_FIELD_KVOUCHER	= 1u << 0,
@@ -234,7 +241,7 @@ typedef struct voucher_recipe_s {
 } voucher_recipe_s;
 #endif
 
-#if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+#if (TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR) || DISPATCH_TARGET_DK_EMBEDDED
 #define VL_HASH_SIZE  64u // must be a power of two
 #else
 #define VL_HASH_SIZE 256u // must be a power of two
@@ -432,6 +439,7 @@ _voucher_get_activity_id(voucher_t v, uint64_t *creator_pid)
 	return v ? v->v_activity : 0;
 }
 
+voucher_t _voucher_create_with_mach_msgv(mach_msg_header_t *msg, mach_msg_aux_header_t *aux);
 void _voucher_task_mach_voucher_init(void* ctxt);
 extern dispatch_once_t _voucher_task_mach_voucher_pred;
 extern mach_voucher_t _voucher_task_mach_voucher;
@@ -697,7 +705,7 @@ DISPATCH_ALWAYS_INLINE
 static inline bool
 _voucher_mach_msg_set(mach_msg_header_t *msg, voucher_t voucher)
 {
-	(void)msg; (void)voucher;
+	(void)msg; (void)voucher;;
 	return false;
 }
 

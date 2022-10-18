@@ -36,6 +36,7 @@
 #endif
 
 DISPATCH_ASSUME_NONNULL_BEGIN
+DISPATCH_ASSUME_ABI_SINGLE_BEGIN
 
 /*!
  * @header
@@ -775,6 +776,7 @@ dispatch_source_set_registration_handler_f(dispatch_source_t source,
 
 __END_DECLS
 
+DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
 #endif

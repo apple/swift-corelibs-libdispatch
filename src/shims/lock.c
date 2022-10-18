@@ -342,6 +342,8 @@ _dlock_wait(uint32_t *uaddr, uint32_t val, uint32_t timeout, uint32_t flags)
 		case ETIMEDOUT:
 		case EFAULT:
 			return -rc;
+		case EOWNERDEAD:
+			DISPATCH_CLIENT_CRASH(val, "Owner in ulock is unknown - possible memory corruption");
 		default:
 			DISPATCH_INTERNAL_CRASH(-rc, "ulock_wait() failed");
 		}

@@ -132,15 +132,7 @@ _os_workgroup_interval_explicit_xref_dispose(os_workgroup_interval_t wgi)
 	_os_workgroup_interval_xref_dispose(wgi);
 	_os_workgroup_explicit_xref_dispose(wgi->_as_wg);
 }
-#endif
 
-static inline bool
-_os_workgroup_is_configurable(uint64_t wg_state)
-{
-	return (wg_state & OS_WORKGROUP_OWNER) == OS_WORKGROUP_OWNER;
-}
-
-#if !USE_OBJC
 void
 _os_workgroup_explicit_dispose(os_workgroup_t wg)
 {
@@ -149,19 +141,40 @@ _os_workgroup_explicit_dispose(os_workgroup_t wg)
 }
 #endif
 
+static inline bool
+_os_workgroup_is_configurable(uint64_t wg_state)
+{
+	return (wg_state & OS_WORKGROUP_OWNER) == OS_WORKGROUP_OWNER;
+}
+
+static inline bool
+_os_workgroup_has_workload_id(uint64_t wg_state)
+{
+	return (wg_state & OS_WORKGROUP_HAS_WORKLOAD_ID);
+}
+
+static inline bool
+_os_workgroup_has_backing_workinterval(os_workgroup_t wg)
+{
+	return wg->port != MACH_PORT_NULL;
+}
+
 void
 _os_workgroup_dispose(os_workgroup_t wg)
 {
 	dispatch_assert(wg->joined_cnt == 0);
 
-	kern_return_t kr;
 	uint64_t wg_state = os_atomic_load(&wg->wg_state, relaxed);
-	if (_os_workgroup_is_configurable(wg_state)) {
-		kr = work_interval_destroy(wg->wi);
-	} else {
-		kr = mach_port_mod_refs(mach_task_self(), wg->port, MACH_PORT_RIGHT_SEND, -1);
+	if (_os_workgroup_has_backing_workinterval(wg)) {
+		kern_return_t kr = mach_port_mod_refs(mach_task_self(), wg->port,
+				MACH_PORT_RIGHT_SEND, -1);
+		os_assumes(kr == KERN_SUCCESS);
+		if (_os_workgroup_is_configurable(wg_state)) {
+			kr = work_interval_destroy(wg->wi);
+			os_assumes(kr == KERN_SUCCESS);
+		}
 	}
-	os_assumes(kr == KERN_SUCCESS);
+
 	if (wg_state & OS_WORKGROUP_LABEL_NEEDS_FREE) {
 		free((void *)wg->name);
 	}
@@ -229,6 +242,32 @@ _os_workgroup_set_current(os_workgroup_t new_wg)
 }
 
 static inline bool
+_os_workgroup_client_interval_data_initialized(
+		os_workgroup_interval_data_t data)
+{
+	return (data->sig == _OS_WORKGROUP_INTERVAL_DATA_SIG_INIT);
+}
+
+static inline bool
+_os_workgroup_client_interval_data_is_valid(os_workgroup_interval_data_t data)
+{
+	return (data && _os_workgroup_client_interval_data_initialized(data));
+}
+
+static inline uint64_t
+_os_workgroup_interval_data_complexity(os_workgroup_interval_data_t data)
+{
+	uint64_t complexity = 0;
+
+	if (_os_workgroup_client_interval_data_is_valid(data)) {
+		if (data->wgid_flags & OS_WORKGROUP_INTERVAL_DATA_COMPLEXITY_HIGH) {
+			complexity = 1;
+		}
+	}
+	return complexity;
+}
+
+static inline bool
 _os_workgroup_attr_is_resolved(os_workgroup_attr_t attr)
 {
 	return (attr->sig == _OS_WORKGROUP_ATTR_RESOLVED_INIT);
@@ -254,10 +293,16 @@ _os_workgroup_attr_is_differentiated(os_workgroup_attr_t attr)
 }
 
 static inline bool
+_os_workgroup_attr_has_workload_id(os_workgroup_attr_t attr)
+{
+	return (attr->internal_wl_id_flags & WORK_INTERVAL_WORKLOAD_ID_HAS_ID) != 0;
+}
+
+static inline bool
 _os_workgroup_type_is_interval_type(os_workgroup_type_t wg_type)
 {
 	return (wg_type >= OS_WORKGROUP_INTERVAL_TYPE_DEFAULT) &&
-			(wg_type <= OS_WORKGROUP_INTERVAL_TYPE_ARKIT);
+			(wg_type <= OS_WORKGROUP_INTERVAL_TYPE_FRAME_COMPOSITOR);
 }
 
 static bool
@@ -277,13 +322,6 @@ static inline bool
 _os_workgroup_type_is_default_type(os_workgroup_type_t wg_type)
 {
 	return wg_type == OS_WORKGROUP_TYPE_DEFAULT;
-}
-
-
-static inline bool
-_os_workgroup_has_backing_workinterval(os_workgroup_t wg)
-{
-	return wg->wi != NULL;
 }
 
 static inline uint32_t
@@ -324,6 +362,8 @@ _wi_flags_to_wg_type(uint32_t wi_flags)
 		return OS_WORKGROUP_INTERVAL_TYPE_COREMEDIA;
 	case WORK_INTERVAL_TYPE_ARKIT:
 		return OS_WORKGROUP_INTERVAL_TYPE_ARKIT;
+	case WORK_INTERVAL_TYPE_FRAME_COMPOSITOR:
+		return OS_WORKGROUP_INTERVAL_TYPE_FRAME_COMPOSITOR;
 	case WORK_INTERVAL_TYPE_CA_CLIENT:
 		return OS_WORKGROUP_INTERVAL_TYPE_CA_CLIENT;
 	default:
@@ -350,6 +390,9 @@ _wg_type_to_wi_flags(os_workgroup_type_t wg_type)
 		return WORK_INTERVAL_TYPE_COREANIMATION;
 	case OS_WORKGROUP_INTERVAL_TYPE_CA_RENDER_SERVER:
 		return WORK_INTERVAL_TYPE_CA_RENDER_SERVER;
+	case OS_WORKGROUP_INTERVAL_TYPE_FRAME_COMPOSITOR:
+		return (WORK_INTERVAL_TYPE_FRAME_COMPOSITOR |
+				WORK_INTERVAL_FLAG_FINISH_AT_DEADLINE);
 	case OS_WORKGROUP_INTERVAL_TYPE_HID_DELIVERY:
 		return WORK_INTERVAL_TYPE_HID_DELIVERY;
 	case OS_WORKGROUP_INTERVAL_TYPE_COREMEDIA:
@@ -403,7 +446,8 @@ _os_workgroup_get_wg_wi_types_from_port(mach_port_t port,
 }
 
 static work_interval_t
-_os_workgroup_create_work_interval(os_workgroup_attr_t attr)
+_os_workgroup_create_work_interval(os_workgroup_attr_t attr,
+		mach_port_t *mach_port_out)
 {
 	/* All workgroups are joinable */
 	uint32_t flags = WORK_INTERVAL_FLAG_JOINABLE;
@@ -414,18 +458,109 @@ _os_workgroup_create_work_interval(os_workgroup_attr_t attr)
 		flags |= WORK_INTERVAL_FLAG_GROUP;
 	}
 
+	if (_os_workgroup_attr_has_workload_id(attr)) {
+		flags |= WORK_INTERVAL_FLAG_HAS_WORKLOAD_ID;
+	}
+
 	work_interval_t wi;
 	int rv = work_interval_create(&wi, flags);
 	if (rv) {
+		return NULL;
+	}
+	rv = work_interval_copy_port(wi, mach_port_out);
+	if (rv < 0) {
+		work_interval_destroy(wi);
 		return NULL;
 	}
 
 	return wi;
 }
 
+static void
+_os_workgroup_set_work_interval_name(os_workgroup_t wg, const char *name)
+{
+	if (!MACH_PORT_VALID(wg->port)) {
+		DISPATCH_INTERNAL_CRASH(wg->port, "Invalid workgroup port");
+	}
+	/* kernel requires NUL-terminated string in buffer of capped size */
+	char wi_name[WORK_INTERVAL_NAME_MAX];
+	size_t len = name ? strlcpy(wi_name, name, sizeof(wi_name)) : 0;
+	if (!len) {
+		return;
+	}
+
+#if !TARGET_OS_SIMULATOR
+	int ret = __work_interval_ctl(WORK_INTERVAL_OPERATION_SET_NAME, wg->port,
+			wi_name, sizeof(wi_name));
+	if (ret == -1) {
+		ret = errno;
+		(void)dispatch_assume_zero(ret);
+	}
+#endif // !TARGET_OS_SIMULATOR
+}
+
+static int
+_os_workgroup_set_work_interval_workload_id(os_workgroup_t wg,
+		const char *workload_id, uint32_t workload_id_flags)
+{
+	int ret = 0;
+
+	if (!MACH_PORT_VALID(wg->port)) {
+		DISPATCH_INTERNAL_CRASH(wg->port, "Invalid workgroup port");
+	}
+	/* We use the WORKLOAD_ID_HAS_ID flag to indicate that the workload ID was
+	 * valid in _os_workgroup_lookup_type_from_workload_id, don't call the
+	 * setter syscall otherwise, and strip off that flag before calling the
+	 * kernel, as it is an (error) out flag only for the syscall. */
+	if (!workload_id_flags) {
+		return ret;
+	}
+	workload_id_flags &= ~WORK_INTERVAL_WORKLOAD_ID_HAS_ID;
+
+	/* kernel requires NUL-terminated string in buffer of capped size */
+	char wlid_name[WORK_INTERVAL_WORKLOAD_ID_NAME_MAX];
+	strlcpy(wlid_name, workload_id, sizeof(wlid_name));
+
+#if !TARGET_OS_SIMULATOR
+	/* SET_WORKLOAD_ID cross-checks the workinterval type in the original
+	 * work_interval create flags against the ones specified here to ensure the
+	 * requested workload ID is consistent & compatible. */
+	uint32_t create_flags = _wg_type_to_wi_flags(wg->wg_type);
+	struct work_interval_workload_id_params wlid_params = {
+		.wlidp_flags = workload_id_flags,
+		.wlidp_wicreate_flags = create_flags,
+		.wlidp_name = (uintptr_t)wlid_name,
+	};
+
+	ret = __work_interval_ctl(WORK_INTERVAL_OPERATION_SET_WORKLOAD_ID,
+			wg->port, &wlid_params, sizeof(wlid_params));
+	if (ret == -1) {
+		ret = errno;
+		(void)dispatch_assume_zero(ret);
+	}
+	if (ret || (wlid_params.wlidp_flags & WORK_INTERVAL_WORKLOAD_ID_HAS_ID)) {
+		_os_workgroup_error_log("Unable to set kernel workload ID: %s (0x%x)"
+				" -> %d (0x%x)", workload_id, workload_id_flags, ret,
+				!ret ? wlid_params.wlidp_flags : 0);
+		if (!ret) {
+			/* Seeing WORK_INTERVAL_WORKLOAD_ID_HAS_ID in the out flags
+			 * indicates that the set ID operation failed because the work
+			 * interval already had a workload ID set previously. This should
+			 * only ever occur if a workgroup is created from an existing
+			 * workinterval port or workgroup object (that had an ID set). */
+			ret = EALREADY;
+		}
+	} else {
+		wg->wg_state |= OS_WORKGROUP_HAS_WORKLOAD_ID;
+	}
+#endif // !TARGET_OS_SIMULATOR
+	return ret;
+}
+
 struct os_workgroup_workload_id_table_entry_s {
 	const char* wl_id;
-	os_workgroup_type_t wl_type;
+	os_workgroup_type_t wl_type, wl_compatibility_type;
+	uint32_t wl_id_flags;
 };
 
 #if !TARGET_OS_SIMULATOR
@@ -434,18 +569,25 @@ static const struct os_workgroup_workload_id_table_entry_s
 	{
 		.wl_id = "com.apple.coreaudio.hal.iothread",
 		.wl_type = OS_WORKGROUP_INTERVAL_TYPE_COREAUDIO,
+		.wl_id_flags = WORK_INTERVAL_WORKLOAD_ID_RT_ALLOWED |
+				WORK_INTERVAL_WORKLOAD_ID_RT_CRITICAL,
 	},
 	{
 		.wl_id = "com.apple.coreaudio.hal.clientthread",
 		.wl_type = OS_WORKGROUP_INTERVAL_TYPE_AUDIO_CLIENT,
+		.wl_id_flags = WORK_INTERVAL_WORKLOAD_ID_RT_ALLOWED,
 	},
 };
 #endif // !TARGET_OS_SIMULATOR
 
 static os_workgroup_type_t
-_os_workgroup_lookup_type_from_workload_id(const char *workload_id)
+_os_workgroup_lookup_type_from_workload_id(const char *workload_id,
+		uint32_t *out_workload_id_flags,
+		os_workgroup_type_t *out_workload_compatibility_type)
 {
 	os_workgroup_type_t workload_type = OS_WORKGROUP_TYPE_DEFAULT;
+	os_workgroup_type_t workload_compatibility_type = OS_WORKGROUP_TYPE_DEFAULT;
+	uint32_t workload_id_flags = 0;
 
 	if (!workload_id) {
 		DISPATCH_CLIENT_CRASH(0, "Workload identifier must not be NULL");
@@ -454,19 +596,29 @@ _os_workgroup_lookup_type_from_workload_id(const char *workload_id)
 	for (size_t i = 0; i < countof(_os_workgroup_workload_id_table); i++) {
 		if (!strcasecmp(workload_id, _os_workgroup_workload_id_table[i].wl_id)){
 			workload_type = _os_workgroup_workload_id_table[i].wl_type;
+			workload_compatibility_type =
+					_os_workgroup_workload_id_table[i].wl_compatibility_type;
+			if (_os_workgroup_type_is_default_type(workload_compatibility_type)){
+				workload_compatibility_type = workload_type;
+			}
+			workload_id_flags = WORK_INTERVAL_WORKLOAD_ID_HAS_ID; // entry found
+			workload_id_flags |= _os_workgroup_workload_id_table[i].wl_id_flags;
+			workload_id_flags &= ~WORK_INTERVAL_WORKLOAD_ID_RT_CRITICAL;
 			if (_os_workgroup_type_is_default_type(workload_type)) {
 				DISPATCH_INTERNAL_CRASH(i, "Invalid workload ID type");
 			}
 			break;
 		}
 	}
-#if OS_WORKGROUP_LOG_UKNOWN_WORKLOAD_ID
-	if (_os_workgroup_type_is_default_type(workload_type)) {
-		_dispatch_log("WARNING: os_workgroup: Unknown workload ID \"%s\"",
-				workload_id);
+	if (!workload_id_flags) {
+		/* Entry not found in the userspace config table, but mark the flags as
+		 * having seen an ID anyway since it may be present in the kernel config
+		 * table. */
+		workload_id_flags = WORK_INTERVAL_WORKLOAD_ID_HAS_ID;
 	}
-#endif
 #endif // !TARGET_OS_SIMULATOR
+	*out_workload_id_flags = workload_id_flags;
+	*out_workload_compatibility_type = workload_compatibility_type;
 	return workload_type;
 }
 
@@ -477,8 +629,9 @@ _os_workgroup_workload_id_attr_resolve(const char *workload_id,
 {
 	/* N.B: expects to be called with the attr pointer returned by
 	 *      _os_workgroup_client_attr_resolve() (i.e. a mutable local copy) */
-	os_workgroup_type_t wl_type =
-			_os_workgroup_lookup_type_from_workload_id(workload_id);
+	os_workgroup_type_t wl_compatibility_type = OS_WORKGROUP_TYPE_DEFAULT;
+	os_workgroup_type_t wl_type = _os_workgroup_lookup_type_from_workload_id(
+			workload_id, &attr->internal_wl_id_flags, &wl_compatibility_type);
 	if (_os_workgroup_type_is_default_type(wl_type)) {
 		/* Unknown workload ID, fallback to attribute type */
 		return attr;
@@ -486,6 +639,9 @@ _os_workgroup_workload_id_attr_resolve(const char *workload_id,
 	/* Require matching types between workload ID and attribute.
 	 * Use workload ID type as the type implied by the default attribute */
 	if (attr->wg_type == default_attr->wg_type) {
+		attr->wg_type = wl_type;
+	} else if (attr->wg_type == wl_compatibility_type) {
+		/* Allow type override from the table if compatibility type matches */
 		attr->wg_type = wl_type;
 	} else if (wl_type != attr->wg_type) {
 		/* Workload ID and attribute type mismatch */
@@ -496,14 +652,21 @@ _os_workgroup_workload_id_attr_resolve(const char *workload_id,
 
 static inline bool
 _os_workgroup_workload_id_is_valid_for_wi_type(const char *workload_id,
-		uint32_t wi_type)
+		uint32_t wi_type, uint32_t *out_workload_id_flags)
 {
-	os_workgroup_type_t wl_type =
-			_os_workgroup_lookup_type_from_workload_id(workload_id);
+	os_workgroup_type_t wl_compatibility_type = OS_WORKGROUP_TYPE_DEFAULT;
+	os_workgroup_type_t wl_type = _os_workgroup_lookup_type_from_workload_id(
+			workload_id, out_workload_id_flags, &wl_compatibility_type);
 	if (_os_workgroup_type_is_default_type(wl_type)) {
 		/* Unknown workload ID, nothing to match */
 		return true;
 	}
+	if (_wg_type_to_wi_type(wl_compatibility_type) == wi_type) {
+		/* Check if the compatibility type matches the passed in type of
+		 * port or workgroup object. */
+		return true;
+	}
+
 	/* Require matching workinterval types between workload ID and passed in
 	 * type of port or workgroup object. */
 	if (_wg_type_to_wi_type(wl_type) != wi_type) {
@@ -529,6 +692,12 @@ _os_workgroup_set_name(os_workgroup_t wg, const char *name)
 		}
 	}
 	wg->name = name;
+
+	uint64_t wg_state = os_atomic_load(&wg->wg_state, relaxed);
+	if (_os_workgroup_has_backing_workinterval(wg) &&
+			_os_workgroup_is_configurable(wg_state)) {
+		_os_workgroup_set_work_interval_name(wg, name);
+	}
 }
 
 static inline bool
@@ -652,6 +821,20 @@ _workgroup_init(void)
 #pragma mark Private functions
 
 int
+os_workgroup_interval_data_set_flags(os_workgroup_interval_data_t data,
+		os_workgroup_interval_data_flags_t flags)
+{
+	int ret = 0;
+	if (_os_workgroup_client_interval_data_is_valid(data) &&
+			(flags & ~OS_WORKGROUP_INTERVAL_DATA_FLAGS_MASK) == 0) {
+		data->wgid_flags = flags;
+	} else {
+		ret = EINVAL;
+	}
+	return ret;
+}
+
+int
 os_workgroup_attr_set_interval_type(os_workgroup_attr_t attr,
 		os_workgroup_interval_type_t interval_type)
 {
@@ -724,7 +907,8 @@ os_workgroup_create(const char *name, os_workgroup_attr_t attr)
 		return NULL;
 	}
 
-	wi = _os_workgroup_create_work_interval(attr);
+	mach_port_t port = MACH_PORT_NULL;
+	wi = _os_workgroup_create_work_interval(attr, &port);
 	if (wi == NULL) {
 		return NULL;
 	}
@@ -732,6 +916,7 @@ os_workgroup_create(const char *name, os_workgroup_attr_t attr)
 	wg = (os_workgroup_t) _os_object_alloc(WORKGROUP_CLASS,
 			sizeof(struct os_workgroup_s));
 	wg->wi = wi;
+	wg->port = port;
 	wg->wg_state = OS_WORKGROUP_OWNER;
 	wg->wg_type = attr->wg_type;
 
@@ -773,7 +958,8 @@ os_workgroup_interval_create(const char *name, os_clockid_t clock,
 		return NULL;
 	}
 
-	wi = _os_workgroup_create_work_interval(attr);
+	mach_port_t port = MACH_PORT_NULL;
+	wi = _os_workgroup_create_work_interval(attr, &port);
 	if (wi == NULL) {
 		return NULL;
 	}
@@ -781,6 +967,7 @@ os_workgroup_interval_create(const char *name, os_clockid_t clock,
 	wgi = (os_workgroup_interval_t) _os_object_alloc(WORKGROUP_INTERVAL_CLASS,
 			sizeof(struct os_workgroup_interval_s));
 	wgi->wi = wi;
+	wgi->port = port;
 	wgi->clock = clock;
 	wgi->wii = work_interval_instance_alloc(wi);
 	wgi->wii_lock = OS_UNFAIR_LOCK_INIT;
@@ -845,7 +1032,8 @@ os_workgroup_create_with_workload_id(const char * name,
 		return NULL;
 	}
 
-	wi = _os_workgroup_create_work_interval(attr);
+	mach_port_t port = MACH_PORT_NULL;
+	wi = _os_workgroup_create_work_interval(attr, &port);
 	if (wi == NULL) {
 		return NULL;
 	}
@@ -853,9 +1041,16 @@ os_workgroup_create_with_workload_id(const char * name,
 	wg = (os_workgroup_t) _os_object_alloc(WORKGROUP_CLASS,
 			sizeof(struct os_workgroup_s));
 	wg->wi = wi;
+	wg->port = port;
 	wg->wg_state = OS_WORKGROUP_OWNER;
 	wg->wg_type = attr->wg_type;
 
+	int ret = _os_workgroup_set_work_interval_workload_id(wg, workload_id,
+			attr->internal_wl_id_flags);
+	if (ret) {
+		_os_object_release(wg->_as_os_obj);
+		return NULL;
+	}
 	_os_workgroup_set_name(wg, name);
 
 	return wg;
@@ -921,7 +1116,8 @@ os_workgroup_interval_create_with_workload_id(const char *name,
 		return NULL;
 	}
 
-	wi = _os_workgroup_create_work_interval(attr);
+	mach_port_t port = MACH_PORT_NULL;
+	wi = _os_workgroup_create_work_interval(attr, &port);
 	if (wi == NULL) {
 		return NULL;
 	}
@@ -929,11 +1125,19 @@ os_workgroup_interval_create_with_workload_id(const char *name,
 	wgi = (os_workgroup_interval_t) _os_object_alloc(WORKGROUP_INTERVAL_CLASS,
 			sizeof(struct os_workgroup_interval_s));
 	wgi->wi = wi;
+	wgi->port = port;
 	wgi->clock = clock;
 	wgi->wii = work_interval_instance_alloc(wi);
 	wgi->wii_lock = OS_UNFAIR_LOCK_INIT;
 	wgi->wg_type = attr->wg_type;
 	wgi->wg_state = OS_WORKGROUP_OWNER;
+
+	int ret = _os_workgroup_set_work_interval_workload_id(wgi->_as_wg,
+			workload_id, attr->internal_wl_id_flags);
+	if (ret) {
+		_os_object_release(wgi->_as_os_obj);
+		return NULL;
+	}
 
 	_os_workgroup_set_name(wgi->_as_wg, name);
 
@@ -952,8 +1156,6 @@ os_workgroup_leave_self(os_workgroup_t wg, os_workgroup_join_token_t token)
 {
 	return os_workgroup_leave(wg, token);
 }
-
-#pragma mark Public functions
 
 os_workgroup_parallel_t
 os_workgroup_parallel_create(const char *name, os_workgroup_attr_t attr)
@@ -1029,7 +1231,6 @@ os_workgroup_copy_port(os_workgroup_t wg, mach_port_t *mach_port_out)
 	os_assert(mach_port_out != NULL);
 
 	*mach_port_out = MACH_PORT_NULL;
-	int rv = 0;
 
 	uint64_t wg_state = os_atomic_load(&wg->wg_state, relaxed);
 	if (wg_state & OS_WORKGROUP_CANCELED) {
@@ -1040,19 +1241,14 @@ os_workgroup_copy_port(os_workgroup_t wg, mach_port_t *mach_port_out)
 		return EINVAL;
 	}
 
-	if (_os_workgroup_is_configurable(wg_state)) {
-		rv = work_interval_copy_port(wg->wi, mach_port_out);
-		if (rv < 0) {
-			rv = errno;
-		}
-		return rv;
-	}
-
 	kern_return_t kr = mach_port_mod_refs(mach_task_self(), wg->port,
 			MACH_PORT_RIGHT_SEND, 1);
-	os_assumes(kr == KERN_SUCCESS);
-	*mach_port_out = wg->port;
-	return rv;
+	if (dispatch_assume(kr == KERN_SUCCESS)) {
+		*mach_port_out = wg->port;
+	} else {
+		return ENOMEM;
+	}
+	return 0;
 }
 
 os_workgroup_t
@@ -1069,16 +1265,19 @@ os_workgroup_create_with_port(const char *name, mach_port_t port)
 		return NULL;
 	}
 
+	kern_return_t kr;
+	kr = mach_port_mod_refs(mach_task_self(), port, MACH_PORT_RIGHT_SEND, 1);
+	if (!dispatch_assume(kr == KERN_SUCCESS)) {
+		return NULL;
+	}
+
 	os_workgroup_t wg = NULL;
 	wg = (os_workgroup_t) _os_object_alloc(WORKGROUP_CLASS,
 			sizeof(struct os_workgroup_s));
-	_os_workgroup_set_name(wg, name);
-
-	kern_return_t kr;
-	kr = mach_port_mod_refs(mach_task_self(), port, MACH_PORT_RIGHT_SEND, 1);
-	os_assumes(kr == KERN_SUCCESS);
 	wg->port = port;
 	wg->wg_type = wg_type;
+
+	_os_workgroup_set_name(wg, name);
 
 	return wg;
 }
@@ -1102,23 +1301,36 @@ os_workgroup_create_with_workload_id_and_port(const char *name,
 	}
 
 	/* Validate workload ID is compatible with port workinterval type */
-	if (!_os_workgroup_workload_id_is_valid_for_wi_type(workload_id, wi_type)) {
+	uint32_t wl_id_flags;
+	if (!_os_workgroup_workload_id_is_valid_for_wi_type(workload_id, wi_type,
+			&wl_id_flags)) {
 		_os_workgroup_error_log("Mismatched workload ID and port "
 				"interval type: %s vs %hd", workload_id, wg_type);
 		errno = EINVAL;
 		return NULL;
 	}
 
+	kern_return_t kr;
+	kr = mach_port_mod_refs(mach_task_self(), port, MACH_PORT_RIGHT_SEND, 1);
+	if (!dispatch_assume(kr == KERN_SUCCESS)) {
+		_os_workgroup_error_log("Invalid mach port 0x%x", port);
+		return NULL;
+	}
+
 	os_workgroup_t wg = NULL;
 	wg = (os_workgroup_t) _os_object_alloc(WORKGROUP_CLASS,
 			sizeof(struct os_workgroup_s));
-	_os_workgroup_set_name(wg, name);
-
-	kern_return_t kr;
-	kr = mach_port_mod_refs(mach_task_self(), port, MACH_PORT_RIGHT_SEND, 1);
-	os_assumes(kr == KERN_SUCCESS);
 	wg->port = port;
 	wg->wg_type = wg_type;
+
+	ret = _os_workgroup_set_work_interval_workload_id(wg, workload_id,
+			wl_id_flags);
+	if (ret && ret != EALREADY) {
+		_os_object_release(wg->_as_os_obj);
+		return NULL;
+	}
+
+	_os_workgroup_set_name(wg, name);
 
 	return wg;
 }
@@ -1136,40 +1348,24 @@ os_workgroup_create_with_workgroup(const char *name, os_workgroup_t wg)
 
 	new_wg = (os_workgroup_t) _os_object_alloc(WORKGROUP_CLASS,
 			sizeof(struct os_workgroup_s));
-	_os_workgroup_set_name(new_wg, name);
 	new_wg->wg_type = wg->wg_type;
 
 	/* We intentionally don't copy the context */
 
 	if (_os_workgroup_has_backing_workinterval(wg)) {
+		kern_return_t kr;
+		kr = mach_port_mod_refs(mach_task_self(), wg->port, MACH_PORT_RIGHT_SEND, 1);
 
-		if (_os_workgroup_is_configurable(wg_state)) {
-			int rv = work_interval_copy_port(wg->wi, &new_wg->port);
-
-			if (rv < 0) {
-				goto error;
-			}
-		} else {
-			kern_return_t kr;
-			kr = mach_port_mod_refs(mach_task_self(), wg->port, MACH_PORT_RIGHT_SEND, 1);
-
-			if (kr != KERN_SUCCESS) {
-				goto error;
-			}
-			new_wg->port = wg->port;
+		if (kr != KERN_SUCCESS) {
+			free(new_wg);
+			return NULL;
 		}
+		new_wg->port = wg->port;
 	}
+
+	_os_workgroup_set_name(new_wg, name);
 
 	return new_wg;
-
-error:
-	wg_state = os_atomic_load(&new_wg->wg_state, relaxed);
-	if (wg_state & OS_WORKGROUP_LABEL_NEEDS_FREE) {
-		free((void *)new_wg->name);
-	}
-	free(new_wg);
-
-	return NULL;
 }
 
 os_workgroup_t
@@ -1184,8 +1380,9 @@ os_workgroup_create_with_workload_id_and_workgroup(const char *name,
 	}
 
 	/* Validate workload ID is compatible with workgroup workinterval type */
+	uint32_t wl_id_flags;
 	if (!_os_workgroup_workload_id_is_valid_for_wi_type(workload_id,
-			_wg_type_to_wi_type(wg->wg_type))) {
+			_wg_type_to_wi_type(wg->wg_type), &wl_id_flags)) {
 		_os_workgroup_error_log("Mismatched workload ID and workgroup "
 				"interval type: %s vs %hd", workload_id, wg->wg_type);
 		errno = EINVAL;
@@ -1196,42 +1393,32 @@ os_workgroup_create_with_workload_id_and_workgroup(const char *name,
 
 	new_wg = (os_workgroup_t) _os_object_alloc(WORKGROUP_CLASS,
 			sizeof(struct os_workgroup_s));
-	_os_workgroup_set_name(new_wg, name);
 	new_wg->wg_type = wg->wg_type;
 
 	/* We intentionally don't copy the context */
 
 	if (_os_workgroup_has_backing_workinterval(wg)) {
+		kern_return_t kr;
+		kr = mach_port_mod_refs(mach_task_self(), wg->port, MACH_PORT_RIGHT_SEND, 1);
 
-		if (_os_workgroup_is_configurable(wg_state)) {
-			int rv = work_interval_copy_port(wg->wi, &new_wg->port);
+		if (kr != KERN_SUCCESS) {
+			_os_workgroup_error_log("Invalid workgroup port 0x%x", wg->port);
+			free(new_wg);
+			return NULL;
+		}
+		new_wg->port = wg->port;
 
-			if (rv < 0) {
-				_os_workgroup_error_log("Invalid workgroup work_interval");
-				goto error;
-			}
-		} else {
-			kern_return_t kr;
-			kr = mach_port_mod_refs(mach_task_self(), wg->port, MACH_PORT_RIGHT_SEND, 1);
-
-			if (kr != KERN_SUCCESS) {
-				_os_workgroup_error_log("Invalid workgroup port 0x%x", wg->port);
-				goto error;
-			}
-			new_wg->port = wg->port;
+		int ret = _os_workgroup_set_work_interval_workload_id(new_wg,
+				workload_id, wl_id_flags);
+		if (ret && ret != EALREADY) {
+			_os_object_release(new_wg->_as_os_obj);
+			return NULL;
 		}
 	}
 
+	_os_workgroup_set_name(new_wg, name);
+
 	return new_wg;
-
-error:
-	wg_state = os_atomic_load(&new_wg->wg_state, relaxed);
-	if (wg_state & OS_WORKGROUP_LABEL_NEEDS_FREE) {
-		free((void *)new_wg->name);
-	}
-	free(new_wg);
-
-	return NULL;
 }
 
 int
@@ -1436,7 +1623,7 @@ os_workgroup_testcancel(os_workgroup_t wg)
 
 int
 os_workgroup_interval_start(os_workgroup_interval_t wgi, uint64_t start,
-		uint64_t deadline, os_workgroup_interval_data_t __unused data)
+		uint64_t deadline, os_workgroup_interval_data_t data)
 {
 	os_workgroup_t cur_wg = _os_workgroup_get_current();
 	if (cur_wg != wgi->_as_wg) {
@@ -1456,6 +1643,7 @@ os_workgroup_interval_start(os_workgroup_interval_t wgi, uint64_t start,
 		return errno;
 	}
 
+	uint64_t complexity = _os_workgroup_interval_data_complexity(data);
 	int rv = 0;
 	uint64_t old_state, new_state;
 	os_atomic_rmw_loop(&wgi->wg_state, old_state, new_state, relaxed, {
@@ -1465,6 +1653,10 @@ os_workgroup_interval_start(os_workgroup_interval_t wgi, uint64_t start,
 		}
 		if (!_os_workgroup_is_configurable(old_state)) {
 			rv = EPERM;
+			os_atomic_rmw_loop_give_up(break);
+		}
+		if (complexity > 0 && !_os_workgroup_has_workload_id(old_state)) {
+			errno = EINVAL;
 			os_atomic_rmw_loop_give_up(break);
 		}
 		new_state = old_state | OS_WORKGROUP_INTERVAL_STARTED;
@@ -1481,6 +1673,7 @@ os_workgroup_interval_start(os_workgroup_interval_t wgi, uint64_t start,
 
 	work_interval_instance_set_start(wii, start);
 	work_interval_instance_set_deadline(wii, deadline);
+	work_interval_instance_set_complexity(wii, complexity);
 	rv = work_interval_instance_start(wii);
 	if (rv != 0) {
 		/* If we failed to start the interval in the kernel, clear the started
@@ -1495,7 +1688,7 @@ os_workgroup_interval_start(os_workgroup_interval_t wgi, uint64_t start,
 
 int
 os_workgroup_interval_update(os_workgroup_interval_t wgi, uint64_t deadline,
-		os_workgroup_interval_data_t __unused data)
+		os_workgroup_interval_data_t data)
 {
 	os_workgroup_t cur_wg = _os_workgroup_get_current();
 	if (cur_wg != wgi->_as_wg) {
@@ -1510,10 +1703,16 @@ os_workgroup_interval_update(os_workgroup_interval_t wgi, uint64_t deadline,
 		return errno;
 	}
 
+	uint64_t complexity = _os_workgroup_interval_data_complexity(data);
 	uint64_t wg_state = os_atomic_load(&wgi->wg_state, relaxed);
 	if (!_os_workgroup_is_configurable(wg_state)) {
 		os_unfair_lock_unlock(&wgi->wii_lock);
 		errno = EPERM;
+		return errno;
+	}
+	if (complexity > 0 && !_os_workgroup_has_workload_id(wg_state)) {
+		os_unfair_lock_unlock(&wgi->wii_lock);
+		errno = EINVAL;
 		return errno;
 	}
 
@@ -1529,6 +1728,7 @@ os_workgroup_interval_update(os_workgroup_interval_t wgi, uint64_t deadline,
 
 	work_interval_instance_t wii = wgi->wii;
 	work_interval_instance_set_deadline(wii, deadline);
+	work_interval_instance_set_complexity(wii, complexity);
 	int rv = work_interval_instance_update(wii);
 	if (rv != 0) {
 		rv = errno;
@@ -1540,7 +1740,7 @@ os_workgroup_interval_update(os_workgroup_interval_t wgi, uint64_t deadline,
 
 int
 os_workgroup_interval_finish(os_workgroup_interval_t wgi,
-		os_workgroup_interval_data_t __unused data)
+		os_workgroup_interval_data_t data)
 {
 	os_workgroup_t cur_wg = _os_workgroup_get_current();
 	if (cur_wg != wgi->_as_wg) {
@@ -1555,10 +1755,16 @@ os_workgroup_interval_finish(os_workgroup_interval_t wgi,
 		return errno;
 	}
 
+	uint64_t complexity = _os_workgroup_interval_data_complexity(data);
 	uint64_t wg_state = os_atomic_load(&wgi->wg_state, relaxed);
 	if (!_os_workgroup_is_configurable(wg_state)) {
 		os_unfair_lock_unlock(&wgi->wii_lock);
 		errno = EPERM;
+		return errno;
+	}
+	if (complexity > 0 && !_os_workgroup_has_workload_id(wg_state)) {
+		os_unfair_lock_unlock(&wgi->wii_lock);
+		errno = EINVAL;
 		return errno;
 	}
 	if (!(wg_state & OS_WORKGROUP_INTERVAL_STARTED)) {
@@ -1576,6 +1782,7 @@ os_workgroup_interval_finish(os_workgroup_interval_t wgi,
 	}
 
 	work_interval_instance_set_finish(wii, current_finish);
+	work_interval_instance_set_complexity(wii, complexity);
 	int rv = work_interval_instance_finish(wii);
 	if (rv != 0) {
 		rv = errno;

@@ -97,6 +97,12 @@ static const unsigned long dispatch_quantum_key = __PTK_LIBDISPATCH_KEY10;
 static const unsigned long dispatch_dsc_key = __PTK_LIBDISPATCH_KEY11;
 static const unsigned long dispatch_enqueue_key = __PTK_LIBDISPATCH_KEY12;
 
+#if __has_include(<os/tsd.h>)
+_Static_assert(__PTK_LIBDISPATCH_KEY13 == __TSD_MACH_MSG_AUX,
+		"libsyscall and libdispatch mach msgv TSD value mismatch");
+#endif
+static const unsigned long dispatch_msgv_aux_key = __PTK_LIBDISPATCH_KEY13;
+
 static const unsigned long os_workgroup_key = __PTK_LIBDISPATCH_WORKGROUP_KEY0;
 
 DISPATCH_TSD_INLINE
@@ -158,6 +164,7 @@ struct dispatch_tsd {
 	void *dispatch_quantum_key;
 	void *dispatch_dsc_key;
 	void *dispatch_enqueue_key;
+	void *dispatch_msgv_aux_key;
 
 	void *os_workgroup_key;
 };
@@ -219,6 +226,7 @@ extern pthread_key_t dispatch_deferred_items_key;
 extern pthread_key_t dispatch_quantum_key;
 extern pthread_key_t dispatch_dsc_key;
 extern pthread_key_t dispatch_enqueue_key;
+extern pthread_key_t dispatch_msgv_aux_key;
 
 extern pthread_key_t os_workgroup_key;
 

@@ -29,6 +29,7 @@
 __BEGIN_DECLS
 
 OS_WORKGROUP_ASSUME_NONNULL_BEGIN
+OS_WORKGROUP_ASSUME_ABI_SINGLE_BEGIN
 
 /*!
  * @typedef os_workgroup_interval_t
@@ -157,6 +158,7 @@ int
 os_workgroup_interval_finish(os_workgroup_interval_t wg,
 		os_workgroup_interval_data_t _Nullable data);
 
+OS_WORKGROUP_ASSUME_ABI_SINGLE_END
 OS_WORKGROUP_ASSUME_NONNULL_END
 
 __END_DECLS

@@ -27,6 +27,7 @@
 #endif
 
 DISPATCH_ASSUME_NONNULL_BEGIN
+DISPATCH_ASSUME_ABI_SINGLE_BEGIN
 
 /*!
  * @header
@@ -352,7 +353,7 @@ dispatch_sync_f(dispatch_queue_t queue,
  * <b>Differences with dispatch_sync()</b>
  *
  * Work items submitted to a queue with dispatch_async_and_wait() observe all
- * queue attributes of that queue when invoked (inluding autorelease frequency
+ * queue attributes of that queue when invoked (including autorelease frequency
  * or QOS class).
  *
  * When the runtime has brought up a thread to invoke the asynchronous workitems
@@ -1008,7 +1009,7 @@ API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
-dispatch_queue_create_with_target(const char *_Nullable label,
+dispatch_queue_create_with_target(const char *_Nullable DISPATCH_UNSAFE_INDEXABLE label,
 		dispatch_queue_attr_t _Nullable attr, dispatch_queue_t _Nullable target)
 		DISPATCH_ALIAS_V2(dispatch_queue_create_with_target);
 
@@ -1043,6 +1044,8 @@ dispatch_queue_create_with_target(const char *_Nullable label,
  * When no quality of service class is specified, the target queue of a newly
  * created dispatch queue is the default priority global concurrent queue.
  *
+ * Unless explicitly specified via the attribute, queues are created active.
+ *
  * @param label
  * A string label to attach to the queue.
  * This parameter is optional and may be NULL.
@@ -1059,7 +1062,7 @@ API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
-dispatch_queue_create(const char *_Nullable label,
+dispatch_queue_create(const char *_Nullable DISPATCH_UNSAFE_INDEXABLE label,
 		dispatch_queue_attr_t _Nullable attr);
 
 /*!
@@ -1177,7 +1180,9 @@ dispatch_queue_get_qos_class(dispatch_queue_t queue,
  * terminated.
  *
  * If a dispatch queue is active and targeted by other dispatch objects,
- * changing its target queue results in undefined behavior.
+ * changing its target queue results in undefined behavior.  Instead, it is
+ * recommended to create dispatch objects in an inactive state, set up the
+ * relevant target queues and then activate them.
  *
  * @param object
  * The object to modify.
@@ -1689,6 +1694,7 @@ dispatch_assert_queue_not(dispatch_queue_t queue)
 
 __END_DECLS
 
+DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
 #endif

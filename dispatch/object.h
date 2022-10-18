@@ -31,6 +31,7 @@
 #endif
 
 DISPATCH_ASSUME_NONNULL_BEGIN
+DISPATCH_ASSUME_ABI_SINGLE_BEGIN
 
 /*!
  * @typedef dispatch_object_t
@@ -593,16 +594,19 @@ API_DEPRECATED("unsupported interface", macos(10.6,10.9), ios(4.0,6.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW DISPATCH_COLD
 __attribute__((__format__(printf,2,3)))
 void
-dispatch_debug(dispatch_object_t object, const char *message, ...);
+dispatch_debug(dispatch_object_t object,
+			   const char *DISPATCH_UNSAFE_INDEXABLE message, ...);
 
 API_DEPRECATED("unsupported interface", macos(10.6,10.9), ios(4.0,6.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW DISPATCH_COLD
 __attribute__((__format__(printf,2,0)))
 void
-dispatch_debugv(dispatch_object_t object, const char *message, va_list ap);
+dispatch_debugv(dispatch_object_t object,
+				const char *DISPATCH_UNSAFE_INDEXABLE message, va_list ap);
 
 __END_DECLS
 
+DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
 #endif

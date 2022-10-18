@@ -166,6 +166,9 @@ __END_DECLS
  *
  * @constant DISPATCH_SOCK_NOTIFY_ACK
  * Notify acknowledgement
+ *
+ * @constant DISPATCH_SOCK_WAKE_PKT
+ * Notify reception of wake packet
  */
 enum {
 	DISPATCH_SOCK_CONNRESET = 0x00000001,
@@ -183,6 +186,7 @@ enum {
 	DISPATCH_SOCK_DISCONNECTED = 0x00001000,
 	DISPATCH_SOCK_CONNINFO_UPDATED = 0x00002000,
 	DISPATCH_SOCK_NOTIFY_ACK = 0x00004000,
+	DISPATCH_SOCK_WAKE_PKT DISPATCH_ENUM_API_AVAILABLE(macos(13.0), ios(16.0), tvos(16.0), watchos(9.0))= 0x00008000,
 };
 
 /*!

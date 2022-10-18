@@ -697,7 +697,3 @@ __END_DECLS
 DISPATCH_ASSUME_NONNULL_END
 
 #endif // __OS_VOUCHER_PRIVATE__
-
-#if OS_VOUCHER_ACTIVITY_SPI
-#include "voucher_activity_private.h"
-#endif

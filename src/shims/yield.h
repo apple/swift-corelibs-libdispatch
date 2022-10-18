@@ -94,7 +94,7 @@ void *_dispatch_wait_for_enqueuer(void **ptr, void **tailp);
 #ifndef DISPATCH_CONTENTION_SPINS_MIN
 #define DISPATCH_CONTENTION_SPINS_MIN (32 - 1)
 #endif
-#if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+#if (TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR) || DISPATCH_TARGET_DK_EMBEDDED
 #define _dispatch_contention_spins() \
 		((DISPATCH_CONTENTION_SPINS_MIN) + ((DISPATCH_CONTENTION_SPINS_MAX) - \
 		(DISPATCH_CONTENTION_SPINS_MIN)) / 2)

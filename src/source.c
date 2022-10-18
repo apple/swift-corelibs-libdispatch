@@ -1374,6 +1374,34 @@ dispatch_source_set_timer(dispatch_source_t ds, dispatch_time_t start,
 #pragma mark -
 #pragma mark dispatch_after
 
+static uint64_t
+_dispatch_after_leeway(uint64_t delta)
+{
+	// <rdar://problem/13447496>
+	uint64_t leeway = 0;
+	pthread_priority_t pp = _dispatch_get_priority();
+
+	// 10% leeway for BG and UT, 6.7% leeway for DEF and IN, 5% leeway for UI and
+	// above
+	switch (_dispatch_qos_from_pp(pp)) {
+	case DISPATCH_QOS_UNSPECIFIED:
+	case DISPATCH_QOS_MAINTENANCE:
+	case DISPATCH_QOS_BACKGROUND:
+	case DISPATCH_QOS_UTILITY:
+		leeway = delta / 10;
+		break;
+	case DISPATCH_QOS_DEFAULT:
+	case DISPATCH_QOS_USER_INITIATED:
+		leeway = delta / 15;
+		break;
+	default:
+		leeway = delta / 20;
+		break;
+	}
+
+	return leeway;
+}
+
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_after(dispatch_time_t when, dispatch_queue_t dq,
@@ -1397,7 +1425,7 @@ _dispatch_after(dispatch_time_t when, dispatch_queue_t dq,
 		}
 		return dispatch_async_f(dq, ctxt, handler);
 	}
-	leeway = delta / 10; // <rdar://problem/13447496>
+	leeway = _dispatch_after_leeway(delta);
 
 	if (leeway < NSEC_PER_MSEC) leeway = NSEC_PER_MSEC;
 	if (leeway > 60 * NSEC_PER_SEC) leeway = 60 * NSEC_PER_SEC;

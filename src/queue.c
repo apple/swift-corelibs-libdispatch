@@ -48,8 +48,8 @@ static void
 _dispatch_assert_queue_fail(dispatch_queue_t dq, bool expected)
 {
 	_dispatch_client_assert_fail(
-			"Block was %sexpected to execute on queue [%s]",
-			expected ? "" : "not ", dq->dq_label ?: "");
+			"Block was %sexpected to execute on queue [%s (%p)]",
+			expected ? "" : "not ", dq->dq_label ?: "", dq);
 }
 
 DISPATCH_NOINLINE DISPATCH_NORETURN
@@ -57,8 +57,8 @@ static void
 _dispatch_assert_queue_barrier_fail(dispatch_queue_t dq)
 {
 	_dispatch_client_assert_fail(
-			"Block was expected to act as a barrier on queue [%s]",
-			dq->dq_label ?: "");
+			"Block was expected to act as a barrier on queue [%s (%p)]",
+			dq->dq_label ?: "", dq);
 }
 
 void
@@ -134,8 +134,7 @@ _dispatch_set_priority_and_mach_voucher_slow(pthread_priority_t pp,
 				pflags |= _PTHREAD_SET_SELF_WQ_KEVENT_UNBIND;
 				// when we unbind, overcomitness can flip, so we need to learn
 				// it from the defaultpri, see _dispatch_priority_compute_update
-				pp |= (_dispatch_get_basepri() &
-						DISPATCH_PRIORITY_FLAG_OVERCOMMIT);
+				pp = _pthread_priority_modify_flags(pp, 0, _dispatch_get_basepri() & DISPATCH_PRIORITY_FLAG_OVERCOMMIT);
 
 				// TODO (rokhinip): Right now there is no binding and unbinding
 				// to a kqueue for a cooperative thread. We'll need to do this
@@ -143,9 +142,9 @@ _dispatch_set_priority_and_mach_voucher_slow(pthread_priority_t pp,
 			} else {
 				// else we need to keep the overcommit/cooperative one that is set on the current
 				// thread
-				pp |= (old_pri & _PTHREAD_PRIORITY_THREAD_TYPE_MASK);
+				pp = _pthread_priority_modify_flags(pp, 0, old_pri & _PTHREAD_PRIORITY_THREAD_TYPE_MASK);
 			}
-			if (likely(old_pri & ~_PTHREAD_PRIORITY_FLAGS_MASK)) {
+			if (likely(_pthread_priority_strip_all_flags(old_pri))) {
 				pflags |= _PTHREAD_SET_SELF_QOS_FLAG;
 			}
 			uint64_t mgr_dq_state =
@@ -709,7 +708,7 @@ _dispatch_continuation_init_slow(dispatch_continuation_t dc,
 
 	flags |= block_flags;
 	if (block_flags & DISPATCH_BLOCK_HAS_PRIORITY) {
-		pp = dbpd->dbpd_priority & ~_PTHREAD_PRIORITY_FLAGS_MASK;
+		pp = _pthread_priority_strip_all_flags(dbpd->dbpd_priority);
 	} else if (flags & DISPATCH_BLOCK_HAS_PRIORITY) {
 		// _dispatch_source_handler_alloc is calling is and doesn't want us
 		// to propagate priorities
@@ -1169,8 +1168,8 @@ _dispatch_async_waiter_update(dispatch_sync_context_t dsc,
 	dispatch_priority_t p = dq->dq_priority & DISPATCH_PRIORITY_REQUESTED_MASK;
 	if (p) {
 		pthread_priority_t pp = _dispatch_priority_to_pp_strip_flags(p);
-		if (pp > (dsc->dc_priority & ~_PTHREAD_PRIORITY_FLAGS_MASK)) {
-			dsc->dc_priority = pp | _PTHREAD_PRIORITY_ENFORCE_FLAG;
+		if (pp > _pthread_priority_strip_all_flags(dsc->dc_priority)) {
+			dsc->dc_priority = _pthread_priority_modify_flags(pp, 0, _PTHREAD_PRIORITY_ENFORCE_FLAG);
 		}
 	}
 
@@ -3820,6 +3819,7 @@ first_iteration:
 		owned += dq->dq_width * DISPATCH_QUEUE_WIDTH_INTERVAL;
 	}
 	if (dc) {
+		// We still have pending work items
 		owned = _dispatch_queue_adjust_owned(dq, owned, dc);
 	}
 	*owned_ptr &= DISPATCH_QUEUE_ENQUEUED | DISPATCH_QUEUE_ENQUEUED_ON_MGR;
@@ -5052,6 +5052,45 @@ _dispatch_queue_wakeup_with_override(dispatch_queue_class_t dq,
 }
 #endif // HAVE_PTHREAD_WORKQUEUE_QOS
 
+dispatch_thread_override_info_s
+dispatch_thread_get_current_override_qos_floor()
+{
+	dispatch_thread_override_info_s override_info = {0};
+
+	dispatch_qos_t override_qos_floor = _dispatch_get_basepri_override_qos_floor();
+	if (override_qos_floor != DISPATCH_QOS_SATURATED) {
+		override_info.can_override = true;
+		override_info.override_qos_floor = _dispatch_qos_to_qos_class(override_qos_floor);
+	}
+
+	return override_info;
+}
+
+int
+dispatch_thread_override_self(qos_class_t override_qos)
+{
+	dispatch_qos_t qos = _dispatch_qos_from_qos_class(override_qos);
+	_dispatch_wqthread_override_start(_dispatch_tid_self(), qos);
+	// ensure that the root queue sees that this thread was overridden.
+	_dispatch_set_basepri_override_qos(qos);
+	return 0;
+}
+
+int
+dispatch_lock_override_start_with_debounce(dispatch_lock_t *lock_addr,
+	dispatch_tid_t expected_thread, qos_class_t override_to_apply)
+{
+	return _dispatch_wqthread_override_start_check_owner(expected_thread,
+		_dispatch_qos_from_qos_class(override_to_apply), lock_addr);
+}
+
+int
+dispatch_lock_override_end(qos_class_t override_to_end)
+{
+	_dispatch_set_basepri_override_qos(_dispatch_qos_from_qos_class(override_to_end));
+	return 0;
+}
+
 DISPATCH_NOINLINE
 void
 _dispatch_queue_wakeup(dispatch_queue_class_t dqu, dispatch_qos_t qos,
@@ -5111,6 +5150,10 @@ _dispatch_queue_wakeup(dispatch_queue_class_t dqu, dispatch_qos_t qos,
 				new_state |= enqueue;
 			}
 			if (flags & DISPATCH_WAKEUP_MAKE_DIRTY) {
+				// Always do the store unconditionally with release even if we already
+				// have the dirty bit set. This will make visible the publishing of the
+				// updated tail pointer and provide atomic ordering with any concurrent
+				// stores to the dq_state.
 				new_state |= DISPATCH_QUEUE_DIRTY;
 			} else if (new_state == old_state) {
 				os_atomic_rmw_loop_give_up(goto done);
@@ -6189,14 +6232,12 @@ _dispatch_wlh_worker_thread_init(dispatch_deferred_items_t ddi)
 		//
 		// Also add the NEEDS_UNBIND flag so that
 		// _dispatch_priority_compute_update knows it has to unbind
+		//
+		// Remove all flags except thread type
+		pp = _pthread_priority_strip_flags(pp, ~_PTHREAD_PRIORITY_THREAD_TYPE_MASK);
 
-		pp &= _PTHREAD_PRIORITY_THREAD_TYPE_MASK | ~_PTHREAD_PRIORITY_FLAGS_MASK;
 		if (ddi->ddi_wlh == DISPATCH_WLH_ANON) {
 			pp |= _PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG;
-		} else {
-			// pthread sets the flag when it is an event delivery thread
-			// so we need to explicitly clear it
-			pp &= ~(pthread_priority_t)_PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG;
 		}
 		_dispatch_thread_setspecific(dispatch_priority_key,
 				(void *)(uintptr_t)pp);
@@ -6208,9 +6249,8 @@ _dispatch_wlh_worker_thread_init(dispatch_deferred_items_t ddi)
 		return false;
 	}
 
-	if ((pp & _PTHREAD_PRIORITY_SCHED_PRI_FLAG) ||
-			!(pp & ~_PTHREAD_PRIORITY_FLAGS_MASK)) {
-		// When the phtread kext is delivering kevents to us, and pthread
+	if (pp & _PTHREAD_PRIORITY_SCHED_PRI_FLAG) {
+		// When the pthread kext is delivering kevents to us, and pthread
 		// root queues are in use, then the pthread priority TSD is set
 		// to a sched pri with the _PTHREAD_PRIORITY_SCHED_PRI_FLAG bit set.
 		//
@@ -6218,16 +6258,16 @@ _dispatch_wlh_worker_thread_init(dispatch_deferred_items_t ddi)
 		// and the best option is to clear the qos/priority bits which tells
 		// us to not do any QoS related calls on this thread.
 		//
-		// However, in that case the manager thread is opted out of QoS,
+		// However, in that case, the manager thread is opted out of QoS,
 		// as far as pthread is concerned, and can't be turned into
 		// something else, so we can't stash.
-		pp &= (pthread_priority_t)_PTHREAD_PRIORITY_FLAGS_MASK;
+		pp = _pthread_priority_strip_qos_and_relpri(pp);
 	}
 	// Managers always park without mutating to a regular worker thread, and
 	// hence never need to unbind from userland, and when draining a manager,
 	// the NEEDS_UNBIND flag would cause the mutation to happen.
 	// So we need to strip this flag
-	pp &= ~(pthread_priority_t)_PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG;
+	pp = _pthread_priority_strip_flags(pp, _PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG);
 	_dispatch_thread_setspecific(dispatch_priority_key, (void *)(uintptr_t)pp);
 
 	// ensure kevents registered from this thread are registered at manager QoS
@@ -6293,7 +6333,10 @@ _dispatch_wlh_worker_thread(dispatch_wlh_t wlh, dispatch_kevent_t events,
 	os_workgroup_join_token_s join_token = {0};
 	if (wg) {
 		int rv = os_workgroup_join(wg, &join_token);
-		dispatch_assert(rv == 0);
+		if (rv != 0) {
+			DISPATCH_CLIENT_CRASH(rv, "dispatch_workloop "
+					"os_workgroup_join failed");
+		}
 	}
 
 	is_manager = _dispatch_wlh_worker_thread_init(&ddi);
@@ -6556,7 +6599,48 @@ _dispatch_root_queue_poke(dispatch_queue_global_t dq, int n, int floor)
 			dx_type(dq) == DISPATCH_QUEUE_COOPERATIVE_ROOT_TYPE))
 #endif
 	{
-		if (unlikely(!os_atomic_cmpxchg2o(dq, dgq_pending, 0, n, relaxed))) {
+		if (unlikely(!os_atomic_cmpxchg2o(dq, dgq_pending, 0, n, release))) {
+			_dispatch_root_queue_debug("worker thread request still pending "
+					"for global queue: %p", dq);
+			return;
+		}
+	}
+#endif // !DISPATCH_USE_INTERNAL_WORKQUEUE
+	return _dispatch_root_queue_poke_slow(dq, n, floor);
+}
+
+// TODO (rokhinip): Rename this to dispatch_root_queue_wakeup and kill the
+// existing wakeup code for root queues which seems to be dead
+DISPATCH_NOINLINE
+void
+_dispatch_root_queue_poke_and_wakeup(dispatch_queue_global_t dq, int n, int floor)
+{
+#if !DISPATCH_USE_INTERNAL_WORKQUEUE
+#if DISPATCH_USE_PTHREAD_POOL
+	if (likely(dx_type(dq) == DISPATCH_QUEUE_GLOBAL_ROOT_TYPE ||
+			dx_type(dq) == DISPATCH_QUEUE_COOPERATIVE_ROOT_TYPE))
+#endif
+	{
+		// 97049903: We need to use a RMW loop with an unconditional store release
+		// instead of a CAS with release here.
+		//
+		// 1. We rely on memory ordering between dgq_pending and updates to
+		// the dq_items_tail. Therefore, we need a release barrier so that the update to
+		// dq_items_tail is visible before the update to the dgq_pending.  This
+		// release needs to happen unconditionally and pairs with any acquire loads
+		// on dgq_pending by drainers who are then going to inspect the
+		// dq_items_tail afterwards to find any items.
+		//
+		// 2. We rely on total ordering of all stores to dgq_pending to make sure
+		// that a race between a concurrent enqueue and dequeuer doesn't leave us
+		// in a state of neither threads handle the latest item enqueued. A CAS on
+		// dgq_pending does NOT order with a store to dgq_pending if the CAS fails
+		// which is why we do an unconditional store.
+		int old_pending, new_pending;
+		os_atomic_rmw_loop2o(dq, dgq_pending, old_pending, new_pending, release, {
+			new_pending = old_pending ?: n;
+		});
+		if (old_pending > 0) {
 			_dispatch_root_queue_debug("worker thread request still pending "
 					"for global queue: %p", dq);
 			return;
@@ -6569,8 +6653,13 @@ _dispatch_root_queue_poke(dispatch_queue_global_t dq, int n, int floor)
 #define DISPATCH_ROOT_QUEUE_MEDIATOR ((struct dispatch_object_s *)~0ul)
 
 enum {
+	// The queue is not quiesced yet and we are still racing with other enqueuers
+	// and drainers, continue waiting
 	DISPATCH_ROOT_QUEUE_DRAIN_WAIT,
+	// The head and tail of the queue have quiesced to both having non-NULL values,
+	// we can attempt a drain
 	DISPATCH_ROOT_QUEUE_DRAIN_READY,
+	// Don't bother draining, no work present
 	DISPATCH_ROOT_QUEUE_DRAIN_ABORT,
 };
 
@@ -6590,10 +6679,13 @@ _dispatch_root_queue_head_tail_quiesced(dispatch_queue_global_t dq)
 	tail = os_atomic_load2o(dq, dq_items_tail, relaxed);
 	if ((head == NULL) == (tail == NULL)) {
 		if (tail == NULL) { // <rdar://problem/15917893>
+			// This is the case of head and tail both being NULL -- queue is empty.
 			return DISPATCH_ROOT_QUEUE_DRAIN_ABORT;
 		}
+		// Head and tail are both non-empty we are ready to drain
 		return DISPATCH_ROOT_QUEUE_DRAIN_READY;
 	}
+	// Head and tail are not matching yet keep waiting
 	return DISPATCH_ROOT_QUEUE_DRAIN_WAIT;
 }
 
@@ -6602,6 +6694,8 @@ static bool
 __DISPATCH_ROOT_QUEUE_CONTENDED_WAIT__(dispatch_queue_global_t dq,
 		int (*predicate)(dispatch_queue_global_t dq))
 {
+	// See also dgq_pending semantics in queue_internal.h
+
 	unsigned int sleep_time = DISPATCH_CONTENTION_USLEEP_START;
 	int status = DISPATCH_ROOT_QUEUE_DRAIN_READY;
 	bool pending = false;
@@ -6615,11 +6709,11 @@ __DISPATCH_ROOT_QUEUE_CONTENDED_WAIT__(dispatch_queue_global_t dq,
 		}
 		// Since we have serious contention, we need to back off.
 		if (!pending) {
-			// Mark this queue as pending to avoid requests for further threads
-			(void)os_atomic_inc2o(dq, dgq_pending, relaxed);
+			(void)os_atomic_inc2o(dq, dgq_pending, release);
 			pending = true;
 		}
 		_dispatch_contention_usleep(sleep_time);
+
 		if (likely(status = predicate(dq))) goto out;
 		sleep_time *= 2;
 	} while (sleep_time < DISPATCH_CONTENTION_USLEEP_MAX);
@@ -6631,9 +6725,18 @@ __DISPATCH_ROOT_QUEUE_CONTENDED_WAIT__(dispatch_queue_global_t dq,
 	_dispatch_debug("contention on global queue: %p", dq);
 out:
 	if (pending) {
-		(void)os_atomic_dec2o(dq, dgq_pending, relaxed);
+		(void)os_atomic_dec2o(dq, dgq_pending, acquire);
+		// Make sure to resample the queue post-decrement to make sure that we are
+		// seeing latest updates. We can use relaxed loads on the queue probe and
+		// piggyback on the acquire dec of dgq_pending.
+		if (_dispatch_queue_class_probe(dq)) {
+			status = DISPATCH_ROOT_QUEUE_DRAIN_READY;
+		}
 	}
+
 	if (status == DISPATCH_ROOT_QUEUE_DRAIN_WAIT) {
+		// Queue hasn't quiesced, make another TR to handle this while we go and
+		// park
 		_dispatch_root_queue_poke(dq, 1, 0);
 	}
 	return status == DISPATCH_ROOT_QUEUE_DRAIN_READY;
@@ -6647,18 +6750,31 @@ _dispatch_root_queue_drain_one(dispatch_queue_global_t dq)
 
 start:
 	// The MEDIATOR value acts both as a "lock" and a signal
+
 	head = os_atomic_xchg2o(dq, dq_items_head,
 			DISPATCH_ROOT_QUEUE_MEDIATOR, relaxed);
 
+	// Queue head was empty, check to see if we are racing with concurrent
+	// enqueuer who has only set the tail
 	if (unlikely(head == NULL)) {
+
 		// The first xchg on the tail will tell the enqueueing thread that it
 		// is safe to blindly write out to the head pointer. A cmpxchg honors
 		// the algorithm.
 		if (unlikely(!os_atomic_cmpxchg2o(dq, dq_items_head,
 				DISPATCH_ROOT_QUEUE_MEDIATOR, NULL, relaxed))) {
+			// We raced with concurrent enqueuer who made queue non-empty who
+			// overwrote our mediator value in head. Enqueuer has succeeded in setting
+			// head and tail (which is why our CAS failed), we can just retry our
+			// drain
 			goto start;
 		}
+
 		if (unlikely(dq->dq_items_tail)) { // <rdar://problem/14416349>
+			// We set the mediator value on head which means head was NULL previously
+			// but we are seeing that there is a tail value -- we are racing with a
+			// concurrent enqueuer who made the queue non-empty and who hasn't yet
+			// finished the full enqueue
 			if (__DISPATCH_ROOT_QUEUE_CONTENDED_WAIT__(dq,
 					_dispatch_root_queue_head_tail_quiesced)) {
 				goto start;
@@ -6669,7 +6785,8 @@ start:
 	}
 
 	if (unlikely(head == DISPATCH_ROOT_QUEUE_MEDIATOR)) {
-		// This thread lost the race for ownership of the queue.
+		// Racing with another thread and this thread lost the race for
+		// ownership of the queue.
 		if (likely(__DISPATCH_ROOT_QUEUE_CONTENDED_WAIT__(dq,
 				_dispatch_root_queue_mediator_is_gone))) {
 			goto start;
@@ -6680,11 +6797,12 @@ start:
 	// Restore the head pointer to a sane value before returning.
 	// If 'next' is NULL, then this item _might_ be the last item.
 	next = head->do_next;
-
 	if (unlikely(!next)) {
+
 		os_atomic_store2o(dq, dq_items_head, NULL, relaxed);
-		// 22708742: set tail to NULL with release, so that NULL write to head
-		//           above doesn't clobber head from concurrent enqueuer
+		// 22708742: set tail to NULL with release, so that NULL write to head above
+		// doesn't clobber head from concurrent enqueuer ie - if the CAS succeeds,
+		// someone else must also see the head as NULL.
 		if (os_atomic_cmpxchg2o(dq, dq_items_tail, head, NULL, release)) {
 			// both head and tail are NULL now
 			goto out;
@@ -6862,6 +6980,9 @@ _dispatch_root_queue_drain(dispatch_queue_global_t dq,
 		_dispatch_continuation_pop_inline(item, &dic, flags, dq);
 		reset = _dispatch_reset_basepri_override();
 		if (unlikely(_dispatch_queue_drain_should_narrow(&dic))) {
+			// We can just shortcircuit and don't need to worry about checking for
+			// more work because _dispatch_root_queue_drain_one should have requested
+			// for more threads if there was more work
 			break;
 		}
 
@@ -6902,7 +7023,7 @@ _dispatch_worker_thread2(pthread_priority_t pp)
 	bool overcommit = pp & _PTHREAD_PRIORITY_OVERCOMMIT_FLAG;
 	bool cooperative = pp & _PTHREAD_PRIORITY_COOPERATIVE_FLAG;
 
-	pp &= (_PTHREAD_PRIORITY_THREAD_TYPE_MASK | ~_PTHREAD_PRIORITY_FLAGS_MASK);
+	pp = _pthread_priority_strip_flags(pp, ~_PTHREAD_PRIORITY_THREAD_TYPE_MASK);
 	_dispatch_thread_setspecific(dispatch_priority_key, (void *)(uintptr_t)pp);
 
 	dispatch_queue_global_t dq;
@@ -6920,7 +7041,7 @@ _dispatch_worker_thread2(pthread_priority_t pp)
 	_dispatch_introspection_thread_add();
 	_dispatch_trace_runtime_event(worker_unpark, dq, 0);
 
-	int pending = os_atomic_dec2o(dq, dgq_pending, relaxed);
+	int pending = os_atomic_dec2o(dq, dgq_pending, acquire);
 	dispatch_assert(pending >= 0);
 
 	invoke_flags |= DISPATCH_INVOKE_WORKER_DRAIN | DISPATCH_INVOKE_REDIRECTING_DRAIN;
@@ -6969,14 +7090,14 @@ _dispatch_root_queue_init_pthread_pool(dispatch_queue_global_t dq,
 }
 
 // 6618342 Contact the team that owns the Instrument DTrace probe before
-//         renaming this symbol
+//				 renaming this symbol
 static void *
 _dispatch_worker_thread(void *context)
 {
 	dispatch_queue_global_t dq = context;
 	dispatch_pthread_root_queue_context_t pqc = dq->do_ctxt;
 
-	int pending = os_atomic_dec2o(dq, dgq_pending, relaxed);
+	int pending = os_atomic_dec2o(dq, dgq_pending, acquire);
 	if (unlikely(pending < 0)) {
 		DISPATCH_INTERNAL_CRASH(pending, "Pending thread request underflow");
 	}
@@ -7016,7 +7137,7 @@ _dispatch_worker_thread(void *context)
 			DISPATCH_PRIORITY_FLAG_FLOOR |
 			DISPATCH_PRIORITY_REQUESTED_MASK)) == 0) {
 		pri &= DISPATCH_PRIORITY_FLAG_OVERCOMMIT;
-		if (pp & _PTHREAD_PRIORITY_QOS_CLASS_MASK) {
+		if (_pthread_priority_has_qos(pp)) {
 			pri |= _dispatch_priority_from_pp(pp);
 		} else {
 			pri |= _dispatch_priority_make_override(DISPATCH_QOS_SATURATED);
@@ -7667,7 +7788,7 @@ _dispatch_runloop_root_queue_create_4CF(const char *label, unsigned long flags)
 			DISPATCH_QUEUE_ROLE_BASE_ANON);
 	dq->do_targetq = _dispatch_get_default_queue(true);
 	dq->dq_label = label ? label : "runloop-queue"; // no-copy contract
-	if (pp & _PTHREAD_PRIORITY_QOS_CLASS_MASK) {
+	if (_pthread_priority_has_qos(pp)) {
 		dq->dq_priority = _dispatch_priority_from_pp_strip_flags(pp);
 	}
 	_dispatch_runloop_queue_handle_init(dq);
@@ -8194,6 +8315,7 @@ libdispatch_init(void)
 	_dispatch_thread_key_create(&dispatch_dsc_key, NULL);
 	_dispatch_thread_key_create(&os_workgroup_key, _os_workgroup_tsd_cleanup);
 	_dispatch_thread_key_create(&dispatch_enqueue_key, NULL);
+	_dispatch_thread_key_create(&dispatch_msgv_aux_key, free);
 #endif
 #if DISPATCH_USE_RESOLVERS // rdar://problem/8541707
 	_dispatch_main_q.do_targetq = _dispatch_get_default_queue(true);
@@ -8201,6 +8323,9 @@ libdispatch_init(void)
 
 	_dispatch_queue_set_current(&_dispatch_main_q);
 	_dispatch_queue_set_bound_thread(&_dispatch_main_q);
+	// Mark thread as having DISPATCH_QOS_SATURATED override since main thread
+	// at this point, can't be overridden
+	_dispatch_set_basepri_override_qos(DISPATCH_QOS_SATURATED);
 
 #if DISPATCH_USE_PTHREAD_ATFORK
 	(void)dispatch_assume_zero(pthread_atfork(dispatch_atfork_prepare,
@@ -8341,6 +8466,7 @@ _libdispatch_tsd_cleanup(void *ctx)
 			_dispatch_deferred_items_cleanup);
 	_tsd_call_cleanup(dispatch_quantum_key, NULL);
 	_tsd_call_cleanup(dispatch_enqueue_key, NULL);
+	_tsd_call_cleanup(dispatch_msgv_aux_key, free);
 	_tsd_call_cleanup(dispatch_dsc_key, NULL);
 #ifdef __ANDROID__
 	if (_dispatch_thread_detach_callback) {

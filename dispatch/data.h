@@ -27,6 +27,7 @@
 #endif
 
 DISPATCH_ASSUME_NONNULL_BEGIN
+DISPATCH_ASSUME_ABI_SINGLE_BEGIN
 
 __BEGIN_DECLS
 
@@ -115,7 +116,7 @@ DISPATCH_DATA_DESTRUCTOR_TYPE_DECL(munmap);
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
-dispatch_data_create(const void *buffer,
+dispatch_data_create(const void *DISPATCH_SIZED_BY(size) buffer,
 	size_t size,
 	dispatch_queue_t _Nullable queue,
 	dispatch_block_t _Nullable destructor);
@@ -158,7 +159,7 @@ DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
 dispatch_data_t
 dispatch_data_create_map(dispatch_data_t data,
-	const void *_Nullable *_Nullable buffer_ptr,
+	const void *_Nullable DISPATCH_SIZED_BY(*size_ptr) *_Nullable buffer_ptr,
 	size_t *_Nullable size_ptr);
 
 /*!
@@ -219,7 +220,7 @@ dispatch_data_create_subrange(dispatch_data_t data,
  */
 typedef bool (^dispatch_data_applier_t)(dispatch_data_t region,
 	size_t offset,
-	const void *buffer,
+	const void *DISPATCH_SIZED_BY(size) buffer,
 	size_t size);
 
 /*!
@@ -273,6 +274,7 @@ dispatch_data_copy_region(dispatch_data_t data,
 
 __END_DECLS
 
+DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
 #endif /* __DISPATCH_DATA__ */

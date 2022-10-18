@@ -55,6 +55,9 @@
  * or iOS 6.0 deployment target.
  */
 
+#define OS_OBJECT_ASSUME_ABI_SINGLE_BEGIN	OS_ASSUME_PTR_ABI_SINGLE_BEGIN
+#define OS_OBJECT_ASSUME_ABI_SINGLE_END		OS_ASSUME_PTR_ABI_SINGLE_END
+
 #ifndef OS_OBJECT_HAVE_OBJC_SUPPORT
 #if !defined(__OBJC__) || defined(__OBJC_GC__)
 #  define OS_OBJECT_HAVE_OBJC_SUPPORT 0
@@ -250,6 +253,7 @@ OS_OBJECT_DECL_BASE(object, NSObject);
 #define OS_OBJECT_GLOBAL_OBJECT(type, object) ((OS_OBJECT_BRIDGE type)&(object))
 
 __BEGIN_DECLS
+OS_OBJECT_ASSUME_ABI_SINGLE_BEGIN
 
 /*!
  * @function os_retain
@@ -298,6 +302,7 @@ os_release(void *object);
 #define os_release(object) [object release]
 #endif
 
+OS_OBJECT_ASSUME_ABI_SINGLE_END
 __END_DECLS
 
 #endif

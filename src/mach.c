@@ -614,7 +614,8 @@ _dispatch_mach_msg_get_reason(dispatch_mach_msg_t dmsg, mach_error_t *err_ptr)
 
 static inline dispatch_mach_msg_t
 _dispatch_mach_msg_create_recv(mach_msg_header_t *hdr, mach_msg_size_t siz,
-		dispatch_mach_reply_refs_t dmr, uint32_t flags, pthread_priority_t pp)
+	mach_msg_aux_header_t *aux_hdr, dispatch_mach_reply_refs_t dmr,
+	uint32_t flags, pthread_priority_t pp)
 {
 	dispatch_mach_msg_destructor_t destructor;
 	dispatch_mach_msg_t dmsg;
@@ -626,7 +627,7 @@ _dispatch_mach_msg_create_recv(mach_msg_header_t *hdr, mach_msg_size_t siz,
 		voucher = dmr->dmr_voucher;
 		dmr->dmr_voucher = NULL; // transfer reference
 	} else {
-		voucher = voucher_create_with_mach_msg(hdr);
+		voucher = _voucher_create_with_mach_msgv(hdr, aux_hdr);
 		pp = _dispatch_priority_compute_propagated(pp, 0);
 	}
 
@@ -661,7 +662,7 @@ _dispatch_mach_no_senders_invoke(dispatch_mach_t dm)
 
 void
 _dispatch_mach_merge_msg(dispatch_unote_t du, uint32_t flags,
-		mach_msg_header_t *hdr, mach_msg_size_t siz,
+		mach_msg_header_t *hdr, mach_msg_size_t siz, mach_msg_aux_header_t *aux_hdr,
 		pthread_priority_t msg_pp, pthread_priority_t ovr_pp)
 
 {
@@ -705,7 +706,7 @@ _dispatch_mach_merge_msg(dispatch_unote_t du, uint32_t flags,
 		// out to keep the promise that DISPATCH_MACH_DISCONNECTED is the last
 		// event sent.
 		dispatch_mach_msg_t dmsg;
-		dmsg = _dispatch_mach_msg_create_recv(hdr, siz, NULL, flags, msg_pp);
+		dmsg = _dispatch_mach_msg_create_recv(hdr, siz, aux_hdr, NULL, flags, msg_pp);
 		_dispatch_mach_handle_or_push_received_msg(dm, dmsg, ovr_pp);
 	}
 
@@ -723,7 +724,7 @@ _dispatch_mach_merge_msg(dispatch_unote_t du, uint32_t flags,
 
 void
 _dispatch_mach_reply_merge_msg(dispatch_unote_t du, uint32_t flags,
-		mach_msg_header_t *hdr, mach_msg_size_t siz,
+		mach_msg_header_t *hdr, mach_msg_size_t siz, mach_msg_aux_header_t *aux_hdr,
 		pthread_priority_t msg_pp, pthread_priority_t ovr_pp)
 {
 	dispatch_mach_reply_refs_t dmr = du._dmr;
@@ -736,7 +737,7 @@ _dispatch_mach_reply_merge_msg(dispatch_unote_t du, uint32_t flags,
 			hdr->msgh_local_port, hdr->msgh_id, hdr->msgh_remote_port);
 
 	if (!canceled) {
-		dmsg = _dispatch_mach_msg_create_recv(hdr, siz, dmr, flags, msg_pp);
+		dmsg = _dispatch_mach_msg_create_recv(hdr, siz, aux_hdr, dmr, flags, msg_pp);
 	}
 
 	if (dmsg) {
@@ -1072,6 +1073,11 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 	bool is_reply = (MACH_MSGH_BITS_REMOTE(msg->msgh_bits) ==
 			MACH_MSG_TYPE_MOVE_SEND_ONCE);
 	mach_port_t reply_port = dmsg->dmsg_reply;
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
+	mach_msg_vector_t send_vecs[2] = {};
+	_voucher_mach_udata_aux_s aux = {};
+	mach_msg_size_t udata_sz = 0;
+#endif
 	if (!is_reply) {
 		dm->dm_needs_mgr = 0;
 		if (unlikely(dsrr->dmsr_checkin && dmsg != dsrr->dmsr_checkin)) {
@@ -1124,7 +1130,25 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 				opts |= MACH_SEND_NOTIFY;
 			}
 			opts |= MACH_SEND_TIMEOUT;
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
+			if (voucher && voucher->v_activity) {
+				udata_sz = offsetof(_voucher_mach_udata_s, _vmu_after_activity);
+
+				aux.udata = (_voucher_mach_udata_s){
+					.vmu_magic           = VOUCHER_MAGIC_V3,
+					/* .vmu_priority is unused */
+					.vmu_activity        = voucher->v_activity,
+					.vmu_activity_pid    = voucher->v_activity_creator,
+					.vmu_parent_activity = voucher->v_parent_activity,
+				};
+			}
+			if (udata_sz) {
+				aux.header.msgdh_size = sizeof(mach_msg_aux_header_t) + udata_sz;
+			}
+#endif
 			_dispatch_voucher_debug("mach-msg[%p] msg_set", voucher, dmsg);
+			// _voucher_get_mach_voucher() skips mach voucher creation if
+			// activity_in_msgv is true.
 			clear_voucher = _voucher_mach_msg_set(msg, voucher);
 			msg_priority = _dispatch_mach_send_priority(dmsg, qos, &opts);
 			if (reply_port && dm->dm_strict_reply) {
@@ -1140,8 +1164,28 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 			}
 			_dispatch_mach_reply_waiter_register(dm, dwr, reply_port, dmsg);
 		}
+
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
+		send_vecs[MACH_MSGV_IDX_MSG] = (mach_msg_vector_t){
+			.msgv_data = (mach_vm_address_t)msg,
+			.msgv_rcv_addr = 0,
+			.msgv_send_size = msg->msgh_size,
+			.msgv_rcv_size = 0,
+		};
+		send_vecs[MACH_MSGV_IDX_AUX] = (mach_msg_vector_t){
+			.msgv_data = (mach_vm_address_t)&aux,
+			.msgv_rcv_addr = 0,
+			.msgv_send_size = udata_sz ? aux.header.msgdh_size : 0,
+			.msgv_rcv_size = 0,
+		};
+
+		kr = mach_msg2(send_vecs, (mach_msg_option64_t)opts |
+			MACH64_MSG_VECTOR | MACH64_SEND_USER_CALL,
+			*msg, 2, 0, MACH_PORT_NULL, 0, msg_priority);
+#else
 		kr = mach_msg(msg, opts, msg->msgh_size, 0, MACH_PORT_NULL, 0,
 				msg_priority);
+#endif
 		_dispatch_debug("machport[0x%08x]: sent msg id 0x%x, ctxt %p, "
 				"opts 0x%x, msg_opts 0x%x, kvoucher 0x%08x, reply on 0x%08x: "
 				"%s - 0x%x", msg->msgh_remote_port, msg->msgh_id, dmsg->do_ctxt,

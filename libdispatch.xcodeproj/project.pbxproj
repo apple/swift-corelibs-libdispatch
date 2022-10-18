@@ -90,7 +90,6 @@
 			buildPhases = (
 			);
 			dependencies = (
-				9B2A11A32032494E0060E7D4 /* PBXTargetDependency */,
 				C927F36910FD7F1A00C5AB8B /* PBXTargetDependency */,
 			);
 			name = libdispatch_tools;
@@ -137,15 +136,6 @@
 		6E7018211F4EB51B0077C1DC /* workloop_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E70181C1F4EB51B0077C1DC /* workloop_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		6E7018221F4EB5220077C1DC /* workloop_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E70181C1F4EB51B0077C1DC /* workloop_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		6E90269C1BB9BD50004DC3AD /* firehose.defs in Sources */ = {isa = PBXBuildFile; fileRef = 72DEAA9B1AE1B0BD00289540 /* firehose.defs */; settings = {ATTRIBUTES = (Server, ); }; };
-		6E9955581C3AF7710071D40C /* venture_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E9955571C3AF7710071D40C /* venture_private.h */; };
-		6E99558A1C3AF7900071D40C /* venture_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E9955571C3AF7710071D40C /* venture_private.h */; };
-		6E9955CF1C3B218E0071D40C /* venture.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E9955CE1C3B218E0071D40C /* venture.c */; };
-		6E9956021C3B21990071D40C /* venture.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E9955CE1C3B218E0071D40C /* venture.c */; };
-		6E9956041C3B219B0071D40C /* venture.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E9955CE1C3B218E0071D40C /* venture.c */; };
-		6E9956051C3B219B0071D40C /* venture.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E9955CE1C3B218E0071D40C /* venture.c */; };
-		6E9956071C3B21AA0071D40C /* venture_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E9956061C3B21AA0071D40C /* venture_internal.h */; };
-		6E9956081C3B21B30071D40C /* venture_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E9956061C3B21AA0071D40C /* venture_internal.h */; };
-		6E9956091C3B21B40071D40C /* venture_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E9956061C3B21AA0071D40C /* venture_internal.h */; };
 		6E9B6B5F1BB4F3C8009E324D /* firehose_buffer_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E9B6B201BB4CC73009E324D /* firehose_buffer_internal.h */; };
 		6E9C6CA720F9848100EA81C0 /* yield.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E9C6CA220F9848000EA81C0 /* yield.c */; };
 		6E9C6CA820F9848C00EA81C0 /* yield.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E9C6CA220F9848000EA81C0 /* yield.c */; };
@@ -222,6 +212,7 @@
 		96BC39BD0F3EBAB100C59689 /* queue_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 96BC39BC0F3EBAB100C59689 /* queue_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		96C9553B0F3EAEDD000D2CA4 /* once.h in Headers */ = {isa = PBXBuildFile; fileRef = 96C9553A0F3EAEDD000D2CA4 /* once.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		96DF70BE0F38FE3C0074BD99 /* once.c in Sources */ = {isa = PBXBuildFile; fileRef = 96DF70BD0F38FE3C0074BD99 /* once.c */; };
+		9B1C2A4F278BE2D1007555A8 /* swift_concurrency_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 9B1C2A4A278BDF96007555A8 /* swift_concurrency_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		9B2A588123A412B400A7BB27 /* eventlink.c in Sources */ = {isa = PBXBuildFile; fileRef = 9B2A588023A412B400A7BB27 /* eventlink.c */; };
 		9B3713F623D24594001C5C88 /* clock.h in Headers */ = {isa = PBXBuildFile; fileRef = 9B3713F123D24594001C5C88 /* clock.h */; };
 		9B404D6C255A191A0014912B /* apply_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 9B404D6B255A191A0014912B /* apply_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
@@ -344,7 +335,6 @@
 		E43B88362241F19000215272 /* channel_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 6EC8DC261E3E84610044B652 /* channel_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		E43B88372241F19000215272 /* queue.h in Headers */ = {isa = PBXBuildFile; fileRef = FC7BED8B0E8361E600161930 /* queue.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		E43B88382241F19000215272 /* source.h in Headers */ = {isa = PBXBuildFile; fileRef = FC7BED8D0E8361E600161930 /* source.h */; settings = {ATTRIBUTES = (Public, ); }; };
-		E43B88392241F19000215272 /* venture_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E9955571C3AF7710071D40C /* venture_private.h */; };
 		E43B883A2241F19000215272 /* voucher_activity_private.h in Headers */ = {isa = PBXBuildFile; fileRef = E4B3C3FD18C50D000039F49F /* voucher_activity_private.h */; };
 		E43B883B2241F19000215272 /* semaphore.h in Headers */ = {isa = PBXBuildFile; fileRef = 721F5C5C0F15520500FF03A6 /* semaphore.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		E43B883C2241F19000215272 /* group.h in Headers */ = {isa = PBXBuildFile; fileRef = FC5C9C1D0EADABE3006E462D /* group.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -385,7 +375,6 @@
 		E43B885F2241F19000215272 /* layout_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 2BE17C6318EA305E002CA4E8 /* layout_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		E43B88602241F19000215272 /* perfmon.h in Headers */ = {isa = PBXBuildFile; fileRef = FC1832A2109923C7003403D5 /* perfmon.h */; };
 		E43B88612241F19000215272 /* config.h in Headers */ = {isa = PBXBuildFile; fileRef = FC9C70E7105EC9620074F9CA /* config.h */; };
-		E43B88622241F19000215272 /* venture_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 6E9956061C3B21AA0071D40C /* venture_internal.h */; };
 		E43B88632241F19000215272 /* lock.h in Headers */ = {isa = PBXBuildFile; fileRef = 6EF2CAA41C88998A001ABE83 /* lock.h */; };
 		E43B88642241F19000215272 /* trace.h in Headers */ = {isa = PBXBuildFile; fileRef = E422A0D412A557B5005E5BDB /* trace.h */; };
 		E43B88652241F19000215272 /* getprogname.h in Headers */ = {isa = PBXBuildFile; fileRef = E4BA743913A8911B0095BDF1 /* getprogname.h */; };
@@ -429,7 +418,6 @@
 		E43B888C2241F19000215272 /* time.c in Sources */ = {isa = PBXBuildFile; fileRef = 96032E4A0F5CC8C700241C5F /* time.c */; };
 		E43B888D2241F19000215272 /* allocator.c in Sources */ = {isa = PBXBuildFile; fileRef = 2BBF5A62154B64F5002B20F9 /* allocator.c */; };
 		E43B888E2241F19000215272 /* benchmark.c in Sources */ = {isa = PBXBuildFile; fileRef = 965CD6340F3E806200D4E28D /* benchmark.c */; };
-		E43B888F2241F19000215272 /* venture.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E9955CE1C3B218E0071D40C /* venture.c */; };
 		E44757DA17F4572600B82CA1 /* inline_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = E44757D917F4572600B82CA1 /* inline_internal.h */; };
 		E44757DB17F4573500B82CA1 /* inline_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = E44757D917F4572600B82CA1 /* inline_internal.h */; };
 		E44757DC17F4573600B82CA1 /* inline_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = E44757D917F4572600B82CA1 /* inline_internal.h */; };
@@ -477,7 +465,6 @@
 		E48EC97E1835BADD00EAC4F1 /* yield.h in Headers */ = {isa = PBXBuildFile; fileRef = E48EC97B1835BADD00EAC4F1 /* yield.h */; };
 		E49BB6D11E70748100868613 /* provider.d in Sources */ = {isa = PBXBuildFile; fileRef = E43570B8126E93380097AB9F /* provider.d */; };
 		E49BB6D21E70748100868613 /* protocol.defs in Sources */ = {isa = PBXBuildFile; fileRef = FC7BED950E8361E600161930 /* protocol.defs */; settings = {ATTRIBUTES = (Client, Server, ); }; };
-		E49BB6D31E70748100868613 /* venture.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E9955CE1C3B218E0071D40C /* venture.c */; };
 		E49BB6D41E70748100868613 /* firehose.defs in Sources */ = {isa = PBXBuildFile; fileRef = 72DEAA9B1AE1B0BD00289540 /* firehose.defs */; };
 		E49BB6D51E70748100868613 /* firehose_buffer.c in Sources */ = {isa = PBXBuildFile; fileRef = 72DEAA971AE181D300289540 /* firehose_buffer.c */; };
 		E49BB6D61E70748100868613 /* event_kevent.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E5ACCB01D3C4CFB007DA2B4 /* event_kevent.c */; };
@@ -504,7 +491,6 @@
 		E49BB6EB1E70748100868613 /* allocator.c in Sources */ = {isa = PBXBuildFile; fileRef = 2BBF5A62154B64F5002B20F9 /* allocator.c */; };
 		E49BB6EC1E70748100868613 /* data.m in Sources */ = {isa = PBXBuildFile; fileRef = E420866F16027AE500EEE210 /* data.m */; };
 		E49BB6ED1E70748100868613 /* voucher.c in Sources */ = {isa = PBXBuildFile; fileRef = E44A8E6A1805C3E0009FFDB6 /* voucher.c */; };
-		E49BB7091E70A39700868613 /* venture.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E9955CE1C3B218E0071D40C /* venture.c */; };
 		E49F2423125D3C960057C971 /* resolver.c in Sources */ = {isa = PBXBuildFile; fileRef = E44EBE371251656400645D88 /* resolver.c */; };
 		E49F2499125D48D80057C971 /* resolver.c in Sources */ = {isa = PBXBuildFile; fileRef = E44EBE371251656400645D88 /* resolver.c */; };
 		E49F24AB125D57FA0057C971 /* dispatch.h in Headers */ = {isa = PBXBuildFile; fileRef = FC7BED960E8361E600161930 /* dispatch.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -680,20 +666,6 @@
 			remoteGlobalIDString = 92F3FECA1BEC69E500025962;
 			remoteInfo = darwintests;
 		};
-		9B2A11A22032494E0060E7D4 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 9B6A42E01FE098430000D146 /* queue-tip.xcodeproj */;
-			proxyType = 1;
-			remoteGlobalIDString = 9BECABC71E944C0400ED341E;
-			remoteInfo = "queue-tip";
-		};
-		9B2A11A92032494E0060E7D4 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 9B6A42E01FE098430000D146 /* queue-tip.xcodeproj */;
-			proxyType = 2;
-			remoteGlobalIDString = 9BECABC81E944C0400ED341E;
-			remoteInfo = "queue-tip";
-		};
 		9BEBA57720127D4400E6FD0D /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = C927F35F10FD7F1000C5AB8B /* ddt.xcodeproj */;
@@ -816,7 +788,6 @@
 		6E49BF2920E34B44002624FC /* libdispatch.dirty */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = libdispatch.dirty; sourceTree = "<group>"; };
 		6E4BACBC1D48A41500B562AE /* mach.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = mach.c; sourceTree = "<group>"; };
 		6E4BACC91D48A89500B562AE /* mach_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = mach_internal.h; sourceTree = "<group>"; };
-		6E4FC9D11C84123600520351 /* os_venture_basic.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = os_venture_basic.c; sourceTree = "<group>"; };
 		6E5662DC1F8C2E3E00BC2474 /* workqueue_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = workqueue_internal.h; sourceTree = "<group>"; };
 		6E5662E41F8C2E5B00BC2474 /* workqueue.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = workqueue.c; sourceTree = "<group>"; };
 		6E5ACCB01D3C4CFB007DA2B4 /* event_kevent.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = event_kevent.c; sourceTree = "<group>"; };
@@ -841,9 +812,6 @@
 		6E8E4EC91C1A670B0004F5CC /* dispatch_vm.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_vm.c; sourceTree = "<group>"; };
 		6E8E4ECB1C1A72650004F5CC /* dispatch_drift.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_drift.c; sourceTree = "<group>"; };
 		6E9926711D01295F000CB89A /* dispatch_block.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_block.c; sourceTree = "<group>"; };
-		6E9955571C3AF7710071D40C /* venture_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = venture_private.h; sourceTree = "<group>"; };
-		6E9955CE1C3B218E0071D40C /* venture.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = venture.c; sourceTree = "<group>"; };
-		6E9956061C3B21AA0071D40C /* venture_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = venture_internal.h; sourceTree = "<group>"; };
 		6E9B6B201BB4CC73009E324D /* firehose_buffer_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = firehose_buffer_internal.h; sourceTree = "<group>"; };
 		6E9C6CA220F9848000EA81C0 /* yield.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = yield.c; path = shims/yield.c; sourceTree = "<group>"; };
 		6EA283D01CAB93270041B2E0 /* libdispatch.codes */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = libdispatch.codes; sourceTree = "<group>"; };
@@ -877,6 +845,7 @@
 		72DEAA9B1AE1B0BD00289540 /* firehose.defs */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.mig; path = firehose.defs; sourceTree = "<group>"; };
 		72DEAA9D1AE1BB7300289540 /* firehose_server_object.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = firehose_server_object.m; sourceTree = "<group>"; };
 		72EA3FBA1AF41EA400BBA227 /* firehose_server_private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = firehose_server_private.h; sourceTree = "<group>"; };
+		89EB85E327612F2500963B76 /* bounds_attributes_verifier.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = bounds_attributes_verifier.c; sourceTree = "<group>"; };
 		924D8EAA1C116B9F002AC2BC /* dispatch_c99.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_c99.c; sourceTree = "<group>"; };
 		92F3FE8F1BEC686300025962 /* dispatch_api.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = dispatch_api.c; sourceTree = "<group>"; };
 		92F3FE921BEC686300025962 /* Makefile */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.make; path = Makefile; sourceTree = "<group>"; };
@@ -899,11 +868,11 @@
 		96BC39BC0F3EBAB100C59689 /* queue_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = queue_private.h; sourceTree = "<group>"; };
 		96C9553A0F3EAEDD000D2CA4 /* once.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = once.h; sourceTree = "<group>"; };
 		96DF70BD0F38FE3C0074BD99 /* once.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; lineEnding = 0; path = once.c; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.c; };
+		9B1C2A4A278BDF96007555A8 /* swift_concurrency_private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = swift_concurrency_private.h; sourceTree = "<group>"; };
 		9B2A588023A412B400A7BB27 /* eventlink.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = eventlink.c; sourceTree = "<group>"; };
 		9B3713F123D24594001C5C88 /* clock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = clock.h; sourceTree = "<group>"; };
 		9B38A012234C6D0400E6B90F /* workgroup_base.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = workgroup_base.h; sourceTree = "<group>"; };
 		9B404D6B255A191A0014912B /* apply_private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = apply_private.h; sourceTree = "<group>"; };
-		9B6A42E01FE098430000D146 /* queue-tip.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = "queue-tip.xcodeproj"; path = "tools/queue-tip/queue-tip.xcodeproj"; sourceTree = "<group>"; };
 		9B7D0906247EF7E600C1B0B7 /* workgroup_object_private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = workgroup_object_private.h; sourceTree = "<group>"; };
 		9B81556E234AF0D200DB5CA3 /* workgroup.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = workgroup.h; sourceTree = "<group>"; };
 		9B815576234AFC9800DB5CA3 /* workgroup.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = workgroup.c; path = src/workgroup.c; sourceTree = SOURCE_ROOT; };
@@ -960,6 +929,7 @@
 		E44F9DA816543F79001DCD38 /* introspection_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = introspection_internal.h; sourceTree = "<group>"; };
 		E454569214746F1B00106147 /* object_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = object_private.h; sourceTree = "<group>"; };
 		E463024F1761603C00E11F4C /* atomic_sfb.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = atomic_sfb.h; sourceTree = "<group>"; };
+		E47BA11A27B35DC400FD39D4 /* os_workgroup_workload_config.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = os_workgroup_workload_config.plist; sourceTree = "<group>"; };
 		E47D6BB5125F0F800070D91C /* resolved.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = resolved.h; sourceTree = "<group>"; };
 		E482F1CD12DBAB590030614D /* postprocess-headers.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = "postprocess-headers.sh"; sourceTree = "<group>"; };
 		E48AF55916E70FD9004105FF /* io_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = io_private.h; sourceTree = "<group>"; };
@@ -1055,7 +1025,6 @@
 				92F3FEC91BEC687200025962 /* Darwin Tests */,
 				C6A0FF2B0290797F04C91782 /* Documentation */,
 				1AB674ADFE9D54B511CA2CBB /* Products */,
-				9B6A42E01FE098430000D146 /* queue-tip.xcodeproj */,
 				C927F35F10FD7F1000C5AB8B /* ddt.xcodeproj */,
 				4552536E19B1384900B88766 /* libdispatchtest.xcodeproj */,
 			);
@@ -1088,7 +1057,6 @@
 				96A8AA860F41E7A400CD570B /* source.c */,
 				96032E4A0F5CC8C700241C5F /* time.c */,
 				C9C5F80D143C1771006DC718 /* transform.c */,
-				6E9955CE1C3B218E0071D40C /* venture.c */,
 				E44A8E6A1805C3E0009FFDB6 /* voucher.c */,
 				9B815576234AFC9800DB5CA3 /* workgroup.c */,
 				6E9C6CA220F9848000EA81C0 /* yield.c */,
@@ -1193,6 +1161,7 @@
 		92F3FEC91BEC687200025962 /* Darwin Tests */ = {
 			isa = PBXGroup;
 			children = (
+				89EB85E327612F2500963B76 /* bounds_attributes_verifier.c */,
 				6E8E4EC51C1A5D450004F5CC /* cf_file_descriptor.c */,
 				6E8E4EC31C1A57760004F5CC /* dispatch_after.c */,
 				92F3FE8F1BEC686300025962 /* dispatch_api.c */,
@@ -1254,12 +1223,12 @@
 				6E67D9171C17BA7200FC98AC /* nsoperation.m */,
 				E4C97F0C263868F800628947 /* os_eventlink_empty.c */,
 				E4C97F06263868F800628947 /* os_eventlink.c */,
-				6E4FC9D11C84123600520351 /* os_venture_basic.c */,
 				E4C97F07263868F800628947 /* os_workgroup_basic.c */,
 				E4C97F0D263868F800628947 /* os_workgroup_empty.c */,
 				E4C97F09263868F800628947 /* os_workgroup_empty2.c */,
 				E4C97F0A263868F800628947 /* os_workgroup_entitled.c */,
 				E4C97F05263868F800628947 /* os_workgroup_multilang.c */,
+				E47BA11A27B35DC400FD39D4 /* os_workgroup_workload_config.plist */,
 				B6AE9A561D7F53C100AC007F /* perf_async_bench.m */,
 				B6AE9A581D7F53CB00AC007F /* perf_bench.m */,
 				6EC670C71E37E201004F10D6 /* perf_mach_async.c */,
@@ -1271,14 +1240,6 @@
 			);
 			name = "Darwin Tests";
 			path = tests;
-			sourceTree = "<group>";
-		};
-		9B6A42E11FE098430000D146 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				9B2A11AA2032494E0060E7D4 /* queue-tip */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 		9BCAF77023A8544100E4F685 /* OS Project Headers */ = {
@@ -1394,7 +1355,6 @@
 				9BCAF76A23A8540A00E4F685 /* eventlink_private.h */,
 				6EDF10831BBB487E007F14BF /* firehose_buffer_private.h */,
 				72EA3FBA1AF41EA400BBA227 /* firehose_server_private.h */,
-				6E9955571C3AF7710071D40C /* venture_private.h */,
 				9BA656E5236BB56700D13FAE /* workgroup_interval_private.h */,
 				9B7D0906247EF7E600C1B0B7 /* workgroup_object_private.h */,
 				9BA656DF236BB55000D13FAE /* workgroup_private.h */,
@@ -1462,6 +1422,7 @@
 				FCEF047F0F5661960067401F /* source_private.h */,
 				B683588A1FA77F4900AA0D58 /* time_private.h */,
 				6E70181C1F4EB51B0077C1DC /* workloop_private.h */,
+				9B1C2A4A278BDF96007555A8 /* swift_concurrency_private.h */,
 				E4B515D7164B2DFB00E003AF /* introspection_private.h */,
 			);
 			name = "Dispatch Private Headers";
@@ -1483,7 +1444,6 @@
 				96929D830F3EA1020041FF5D /* shims.h */,
 				FC0B34780FA2851C0080FFA0 /* source_internal.h */,
 				E422A0D412A557B5005E5BDB /* trace.h */,
-				6E9956061C3B21AA0071D40C /* venture_internal.h */,
 				E44A8E7418066276009FFDB6 /* voucher_internal.h */,
 				E44F9DA816543F79001DCD38 /* introspection_internal.h */,
 				6E5ACCAE1D3BF27F007DA2B4 /* event */,
@@ -1532,10 +1492,10 @@
 				FC7BED9A0E8361E600161930 /* queue.h in Headers */,
 				9BE3E57B23CE6325006FE059 /* workgroup.h in Headers */,
 				FC7BED9C0E8361E600161930 /* source.h in Headers */,
-				6E9955581C3AF7710071D40C /* venture_private.h in Headers */,
 				E4B3C3FE18C50D000039F49F /* voucher_activity_private.h in Headers */,
 				721F5C5D0F15520500FF03A6 /* semaphore.h in Headers */,
 				FC5C9C1E0EADABE3006E462D /* group.h in Headers */,
+				9B1C2A4F278BE2D1007555A8 /* swift_concurrency_private.h in Headers */,
 				9BCAF76F23A8540A00E4F685 /* eventlink_private.h in Headers */,
 				96C9553B0F3EAEDD000D2CA4 /* once.h in Headers */,
 				5AAB45C410D30CC7004407EA /* io.h in Headers */,
@@ -1585,7 +1545,6 @@
 				2BE17C6418EA305E002CA4E8 /* layout_private.h in Headers */,
 				FC1832A6109923C7003403D5 /* perfmon.h in Headers */,
 				FC9C70E8105EC9620074F9CA /* config.h in Headers */,
-				6E9956071C3B21AA0071D40C /* venture_internal.h in Headers */,
 				6EF2CAA51C88998A001ABE83 /* lock.h in Headers */,
 				E422A0D512A557B5005E5BDB /* trace.h in Headers */,
 				E4BA743B13A8911B0095BDF1 /* getprogname.h in Headers */,
@@ -1614,7 +1573,6 @@
 				E43B88362241F19000215272 /* channel_private.h in Headers */,
 				E43B88372241F19000215272 /* queue.h in Headers */,
 				E43B88382241F19000215272 /* source.h in Headers */,
-				E43B88392241F19000215272 /* venture_private.h in Headers */,
 				E43B883A2241F19000215272 /* voucher_activity_private.h in Headers */,
 				E43B883B2241F19000215272 /* semaphore.h in Headers */,
 				9BE5254A238747ED0041C2A0 /* workgroup_interval.h in Headers */,
@@ -1667,7 +1625,6 @@
 				E43B885F2241F19000215272 /* layout_private.h in Headers */,
 				E43B88602241F19000215272 /* perfmon.h in Headers */,
 				E43B88612241F19000215272 /* config.h in Headers */,
-				E43B88622241F19000215272 /* venture_internal.h in Headers */,
 				E43B88632241F19000215272 /* lock.h in Headers */,
 				E43B88642241F19000215272 /* trace.h in Headers */,
 				E43B88652241F19000215272 /* getprogname.h in Headers */,
@@ -1708,7 +1665,6 @@
 				E44757DC17F4573600B82CA1 /* inline_internal.h in Headers */,
 				E49F24AE125D57FA0057C971 /* queue.h in Headers */,
 				E49F24AF125D57FA0057C971 /* source.h in Headers */,
-				6E99558A1C3AF7900071D40C /* venture_private.h in Headers */,
 				E4B3C3FF18C50D0E0039F49F /* voucher_activity_private.h in Headers */,
 				E49F24B0125D57FA0057C971 /* semaphore.h in Headers */,
 				E49F24B1125D57FA0057C971 /* group.h in Headers */,
@@ -1752,7 +1708,6 @@
 				B68358901FA77F5B00AA0D58 /* time_private.h in Headers */,
 				E49F24C6125D57FA0057C971 /* config.h in Headers */,
 				E422A0D612A557B5005E5BDB /* trace.h in Headers */,
-				6E9956091C3B21B40071D40C /* venture_internal.h in Headers */,
 				E4053A6926EAF2A800362F72 /* priority.h in Headers */,
 				6EF2CAB41C889D65001ABE83 /* lock.h in Headers */,
 				E4BA743C13A8911B0095BDF1 /* getprogname.h in Headers */,
@@ -1793,7 +1748,6 @@
 				E4053A6726EAF2A000362F72 /* time.h in Headers */,
 				E44F9DB01654402B001DCD38 /* data_internal.h in Headers */,
 				6E5ACCBC1D3C4D0F007DA2B4 /* event_internal.h in Headers */,
-				6E9956081C3B21B30071D40C /* venture_internal.h in Headers */,
 				E4053A6826EAF2A700362F72 /* priority.h in Headers */,
 				E44F9DB11654402E001DCD38 /* io_internal.h in Headers */,
 				E4630251176162D200E11F4C /* atomic_sfb.h in Headers */,
@@ -2083,10 +2037,6 @@
 					ProductGroup = 4552536F19B1384900B88766 /* Products */;
 					ProjectRef = 4552536E19B1384900B88766 /* libdispatchtest.xcodeproj */;
 				},
-				{
-					ProductGroup = 9B6A42E11FE098430000D146 /* Products */;
-					ProjectRef = 9B6A42E01FE098430000D146 /* queue-tip.xcodeproj */;
-				},
 			);
 			projectRoot = "";
 			targets = (
@@ -2139,13 +2089,6 @@
 			fileType = "compiled.mach-o.executable";
 			path = apply_bench;
 			remoteRef = 4552540819B1384900B88766 /* PBXContainerItemProxy */;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-		9B2A11AA2032494E0060E7D4 /* queue-tip */ = {
-			isa = PBXReferenceProxy;
-			fileType = "compiled.mach-o.executable";
-			path = "queue-tip";
-			remoteRef = 9B2A11A92032494E0060E7D4 /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
 		C927F36710FD7F1000C5AB8B /* ddt */ = {
@@ -2265,7 +2208,6 @@
 				"$(SRCROOT)/os/workgroup_parallel.h",
 				"$(SRCROOT)/os/clock.h",
 				"$(SRCROOT)/os/object_private.h",
-				"$(SRCROOT)/os/venture_private.h",
 				"$(SRCROOT)/os/voucher_private.h",
 				"$(SRCROOT)/os/voucher_activity_private.h",
 				"$(SRCROOT)/os/workgroup_private.h",
@@ -2373,7 +2315,6 @@
 				"$(SRCROOT)/os/workgroup_parallel.h",
 				"$(SRCROOT)/os/clock.h",
 				"$(SRCROOT)/os/object_private.h",
-				"$(SRCROOT)/os/venture_private.h",
 				"$(SRCROOT)/os/voucher_private.h",
 				"$(SRCROOT)/os/voucher_activity_private.h",
 				"$(SRCROOT)/os/workgroup_private.h",
@@ -2404,7 +2345,6 @@
 				"$(SRCROOT)/os/workgroup_parallel.h",
 				"$(SRCROOT)/os/clock.h",
 				"$(SRCROOT)/os/object_private.h",
-				"$(SRCROOT)/os/venture_private.h",
 				"$(SRCROOT)/os/voucher_private.h",
 				"$(SRCROOT)/os/voucher_activity_private.h",
 				"$(SRCROOT)/os/workgroup_interval_private.h",
@@ -2537,7 +2477,6 @@
 				C01866B51C5973210040FC07 /* time.c in Sources */,
 				C01866B91C5973210040FC07 /* allocator.c in Sources */,
 				C01866B31C5973210040FC07 /* benchmark.c in Sources */,
-				E49BB7091E70A39700868613 /* venture.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2576,7 +2515,6 @@
 				96032E4B0F5CC8C700241C5F /* time.c in Sources */,
 				2BBF5A63154B64F5002B20F9 /* allocator.c in Sources */,
 				965CD6350F3E806200D4E28D /* benchmark.c in Sources */,
-				6E9955CF1C3B218E0071D40C /* venture.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2615,7 +2553,6 @@
 				E43B888C2241F19000215272 /* time.c in Sources */,
 				E43B888D2241F19000215272 /* allocator.c in Sources */,
 				E43B888E2241F19000215272 /* benchmark.c in Sources */,
-				E43B888F2241F19000215272 /* venture.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2654,7 +2591,6 @@
 				E49BB6E41E70748100868613 /* time.c in Sources */,
 				E49BB6EB1E70748100868613 /* allocator.c in Sources */,
 				E49BB6E11E70748100868613 /* benchmark.c in Sources */,
-				E49BB6D31E70748100868613 /* venture.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2693,7 +2629,6 @@
 				E49F24D2125D57FA0057C971 /* time.c in Sources */,
 				2BBF5A64154B64F5002B20F9 /* allocator.c in Sources */,
 				E49F24D0125D57FA0057C971 /* benchmark.c in Sources */,
-				6E9956051C3B219B0071D40C /* venture.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2732,7 +2667,6 @@
 				E4B515C8164B2DA300E003AF /* time.c in Sources */,
 				E4B515CD164B2DA300E003AF /* allocator.c in Sources */,
 				E4B515C6164B2DA300E003AF /* benchmark.c in Sources */,
-				6E9956021C3B21990071D40C /* venture.c in Sources */,
 				E4B515DD164B32E000E003AF /* introspection.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -2772,7 +2706,6 @@
 				E4EC122112514715000DDBD1 /* time.c in Sources */,
 				2BBF5A66154B64F5002B20F9 /* allocator.c in Sources */,
 				E4EC121F12514715000DDBD1 /* benchmark.c in Sources */,
-				6E9956041C3B219B0071D40C /* venture.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2808,11 +2741,6 @@
 			isa = PBXTargetDependency;
 			target = 92F3FECA1BEC69E500025962 /* darwintests */;
 			targetProxy = 92F3FECE1BEC6F1000025962 /* PBXContainerItemProxy */;
-		};
-		9B2A11A32032494E0060E7D4 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			name = "queue-tip";
-			targetProxy = 9B2A11A22032494E0060E7D4 /* PBXContainerItemProxy */;
 		};
 		9BEBA57820127D4400E6FD0D /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;

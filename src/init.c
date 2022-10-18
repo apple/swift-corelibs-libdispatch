@@ -111,9 +111,9 @@ _dispatch_sigmask(void)
 #pragma mark -
 #pragma mark dispatch_globals
 
-DISPATCH_HIDE_SYMBOL(dispatch_assert_queue, 10.12, 10.0, 10.0, 3.0);
-DISPATCH_HIDE_SYMBOL(dispatch_assert_queue_not, 10.12, 10.0, 10.0, 3.0);
-DISPATCH_HIDE_SYMBOL(dispatch_queue_create_with_target, 10.12, 10.0, 10.0, 3.0);
+DISPATCH_HIDE_SYMBOL(dispatch_assert_queue, 10.12, 10.0, 10.0, 3.0, 1.0);
+DISPATCH_HIDE_SYMBOL(dispatch_assert_queue_not, 10.12, 10.0, 10.0, 3.0, 1.0);
+DISPATCH_HIDE_SYMBOL(dispatch_queue_create_with_target, 10.12, 10.0, 10.0, 3.0, 1.0);
 
 #if DISPATCH_COCOA_COMPAT
 void *(*_dispatch_begin_NSAutoReleasePool)(void);
@@ -143,6 +143,7 @@ pthread_key_t dispatch_wlh_key;
 pthread_key_t dispatch_voucher_key;
 pthread_key_t dispatch_deferred_items_key;
 pthread_key_t dispatch_enqueue_key;
+pthread_key_t dispatch_msgv_aux_key;
 pthread_key_t os_workgroup_key;
 #endif // !DISPATCH_USE_DIRECT_TSD && !DISPATCH_USE_THREAD_LOCAL_STORAGE
 
