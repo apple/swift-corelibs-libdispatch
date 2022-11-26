@@ -896,7 +896,7 @@ _dispatch_get_build(void)
 #if HAVE_OS_FAULT_WITH_PAYLOAD
 __attribute__((__format__(__printf__,2,3)))
 static void
-_dispatch_fault(const char *reason, const char *fmt, ...)
+_dispatch_fault(const char *restrict reason, const char *restrict fmt, ...)
 {
 	char buf[1024];
 	va_list ap;
@@ -1183,7 +1183,7 @@ retry:
 
 DISPATCH_NOINLINE
 static void
-_dispatch_logv_file(const char *msg, va_list ap)
+_dispatch_logv_file(const char *restrict msg, va_list ap)
 {
 	char buf[2048];
 	size_t bufsiz = sizeof(buf), offset = 0;
@@ -1204,13 +1204,13 @@ _dispatch_logv_file(const char *msg, va_list ap)
 
 #if DISPATCH_USE_SIMPLE_ASL
 static inline void
-_dispatch_syslog(const char *msg)
+_dispatch_syslog(const char *restrict msg)
 {
 	_simple_asl_log(ASL_LEVEL_NOTICE, "com.apple.libsystem.libdispatch", msg);
 }
 
 static inline void
-_dispatch_vsyslog(const char *msg, va_list ap)
+_dispatch_vsyslog(const char *restrict msg, va_list ap)
 {
 	char *str;
 	vasprintf(&str, msg, ap);
@@ -1221,13 +1221,13 @@ _dispatch_vsyslog(const char *msg, va_list ap)
 }
 #elif defined(_WIN32)
 static inline void
-_dispatch_syslog(const char *msg)
+_dispatch_syslog(const char *restrict msg)
 {
   OutputDebugStringA(msg);
 }
 
 static inline void
-_dispatch_vsyslog(const char *msg, va_list ap)
+_dispatch_vsyslog(const char *restrict msg, va_list ap)
 {
   va_list argp;
 
@@ -1251,13 +1251,13 @@ _dispatch_vsyslog(const char *msg, va_list ap)
 }
 #else // DISPATCH_USE_SIMPLE_ASL
 static inline void
-_dispatch_syslog(const char *msg)
+_dispatch_syslog(const char *restrict msg)
 {
 	syslog(LOG_NOTICE, "%s", msg);
 }
 
 static inline void
-_dispatch_vsyslog(const char *msg, va_list ap)
+_dispatch_vsyslog(const char *restrict msg, va_list ap)
 {
 	vsyslog(LOG_NOTICE, msg, ap);
 }
@@ -1265,7 +1265,7 @@ _dispatch_vsyslog(const char *msg, va_list ap)
 
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_logv(const char *msg, size_t len, va_list *ap_ptr)
+_dispatch_logv(const char *restrict msg, size_t len, va_list *restrict ap_ptr)
 {
 	dispatch_once_f(&_dispatch_logv_pred, NULL, _dispatch_logv_init);
 	if (unlikely(dispatch_log_disabled)) {
@@ -1285,7 +1285,7 @@ _dispatch_logv(const char *msg, size_t len, va_list *ap_ptr)
 
 DISPATCH_NOINLINE
 void
-_dispatch_log(const char *msg, ...)
+_dispatch_log(const char *restrict msg, ...)
 {
 	va_list ap;
 
@@ -1300,7 +1300,7 @@ _dispatch_log(const char *msg, ...)
 #pragma mark dispatch_debug
 
 static size_t
-_dispatch_object_debug2(dispatch_object_t dou, char* buf, size_t bufsiz)
+_dispatch_object_debug2(dispatch_object_t dou, char*restrict buf, size_t bufsiz)
 {
 	DISPATCH_OBJECT_TFB(_dispatch_objc_debug, dou, buf, bufsiz);
 	return dx_debug(dou._do, buf, bufsiz);
@@ -1308,7 +1308,7 @@ _dispatch_object_debug2(dispatch_object_t dou, char* buf, size_t bufsiz)
 
 DISPATCH_NOINLINE
 static void
-_dispatch_debugv(dispatch_object_t dou, const char *msg, va_list ap)
+_dispatch_debugv(dispatch_object_t dou, const char *restrict msg, va_list ap)
 {
 	char buf[2048];
 	size_t bufsiz = sizeof(buf), offset = 0;
@@ -1341,14 +1341,14 @@ _dispatch_debugv(dispatch_object_t dou, const char *msg, va_list ap)
 
 DISPATCH_NOINLINE
 void
-dispatch_debugv(dispatch_object_t dou, const char *msg, va_list ap)
+dispatch_debugv(dispatch_object_t dou, const char *restrict msg, va_list ap)
 {
 	_dispatch_debugv(dou, msg, ap);
 }
 
 DISPATCH_NOINLINE
 void
-dispatch_debug(dispatch_object_t dou, const char *msg, ...)
+dispatch_debug(dispatch_object_t dou, const char *restrict msg, ...)
 {
 	va_list ap;
 
@@ -1360,7 +1360,7 @@ dispatch_debug(dispatch_object_t dou, const char *msg, ...)
 #if DISPATCH_DEBUG
 DISPATCH_NOINLINE
 void
-_dispatch_object_debug(dispatch_object_t dou, const char *msg, ...)
+_dispatch_object_debug(dispatch_object_t dou, const char *restrict msg, ...)
 {
 	va_list ap;
 
