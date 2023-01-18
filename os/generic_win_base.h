@@ -13,6 +13,8 @@
 #ifndef __OS_GENERIC_WIN_BASE__
 #define __OS_GENERIC_WIN_BASE__
 
+#include <os/generic_base.h>
+
 // Unices provide `roundup` via sys/param.h
 #define roundup(x, y) ((((x) + ((y) - 1)) / (y)) * (y))
 // Unices provide `MAX` via sys/param.h
