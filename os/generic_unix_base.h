@@ -13,6 +13,8 @@
 #ifndef __OS_GENERIC_UNIX_BASE__
 #define __OS_GENERIC_UNIX_BASE__
 
+#include <os/generic_base.h>
+
 #if __has_include(<sys/sysmacros.h>)
 #include <sys/sysmacros.h>
 #endif
