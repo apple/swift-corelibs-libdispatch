@@ -89,7 +89,7 @@ n_blocks(void)
 		n = (int)sysconf(_SC_NPROCESSORS_CONF);
 #elif defined(_WIN32)
 		SYSTEM_INFO si;
-		GetSystemInfo(&si);
+		GetNativeSystemInfo(&si);
 		n = (int)si.dwNumberOfProcessors;
 #else
 		size_t l = sizeof(n);

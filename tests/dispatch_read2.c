@@ -86,7 +86,7 @@ dispatch_read2(dispatch_fd_t fd,
 		char *buffer = NULL;
 #if defined(_WIN32)
 		SYSTEM_INFO si;
-		GetSystemInfo(&si);
+		GetNativeSystemInfo(&si);
 		size_t pagesize = (size_t)si.dwPageSize;
 		buffer = _aligned_malloc(bufsiz, pagesize);
 #else

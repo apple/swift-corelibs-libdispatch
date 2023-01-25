@@ -147,7 +147,7 @@ main(void)
 	wq_max_threads = activecpu * NTHREADS + 2;
 #elif defined(_WIN32)
 	SYSTEM_INFO si;
-	GetSystemInfo(&si);
+	GetNativeSystemInfo(&si);
 	activecpu = si.dwNumberOfProcessors;
 	wq_max_threads = activecpu * NTHREADS + 2;
 #else

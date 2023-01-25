@@ -394,7 +394,7 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 				char* buffer = NULL;
 #if defined(_WIN32)
 				SYSTEM_INFO si;
-				GetSystemInfo(&si);
+				GetNativeSystemInfo(&si);
 				buffer = _aligned_malloc(size, si.dwPageSize);
 #else
 				size_t pagesize = (size_t)sysconf(_SC_PAGESIZE);

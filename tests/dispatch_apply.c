@@ -85,7 +85,7 @@ static void test_apply_contended(dispatch_queue_t dq)
 	activecpu = (uint32_t)sysconf(_SC_NPROCESSORS_ONLN);
 #elif defined(_WIN32)
 	SYSTEM_INFO si;
-	GetSystemInfo(&si);
+	GetNativeSystemInfo(&si);
 	activecpu = si.dwNumberOfProcessors;
 #else
 	size_t s = sizeof(activecpu);

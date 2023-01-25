@@ -35,7 +35,7 @@ static DWORD
 getpagesize(void)
 {
 	SYSTEM_INFO siInfo;
-	GetSystemInfo(&siInfo);
+	GetNativeSystemInfo(&siInfo);
 	return siInfo.dwPageSize;
 }
 #endif
