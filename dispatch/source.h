@@ -32,7 +32,7 @@
 #endif
 
 #if !defined(_WIN32)
-#include <signal.h>
+#include <sys/signal.h>
 #endif
 
 DISPATCH_ASSUME_NONNULL_BEGIN
