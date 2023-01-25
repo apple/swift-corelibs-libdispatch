@@ -8,12 +8,15 @@
 //
 
 #include "Block_private.h"
+#include <stdatomic.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
-#if HAVE_OBJC
-#define __USE_GNU
+#if TARGET_OS_WIN32
+#include <Windows.h>
+#include <Psapi.h>
+#else
 #include <dlfcn.h>
 #endif
 #if __has_include(<os/assumes.h>)
@@ -32,29 +35,17 @@
 #define __has_builtin(builtin) 0
 #endif
 
-#if __has_builtin(__sync_bool_compare_and_swap)
-#define OSAtomicCompareAndSwapInt(_Old, _New, _Ptr)                            \
-  __sync_bool_compare_and_swap(_Ptr, _Old, _New)
-#else
+#if !__has_builtin(__sync_bool_compare_and_swap) && TARGET_OS_WIN32
 #define _CRT_SECURE_NO_WARNINGS 1
-#include <Windows.h>
-static __inline bool OSAtomicCompareAndSwapInt(int oldi, int newi,
-                                               int volatile *dst) {
-  // fixme barrier is overkill -- see objc-os.h
-  int original = InterlockedCompareExchange((LONG volatile *)dst, newi, oldi);
-  return (original == oldi);
-}
 #endif
 
 /***********************
 Globals
 ************************/
 
-#if HAVE_OBJC
 static void *_Block_copy_class = _NSConcreteMallocBlock;
 static void *_Block_copy_finalizing_class = _NSConcreteMallocBlock;
 static int _Block_copy_flag = BLOCK_NEEDS_FREE;
-#endif
 static int _Byref_flag_initial_value = BLOCK_BYREF_NEEDS_FREE | 4;  // logical 2
 
 static bool isGC = false;
@@ -70,8 +61,8 @@ static int32_t latching_incr_int(volatile int32_t *where) {
         if ((old_value & BLOCK_REFCOUNT_MASK) == BLOCK_REFCOUNT_MASK) {
             return BLOCK_REFCOUNT_MASK;
         }
-        if (OSAtomicCompareAndSwapInt(old_value, old_value+2, where)) {
-            return old_value+2;
+        if (atomic_compare_exchange_strong(where, old_value, old_value + 2)) {
+            return old_value + 2;
         }
     }
 }
@@ -87,7 +78,7 @@ static bool latching_incr_int_not_deallocating(volatile int32_t *where) {
             // if latched, we're leaking this block, and we succeed
             return true;
         }
-        if (OSAtomicCompareAndSwapInt(old_value, old_value+2, where)) {
+        if (atomic_compare_exchange_strong(where, old_value, old_value + 2)) {
             // otherwise, we must store a new retained value without the deallocating bit set
             return true;
         }
@@ -111,7 +102,7 @@ static bool latching_decr_int_should_deallocate(volatile int32_t *where) {
             new_value = old_value - 1;
             result = true;
         }
-        if (OSAtomicCompareAndSwapInt(old_value, new_value, where)) {
+        if (atomic_compare_exchange_strong(where, old_value, new_value)) {
             return result;
         }
     }
@@ -128,7 +119,7 @@ static bool latching_decr_int_now_zero(volatile int32_t *where) {
             return false;   // underflow, latch low
         }
         int32_t new_value = old_value - 2;
-        if (OSAtomicCompareAndSwapInt(old_value, new_value, where)) {
+        if (atomic_compare_exchange_strong(where, old_value, new_value)) {
             return (new_value & BLOCK_REFCOUNT_MASK) == 0;
         }
     }
@@ -138,15 +129,13 @@ static bool latching_decr_int_now_zero(volatile int32_t *where) {
 /***********************
 GC support stub routines
 ************************/
-#if !defined(_MSC_VER) || defined(__clang__)
+#if !TARGET_OS_WIN32
 #pragma mark GC Support Routines
 #endif
 
 
 
 static void *_Block_alloc_default(size_t size, const bool initialCountIsOne, const bool isObject) {
-	(void)initialCountIsOne;
-	(void)isObject;
     return malloc(size);
 }
 
@@ -155,24 +144,24 @@ static void _Block_assign_default(void *value, void **destptr) {
 }
 
 static void _Block_setHasRefcount_default(const void *ptr, const bool hasRefcount) {
-	(void)ptr;
-	(void)hasRefcount;
+    (void)ptr;
+    (void)hasRefcount;
 }
 
-#if HAVE_OBJC
-static void _Block_do_nothing(const void *aBlock) { }
-#endif
+static void _Block_do_nothing(const void *aBlock) {
+    (void)ptr;
+}
 
 static void _Block_retain_object_default(const void *ptr) {
-	(void)ptr;
+    (void)ptr;
 }
 
 static void _Block_release_object_default(const void *ptr) {
-	(void)ptr;
+    (void)ptr;
 }
 
 static void _Block_assign_weak_default(const void *ptr, void *dest) {
-#if !defined(_WIN32)
+#if !TARGET_OS_WIN32
     *(long *)dest = (long)ptr;
 #else
     *(void **)dest = (void *)ptr;
@@ -183,7 +172,6 @@ static void _Block_memmove_default(void *dst, void *src, unsigned long size) {
     memmove(dst, src, (size_t)size);
 }
 
-#if HAVE_OBJC
 static void _Block_memmove_gc_broken(void *dest, void *src, unsigned long size) {
     void **destp = (void **)dest;
     void **srcp = (void **)src;
@@ -194,10 +182,9 @@ static void _Block_memmove_gc_broken(void *dest, void *src, unsigned long size) 
         size -= sizeof(void *);
     }
 }
-#endif
 
 static void _Block_destructInstance_default(const void *aBlock) {
-	(void)aBlock;
+    (void)aBlock;
 }
 
 /**************************************************************************
@@ -215,7 +202,6 @@ static void (*_Block_memmove)(void *dest, void *src, unsigned long size) = _Bloc
 static void (*_Block_destructInstance) (const void *aBlock) = _Block_destructInstance_default;
 
 
-#if HAVE_OBJC
 /**************************************************************************
 GC support SPI functions - called from ObjC runtime and CoreFoundation
 ***************************************************************************/
@@ -259,18 +245,34 @@ void _Block_use_GC5( void *(*alloc)(size_t, const bool isOne, const bool isObjec
 // Prior to this the only "object" support we can provide is for those
 // super special objects that live in libSystem, namely dispatch queues.
 // Blocks and Block_byrefs have their own special entry points.
-BLOCK_EXPORT
 void _Block_use_RR( void (*retain)(const void *),
                     void (*release)(const void *)) {
     _Block_retain_object = retain;
     _Block_release_object = release;
+#if TARGET_OS_WIN32
+    HANDLE hProcess = GetCurrentProcess();
+    HMODULE hModule[1024];
+    DWORD cbNeeded = 0;
+
+    if (!EnumProcessModules(hProcess, hModule, sizeof(hModule), &cbNeeded))
+      return;
+    if (cbNeeded > sizeof(hModule))
+      return;
+
+    for (unsigned I = 0; I < (cbNeeded / sizeof(HMODULE)); ++I) {
+      _Block_destructInstance =
+          (void (*)(const void *))GetProcAddress(hModule[I],
+                                                 "objc_destructInstance");
+      if (_Block_destructInstance)
+        break;
+    }
+#else
     _Block_destructInstance = dlsym(RTLD_DEFAULT, "objc_destructInstance");
+#endif
 }
-#endif // HAVE_OBJC
 
 // Called from CF to indicate MRR. Newer version uses a versioned structure, so we can add more functions
 // without defining a new entry point.
-BLOCK_EXPORT
 void _Block_use_RR2(const Block_callbacks_RR *callbacks) {
     _Block_retain_object = callbacks->retain;
     _Block_release_object = callbacks->release;
@@ -336,7 +338,7 @@ static void _Block_call_dispose_helper(struct Block_layout *aBlock)
 Internal Support routines for copying
 ********************************************************************************/
 
-#if !defined(_MSC_VER) || defined(__clang__)
+#if !TARGET_OS_WIN32
 #pragma mark Copy/Release support
 #endif
 
@@ -468,6 +470,7 @@ static void _Block_byref_assign_copy(void *dest, const void *arg, const int flag
 // Old compiler SPI
 static void _Block_byref_release(const void *arg) {
     struct Block_byref *byref = (struct Block_byref *)arg;
+    int32_t refcount;
 
     // dereference the forwarding pointer since the compiler isn't doing this anymore (ever?)
     byref = byref->forwarding;
@@ -477,10 +480,11 @@ static void _Block_byref_release(const void *arg) {
     if ((byref->flags & BLOCK_BYREF_NEEDS_FREE) == 0) {
         return; // stack or GC or global
     }
-    os_assert(byref->flags & BLOCK_REFCOUNT_MASK);
+    refcount = byref->flags & BLOCK_REFCOUNT_MASK;
+    os_assert(refcount);
     if (latching_decr_int_should_deallocate(&byref->flags)) {
         if (byref->flags & BLOCK_BYREF_HAS_COPY_DISPOSE) {
-            struct Block_byref_2 *byref2 = (struct Block_byref_2 *)(byref+1);
+            struct Block_byref_2 *byref2 = (struct Block_byref_2 *)(byref + 1);
             (*byref2->byref_destroy)(byref);
         }
         _Block_deallocator((struct Block_layout *)byref);
@@ -495,18 +499,16 @@ static void _Block_byref_release(const void *arg) {
  *
  ***********************************************************/
 
-#if !defined(_MSC_VER) || defined(__clang__)
+#if !TARGET_OS_WIN32
 #pragma mark SPI/API
 #endif
 
-BLOCK_EXPORT
 void *_Block_copy(const void *arg) {
     return _Block_copy_internal(arg, true);
 }
 
 
 // API entry point to release a copied Block
-BLOCK_EXPORT
 void _Block_release(const void *arg) {
     struct Block_layout *aBlock = (struct Block_layout *)arg;
     if (!aBlock 
@@ -530,13 +532,11 @@ void _Block_release(const void *arg) {
     }
 }
 
-BLOCK_EXPORT
 bool _Block_tryRetain(const void *arg) {
     struct Block_layout *aBlock = (struct Block_layout *)arg;
     return latching_incr_int_not_deallocating(&aBlock->flags);
 }
 
-BLOCK_EXPORT
 bool _Block_isDeallocating(const void *arg) {
     struct Block_layout *aBlock = (struct Block_layout *)arg;
     return (aBlock->flags & BLOCK_DEALLOCATING) != 0;
@@ -563,19 +563,16 @@ static void _Block_destroy(const void *arg) {
  ***********************************************************/
 
 // SPI, also internal.  Called from NSAutoBlock only under GC
-BLOCK_EXPORT
 void *_Block_copy_collectable(const void *aBlock) {
     return _Block_copy_internal(aBlock, false);
 }
 
 
 // SPI
-BLOCK_EXPORT
 size_t Block_size(void *aBlock) {
     return ((struct Block_layout *)aBlock)->descriptor->size;
 }
 
-BLOCK_EXPORT
 bool _Block_use_stret(void *aBlock) {
     struct Block_layout *layout = (struct Block_layout *)aBlock;
 
@@ -584,12 +581,10 @@ bool _Block_use_stret(void *aBlock) {
 }
 
 // Checks for a valid signature, not merely the BLOCK_HAS_SIGNATURE bit.
-BLOCK_EXPORT
 bool _Block_has_signature(void *aBlock) {
     return _Block_signature(aBlock) ? true : false;
 }
 
-BLOCK_EXPORT
 const char * _Block_signature(void *aBlock)
 {
     struct Block_descriptor_3 *desc3 = _Block_descriptor_3(aBlock);
@@ -598,7 +593,6 @@ const char * _Block_signature(void *aBlock)
     return desc3->signature;
 }
 
-BLOCK_EXPORT
 const char * _Block_layout(void *aBlock)
 {
     // Don't return extended layout to callers expecting GC layout
@@ -611,7 +605,6 @@ const char * _Block_layout(void *aBlock)
     return desc3->layout;
 }
 
-BLOCK_EXPORT
 const char * _Block_extended_layout(void *aBlock)
 {
     // Don't return GC layout to callers expecting extended layout
@@ -627,7 +620,7 @@ const char * _Block_extended_layout(void *aBlock)
     else return desc3->layout;
 }
 
-#if !defined(_MSC_VER) || defined(__clang__)
+#if !TARGET_OS_WIN32
 #pragma mark Compiler SPI entry points
 #endif
 
@@ -668,7 +661,6 @@ So the __block copy/dispose helpers will generate flag values of 3 or 7 for obje
 // When Blocks or Block_byrefs hold objects then their copy routine helpers use this entry point
 // to do the assignment.
 //
-BLOCK_EXPORT
 void _Block_object_assign(void *destAddr, const void *object, const int flags) {
     switch (os_assumes(flags & BLOCK_ALL_COPY_DISPOSE_FLAGS)) {
       case BLOCK_FIELD_IS_OBJECT:
@@ -735,7 +727,6 @@ void _Block_object_assign(void *destAddr, const void *object, const int flags) {
 // When Blocks or Block_byrefs hold objects their destroy helper routines call this entry point
 // to help dispose of the contents
 // Used initially only for __attribute__((NSObject)) marked pointers.
-BLOCK_EXPORT
 void _Block_object_dispose(const void *object, const int flags) {
     switch (os_assumes(flags & BLOCK_ALL_COPY_DISPOSE_FLAGS)) {
       case BLOCK_FIELD_IS_BYREF | BLOCK_FIELD_IS_WEAK:
