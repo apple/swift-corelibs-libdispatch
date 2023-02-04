@@ -5513,8 +5513,7 @@ _dispatch_wlh_worker_thread_init(dispatch_deferred_items_t ddi)
 		return false;
 	}
 
-	if ((pp & _PTHREAD_PRIORITY_SCHED_PRI_FLAG) ||
-			!(pp & ~_PTHREAD_PRIORITY_FLAGS_MASK)) {
+	if (pp & _PTHREAD_PRIORITY_SCHED_PRI_FLAG) {
 		// When the phtread kext is delivering kevents to us, and pthread
 		// root queues are in use, then the pthread priority TSD is set
 		// to a sched pri with the _PTHREAD_PRIORITY_SCHED_PRI_FLAG bit set.
