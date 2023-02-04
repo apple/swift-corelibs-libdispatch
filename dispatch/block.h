@@ -33,6 +33,7 @@
  */
 
 DISPATCH_ASSUME_NONNULL_BEGIN
+DISPATCH_ASSUME_ABI_SINGLE_BEGIN
 
 __BEGIN_DECLS
 
@@ -100,7 +101,7 @@ __BEGIN_DECLS
  * for synchronous execution or when the dispatch block object is invoked
  * directly.
  */
-DISPATCH_ENUM(dispatch_block_flags, unsigned long,
+DISPATCH_OPTIONS(dispatch_block_flags, unsigned long,
 	DISPATCH_BLOCK_BARRIER
 			DISPATCH_ENUM_API_AVAILABLE(macos(10.10), ios(8.0)) = 0x1,
 	DISPATCH_BLOCK_DETACHED
@@ -421,6 +422,7 @@ dispatch_block_testcancel(dispatch_block_t block);
 
 __END_DECLS
 
+DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
 #endif // __BLOCKS__

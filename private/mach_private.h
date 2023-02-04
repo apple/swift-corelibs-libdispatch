@@ -34,11 +34,10 @@
 
 __BEGIN_DECLS
 
-#if DISPATCH_MACH_SPI
-
-#define DISPATCH_MACH_SPI_VERSION 20161026
+#define DISPATCH_MACH_SPI_VERSION 20200229
 
 #include <mach/mach.h>
+#include <mach/message.h>
 
 DISPATCH_ASSUME_NONNULL_BEGIN
 
@@ -129,6 +128,10 @@ DISPATCH_DECL(dispatch_mach);
  * an asynchronous reply to a message previously sent to the channel. Used
  * only if the channel is disconnected while waiting for a reply to a message
  * sent with dispatch_mach_send_with_result_and_async_reply_4libxpc().
+ *
+ * @const DISPATCH_MACH_NO_SENDERS
+ * Sent when a no senders requested with dispatch_mach_request_no_senders() has
+ * been received. See dispatch_mach_request_no_senders().
  */
 DISPATCH_ENUM(dispatch_mach_reason, unsigned long,
 	DISPATCH_MACH_CONNECTED = 1,
@@ -143,6 +146,7 @@ DISPATCH_ENUM(dispatch_mach_reason, unsigned long,
 	DISPATCH_MACH_NEEDS_DEFERRED_SEND,
 	DISPATCH_MACH_SIGTERM_RECEIVED,
 	DISPATCH_MACH_ASYNC_WAITER_DISCONNECTED,
+	DISPATCH_MACH_NO_SENDERS,
 	DISPATCH_MACH_REASON_LAST, /* unused */
 );
 
@@ -159,7 +163,7 @@ DISPATCH_ENUM(dispatch_mach_send_flags, unsigned long,
  * Trailer type of mach message received by dispatch mach channels
  */
 
-typedef mach_msg_context_trailer_t dispatch_mach_trailer_t;
+typedef mach_msg_mac_trailer_t dispatch_mach_trailer_t;
 
 /*!
  * @constant DISPATCH_MACH_RECEIVE_MAX_INLINE_MESSAGE_SIZE
@@ -189,7 +193,7 @@ DISPATCH_DECL(dispatch_mach_msg);
  * @const DISPATCH_MACH_MSG_DESTRUCTOR_FREE
  * Message buffer will be deallocated with free(3).
  *
- * @const DISPATCH_MACH_MSG_DESTRUCTOR_FREE
+ * @const DISPATCH_MACH_MSG_DESTRUCTOR_VM_DEALLOCATE
  * Message buffer will be deallocated with vm_deallocate.
  */
 DISPATCH_ENUM(dispatch_mach_msg_destructor, unsigned int,
@@ -350,6 +354,124 @@ dispatch_mach_t
 dispatch_mach_create_f(const char *_Nullable label,
 		dispatch_queue_t _Nullable queue, void *_Nullable context,
 		dispatch_mach_handler_function_t handler);
+
+/*!
+ * @function dispatch_mach_request_no_senders
+ *
+ * Configure the mach channel to receive no more senders notifications.
+ *
+ * @discussion
+ * This function must be called before dispatch_mach_connect() has been called.
+ *
+ * When a checkin message is passed to dispatch_mach_connect() or
+ * dispatch_mach_reconnect(), the notification is armed after the checkin
+ * message has been sent successfully.
+ *
+ * If no checkin message is passed, then the mach channel is assumed to be
+ * a "server" peer connection and the no more senders request is armed
+ * immediately.
+ *
+ * Note that the notification will not be issued if no send right was ever
+ * made for this connection receive right.
+ *
+ * @param channel
+ * The mach channel to request no senders notifications on.
+ */
+API_DEPRECATED("Use dispatch_mach_notify_no_senders instead", macos(10.14, 10.16),
+		ios(12.0, 14.0))
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+void
+dispatch_mach_request_no_senders(dispatch_mach_t channel);
+
+/*!
+ * @function dispatch_mach_notify_no_senders
+ *
+ * Configure the mach channel to receive no more senders notifications.
+ *
+ * @discussion
+ * This function must be called before dispatch_mach_connect() has been called.
+ *
+ * When a checkin message is passed to dispatch_mach_connect() or
+ * dispatch_mach_reconnect(), the notification is armed after the checkin
+ * message has been sent successfully.
+ *
+ * If no checkin message is passed, then the mach channel is assumed to be
+ * a "server" peer connection and the no more senders request is armed
+ * immediately.
+ *
+ * Requesting a no-senders notification for a listener mach channel is likely a
+ * client error since listener connections will likely have short-lived send
+ * rights (only until a peer connection is established).
+ *
+ * @param channel
+ * The mach channel to request no senders notifications on.
+ *
+ * @param made_sendrights
+ * A boolean representing whether the send right for this connection has been
+ * made before dispatch_mach_connect() is called.
+ *
+ * There are 2 cases of consideration:
+ *
+ * a) The client is initiating the peer connection by creating a receive right
+ * with an inserted send right and shipping the receive right over to the server
+ * in a checkin message. In this case, the server must specify true for
+ * made_sendrights when arming for no-senders notification.
+ *
+ * b) The server is initiating the connection by creating a mach channel with a
+ * receive right and using MACH_MSG_TYPE_MAKE_SEND to create a send right in the
+ * checkin reply for the peer connection. this case, the server should specify
+ * false for made_sendrights while arming for no-senders notification.
+ */
+API_AVAILABLE(macos(10.16), ios(14.0), tvos(14.0), watchos(5.0))
+void
+dispatch_mach_notify_no_senders(dispatch_mach_t channel, bool made_sendrights);
+
+/*!
+ * @typedef dispatch_mach_flags_t
+ *
+ * Flags that can be passed to the dispatch_mach_set_flags function.
+ *
+ * @const DMF_USE_STRICT_REPLY
+ * Instruct the dispatch mach channel to use strict reply port semantics. When
+ * using strict reply port semantics, the kernel will enforce that the port
+ * used as the reply port has precisely 1 extant send-once right, its receive
+ * right exists in the same space as the sender, and any voucher context,
+ * e.g., the persona in the bank attribute, used when sending the message is
+ * also used when replying.
+ *
+ * @const DMF_REQUEST_NO_SENDERS
+ * Configure the mach channel to receive no more senders notifications.
+ * When a checkin message is passed to dispatch_mach_connect() or
+ * dispatch_mach_reconnect(), the notification is armed after the checkin
+ * message has been sent successfully.  If no checkin message is passed, then
+ * the mach channel is assumed to be a "server" peer connection and the no
+ * more senders request is armed immediately.
+ */
+DISPATCH_OPTIONS(dispatch_mach_flags, uint64_t,
+	DMF_NONE               = 0x0,
+	DMF_USE_STRICT_REPLY   = 0x1,
+);
+
+/*!
+ * @function dispatch_mach_set_flags
+ *
+ * Configure optional properties on the mach channel.
+ *
+ * @discussion
+ * This function must be called before dispatch_mach_connect() has been called.
+ *
+ * @param channel
+ * The mach channel to configure.
+ *
+ * @param flags
+ * Flags to configure the dispatch mach channel.
+ *
+ * @see dispatch_mach_flags_t
+ */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(4.0))
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+void
+dispatch_mach_set_flags(dispatch_mach_t channel, dispatch_mach_flags_t flags);
 
 /*!
  * @function dispatch_mach_connect
@@ -882,6 +1004,8 @@ DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 mach_port_t
 dispatch_mach_get_checkin_port(dispatch_mach_t channel);
 
+#if DISPATCH_MACH_SPI
+
 // SPI for libxpc
 /*
  * Type for the callback for receipt of asynchronous replies to
@@ -914,6 +1038,8 @@ typedef const struct dispatch_mach_xpc_hooks_s {
 
 	/* Fields available in version 2. */
 
+#define DMXH_MSG_CONTEXT_REPLY_QUEUE_SELF ((dispatch_queue_t)NULL)
+
 	/*
 	 * Gets the queue to which a reply to a message sent using
 	 * dispatch_mach_send_with_result_and_async_reply_4libxpc() should be
@@ -945,7 +1071,7 @@ typedef const struct dispatch_mach_xpc_hooks_s {
 	dispatch_mach_async_reply_callback_t dmxh_async_reply_handler;
 
 	/* Fields available in version 3. */
-	/**
+	/*
 	 * Called once when the Mach channel has been activated. If this function
 	 * returns true, a DISPATCH_MACH_SIGTERM_RECEIVED notification will be
 	 * delivered to the channel's event handler when a SIGTERM is received.
@@ -1101,6 +1227,8 @@ dispatch_mach_send_with_result_and_async_reply_4libxpc(dispatch_mach_t channel,
 		dispatch_mach_send_flags_t send_flags,
 		dispatch_mach_reason_t *send_result, mach_error_t *send_error);
 
+#endif // DISPATCH_MACH_SPI
+
 /*!
  * @function dispatch_mach_handoff_reply_f
  *
@@ -1125,7 +1253,7 @@ dispatch_mach_send_with_result_and_async_reply_4libxpc(dispatch_mach_t channel,
  * @param port
  * The send once right that will be replied to.
  */
-API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL4 DISPATCH_NOTHROW
 void
 dispatch_mach_handoff_reply_f(dispatch_queue_t queue, mach_port_t port,
@@ -1140,15 +1268,51 @@ dispatch_mach_handoff_reply_f(dispatch_queue_t queue, mach_port_t port,
  *
  * @see dispatch_mach_handoff_reply_f
  */
-API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+#ifdef __BLOCKS__
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_mach_handoff_reply(dispatch_queue_t queue, mach_port_t port,
 		dispatch_block_t block);
+#endif /* __BLOCKS__ */
 
-DISPATCH_ASSUME_NONNULL_END
+#if DISPATCH_MACH_SPI
+
+/*!
+ * @function dispatch_mach_msg_get_filter_policy_id
+ * Returns the message filter policy id from the message trailer.
+ * This id is added by the kernel during message send and is specific
+ * to the sender and port on which the message is received..
+ *
+ * @discussion
+ * This function should only be called from the context of an IPC handler.
+ *
+ * @param msg
+ * The dispatch mach message object to query. It should have a trailer of type dispatch_mach_trailer_t.
+ *
+ * @param filter_policy_id
+ * Return the filter policy id read from the message.
+ *
+ */
+API_AVAILABLE(macos(10.16), ios(14.0), tvos(14.0), watchos(7.0), bridgeos(5.0))
+DISPATCH_EXPORT DISPATCH_NOTHROW
+void
+dispatch_mach_msg_get_filter_policy_id(dispatch_mach_msg_t msg, mach_msg_filter_id *filter_policy_id);
+
+
+/*!
+ * @function dispatch_mach_can_handoff_4libxpc
+ *
+ * Returns whether the code is running in a context where a handoff is possible.
+ */
+API_AVAILABLE(macos(10.16), ios(14.0), tvos(14.0), watchos(7.0), bridgeos(5.0))
+DISPATCH_EXPORT DISPATCH_NOTHROW
+bool
+dispatch_mach_can_handoff_4libxpc(void);
 
 #endif // DISPATCH_MACH_SPI
+
+DISPATCH_ASSUME_NONNULL_END
 
 __END_DECLS
 

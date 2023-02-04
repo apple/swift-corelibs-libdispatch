@@ -26,7 +26,12 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+#if __has_include(<sys/qos.h>)
+#include <sys/qos.h>
+#endif
+
 DISPATCH_ASSUME_NONNULL_BEGIN
+DISPATCH_ASSUME_ABI_SINGLE_BEGIN
 
 /*!
  * @typedef dispatch_object_t
@@ -95,6 +100,7 @@ typedef union {
 	struct dispatch_queue_attr_s *_dqa;
 	struct dispatch_group_s *_dg;
 	struct dispatch_source_s *_ds;
+	struct dispatch_channel_s *_dch;
 	struct dispatch_mach_s *_dm;
 	struct dispatch_mach_msg_s *_dmsg;
 	struct dispatch_semaphore_s *_dsema;
@@ -177,6 +183,16 @@ typedef void (^dispatch_block_t)(void);
 #endif // __BLOCKS__
 
 __BEGIN_DECLS
+
+/*!
+ * @typedef dispatch_qos_class_t
+ * Alias for qos_class_t type.
+ */
+#if __has_include(<sys/qos.h>)
+typedef qos_class_t dispatch_qos_class_t;
+#else
+typedef unsigned int dispatch_qos_class_t;
+#endif
 
 /*!
  * @function dispatch_retain
@@ -374,6 +390,49 @@ DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
 void
 dispatch_resume(dispatch_object_t object);
 
+/*!
+ * @function dispatch_set_qos_class_floor
+ *
+ * @abstract
+ * Sets the QOS class floor on a dispatch queue, source or workloop.
+ *
+ * @discussion
+ * The QOS class of workitems submitted to this object asynchronously will be
+ * elevated to at least the specified QOS class floor. The QOS of the workitem
+ * will be used if higher than the floor even when the workitem has been created
+ * without "ENFORCE" semantics.
+ *
+ * Setting the QOS class floor is equivalent to the QOS effects of configuring
+ * a queue whose target queue has a QoS class set to the same value.
+ *
+ * @param object
+ * A dispatch queue, workloop, or source to configure.
+ * The object must be inactive.
+ *
+ * Passing another object type or an object that has been activated is undefined
+ * and will cause the process to be terminated.
+ *
+ * @param qos_class
+ * A QOS class value:
+ *  - QOS_CLASS_USER_INTERACTIVE
+ *  - QOS_CLASS_USER_INITIATED
+ *  - QOS_CLASS_DEFAULT
+ *  - QOS_CLASS_UTILITY
+ *  - QOS_CLASS_BACKGROUND
+ * Passing any other value is undefined.
+ *
+ * @param relative_priority
+ * A relative priority within the QOS class. This value is a negative
+ * offset from the maximum supported scheduler priority for the given class.
+ * Passing a value greater than zero or less than QOS_MIN_RELATIVE_PRIORITY
+ * is undefined.
+ */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+DISPATCH_EXPORT DISPATCH_NOTHROW
+void
+dispatch_set_qos_class_floor(dispatch_object_t object,
+		dispatch_qos_class_t qos_class, int relative_priority);
+
 #ifdef __BLOCKS__
 /*!
  * @function dispatch_wait
@@ -535,16 +594,19 @@ API_DEPRECATED("unsupported interface", macos(10.6,10.9), ios(4.0,6.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW DISPATCH_COLD
 __attribute__((__format__(printf,2,3)))
 void
-dispatch_debug(dispatch_object_t object, const char *message, ...);
+dispatch_debug(dispatch_object_t object,
+			   const char *DISPATCH_UNSAFE_INDEXABLE message, ...);
 
 API_DEPRECATED("unsupported interface", macos(10.6,10.9), ios(4.0,6.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW DISPATCH_COLD
 __attribute__((__format__(printf,2,0)))
 void
-dispatch_debugv(dispatch_object_t object, const char *message, va_list ap);
+dispatch_debugv(dispatch_object_t object,
+				const char *DISPATCH_UNSAFE_INDEXABLE message, va_list ap);
 
 __END_DECLS
 
+DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
 #endif

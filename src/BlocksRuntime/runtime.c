@@ -468,16 +468,18 @@ static void _Block_byref_assign_copy(void *dest, const void *arg, const int flag
 // Old compiler SPI
 static void _Block_byref_release(const void *arg) {
     struct Block_byref *byref = (struct Block_byref *)arg;
+    int32_t refcount;
 
     // dereference the forwarding pointer since the compiler isn't doing this anymore (ever?)
     byref = byref->forwarding;
-
+    
     // To support C++ destructors under GC we arrange for there to be a finalizer for this
     // by using an isa that directs the code to a finalizer that calls the byref_destroy method.
     if ((byref->flags & BLOCK_BYREF_NEEDS_FREE) == 0) {
         return; // stack or GC or global
     }
-    os_assert(byref->flags & BLOCK_REFCOUNT_MASK);
+    refcount = byref->flags & BLOCK_REFCOUNT_MASK;
+	os_assert(refcount);
     if (latching_decr_int_should_deallocate(&byref->flags)) {
         if (byref->flags & BLOCK_BYREF_HAS_COPY_DISPOSE) {
             struct Block_byref_2 *byref2 = (struct Block_byref_2 *)(byref+1);

@@ -24,36 +24,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL Windows)
   include_directories(BEFORE SYSTEM ${DISPATCH_INCLUDES})
   dispatch_windows_lib_for_arch(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_LIBDIR)
   link_directories(${DISPATCH_LIBDIR})
-
-  include(CheckCSourceCompiles)
-  check_c_source_compiles([=[
-#include <Windows.h>
-int main(int argc, char *argv[]) {
-  switch ((LOGICAL_PROCESSOR_RELATIONSHIP)0) {
-  case RelationProcessorDie:
-  case RelationNumaNodeEx:
-    return 0;
-  }
-  return 0;
-}
-]=] DISPATCH_HAVE_EXTENDED_SLPI_20348)
-  if(DISPATCH_HAVE_EXTENDED_SLPI_20348)
-    add_compile_definitions(DISPATCH_HAVE_EXTENDED_SLPI_20348)
-  endif()
-
-  check_c_source_compiles([=[
-#include <Windows.h>
-int main(int argc, char *argv[]) {
-  switch ((LOGICAL_PROCESSOR_RELATIONSHIP)0) {
-  case RelationProcessorModule:
-    return 0;
-  }
-  return 0;
-}
-]=] DISPATCH_HAVE_EXTENDED_SLPI_22000)
-  if(DISPATCH_HAVE_EXTENDED_SLPI_22000)
-    add_compile_definitions(DISPATCH_HAVE_EXTENDED_SLPI_22000)
-  endif()
 endif()
 
 set(CMAKE_C_STANDARD 11)

@@ -20,6 +20,7 @@
 
 #include <mach/std_types.defs>
 #include <mach/mach_types.defs>
+import <mach/mach.h>;
 
 // '64' is used to align with Mach notifications and so that we don't fight
 // with the notify symbols in Libsystem
@@ -27,6 +28,8 @@ subsystem libdispatch_internal_protocol 64;
 
 serverprefix _dispatch_;
 userprefix _dispatch_send_;
+
+ConsumeOnSendError Timeout;
 
 skip; /* was MACH_NOTIFY_FIRST: 64 */
 

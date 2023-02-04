@@ -31,7 +31,7 @@
 
 #define DM_CHECKIN_CANCELED ((dispatch_mach_msg_t)~0ul)
 
-DISPATCH_ENUM(dispatch_mach_send_invoke_flags, uint32_t,
+DISPATCH_OPTIONS(dispatch_mach_send_invoke_flags, uint32_t,
 	DM_SEND_INVOKE_NONE            = 0x0,
 	DM_SEND_INVOKE_MAKE_DIRTY      = 0x1,
 	DM_SEND_INVOKE_NEEDS_BARRIER   = 0x2,
@@ -64,12 +64,16 @@ static void _dispatch_mach_handle_or_push_received_msg(dispatch_mach_t dm,
 static void _dispatch_mach_push_async_reply_msg(dispatch_mach_t dm,
 		dispatch_mach_msg_t dmsg, dispatch_queue_t drq);
 static dispatch_queue_t _dispatch_mach_msg_context_async_reply_queue(
+		dispatch_mach_t dm,
 		void *ctxt);
 static dispatch_continuation_t _dispatch_mach_msg_async_reply_wrap(
 		dispatch_mach_msg_t dmsg, dispatch_mach_t dm);
 static void _dispatch_mach_notification_kevent_unregister(dispatch_mach_t dm);
 static void _dispatch_mach_notification_kevent_register(dispatch_mach_t dm,
 		mach_port_t send);
+static inline mach_msg_option_t
+_dispatch_mach_send_msg_prepare(dispatch_mach_t dm,
+		dispatch_mach_msg_t dmsg, mach_msg_option_t options);
 
 // For tests only.
 DISPATCH_EXPORT void _dispatch_mach_hooks_install_default(void);
@@ -101,10 +105,17 @@ _dispatch_mach_hooks_install_default(void)
 #pragma mark -
 #pragma mark dispatch_mach_t
 
+DISPATCH_OPTIONS(dispatch_mach_create_flags, unsigned,
+	DMCF_NONE             = 0x00000000,
+	DMCF_HANDLER_IS_BLOCK = 0x00000001,
+	DMCF_IS_XPC           = 0x00000002,
+	DMCF_USE_STRICT_REPLY = 0x00000004,
+);
+
 static dispatch_mach_t
 _dispatch_mach_create(const char *label, dispatch_queue_t q, void *context,
-		dispatch_mach_handler_function_t handler, bool handler_is_block,
-		bool is_xpc)
+		dispatch_mach_handler_function_t handler,
+		dispatch_mach_create_flags_t dmcf)
 {
 	dispatch_mach_recv_refs_t dmrr;
 	dispatch_mach_send_refs_t dmsr;
@@ -113,14 +124,18 @@ _dispatch_mach_create(const char *label, dispatch_queue_t q, void *context,
 	dm = _dispatch_queue_alloc(mach, DQF_MUTABLE, 1,
 			DISPATCH_QUEUE_INACTIVE | DISPATCH_QUEUE_ROLE_INNER)._dm;
 	dm->dq_label = label;
-	dm->dm_is_xpc = is_xpc;
+	dm->dm_is_xpc = (bool)(dmcf & DMCF_IS_XPC);
+	dm->dm_strict_reply = (bool)(dmcf & DMCF_USE_STRICT_REPLY);
 
 	dmrr = dux_create(&_dispatch_mach_type_recv, 0, 0)._dmrr;
 	dispatch_assert(dmrr->du_is_direct);
 	dmrr->du_owner_wref = _dispatch_ptr2wref(dm);
 	dmrr->dmrr_handler_func = handler;
 	dmrr->dmrr_handler_ctxt = context;
-	dmrr->dmrr_handler_is_block = handler_is_block;
+	dmrr->dmrr_handler_is_block = (bool)(dmcf & DMCF_HANDLER_IS_BLOCK);
+	if (dm->dm_strict_reply) {
+		dmrr->du_fflags |= MACH_MSG_STRICT_REPLY;
+	}
 	dm->dm_recv_refs = dmrr;
 
 	dmsr = dux_create(&_dispatch_mach_type_send, 0,
@@ -131,6 +146,9 @@ _dispatch_mach_create(const char *label, dispatch_queue_t q, void *context,
 	if (unlikely(!q)) {
 		q = _dispatch_get_default_queue(true);
 	} else {
+		if (_dispatch_queue_is_cooperative(q)) {
+			DISPATCH_CLIENT_CRASH(q, "Cannot target object to cooperative root queue - not implemented");
+		}
 		_dispatch_retain(q);
 	}
 	dm->do_targetq = q;
@@ -144,22 +162,22 @@ dispatch_mach_create(const char *label, dispatch_queue_t q,
 {
 	dispatch_block_t bb = _dispatch_Block_copy((void*)handler);
 	return _dispatch_mach_create(label, q, bb,
-			(dispatch_mach_handler_function_t)_dispatch_Block_invoke(bb), true,
-			false);
+			(dispatch_mach_handler_function_t)_dispatch_Block_invoke(bb),
+			DMCF_HANDLER_IS_BLOCK);
 }
 
 dispatch_mach_t
 dispatch_mach_create_f(const char *label, dispatch_queue_t q, void *context,
 		dispatch_mach_handler_function_t handler)
 {
-	return _dispatch_mach_create(label, q, context, handler, false, false);
+	return _dispatch_mach_create(label, q, context, handler, DMCF_NONE);
 }
 
 dispatch_mach_t
 dispatch_mach_create_4libxpc(const char *label, dispatch_queue_t q,
 		void *context, dispatch_mach_handler_function_t handler)
 {
-	return _dispatch_mach_create(label, q, context, handler, false, true);
+	return _dispatch_mach_create(label, q, context, handler, DMCF_IS_XPC | DMCF_USE_STRICT_REPLY);
 }
 
 void
@@ -175,6 +193,72 @@ _dispatch_mach_dispose(dispatch_mach_t dm, bool *allow_free)
 		dm->dm_xpc_term_refs = NULL;
 	}
 	_dispatch_lane_class_dispose(dm, allow_free);
+}
+
+void
+dispatch_mach_request_no_senders(dispatch_mach_t dm)
+{
+	dm->dm_arm_no_senders = true;
+	_dispatch_queue_setter_assert_inactive(dm);
+}
+
+void
+dispatch_mach_notify_no_senders(dispatch_mach_t dm, bool made_sendrights)
+{
+	dm->dm_arm_no_senders = true;
+	dm->dm_made_sendrights = made_sendrights;
+	_dispatch_queue_setter_assert_inactive(dm);
+}
+
+void
+dispatch_mach_set_flags(dispatch_mach_t dm, dispatch_mach_flags_t flags)
+{
+	dm->dm_strict_reply = !!(flags & DMF_USE_STRICT_REPLY);
+	_dispatch_queue_setter_assert_inactive(dm);
+}
+
+static void
+_dispatch_mach_arm_no_senders(dispatch_mach_t dm, bool allow_previous)
+{
+	mach_port_t recvp = (mach_port_t)dm->dm_recv_refs->du_ident;
+	mach_port_t previous = MACH_PORT_NULL;
+	kern_return_t kr;
+
+	if (MACH_PORT_VALID(recvp)) {
+		// <rdar://problem/57574240&57889260>
+		//
+		// Establishing a peer-connection can be done in two ways:
+		// 1) the client makes a receive right with an inserted send right,
+		//    and ships the receive right across in a checkin message,
+		//
+		// 2) the server makes a receive right and "make-send" a send right
+		//    in the checkin reply.
+		//
+		// While for the case (1) which is the typical XPC case, at the time
+		// dispatch_mach_connect() is called the send right for the peer
+		// connection is made, for case (2) it will only be made later.
+		//
+		// We use dm->dm_made_sendrights to determine which case we're in. If
+		// (1), sync = 0 since the send right could have gone away and we want
+		// no-senders to fire immediately. If (2), sync = 1, we want to fire
+		// no-senders only after creating at least one send right.
+
+		mach_port_mscount_t sync = dm->dm_made_sendrights ? 0 : 1;
+
+		kr = mach_port_request_notification(mach_task_self(), recvp,
+				MACH_NOTIFY_NO_SENDERS, sync, recvp,
+				MACH_MSG_TYPE_MAKE_SEND_ONCE, &previous);
+		DISPATCH_VERIFY_MIG(kr);
+		dispatch_assume_zero(kr);
+	}
+	if (unlikely(previous)) {
+		if (!allow_previous) {
+			DISPATCH_CLIENT_CRASH(previous, "Mach port notification collision");
+		}
+		kr = mach_port_deallocate(mach_task_self(), previous);
+		DISPATCH_VERIFY_MIG(kr);
+		dispatch_assume_zero(kr);
+	}
 }
 
 void
@@ -195,6 +279,10 @@ dispatch_mach_connect(dispatch_mach_t dm, mach_port_t receive,
 			dmsr->dmsr_checkin_port = _dispatch_mach_msg_get_remote_port(dmsg);
 		}
 		dmsr->dmsr_checkin = checkin;
+	}
+
+	if (dm->dm_arm_no_senders && !dmsr->dmsr_checkin) {
+		_dispatch_mach_arm_no_senders(dm, false);
 	}
 
 	uint32_t disconnect_cnt = os_atomic_and_orig2o(dmsr, dmsr_disconnect_cnt,
@@ -290,7 +378,7 @@ _dispatch_mach_reply_unregister(dispatch_mach_t dm,
 	dispatch_queue_t drq = NULL;
 	if (disconnected) {
 		if (dm->dm_is_xpc && dmr->dmr_ctxt) {
-			drq = _dispatch_mach_msg_context_async_reply_queue(dmr->dmr_ctxt);
+			drq = _dispatch_mach_msg_context_async_reply_queue(dm, dmr->dmr_ctxt);
 		}
 		dmsgr = _dispatch_mach_msg_create_reply_disconnected(NULL, dmr,
 				drq ? DISPATCH_MACH_ASYNC_WAITER_DISCONNECTED
@@ -367,9 +455,13 @@ _dispatch_mach_reply_kevent_register(dispatch_mach_t dm, mach_port_t reply_port,
 
 	dispatch_queue_t drq = NULL;
 	if (dm->dm_is_xpc && dmsg->do_ctxt) {
-		drq = _dispatch_mach_msg_context_async_reply_queue(dmsg->do_ctxt);
+		drq = _dispatch_mach_msg_context_async_reply_queue(dm, dmsg->do_ctxt);
 	}
-	if (unlikely(!drq && _dispatch_unote_wlh(dm->dm_recv_refs))) {
+	if (dm->dm_strict_reply) {
+		dmr->du_fflags |= MACH_MSG_STRICT_REPLY;
+	}
+	if (unlikely((!drq || drq == dm->_as_dq) &&
+			_dispatch_unote_wlh(dm->dm_recv_refs))) {
 		wlh = _dispatch_unote_wlh(dm->dm_recv_refs);
 		pri = dm->dq_priority;
 	} else if (dx_hastypeflag(drq, QUEUE_ROOT)) {
@@ -412,30 +504,13 @@ _dispatch_mach_reply_kevent_register(dispatch_mach_t dm, mach_port_t reply_port,
 #pragma mark -
 #pragma mark dispatch_mach_msg
 
-DISPATCH_ALWAYS_INLINE DISPATCH_CONST
-static inline bool
-_dispatch_use_mach_special_reply_port(void)
-{
-#if DISPATCH_USE_MACH_SEND_SYNC_OVERRIDE
-	return true;
-#else
-#define thread_get_special_reply_port() ({__builtin_trap(); MACH_PORT_NULL;})
-	return false;
-#endif
-}
-
 static void
 _dispatch_destruct_reply_port(mach_port_t reply_port,
 		enum thread_destruct_special_reply_port_rights rights)
 {
 	kern_return_t kr = KERN_SUCCESS;
 
-	if (_dispatch_use_mach_special_reply_port()) {
-		kr = thread_destruct_special_reply_port(reply_port, rights);
-	} else if (rights == THREAD_SPECIAL_REPLY_PORT_ALL ||
-			rights == THREAD_SPECIAL_REPLY_PORT_RECEIVE_ONLY) {
-		kr = mach_port_destruct(mach_task_self(), reply_port, 0, 0);
-	}
+	kr = thread_destruct_special_reply_port(reply_port, rights);
 	DISPATCH_VERIFY_MIG(kr);
 	dispatch_assume_zero(kr);
 }
@@ -444,25 +519,16 @@ static mach_port_t
 _dispatch_get_thread_reply_port(void)
 {
 	mach_port_t reply_port, mrp;
-	if (_dispatch_use_mach_special_reply_port()) {
-		mrp = _dispatch_get_thread_special_reply_port();
-	} else {
-		mrp = _dispatch_get_thread_mig_reply_port();
-	}
+	mrp = _dispatch_get_thread_special_reply_port();
 	if (mrp) {
 		reply_port = mrp;
 		_dispatch_debug("machport[0x%08x]: borrowed thread sync reply port",
 				reply_port);
 	} else {
-		if (_dispatch_use_mach_special_reply_port()) {
-			reply_port = thread_get_special_reply_port();
-			_dispatch_set_thread_special_reply_port(reply_port);
-		} else {
-			reply_port = mach_reply_port();
-			_dispatch_set_thread_mig_reply_port(reply_port);
-		}
+		reply_port = thread_get_special_reply_port();
+		_dispatch_set_thread_special_reply_port(reply_port);
 		if (unlikely(!MACH_PORT_VALID(reply_port))) {
-			DISPATCH_CLIENT_CRASH(_dispatch_use_mach_special_reply_port(),
+			DISPATCH_CLIENT_CRASH(0,
 				"Unable to allocate reply port, possible port leak");
 		}
 		_dispatch_debug("machport[0x%08x]: allocated thread sync reply port",
@@ -475,12 +541,7 @@ _dispatch_get_thread_reply_port(void)
 static void
 _dispatch_clear_thread_reply_port(mach_port_t reply_port)
 {
-	mach_port_t mrp;
-	if (_dispatch_use_mach_special_reply_port()) {
-		mrp = _dispatch_get_thread_special_reply_port();
-	} else {
-		mrp = _dispatch_get_thread_mig_reply_port();
-	}
+	mach_port_t mrp = _dispatch_get_thread_special_reply_port();
 	if (reply_port != mrp) {
 		if (mrp) {
 			_dispatch_debug("machport[0x%08x]: did not clear thread sync reply "
@@ -488,11 +549,7 @@ _dispatch_clear_thread_reply_port(mach_port_t reply_port)
 		}
 		return;
 	}
-	if (_dispatch_use_mach_special_reply_port()) {
-		_dispatch_set_thread_special_reply_port(MACH_PORT_NULL);
-	} else {
-		_dispatch_set_thread_mig_reply_port(MACH_PORT_NULL);
-	}
+	_dispatch_set_thread_special_reply_port(MACH_PORT_NULL);
 	_dispatch_debug_machport(reply_port);
 	_dispatch_debug("machport[0x%08x]: cleared thread sync reply port",
 			reply_port);
@@ -502,23 +559,14 @@ static void
 _dispatch_set_thread_reply_port(mach_port_t reply_port)
 {
 	_dispatch_debug_machport(reply_port);
-	mach_port_t mrp;
-	if (_dispatch_use_mach_special_reply_port()) {
-		mrp = _dispatch_get_thread_special_reply_port();
-	} else {
-		mrp = _dispatch_get_thread_mig_reply_port();
-	}
+	mach_port_t mrp = _dispatch_get_thread_special_reply_port();
 	if (mrp) {
 		_dispatch_destruct_reply_port(reply_port,
 				THREAD_SPECIAL_REPLY_PORT_ALL);
 		_dispatch_debug("machport[0x%08x]: deallocated sync reply port "
 				"(found 0x%08x)", reply_port, mrp);
 	} else {
-		if (_dispatch_use_mach_special_reply_port()) {
-			_dispatch_set_thread_special_reply_port(reply_port);
-		} else {
-			_dispatch_set_thread_mig_reply_port(reply_port);
-		}
+		_dispatch_set_thread_special_reply_port(reply_port);
 		_dispatch_debug("machport[0x%08x]: restored thread sync reply port",
 				reply_port);
 	}
@@ -566,7 +614,8 @@ _dispatch_mach_msg_get_reason(dispatch_mach_msg_t dmsg, mach_error_t *err_ptr)
 
 static inline dispatch_mach_msg_t
 _dispatch_mach_msg_create_recv(mach_msg_header_t *hdr, mach_msg_size_t siz,
-		dispatch_mach_reply_refs_t dmr, uint32_t flags, pthread_priority_t pp)
+	mach_msg_aux_header_t *aux_hdr, dispatch_mach_reply_refs_t dmr,
+	uint32_t flags, pthread_priority_t pp)
 {
 	dispatch_mach_msg_destructor_t destructor;
 	dispatch_mach_msg_t dmsg;
@@ -578,7 +627,7 @@ _dispatch_mach_msg_create_recv(mach_msg_header_t *hdr, mach_msg_size_t siz,
 		voucher = dmr->dmr_voucher;
 		dmr->dmr_voucher = NULL; // transfer reference
 	} else {
-		voucher = voucher_create_with_mach_msg(hdr);
+		voucher = _voucher_create_with_mach_msgv(hdr, aux_hdr);
 		pp = _dispatch_priority_compute_propagated(pp, 0);
 	}
 
@@ -599,9 +648,21 @@ _dispatch_mach_msg_create_recv(mach_msg_header_t *hdr, mach_msg_size_t siz,
 	return dmsg;
 }
 
+DISPATCH_NOINLINE
+static void
+_dispatch_mach_no_senders_invoke(dispatch_mach_t dm)
+{
+	if (!(_dispatch_queue_atomic_flags(dm) & DSF_CANCELED)) {
+		dispatch_mach_recv_refs_t dmrr = dm->dm_recv_refs;
+		_dispatch_client_callout4(dmrr->dmrr_handler_ctxt,
+				DISPATCH_MACH_NO_SENDERS, NULL, 0, dmrr->dmrr_handler_func);
+	}
+	_dispatch_perfmon_workitem_inc();
+}
+
 void
 _dispatch_mach_merge_msg(dispatch_unote_t du, uint32_t flags,
-		mach_msg_header_t *hdr, mach_msg_size_t siz,
+		mach_msg_header_t *hdr, mach_msg_size_t siz, mach_msg_aux_header_t *aux_hdr,
 		pthread_priority_t msg_pp, pthread_priority_t ovr_pp)
 
 {
@@ -622,6 +683,19 @@ _dispatch_mach_merge_msg(dispatch_unote_t du, uint32_t flags,
 		if (flags & DISPATCH_EV_MSG_NEEDS_FREE) {
 			free(hdr);
 		}
+	} else if (hdr->msgh_id == MACH_NOTIFY_NO_SENDERS && dm->dm_arm_no_senders){
+		if (dispatch_assume(_dispatch_mach_msg_sender_is_kernel(hdr))) {
+			dispatch_continuation_t dc = _dispatch_continuation_alloc();
+			(void)_dispatch_continuation_init_f(dc, dm, dm,
+					(dispatch_function_t)_dispatch_mach_no_senders_invoke,
+					DISPATCH_BLOCK_HAS_PRIORITY | DISPATCH_BLOCK_NO_VOUCHER,
+					DC_FLAG_CONSUME);
+			_dispatch_continuation_async(dm, dc, 0, dc->dc_flags);
+		}
+		mach_msg_destroy(hdr);
+		if (flags & DISPATCH_EV_MSG_NEEDS_FREE) {
+			free(hdr);
+		}
 	} else {
 		// Once the mach channel disarming is visible, cancellation will switch
 		// to immediately destroy messages.  If we're preempted here, then the
@@ -632,12 +706,17 @@ _dispatch_mach_merge_msg(dispatch_unote_t du, uint32_t flags,
 		// out to keep the promise that DISPATCH_MACH_DISCONNECTED is the last
 		// event sent.
 		dispatch_mach_msg_t dmsg;
-		dmsg = _dispatch_mach_msg_create_recv(hdr, siz, NULL, flags, msg_pp);
+		dmsg = _dispatch_mach_msg_create_recv(hdr, siz, aux_hdr, NULL, flags, msg_pp);
 		_dispatch_mach_handle_or_push_received_msg(dm, dmsg, ovr_pp);
 	}
 
-	if (unlikely(_dispatch_unote_needs_delete(du))) {
+	// Note: it is ok to do a relaxed load of the dq_state_bits as we only care
+	// about bits that are in the top bits of the 64bit dq_state.
+	// This avoids expensive CAS on 32bit acrhictures.
+	if (unlikely(_dispatch_unote_needs_delete(du) ||
+			_dq_state_is_activating((uint64_t)dm->dq_state_bits << 32))) {
 		return dx_wakeup(dm, 0, DISPATCH_WAKEUP_EVENT |
+				DISPATCH_WAKEUP_CLEAR_ACTIVATING |
 				DISPATCH_WAKEUP_CONSUME_2 | DISPATCH_WAKEUP_MAKE_DIRTY);
 	}
 	return _dispatch_release_2_tailcall(dm);
@@ -645,7 +724,7 @@ _dispatch_mach_merge_msg(dispatch_unote_t du, uint32_t flags,
 
 void
 _dispatch_mach_reply_merge_msg(dispatch_unote_t du, uint32_t flags,
-		mach_msg_header_t *hdr, mach_msg_size_t siz,
+		mach_msg_header_t *hdr, mach_msg_size_t siz, mach_msg_aux_header_t *aux_hdr,
 		pthread_priority_t msg_pp, pthread_priority_t ovr_pp)
 {
 	dispatch_mach_reply_refs_t dmr = du._dmr;
@@ -658,13 +737,13 @@ _dispatch_mach_reply_merge_msg(dispatch_unote_t du, uint32_t flags,
 			hdr->msgh_local_port, hdr->msgh_id, hdr->msgh_remote_port);
 
 	if (!canceled) {
-		dmsg = _dispatch_mach_msg_create_recv(hdr, siz, dmr, flags, msg_pp);
+		dmsg = _dispatch_mach_msg_create_recv(hdr, siz, aux_hdr, dmr, flags, msg_pp);
 	}
 
 	if (dmsg) {
 		dispatch_queue_t drq = NULL;
 		if (dm->dm_is_xpc && dmsg->do_ctxt) {
-			drq = _dispatch_mach_msg_context_async_reply_queue(dmsg->do_ctxt);
+			drq = _dispatch_mach_msg_context_async_reply_queue(dm, dmsg->do_ctxt);
 		}
 		if (drq) {
 			_dispatch_mach_push_async_reply_msg(dm, dmsg, drq);
@@ -691,11 +770,7 @@ DISPATCH_ALWAYS_INLINE
 static void
 _dispatch_mach_stack_probe(void *addr, size_t size)
 {
-#if TARGET_OS_MAC && DISPATCH_MIN_REQUIRED_OSX_AT_LEAST(101400) && \
-		(defined(__x86_64__) || defined(__arm64__))
-	// <rdar://problem/40708879> there should be a __has_feature() macro test
-	// for this, for now we approximate it, for when the compiler
-	// is generating calls to ____chkstk_darwin on our behalf
+#if __has_feature(stack_check)
 	(void)addr; (void)size;
 #else
 	for (mach_vm_address_t p = mach_vm_trunc_page(addr + vm_page_size);
@@ -729,6 +804,9 @@ _dispatch_mach_msg_reply_recv(dispatch_mach_t dm,
 	if (MACH_PORT_VALID(send)) {
 		notify = send;
 		options |= MACH_RCV_SYNC_WAIT;
+	}
+	if (dm->dm_strict_reply) {
+		options |= MACH_MSG_STRICT_REPLY;
 	}
 
 retry:
@@ -944,7 +1022,7 @@ _dispatch_mach_msg_not_sent(dispatch_mach_t dm, dispatch_object_t dou,
 	unsigned long reason = (msg_opts & DISPATCH_MACH_REGISTER_FOR_REPLY) ?
 			0 : DISPATCH_MACH_MESSAGE_NOT_SENT;
 	if (dm->dm_is_xpc && dmsg->do_ctxt) {
-		drq = _dispatch_mach_msg_context_async_reply_queue(dmsg->do_ctxt);
+		drq = _dispatch_mach_msg_context_async_reply_queue(dm, dmsg->do_ctxt);
 	}
 	dmsgr = _dispatch_mach_msg_create_reply_disconnected(dmsg,
 			dwr ? &dwr->dwr_refs : NULL,
@@ -961,6 +1039,24 @@ _dispatch_mach_msg_not_sent(dispatch_mach_t dm, dispatch_object_t dou,
 	}
 }
 
+DISPATCH_ALWAYS_INLINE
+static inline mach_msg_priority_t
+_dispatch_mach_send_priority(dispatch_mach_msg_t dmsg,
+		dispatch_qos_t qos_ovr, mach_msg_option_t *opts)
+{
+	qos_ovr = _dispatch_qos_propagate(qos_ovr);
+	if (qos_ovr) {
+		mach_msg_qos_t qos;
+		int relpri;
+
+		qos = (mach_msg_qos_t)_dispatch_qos_from_pp(dmsg->dmsg_priority);
+		relpri = _pthread_priority_relpri(dmsg->dmsg_priority);
+		*opts |= MACH_SEND_OVERRIDE;
+		return mach_msg_priority_encode((mach_msg_qos_t)qos_ovr, qos, relpri);
+	}
+	return MACH_MSG_PRIORITY_UNSPECIFIED;
+}
+
 DISPATCH_NOINLINE
 static uint32_t
 _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
@@ -971,13 +1067,17 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 	dispatch_mach_msg_t dmsg = dou._dmsg, dmsgr = NULL;
 	voucher_t voucher = dmsg->dmsg_voucher;
 	dispatch_queue_t drq = NULL;
-	mach_voucher_t ipc_kvoucher = MACH_VOUCHER_NULL;
 	uint32_t send_status = 0;
-	bool clear_voucher = false, kvoucher_move_send = false;
+	bool clear_voucher = false;
 	mach_msg_header_t *msg = _dispatch_mach_msg_get_msg(dmsg);
 	bool is_reply = (MACH_MSGH_BITS_REMOTE(msg->msgh_bits) ==
 			MACH_MSG_TYPE_MOVE_SEND_ONCE);
 	mach_port_t reply_port = dmsg->dmsg_reply;
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
+	mach_msg_vector_t send_vecs[2] = {};
+	_voucher_mach_udata_aux_s aux = {};
+	mach_msg_size_t udata_sz = 0;
+#endif
 	if (!is_reply) {
 		dm->dm_needs_mgr = 0;
 		if (unlikely(dsrr->dmsr_checkin && dmsg != dsrr->dmsr_checkin)) {
@@ -988,9 +1088,23 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 				dm->dm_needs_mgr = true;
 				goto out;
 			}
+			// Tag the checkin message with a voucher and priority and necessary
+			// options
+			(void) _dispatch_mach_send_msg_prepare(dm, dsrr->dmsr_checkin, 0);
 			if (unlikely(!_dispatch_mach_msg_send(dm,
 					dsrr->dmsr_checkin, NULL, qos, DM_SEND_INVOKE_NONE))) {
+
+				// We failed to send the checkin message, clear the voucher on
+				// it and let the retry tag it with the voucher later.
+				voucher_t v = dsrr->dmsr_checkin->dmsg_voucher;
+				if (v) {
+					_voucher_release(v);
+					dsrr->dmsr_checkin->dmsg_voucher = NULL;
+				}
 				goto out;
+			}
+			if (dm->dm_arm_no_senders) {
+				_dispatch_mach_arm_no_senders(dm, true);
 			}
 			dsrr->dmsr_checkin = NULL;
 		}
@@ -1010,44 +1124,68 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 							msg->msgh_remote_port);
 					dispatch_assert(_dispatch_unote_registered(dsrr));
 				}
-				if (dsrr->dmsr_notification_armed) {
+				if (os_atomic_load(&dsrr->dmsr_notification_armed, relaxed)) {
 					goto out;
 				}
 				opts |= MACH_SEND_NOTIFY;
 			}
 			opts |= MACH_SEND_TIMEOUT;
-			if (dmsg->dmsg_priority != _voucher_get_priority(voucher)) {
-				ipc_kvoucher = _voucher_create_mach_voucher_with_priority(
-						voucher, dmsg->dmsg_priority);
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
+			if (voucher && voucher->v_activity) {
+				udata_sz = offsetof(_voucher_mach_udata_s, _vmu_after_activity);
+
+				aux.udata = (_voucher_mach_udata_s){
+					.vmu_magic           = VOUCHER_MAGIC_V3,
+					/* .vmu_priority is unused */
+					.vmu_activity        = voucher->v_activity,
+					.vmu_activity_pid    = voucher->v_activity_creator,
+					.vmu_parent_activity = voucher->v_parent_activity,
+				};
 			}
+			if (udata_sz) {
+				aux.header.msgdh_size = sizeof(mach_msg_aux_header_t) + udata_sz;
+			}
+#endif
 			_dispatch_voucher_debug("mach-msg[%p] msg_set", voucher, dmsg);
-			if (ipc_kvoucher) {
-				kvoucher_move_send = true;
-				clear_voucher = _voucher_mach_msg_set_mach_voucher(msg,
-						ipc_kvoucher, kvoucher_move_send);
-			} else {
-				clear_voucher = _voucher_mach_msg_set(msg, voucher);
-			}
-			if (qos) {
-				opts |= MACH_SEND_OVERRIDE;
-				msg_priority = (mach_msg_priority_t)
-						_dispatch_priority_compute_propagated(
-						_dispatch_qos_to_pp(qos), 0);
+			// _voucher_get_mach_voucher() skips mach voucher creation if
+			// activity_in_msgv is true.
+			clear_voucher = _voucher_mach_msg_set(msg, voucher);
+			msg_priority = _dispatch_mach_send_priority(dmsg, qos, &opts);
+			if (reply_port && dm->dm_strict_reply) {
+				opts |= MACH_MSG_STRICT_REPLY;
 			}
 		}
 		_dispatch_debug_machport(msg->msgh_remote_port);
 		if (reply_port) _dispatch_debug_machport(reply_port);
 		if (msg_opts & DISPATCH_MACH_WAIT_FOR_REPLY) {
 			if (dwr->dwr_refs.dmr_reply_port_owned) {
-				if (_dispatch_use_mach_special_reply_port()) {
-					opts |= MACH_SEND_SYNC_OVERRIDE;
-				}
+				opts |= MACH_SEND_SYNC_OVERRIDE;
 				_dispatch_clear_thread_reply_port(reply_port);
 			}
 			_dispatch_mach_reply_waiter_register(dm, dwr, reply_port, dmsg);
 		}
+
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
+		send_vecs[MACH_MSGV_IDX_MSG] = (mach_msg_vector_t){
+			.msgv_data = (mach_vm_address_t)msg,
+			.msgv_rcv_addr = 0,
+			.msgv_send_size = msg->msgh_size,
+			.msgv_rcv_size = 0,
+		};
+		send_vecs[MACH_MSGV_IDX_AUX] = (mach_msg_vector_t){
+			.msgv_data = (mach_vm_address_t)&aux,
+			.msgv_rcv_addr = 0,
+			.msgv_send_size = udata_sz ? aux.header.msgdh_size : 0,
+			.msgv_rcv_size = 0,
+		};
+
+		kr = mach_msg2(send_vecs, (mach_msg_option64_t)opts |
+			MACH64_MSG_VECTOR | MACH64_SEND_USER_CALL,
+			*msg, 2, 0, MACH_PORT_NULL, 0, msg_priority);
+#else
 		kr = mach_msg(msg, opts, msg->msgh_size, 0, MACH_PORT_NULL, 0,
 				msg_priority);
+#endif
 		_dispatch_debug("machport[0x%08x]: sent msg id 0x%x, ctxt %p, "
 				"opts 0x%x, msg_opts 0x%x, kvoucher 0x%08x, reply on 0x%08x: "
 				"%s - 0x%x", msg->msgh_remote_port, msg->msgh_id, dmsg->do_ctxt,
@@ -1063,30 +1201,35 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 				DISPATCH_CLIENT_CRASH(kr, "Voucher port corruption");
 			}
 			mach_voucher_t kv;
-			kv = _voucher_mach_msg_clear(msg, kvoucher_move_send);
-			if (kvoucher_move_send) ipc_kvoucher = kv;
+			kv = _voucher_mach_msg_clear(msg, false);
 		}
 	}
 	if (kr == MACH_SEND_TIMED_OUT && (opts & MACH_SEND_TIMEOUT)) {
+		if (msg->msgh_remote_port == MACH_PORT_DEAD) {
+			// It's possible that the remote port may have died after the
+			// attempt to enqueue the message timed out.  In this case, the
+			// pseudo-receive will copy-out MOVE_SEND over the disposition and
+			// MACH_PORT_DEAD for the remote port name, without giving us a
+			// deadname ref for the send right name.
+			//
+			// When we next attempt to resend this message, we'll overwrite the
+			// remote port back to the channel send right.  It is therefore
+			// crucial that we reset the disposition to COPY_SEND, since the ref
+			// the MOVE_SEND was referring to never actually arrived.
+			//
+			// rdar://77994175
+
+			msg->msgh_bits &= ~((mach_msg_bits_t)MACH_MSGH_BITS_REMOTE_MASK);
+			msg->msgh_bits |= MACH_MSG_TYPE_COPY_SEND;
+		}
+
 		if (opts & MACH_SEND_NOTIFY) {
 			_dispatch_mach_notification_set_armed(dsrr);
 		} else {
 			// send kevent must be installed on the manager queue
 			dm->dm_needs_mgr = true;
 		}
-		if (ipc_kvoucher) {
-			_dispatch_kvoucher_debug("reuse on re-send", ipc_kvoucher);
-			voucher_t ipc_voucher;
-			ipc_voucher = _voucher_create_with_priority_and_mach_voucher(
-					voucher, dmsg->dmsg_priority, ipc_kvoucher);
-			_dispatch_voucher_debug("mach-msg[%p] replace voucher[%p]",
-					ipc_voucher, dmsg, voucher);
-			if (dmsg->dmsg_voucher) _voucher_release(dmsg->dmsg_voucher);
-			dmsg->dmsg_voucher = ipc_voucher;
-		}
 		goto out;
-	} else if (ipc_kvoucher && (kr || !kvoucher_move_send)) {
-		_voucher_dealloc_mach_voucher(ipc_kvoucher);
 	}
 	dispatch_mach_recv_refs_t dmrr = dm->dm_recv_refs;
 	if (!(msg_opts & DISPATCH_MACH_WAIT_FOR_REPLY) && !kr && reply_port &&
@@ -1101,7 +1244,7 @@ _dispatch_mach_msg_send(dispatch_mach_t dm, dispatch_object_t dou,
 	if (unlikely(kr)) {
 		// Send failed, so reply was never registered <rdar://problem/14309159>
 		if (dm->dm_is_xpc && dmsg->do_ctxt) {
-			drq = _dispatch_mach_msg_context_async_reply_queue(dmsg->do_ctxt);
+			drq = _dispatch_mach_msg_context_async_reply_queue(dm, dmsg->do_ctxt);
 		}
 		dmsgr = _dispatch_mach_msg_create_reply_disconnected(dmsg,
 				dwr ? &dwr->dwr_refs : NULL,
@@ -1296,7 +1439,7 @@ out:
 	qos = _dmsr_state_max_qos(new_state);
 	if (unlikely(new_state & DISPATCH_MACH_STATE_UNLOCK_MASK)) {
 		os_atomic_thread_fence(dependency);
-		dmsr = os_atomic_force_dependency_on(dmsr, new_state);
+		dmsr = os_atomic_inject_dependency(dmsr, new_state);
 		goto again;
 	}
 
@@ -1421,8 +1564,12 @@ _dispatch_mach_send_push(dispatch_mach_t dm, dispatch_object_t dou,
 	uint64_t old_state, new_state, state_flags = 0;
 	struct dispatch_object_s *prev;
 	dispatch_wakeup_flags_t wflags = 0;
-	bool is_send_barrier = (dou._dc->do_vtable == DC_VTABLE(MACH_SEND_BARRIER));
+	bool is_send_barrier = false;
 	dispatch_tid owner;
+
+	if (_dispatch_object_has_vtable(dou._dc)) {
+		is_send_barrier = (dou._dc->do_vtable == DC_VTABLE(MACH_SEND_BARRIER));
+	}
 
 	// <rdar://problem/25896179&26266265> the send queue needs to retain
 	// the mach channel if not empty, for the whole duration of this call
@@ -1664,13 +1811,11 @@ _dispatch_mach_checkin_options(void)
 	return options;
 }
 
-
-
 static inline mach_msg_option_t
 _dispatch_mach_send_options(void)
 {
-	mach_msg_option_t options = 0;
-	return options;
+	//rdar://problem/13740985&47300191&47605096
+	return (_dispatch_is_background_thread() ? MACH_SEND_NOIMPORTANCE : 0);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -1682,7 +1827,7 @@ _dispatch_mach_send_msg_prepare(dispatch_mach_t dm,
 	if (dm->dm_is_xpc && (options & DISPATCH_MACH_WAIT_FOR_REPLY) == 0 &&
 			_dispatch_mach_msg_get_reply_port(dmsg)) {
 		dispatch_assert(
-				_dispatch_mach_msg_context_async_reply_queue(dmsg->do_ctxt));
+				_dispatch_mach_msg_context_async_reply_queue(dm, dmsg->do_ctxt));
 	}
 #else
 	(void)dm;
@@ -1691,8 +1836,7 @@ _dispatch_mach_send_msg_prepare(dispatch_mach_t dm,
 		dmsg->dmsg_priority = 0;
 	} else {
 		unsigned int flags = DISPATCH_PRIORITY_PROPAGATE_CURRENT;
-		if ((options & DISPATCH_MACH_WAIT_FOR_REPLY) &&
-				_dispatch_use_mach_special_reply_port()) {
+		if (options & DISPATCH_MACH_WAIT_FOR_REPLY) {
 			// TODO: remove QoS contribution of sync IPC messages to send queue
 			// rdar://31848737
 			flags |= DISPATCH_PRIORITY_PROPAGATE_FOR_SYNC_IPC;
@@ -1829,11 +1973,9 @@ _dispatch_mach_send_and_wait_for_reply(dispatch_mach_t dm,
 	*returned_send_result = _dispatch_mach_send_msg(dm, dmsg, &dc_wait,options);
 	if (dwr->dwr_refs.dmr_reply_port_owned) {
 		_dispatch_clear_thread_reply_port(reply_port);
-		if (_dispatch_use_mach_special_reply_port()) {
-			// link special reply port to send right for remote receive right
-			// TODO: extend to pre-connect phase <rdar://problem/31823384>
-			send = dm->dm_send_refs->dmsr_send;
-		}
+		// link special reply port to send right for remote receive right
+		// TODO: extend to pre-connect phase <rdar://problem/31823384>
+		send = dm->dm_send_refs->dmsr_send;
 	}
 	dmsg = _dispatch_mach_msg_reply_recv(dm, dwr, reply_port, send);
 #if DISPATCH_DEBUG
@@ -2136,6 +2278,15 @@ _dispatch_mach_handoff_context(mach_port_t port)
 	return dihc;
 }
 
+bool
+dispatch_mach_can_handoff_4libxpc(void)
+{
+	dispatch_thread_context_t dtc;
+
+	dtc = _dispatch_thread_context_find(_dispatch_mach_msg_context_key);
+	return dtc && dtc->dtc_dmsg && dtc->dtc_dih->dih_dc.dc_other == NULL;
+}
+
 static void
 _dispatch_ipc_handoff_release(dispatch_ipc_handoff_t dih)
 {
@@ -2149,13 +2300,15 @@ _dispatch_mach_handoff_set_wlh(dispatch_ipc_handoff_t dih, dispatch_queue_t dq)
 {
 	while (likely(dq->do_targetq)) {
 		if (unlikely(_dispatch_queue_is_mutable(dq))) {
-			DISPATCH_CLIENT_CRASH(0,
-					"Trying to handoff IPC onto mutable hierarchy");
+			_dispatch_queue_sidelock_lock(upcast(dq)._dl);
+			_dispatch_queue_atomic_flags_clear(dq, DQF_MUTABLE);
+			_dispatch_queue_sidelock_unlock(upcast(dq)._dl);
 		}
 		if (_dq_state_is_base_wlh(dq->dq_state)) {
 			os_atomic_store(&dih->dih_wlh, (uint64_t)dq, relaxed);
 			return;
 		}
+		dq = dq->do_targetq;
 	}
 
 	/* unsupported hierarchy */
@@ -2169,12 +2322,13 @@ dispatch_mach_handoff_reply_f(dispatch_queue_t dq,
 	_dispatch_ipc_handoff_ctxt_t dihc = _dispatch_mach_handoff_context(port);
 	dispatch_ipc_handoff_t dih = dihc->dihc_dtc.dtc_dih;
 	dispatch_continuation_t dc = &dih->dih_dc;
+	uintptr_t dc_flags = DC_FLAG_CONSUME;
 
 	_dispatch_mach_handoff_set_wlh(dih, dq);
 	_dispatch_retain(dq);
 	dihc->dihc_dq = dq;
-	dihc->dihc_qos = _dispatch_continuation_init_f(dc, dq, ctxt, func, 0, 0);
-	dc->dc_data = (void *)dc->dc_flags;
+	dihc->dihc_qos = _dispatch_continuation_init_f(dc, dq, ctxt, func,
+			0, dc_flags);
 	dc->do_vtable = DC_VTABLE(MACH_IPC_HANDOFF);
 }
 
@@ -2185,10 +2339,12 @@ dispatch_mach_handoff_reply(dispatch_queue_t dq,
 	_dispatch_ipc_handoff_ctxt_t dihc = _dispatch_mach_handoff_context(port);
 	dispatch_ipc_handoff_t dih = dihc->dihc_dtc.dtc_dih;
 	dispatch_continuation_t dc = &dih->dih_dc;
+	uintptr_t dc_flags = DC_FLAG_CONSUME;
 
+	_dispatch_mach_handoff_set_wlh(dih, dq);
 	_dispatch_retain(dq);
 	dihc->dihc_dq = dq;
-	dihc->dihc_qos = _dispatch_continuation_init(dc, dq, block, 0, 0);
+	dihc->dihc_qos = _dispatch_continuation_init(dc, dq, block, 0, dc_flags);
 	dc->dc_data = (void *)dc->dc_flags;
 	dc->do_vtable = DC_VTABLE(MACH_IPC_HANDOFF);
 }
@@ -2253,10 +2409,13 @@ _dispatch_mach_ipc_handoff_invoke(dispatch_continuation_t dc,
 
 	_dispatch_thread_context_push(&dihc.dihc_dtc);
 
-	_dispatch_continuation_pop_forwarded(dc, dc_flags, cq, {
+	// DC_FLAG_CONSUME has been set, as we want the block and vouchers
+	// to be consumed, however the continuation is not from the continuation
+	// cache and its lifetime is managed explicitly by the handoff mechanism.
+	DISPATCH_COMPILER_CAN_ASSUME(dc_flags & DC_FLAG_CONSUME);
+	_dispatch_continuation_pop_forwarded_no_free(dc, dc_flags, cq, {
 		dispatch_invoke_with_autoreleasepool(flags, {
 			_dispatch_client_callout(dc->dc_ctxt, dc->dc_func);
-			_dispatch_trace_item_complete(dc);
 		});
 	});
 
@@ -2399,7 +2558,7 @@ _dispatch_mach_barrier_set_vtable(dispatch_continuation_t dc,
 {
 	dc->dc_data = (void *)dc->dc_flags;
 	dc->dc_other = dm;
-	dc->do_vtable = vtable; // Must be after dc_flags load, dc_vtable aliases
+	dc->do_vtable = vtable; // Must be after dc_flags load, do_vtable aliases
 }
 
 DISPATCH_NOINLINE
@@ -2505,9 +2664,18 @@ _dispatch_mach_install(dispatch_mach_t dm, dispatch_wlh_t wlh,
 	dispatch_assert(!dm->ds_is_installed);
 	dm->ds_is_installed = true;
 
-	if (!cancelled && dmrr->du_ident) {
-		(void)_dispatch_unote_register(dmrr, wlh, pri);
-		dispatch_assert(dmrr->du_is_direct);
+	uint32_t disconnect_cnt = os_atomic_load2o(dm->dm_send_refs,
+			dmsr_disconnect_cnt, relaxed);
+	if (unlikely(disconnect_cnt & DISPATCH_MACH_NEVER_CONNECTED)) {
+		DISPATCH_CLIENT_CRASH(disconnect_cnt, "Channel never connected");
+	}
+
+	if (!dm->dq_priority) {
+		// _dispatch_mach_reply_kevent_register assumes this has been done
+		// which is unlike regular sources or queues, the FALLBACK flag
+		// is used so that the priority of the channel doesn't act as
+		// a QoS floor for incoming messages (26761457)
+		dm->dq_priority = pri;
 	}
 
 	if (!cancelled && dm->dm_is_xpc &&
@@ -2519,32 +2687,28 @@ _dispatch_mach_install(dispatch_mach_t dm, dispatch_wlh_t wlh,
 		dm->dm_xpc_term_refs = _dxtr;
 		_dispatch_unote_register(dm->dm_xpc_term_refs, wlh, pri);
 	}
-	if (!dm->dq_priority) {
-		// _dispatch_mach_reply_kevent_register assumes this has been done
-		// which is unlike regular sources or queues, the FALLBACK flag
-		// is used so that the priority of the channel doesn't act as
-		// a QoS floor for incoming messages (26761457)
-		dm->dq_priority = pri;
-	}
 
-	uint32_t disconnect_cnt = os_atomic_load2o(dm->dm_send_refs,
-			dmsr_disconnect_cnt, relaxed);
-	if (unlikely(disconnect_cnt & DISPATCH_MACH_NEVER_CONNECTED)) {
-		DISPATCH_CLIENT_CRASH(disconnect_cnt, "Channel never connected");
+	if (!cancelled && dmrr->du_ident) {
+		dispatch_assert(dmrr->du_is_direct);
+		// rdar://45419440 this absolutely needs to be done last
+		// as this can cause an event to be delivered
+		// and to finish the activation concurrently
+		(void)_dispatch_unote_register(dmrr, wlh, pri);
 	}
 }
 
 void
-_dispatch_mach_activate(dispatch_mach_t dm, bool *allow_resume)
+_dispatch_mach_activate(dispatch_mach_t dm)
 {
 	dispatch_priority_t pri;
 	dispatch_wlh_t wlh;
 
 	// call "super"
-	_dispatch_lane_activate(dm, allow_resume);
+	_dispatch_lane_activate(dm);
 
 	if (!dm->ds_is_installed) {
 		pri = _dispatch_queue_compute_priority_and_wlh(dm, &wlh);
+		// rdar://45419440 this needs to be last
 		if (pri) _dispatch_mach_install(dm, wlh, pri);
 	}
 }
@@ -2639,7 +2803,8 @@ drain:
 	}
 
 	if (dmsr->dmsr_tail) {
-		if (!dmsr->dmsr_notification_armed || dmsr->dmsr_disconnect_cnt) {
+		if (!os_atomic_load(&dmsr->dmsr_notification_armed, relaxed) ||
+				dmsr->dmsr_disconnect_cnt) {
 			bool requires_mgr = dmsr->dmsr_disconnect_cnt ?
 					_dispatch_unote_registered(dmsr) : dm->dm_needs_mgr;
 			// The channel has pending messages to send.
@@ -2726,7 +2891,8 @@ _dispatch_mach_wakeup(dispatch_mach_t dm, dispatch_qos_t qos,
 			goto done;
 		}
 
-		if (!dmsr->dmsr_notification_armed || dmsr->dmsr_disconnect_cnt) {
+		if (!os_atomic_load(&dmsr->dmsr_notification_armed, relaxed) ||
+				dmsr->dmsr_disconnect_cnt) {
 			bool requires_mgr = dmsr->dmsr_disconnect_cnt ?
 					_dispatch_unote_registered(dmsr) : dm->dm_needs_mgr;
 			if (unlikely(requires_mgr)) {
@@ -2898,9 +3064,15 @@ _dispatch_mach_msg_debug(dispatch_mach_msg_t dmsg, char* buf, size_t bufsiz)
 
 DISPATCH_ALWAYS_INLINE
 static dispatch_queue_t
-_dispatch_mach_msg_context_async_reply_queue(void *msg_context)
+_dispatch_mach_msg_context_async_reply_queue(dispatch_mach_t dm,
+		void *msg_context)
 {
-	return _dispatch_mach_xpc_hooks->dmxh_msg_context_reply_queue(msg_context);
+	dispatch_queue_t dq;
+	dq = _dispatch_mach_xpc_hooks->dmxh_msg_context_reply_queue(msg_context);
+	if (dq == DMXH_MSG_CONTEXT_REPLY_QUEUE_SELF) {
+		dq = dm->_as_dq;
+	}
+	return dq;
 }
 
 static dispatch_continuation_t
@@ -2936,19 +3108,80 @@ _dispatch_mach_msg_async_reply_invoke(dispatch_continuation_t dc,
 	_dispatch_continuation_free(dc);
 }
 
+void
+dispatch_mach_msg_get_filter_policy_id(dispatch_mach_msg_t msg, mach_msg_filter_id *filter_id)
+{
+	mach_msg_trailer_t *tlr = NULL;
+	mach_msg_mac_trailer_t *mac_tlr;
+
+	if (!filter_id) {
+		DISPATCH_CLIENT_CRASH((uintptr_t)filter_id, "Filter id should be non-NULL");
+	}
+
+	mach_msg_header_t *hdr = dispatch_mach_msg_get_msg(msg, NULL);
+	if (!hdr) {
+		DISPATCH_CLIENT_CRASH((uintptr_t)msg, "Messsage should be non-NULL");
+	}
+	tlr = (mach_msg_trailer_t *)((unsigned char *)hdr +
+			round_msg(hdr->msgh_size));
+
+	// The trailer should always be of format zero.
+	if (tlr->msgh_trailer_type != MACH_MSG_TRAILER_FORMAT_0) {
+		DISPATCH_INTERNAL_CRASH(tlr->msgh_trailer_type, "Trailer format is invalid");
+	}
+
+	if (tlr->msgh_trailer_size >= sizeof(mach_msg_mac_trailer_t)) {
+		mac_tlr = (mach_msg_mac_trailer_t *)tlr;
+		*filter_id = mac_tlr->msgh_ad;
+	} else {
+		DISPATCH_INTERNAL_CRASH(tlr->msgh_trailer_size, "Trailer doesn't contain filter policy id");
+	}
+}
+
 #pragma mark -
 #pragma mark dispatch_mig_server
+
+static inline kern_return_t
+_dispatch_mig_return_code(mig_reply_error_t *msg)
+{
+	if (msg->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX) {
+		return KERN_SUCCESS;
+	}
+	return msg->RetCode;
+}
+
+static inline void
+_dispatch_mig_consume_unsent_message(mach_msg_header_t *hdr)
+{
+	mach_port_t port = hdr->msgh_local_port;
+	if (MACH_PORT_VALID(port)) {
+		kern_return_t kr = KERN_SUCCESS;
+		switch (MACH_MSGH_BITS_LOCAL(hdr->msgh_bits)) {
+		case MACH_MSG_TYPE_MOVE_SEND:
+		case MACH_MSG_TYPE_MOVE_SEND_ONCE:
+			kr = mach_port_deallocate(mach_task_self(), port);
+			break;
+		case MACH_MSG_TYPE_MOVE_RECEIVE:
+			kr = mach_port_mod_refs(mach_task_self(), port,
+					MACH_PORT_RIGHT_RECEIVE, -1);
+			break;
+		}
+		DISPATCH_VERIFY_MIG(kr);
+		dispatch_assume_zero(kr);
+	}
+	mach_msg_destroy(hdr);
+}
 
 mach_msg_return_t
 dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
 		dispatch_mig_callback_t callback)
 {
 	mach_msg_options_t options = MACH_RCV_MSG | MACH_RCV_TIMEOUT
-		| MACH_RCV_TRAILER_ELEMENTS(MACH_RCV_TRAILER_CTX)
+		| MACH_RCV_TRAILER_ELEMENTS(MACH_RCV_TRAILER_AV)
 		| MACH_RCV_TRAILER_TYPE(MACH_MSG_TRAILER_FORMAT_0) | MACH_RCV_VOUCHER;
 	mach_msg_options_t tmp_options;
 	mig_reply_error_t *bufTemp, *bufRequest, *bufReply;
-	mach_msg_return_t kr = 0;
+	mach_msg_return_t kr = 0, skr;
 	uint64_t assertion_token = 0;
 	uint32_t cnt = 1000; // do not stall out serial queues
 	boolean_t demux_success;
@@ -2970,7 +3203,9 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
 	tmp_options = options;
 	// XXX FIXME -- change this to not starve out the target queue
 	for (;;) {
-		if (DISPATCH_QUEUE_IS_SUSPENDED(ds) || (--cnt == 0)) {
+		dispatch_queue_flags_t dqf = _dispatch_queue_atomic_flags(ds);
+		if (DISPATCH_QUEUE_IS_SUSPENDED(ds) || (dqf & DSF_CANCELED) ||
+				(--cnt == 0)) {
 			options &= ~MACH_RCV_MSG;
 			tmp_options &= ~MACH_RCV_MSG;
 
@@ -2987,15 +3222,13 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
 			switch (kr) {
 			case MACH_SEND_INVALID_DEST:
 			case MACH_SEND_TIMED_OUT:
-				if (bufReply->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX) {
-					mach_msg_destroy(&bufReply->Head);
-				}
+				_dispatch_mig_consume_unsent_message(&bufReply->Head);
 				break;
 			case MACH_RCV_TIMED_OUT:
 				// Don't return an error if a message was sent this time or
 				// a message was successfully received previously
 				// rdar://problems/7363620&7791738
-				if(bufReply->Head.msgh_remote_port || received) {
+				if (bufReply->Head.msgh_remote_port || received) {
 					kr = MACH_MSG_SUCCESS;
 				}
 				break;
@@ -3005,7 +3238,7 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
 			case MACH_RCV_TOO_LARGE:
 				// receive messages that are too large and log their id and size
 				// rdar://problem/8422992
-				tmp_options &= ~MACH_RCV_LARGE;
+				tmp_options &= ~(MACH_RCV_LARGE | MACH_SEND_MSG);
 				size_t large_size = bufReply->Head.msgh_size + MAX_TRAILER_SIZE;
 				void *large_buf = malloc(large_size);
 				if (large_buf) {
@@ -3020,9 +3253,7 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
 							"requested size %zd: id = 0x%x, size = %d",
 							maxmsgsz, bufReply->Head.msgh_id,
 							bufReply->Head.msgh_size);
-					if (bufReply->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX) {
-						mach_msg_destroy(&bufReply->Head);
-					}
+					mach_msg_destroy(&bufReply->Head);
 				}
 				if (large_buf) {
 					free(large_buf);
@@ -3069,21 +3300,21 @@ dispatch_mig_server(dispatch_source_t ds, size_t maxmsgsz,
 		demux_success = callback(&bufRequest->Head, &bufReply->Head);
 
 		if (!demux_success) {
+			skr = MIG_BAD_ID;
+		} else {
+			skr = _dispatch_mig_return_code(bufReply);
+		}
+		switch (skr) {
+		case KERN_SUCCESS:
+			break;
+		case MIG_NO_REPLY:
+			bufReply->Head.msgh_remote_port = MACH_PORT_NULL;
+			break;
+		default:
 			// destroy the request - but not the reply port
+			// (MIG moved it into the bufReply).
 			bufRequest->Head.msgh_remote_port = 0;
 			mach_msg_destroy(&bufRequest->Head);
-		} else if (!(bufReply->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX)) {
-			// if MACH_MSGH_BITS_COMPLEX is _not_ set, then bufReply->RetCode
-			// is present
-			if (unlikely(bufReply->RetCode)) {
-				if (bufReply->RetCode == MIG_NO_REPLY) {
-					continue;
-				}
-
-				// destroy the request - but not the reply port
-				bufRequest->Head.msgh_remote_port = 0;
-				mach_msg_destroy(&bufRequest->Head);
-			}
 		}
 
 		if (bufReply->Head.msgh_remote_port) {
@@ -3160,15 +3391,18 @@ dispatch_mach_mig_demux(void *context,
 
 	desc->stub_routine(hdr, &bufReply->Head);
 
-	// if MACH_MSGH_BITS_COMPLEX is _not_ set, then bufReply->RetCode is present
-	if (unlikely(!(bufReply->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX) &&
-			bufReply->RetCode)) {
+	switch (_dispatch_mig_return_code(bufReply)) {
+	case KERN_SUCCESS:
+		break;
+	case MIG_NO_REPLY:
+		bufReply->Head.msgh_remote_port = MACH_PORT_NULL;
+		break;
+	default:
 		// destroy the request - but not the reply port
+		// (MIG moved it into the bufReply).
 		hdr->msgh_remote_port = 0;
-		if (bufReply->RetCode != MIG_NO_REPLY &&
-				(hdr->msgh_bits & MACH_MSGH_BITS_COMPLEX)) {
-			mach_msg_destroy(hdr);
-		}
+		mach_msg_destroy(hdr);
+		break;
 	}
 
 	if (bufReply->Head.msgh_remote_port) {
@@ -3184,9 +3418,7 @@ dispatch_mach_mig_demux(void *context,
 			break;
 		case MACH_SEND_INVALID_DEST:
 		case MACH_SEND_TIMED_OUT:
-			if (bufReply->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX) {
-				mach_msg_destroy(&bufReply->Head);
-			}
+			_dispatch_mig_consume_unsent_message(&bufReply->Head);
 			break;
 		default:
 			DISPATCH_VERIFY_MIG(kr);
@@ -3228,7 +3460,7 @@ _dispatch_mach_debug_attr(dispatch_mach_t dm, char *buf, size_t bufsiz)
 			target && target->dq_label ? target->dq_label : "", target,
 			(mach_port_t)dmrr->du_ident, dmsr->dmsr_send,
 			(mach_port_t)dmsr->du_ident,
-			dmsr->dmsr_notification_armed ? " (armed)" : "",
+			os_atomic_load(&dmsr->dmsr_notification_armed, relaxed) ? " (armed)" : "",
 			dmsr->dmsr_checkin_port, dmsr->dmsr_checkin ? " (pending)" : "",
 			dmsr->dmsr_state, dmsr->dmsr_disconnect_cnt,
 			(bool)(dm->dq_atomic_flags & DSF_CANCELED));

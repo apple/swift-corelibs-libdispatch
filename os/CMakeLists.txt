@@ -3,10 +3,9 @@
 # voucher_private.h are included in the source tarball
 
 install(FILES
-          generic_base.h
+          object.h
           generic_unix_base.h
           generic_win_base.h
-          object.h
         DESTINATION
           "${INSTALL_OS_HEADERS_DIR}")
 

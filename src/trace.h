@@ -71,8 +71,19 @@ _dispatch_trace_client_callout2(void *ctxt, size_t i, void (*f)(void *, size_t))
 	_dispatch_introspection_callout_return(ctxt, func);
 }
 
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_trace_client_callout3_a(void *ctxt, size_t i, size_t w, void (*f)(void *, size_t, size_t))
+{
+	dispatch_function_t func = (dispatch_function_t)f;
+	_dispatch_introspection_callout_entry(ctxt, func);
+	_dispatch_trace_callout(ctxt, func, _dispatch_client_callout3_a(ctxt, i, w, f));
+	_dispatch_introspection_callout_return(ctxt, func);
+}
+
 #define _dispatch_client_callout		_dispatch_trace_client_callout
 #define _dispatch_client_callout2		_dispatch_trace_client_callout2
+#define _dispatch_client_callout3_a		_dispatch_trace_client_callout3_a
 #endif // DISPATCH_USE_DTRACE_INTROSPECTION || DISPATCH_INTROSPECTION
 
 #ifdef _COMM_PAGE_KDEBUG_ENABLE

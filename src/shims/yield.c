@@ -22,26 +22,22 @@
 
 DISPATCH_NOINLINE
 static void *
-__DISPATCH_WAIT_FOR_ENQUEUER__(void **ptr)
+__DISPATCH_WAIT_FOR_ENQUEUER__(void **ptr, void **tailp)
 {
-	int spins = 0;
-        // Different platforms may expand `_dispatch_preemption_yield` to a
-        // no-op, but `(void)++spins` is not considered a use like
-        // `(void)spins` is. Add a use to avoid unused var warnings.
-        (void)spins;
-
+	unsigned int spins = 0;
 	void *value;
 	while ((value = os_atomic_load(ptr, relaxed)) == NULL) {
-		_dispatch_preemption_yield(++spins);
+		/* ptr == &prev->do_next */
+		_dispatch_yield_to_enqueuer(tailp, ++spins);
 	}
 	return value;
 }
 
 void *
-_dispatch_wait_for_enqueuer(void **ptr)
+_dispatch_wait_for_enqueuer(void **ptr, void **tailp)
 {
 #if !DISPATCH_HW_CONFIG_UP
-#if (defined(__arm__) && defined(__APPLE__)) || defined(__arm64__)
+#if defined(__arm__) || defined(__arm64__)
 	int spins = DISPATCH_WAIT_SPINS_WFE;
 	void *value;
 	while (unlikely(spins-- > 0)) {
@@ -62,5 +58,5 @@ _dispatch_wait_for_enqueuer(void **ptr)
 	}
 #endif
 #endif // DISPATCH_HW_CONFIG_UP
-	return __DISPATCH_WAIT_FOR_ENQUEUER__(ptr);
+	return __DISPATCH_WAIT_FOR_ENQUEUER__(ptr, tailp);
 }

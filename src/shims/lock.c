@@ -59,7 +59,7 @@ _dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
 #pragma mark - semaphores
 
 #if USE_MACH_SEM
-#if __has_include(<os/semaphore_private.h>)
+#if __has_include(<os/semaphore_private.h>) && !TARGET_OS_SIMULATOR
 #include <os/semaphore_private.h>
 #define DISPATCH_USE_OS_SEMAPHORE_CACHE 1
 #else
@@ -109,7 +109,7 @@ _dispatch_sema4_create_slow(_dispatch_sema4_t *s4, int policy)
 }
 
 void
-_dispatch_sema4_dispose_slow(_dispatch_sema4_t *sema, int policy)
+_dispatch_sema4_dispose_slow(_dispatch_sema4_t *sema, int __unused policy)
 {
 	semaphore_t sema_port = *sema;
 	*sema = MACH_PORT_DEAD;
@@ -343,6 +343,8 @@ _dlock_wait(uint32_t *uaddr, uint32_t val, uint32_t timeout, uint32_t flags)
 		case ETIMEDOUT:
 		case EFAULT:
 			return -rc;
+		case EOWNERDEAD:
+			DISPATCH_CLIENT_CRASH(val, "Owner in ulock is unknown - possible memory corruption");
 		default:
 			DISPATCH_INTERNAL_CRASH(-rc, "ulock_wait() failed");
 		}
@@ -509,13 +511,7 @@ _dispatch_wait_on_address(uint32_t volatile *_address, uint32_t value,
 	}
 	return _dispatch_futex_wait(address, value, NULL, FUTEX_PRIVATE_FLAG);
 #elif defined(_WIN32)
-	// Round up to the nearest ms as `WaitOnAddress` takes a timeout in ms.
-	// Integral division will truncate, so make sure that we do the roundup.
-	DWORD dwMilliseconds =
-		nsecs == DISPATCH_TIME_FOREVER
-			? INFINITE : ((nsecs + 1000000) / 1000000);
-	if (dwMilliseconds == 0) return ETIMEDOUT;
-	return WaitOnAddress(address, &value, sizeof(value), dwMilliseconds) == TRUE;
+	return WaitOnAddress(address, &value, sizeof(value), INFINITE) == TRUE;
 #else
 #error _dispatch_wait_on_address unimplemented for this platform
 #endif
@@ -600,9 +596,7 @@ _dispatch_unfair_lock_lock_slow(dispatch_unfair_lock_t dul,
 		}
 		rc = _dispatch_unfair_lock_wait(&dul->dul_lock, new_value, 0, flags);
 		if (rc == ENOTEMPTY) {
-			next = value_self | DLOCK_WAITERS_BIT;
-		} else {
-			next = value_self;
+			next |= DLOCK_WAITERS_BIT;
 		}
 	}
 }

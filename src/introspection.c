@@ -249,12 +249,16 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 		waiter = pthread_from_mach_thread_np(dsc->dsc_waiter);
 		ctxt = dsc->dsc_ctxt;
 		func = dsc->dsc_func;
+	} else if (_dispatch_object_is_channel_item(dc)) {
+		dispatch_channel_callbacks_t callbacks = upcast(dq)._dch->dch_callbacks;
+		ctxt = dc->dc_ctxt;
+		func = (dispatch_function_t)callbacks->dcc_invoke;
 	} else if (func == _dispatch_apply_invoke ||
 			func == _dispatch_apply_redirect_invoke) {
 		dispatch_apply_t da = ctxt;
-		if (da->da_todo) {
+		if (os_atomic_load2o(da, da_todo, relaxed)) {
 			dc = da->da_dc;
-			dq = dc->dc_data;
+			dq = dc->dc_other;
 			ctxt = dc->dc_ctxt;
 			func = dc->dc_func;
 			apply = true;
@@ -389,7 +393,8 @@ again:
 		}
 		if (metatype == _DISPATCH_CONTINUATION_TYPE) {
 			_dispatch_introspection_continuation_get_info(dq, dc, &diqi);
-		} else if (metatype == _DISPATCH_LANE_TYPE) {
+		} else if (metatype == _DISPATCH_LANE_TYPE ||
+				type == DISPATCH_CHANNEL_TYPE) {
 			diqi.type = dispatch_introspection_queue_item_type_queue;
 			diqi.queue = _dispatch_introspection_lane_get_info(dou._dl);
 		} else if (metatype == _DISPATCH_WORKLOOP_TYPE) {
@@ -422,7 +427,7 @@ dispatch_introspection_get_queues(dispatch_queue_t start, size_t count,
 	dispatch_queue_introspection_context_t next;
 
 	if (start) {
-		next = start->do_finalizer;
+		next = start->do_introspection_ctxt;
 	} else {
 		next = LIST_FIRST(&_dispatch_introspection.queues);
 	}
@@ -611,7 +616,7 @@ _dispatch_object_finalizer(dispatch_object_t dou)
 	switch (dx_metatype(dou._do)) {
 	case _DISPATCH_LANE_TYPE:
 	case _DISPATCH_WORKLOOP_TYPE:
-		dqic = dou._dq->do_finalizer;
+		dqic = dou._dq->do_introspection_ctxt;
 		return dqic->dqic_finalizer;
 	default:
 		return dou._do->do_finalizer;
@@ -626,7 +631,7 @@ _dispatch_object_set_finalizer(dispatch_object_t dou,
 	switch (dx_metatype(dou._do)) {
 	case _DISPATCH_LANE_TYPE:
 	case _DISPATCH_WORKLOOP_TYPE:
-		dqic = dou._dq->do_finalizer;
+		dqic = dou._dq->do_introspection_ctxt;
 		dqic->dqic_finalizer = finalizer;
 		break;
 	default:
@@ -651,7 +656,7 @@ _dispatch_introspection_queue_create(dispatch_queue_t dq)
 		LIST_INIT(&dqic->dqic_order_top_head);
 		LIST_INIT(&dqic->dqic_order_bottom_head);
 	}
-	dq->do_finalizer = dqic;
+	dq->do_introspection_ctxt = dqic;
 
 	_dispatch_unfair_lock_lock(&_dispatch_introspection.queues_lock);
 	LIST_INSERT_HEAD(&_dispatch_introspection.queues, dqic, dqic_list);
@@ -684,7 +689,7 @@ _dispatch_introspection_queue_dispose_hook(dispatch_queue_t dq)
 void
 _dispatch_introspection_queue_dispose(dispatch_queue_t dq)
 {
-	dispatch_queue_introspection_context_t dqic = dq->do_finalizer;
+	dispatch_queue_introspection_context_t dqic = dq->do_introspection_ctxt;
 
 	DISPATCH_INTROSPECTION_INTERPOSABLE_HOOK_CALLOUT(queue_destroy, dq);
 	if (DISPATCH_INTROSPECTION_HOOK_ENABLED(queue_dispose)) {
@@ -978,7 +983,7 @@ _dispatch_introspection_queue_order_dispose(
 
 	LIST_FOREACH_SAFE(e, &head, dqoe_order_top_list, te) {
 		otherq = e->dqoe_bottom_tq;
-		o_dqic = otherq->do_finalizer;
+		o_dqic = otherq->do_introspection_ctxt;
 		_dispatch_unfair_lock_lock(&o_dqic->dqic_order_bottom_head_lock);
 		LIST_REMOVE(e, dqoe_order_bottom_list);
 		_dispatch_unfair_lock_unlock(&o_dqic->dqic_order_bottom_head_lock);
@@ -993,7 +998,7 @@ _dispatch_introspection_queue_order_dispose(
 
 	LIST_FOREACH_SAFE(e, &head, dqoe_order_bottom_list, te) {
 		otherq = e->dqoe_top_tq;
-		o_dqic = otherq->do_finalizer;
+		o_dqic = otherq->do_introspection_ctxt;
 		_dispatch_unfair_lock_lock(&o_dqic->dqic_order_top_head_lock);
 		LIST_REMOVE(e, dqoe_order_top_list);
 		_dispatch_unfair_lock_unlock(&o_dqic->dqic_order_top_head_lock);
@@ -1065,7 +1070,8 @@ _dispatch_introspection_order_check(dispatch_order_frame_t dof_prev,
 		dispatch_queue_t bottom_q, dispatch_queue_t bottom_tq)
 {
 	struct dispatch_order_frame_s dof = { .dof_prev = dof_prev };
-	dispatch_queue_introspection_context_t btqic = bottom_tq->do_finalizer;
+	dispatch_queue_introspection_context_t btqic =
+			bottom_tq->do_introspection_ctxt;
 
 	// has anyone above bottom_tq ever sync()ed onto top_tq ?
 	_dispatch_unfair_lock_lock(&btqic->dqic_order_top_head_lock);
@@ -1094,8 +1100,9 @@ _dispatch_introspection_order_record(dispatch_queue_t top_q)
 
 	dispatch_queue_t top_tq = _dispatch_queue_bottom_target_queue(top_q);
 	dispatch_queue_t bottom_tq = _dispatch_queue_bottom_target_queue(bottom_q);
-	dispatch_queue_introspection_context_t ttqic = top_tq->do_finalizer;
-	dispatch_queue_introspection_context_t btqic = bottom_tq->do_finalizer;
+	dispatch_queue_introspection_context_t ttqic, btqic;
+	ttqic = top_tq->do_introspection_ctxt;
+	btqic = bottom_tq->do_introspection_ctxt;
 
 	_dispatch_unfair_lock_lock(&ttqic->dqic_order_top_head_lock);
 	LIST_FOREACH(it, &ttqic->dqic_order_top_head, dqoe_order_top_list) {
@@ -1182,7 +1189,7 @@ _dispatch_introspection_target_queue_changed(dispatch_queue_t dq)
 		[2] = "a recipient",
 		[3] = "both an initiator and a recipient"
 	};
-	dispatch_queue_introspection_context_t dqic = dq->do_finalizer;
+	dispatch_queue_introspection_context_t dqic = dq-> do_introspection_ctxt;
 	bool as_top = !LIST_EMPTY(&dqic->dqic_order_top_head);
 	bool as_bottom = !LIST_EMPTY(&dqic->dqic_order_top_head);
 
@@ -1195,7 +1202,7 @@ _dispatch_introspection_target_queue_changed(dispatch_queue_t dq)
 				"a dispatch_sync", dq, dq->dq_label ?: "",
 				reasons[(int)as_top + 2 * (int)as_bottom]);
 		_dispatch_unfair_lock_lock(&_dispatch_introspection.queues_lock);
-		_dispatch_introspection_queue_order_dispose(dq->do_finalizer);
+		_dispatch_introspection_queue_order_dispose(dq->do_introspection_ctxt);
 		_dispatch_unfair_lock_unlock(&_dispatch_introspection.queues_lock);
 	}
 }

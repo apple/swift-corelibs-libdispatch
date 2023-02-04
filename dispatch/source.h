@@ -32,10 +32,11 @@
 #endif
 
 #if !defined(_WIN32)
-#include <signal.h>
+#include <sys/signal.h>
 #endif
 
 DISPATCH_ASSUME_NONNULL_BEGIN
+DISPATCH_ASSUME_ABI_SINGLE_BEGIN
 
 /*!
  * @header
@@ -54,7 +55,7 @@ DISPATCH_ASSUME_NONNULL_BEGIN
  * Dispatch sources are used to automatically submit event handler blocks to
  * dispatch queues in response to external events.
  */
-DISPATCH_SOURCE_DECL(dispatch_source)
+DISPATCH_SOURCE_DECL(dispatch_source);
 
 __BEGIN_DECLS
 
@@ -123,7 +124,8 @@ DISPATCH_SOURCE_TYPE_DECL(mach_send);
  * @const DISPATCH_SOURCE_TYPE_MACH_RECV
  * @discussion A dispatch source that monitors a Mach port for pending messages.
  * The handle is a Mach port with a receive right (mach_port_t).
- * The mask is unused (pass zero for now).
+ * The mask is a mask of desired events from dispatch_source_mach_recv_flags_t,
+ * but no flags are currently defined (pass zero for now).
  */
 #define DISPATCH_SOURCE_TYPE_MACH_RECV (&_dispatch_source_type_mach_recv)
 API_AVAILABLE(macos(10.6), ios(4.0)) DISPATCH_LINUX_UNAVAILABLE()
@@ -217,6 +219,12 @@ DISPATCH_SOURCE_TYPE_DECL(write);
 #define DISPATCH_MACH_SEND_DEAD	0x1
 
 typedef unsigned long dispatch_source_mach_send_flags_t;
+
+/*!
+ * @typedef dispatch_source_mach_recv_flags_t
+ * Type of dispatch_source_mach_recv flags
+ */
+typedef unsigned long dispatch_source_mach_recv_flags_t;
 
 /*!
  * @typedef dispatch_source_memorypressure_flags_t
@@ -582,7 +590,7 @@ dispatch_source_get_handle(dispatch_source_t source);
  *  DISPATCH_SOURCE_TYPE_DATA_OR:         n/a
  *  DISPATCH_SOURCE_TYPE_DATA_REPLACE:    n/a
  *  DISPATCH_SOURCE_TYPE_MACH_SEND:       dispatch_source_mach_send_flags_t
- *  DISPATCH_SOURCE_TYPE_MACH_RECV:       n/a
+ *  DISPATCH_SOURCE_TYPE_MACH_RECV:       dispatch_source_mach_recv_flags_t
  *  DISPATCH_SOURCE_TYPE_MEMORYPRESSURE   dispatch_source_memorypressure_flags_t
  *  DISPATCH_SOURCE_TYPE_PROC:            dispatch_source_proc_flags_t
  *  DISPATCH_SOURCE_TYPE_READ:            n/a
@@ -619,7 +627,7 @@ dispatch_source_get_mask(dispatch_source_t source);
  *  DISPATCH_SOURCE_TYPE_DATA_OR:         application defined data
  *  DISPATCH_SOURCE_TYPE_DATA_REPLACE:    application defined data
  *  DISPATCH_SOURCE_TYPE_MACH_SEND:       dispatch_source_mach_send_flags_t
- *  DISPATCH_SOURCE_TYPE_MACH_RECV:       n/a
+ *  DISPATCH_SOURCE_TYPE_MACH_RECV:       dispatch_source_mach_recv_flags_t
  *  DISPATCH_SOURCE_TYPE_MEMORYPRESSURE   dispatch_source_memorypressure_flags_t
  *  DISPATCH_SOURCE_TYPE_PROC:            dispatch_source_proc_flags_t
  *  DISPATCH_SOURCE_TYPE_READ:            estimated bytes available to read
@@ -768,6 +776,7 @@ dispatch_source_set_registration_handler_f(dispatch_source_t source,
 
 __END_DECLS
 
+DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
 #endif

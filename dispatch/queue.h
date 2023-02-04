@@ -26,11 +26,8 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
-#if __has_include(<sys/qos.h>)
-#include <sys/qos.h>
-#endif
-
 DISPATCH_ASSUME_NONNULL_BEGIN
+DISPATCH_ASSUME_ABI_SINGLE_BEGIN
 
 /*!
  * @header
@@ -336,6 +333,102 @@ void
 dispatch_sync_f(dispatch_queue_t queue,
 		void *_Nullable context, dispatch_function_t work);
 
+/*!
+ * @function dispatch_async_and_wait
+ *
+ * @abstract
+ * Submits a block for synchronous execution on a dispatch queue.
+ *
+ * @discussion
+ * Submits a workitem to a dispatch queue like dispatch_async(), however
+ * dispatch_async_and_wait() will not return until the workitem has finished.
+ *
+ * Like functions of the dispatch_sync family, dispatch_async_and_wait() is
+ * subject to dead-lock (See dispatch_sync() for details).
+ *
+ * However, dispatch_async_and_wait() differs from functions of the
+ * dispatch_sync family in two fundamental ways: how it respects queue
+ * attributes and how it chooses the execution context invoking the workitem.
+ *
+ * <b>Differences with dispatch_sync()</b>
+ *
+ * Work items submitted to a queue with dispatch_async_and_wait() observe all
+ * queue attributes of that queue when invoked (including autorelease frequency
+ * or QOS class).
+ *
+ * When the runtime has brought up a thread to invoke the asynchronous workitems
+ * already submitted to the specified queue, that servicing thread will also be
+ * used to execute synchronous work submitted to the queue with
+ * dispatch_async_and_wait().
+ *
+ * However, if the runtime has not brought up a thread to service the specified
+ * queue (because it has no workitems enqueued, or only synchronous workitems),
+ * then dispatch_async_and_wait() will invoke the workitem on the calling thread,
+ * similar to the behaviour of functions in the dispatch_sync family.
+ *
+ * As an exception, if the queue the work is submitted to doesn't target
+ * a global concurrent queue (for example because it targets the main queue),
+ * then the workitem will never be invoked by the thread calling
+ * dispatch_async_and_wait().
+ *
+ * In other words, dispatch_async_and_wait() is similar to submitting
+ * a dispatch_block_create()d workitem to a queue and then waiting on it, as
+ * shown in the code example below. However, dispatch_async_and_wait() is
+ * significantly more efficient when a new thread is not required to execute
+ * the workitem (as it will use the stack of the submitting thread instead of
+ * requiring heap allocations).
+ *
+ * <code>
+ *     dispatch_block_t b = dispatch_block_create(0, block);
+ *     dispatch_async(queue, b);
+ *     dispatch_block_wait(b, DISPATCH_TIME_FOREVER);
+ *     Block_release(b);
+ * </code>
+ *
+ * @param queue
+ * The target dispatch queue to which the block is submitted.
+ * The result of passing NULL in this parameter is undefined.
+ *
+ * @param block
+ * The block to be invoked on the target dispatch queue.
+ * The result of passing NULL in this parameter is undefined.
+ */
+#ifdef __BLOCKS__
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+void
+dispatch_async_and_wait(dispatch_queue_t queue,
+		DISPATCH_NOESCAPE dispatch_block_t block);
+#endif
+
+/*!
+ * @function dispatch_async_and_wait_f
+ *
+ * @abstract
+ * Submits a function for synchronous execution on a dispatch queue.
+ *
+ * @discussion
+ * See dispatch_async_and_wait() for details.
+ *
+ * @param queue
+ * The target dispatch queue to which the function is submitted.
+ * The result of passing NULL in this parameter is undefined.
+ *
+ * @param context
+ * The application-defined context parameter to pass to the function.
+ *
+ * @param work
+ * The application-defined function to invoke on the target queue. The first
+ * parameter passed to this function is the context provided to
+ * dispatch_async_and_wait_f().
+ * The result of passing NULL in this parameter is undefined.
+ */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+void
+dispatch_async_and_wait_f(dispatch_queue_t queue,
+		void *_Nullable context, dispatch_function_t work);
+
 
 #if defined(__APPLE__) && \
 		(defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && \
@@ -397,6 +490,9 @@ dispatch_sync_f(dispatch_queue_t queue,
  * @param block
  * The block to be invoked the specified number of iterations.
  * The result of passing NULL in this parameter is undefined.
+ * This function performs a Block_copy() and Block_release() of the input block
+ * on behalf of the callers. To elide the additional block allocation,
+ * dispatch_apply_f may be used instead.
  */
 #ifdef __BLOCKS__
 API_AVAILABLE(macos(10.6), ios(4.0))
@@ -404,7 +500,7 @@ DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_apply(size_t iterations,
 		dispatch_queue_t DISPATCH_APPLY_QUEUE_ARG_NULLABILITY queue,
-		DISPATCH_NOESCAPE void (^block)(size_t));
+		DISPATCH_NOESCAPE void (^block)(size_t iteration));
 #endif
 
 /*!
@@ -439,7 +535,7 @@ DISPATCH_EXPORT DISPATCH_NONNULL4 DISPATCH_NOTHROW
 void
 dispatch_apply_f(size_t iterations,
 		dispatch_queue_t DISPATCH_APPLY_QUEUE_ARG_NULLABILITY queue,
-		void *_Nullable context, void (*work)(void *_Nullable, size_t));
+		void *_Nullable context, void (*work)(void *_Nullable context, size_t iteration));
 
 /*!
  * @function dispatch_get_current_queue
@@ -548,16 +644,6 @@ dispatch_get_main_queue(void)
 #define DISPATCH_QUEUE_PRIORITY_BACKGROUND INT16_MIN
 
 typedef long dispatch_queue_priority_t;
-
-/*!
- * @typedef dispatch_qos_class_t
- * Alias for qos_class_t type.
- */
-#if __has_include(<sys/qos.h>)
-typedef qos_class_t dispatch_qos_class_t;
-#else
-typedef unsigned int dispatch_qos_class_t;
-#endif
 
 /*!
  * @function dispatch_get_global_queue
@@ -923,7 +1009,7 @@ API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
-dispatch_queue_create_with_target(const char *_Nullable label,
+dispatch_queue_create_with_target(const char *_Nullable DISPATCH_UNSAFE_INDEXABLE label,
 		dispatch_queue_attr_t _Nullable attr, dispatch_queue_t _Nullable target)
 		DISPATCH_ALIAS_V2(dispatch_queue_create_with_target);
 
@@ -958,6 +1044,8 @@ dispatch_queue_create_with_target(const char *_Nullable label,
  * When no quality of service class is specified, the target queue of a newly
  * created dispatch queue is the default priority global concurrent queue.
  *
+ * Unless explicitly specified via the attribute, queues are created active.
+ *
  * @param label
  * A string label to attach to the queue.
  * This parameter is optional and may be NULL.
@@ -974,7 +1062,7 @@ API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 dispatch_queue_t
-dispatch_queue_create(const char *_Nullable label,
+dispatch_queue_create(const char *_Nullable DISPATCH_UNSAFE_INDEXABLE label,
 		dispatch_queue_attr_t _Nullable attr);
 
 /*!
@@ -1092,7 +1180,9 @@ dispatch_queue_get_qos_class(dispatch_queue_t queue,
  * terminated.
  *
  * If a dispatch queue is active and targeted by other dispatch objects,
- * changing its target queue results in undefined behavior.
+ * changing its target queue results in undefined behavior.  Instead, it is
+ * recommended to create dispatch objects in an inactive state, set up the
+ * relevant target queues and then activate them.
  *
  * @param object
  * The object to modify.
@@ -1214,7 +1304,8 @@ dispatch_after_f(dispatch_time_t when, dispatch_queue_t queue,
  * Submits a block to a dispatch queue like dispatch_async(), but marks that
  * block as a barrier (relevant only on DISPATCH_QUEUE_CONCURRENT queues).
  *
- * See dispatch_async() for details.
+ * See dispatch_async() for details and "Dispatch Barrier API" for a description
+ * of the barrier semantics.
  *
  * @param queue
  * The target dispatch queue to which the block is submitted.
@@ -1245,7 +1336,8 @@ dispatch_barrier_async(dispatch_queue_t queue, dispatch_block_t block);
  * that function as a barrier (relevant only on DISPATCH_QUEUE_CONCURRENT
  * queues).
  *
- * See dispatch_async_f() for details.
+ * See dispatch_async_f() for details and "Dispatch Barrier API" for a
+ * description of the barrier semantics.
  *
  * @param queue
  * The target dispatch queue to which the function is submitted.
@@ -1278,7 +1370,8 @@ dispatch_barrier_async_f(dispatch_queue_t queue,
  * Submits a block to a dispatch queue like dispatch_sync(), but marks that
  * block as a barrier (relevant only on DISPATCH_QUEUE_CONCURRENT queues).
  *
- * See dispatch_sync() for details.
+ * See dispatch_sync() for details and "Dispatch Barrier API" for a description
+ * of the barrier semantics.
  *
  * @param queue
  * The target dispatch queue to which the block is submitted.
@@ -1325,6 +1418,67 @@ API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
 void
 dispatch_barrier_sync_f(dispatch_queue_t queue,
+		void *_Nullable context, dispatch_function_t work);
+
+/*!
+ * @function dispatch_barrier_async_and_wait
+ *
+ * @abstract
+ * Submits a block for synchronous execution on a dispatch queue.
+ *
+ * @discussion
+ * Submits a block to a dispatch queue like dispatch_async_and_wait(), but marks
+ * that block as a barrier (relevant only on DISPATCH_QUEUE_CONCURRENT
+ * queues).
+ *
+ * See "Dispatch Barrier API" for a description of the barrier semantics.
+ *
+ * @param queue
+ * The target dispatch queue to which the block is submitted.
+ * The result of passing NULL in this parameter is undefined.
+ *
+ * @param work
+ * The application-defined block to invoke on the target queue.
+ * The result of passing NULL in this parameter is undefined.
+ */
+#ifdef __BLOCKS__
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+void
+dispatch_barrier_async_and_wait(dispatch_queue_t queue,
+		DISPATCH_NOESCAPE dispatch_block_t block);
+#endif
+
+/*!
+ * @function dispatch_barrier_async_and_wait_f
+ *
+ * @abstract
+ * Submits a function for synchronous execution on a dispatch queue.
+ *
+ * @discussion
+ * Submits a function to a dispatch queue like dispatch_async_and_wait_f(), but
+ * marks that function as a barrier (relevant only on DISPATCH_QUEUE_CONCURRENT
+ * queues).
+ *
+ * See "Dispatch Barrier API" for a description of the barrier semantics.
+ *
+ * @param queue
+ * The target dispatch queue to which the function is submitted.
+ * The result of passing NULL in this parameter is undefined.
+ *
+ * @param context
+ * The application-defined context parameter to pass to the function.
+ *
+ * @param work
+ * The application-defined function to invoke on the target queue. The first
+ * parameter passed to this function is the context provided to
+ * dispatch_barrier_async_and_wait_f().
+ * The result of passing NULL in this parameter is undefined.
+ */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+void
+dispatch_barrier_async_and_wait_f(dispatch_queue_t queue,
 		void *_Nullable context, dispatch_function_t work);
 
 /*!
@@ -1511,9 +1665,9 @@ dispatch_assert_queue_barrier(dispatch_queue_t queue);
  * Verifies that the current block is not executing on a given dispatch queue.
  *
  * @discussion
- * This function is the equivalent of dispatch_queue_assert() with the test for
+ * This function is the equivalent of dispatch_assert_queue() with the test for
  * equality inverted. That means that it will terminate the application when
- * dispatch_queue_assert() would return, and vice-versa. See discussion there.
+ * dispatch_assert_queue() would return, and vice-versa. See discussion there.
  *
  * The variant dispatch_assert_queue_not_debug() is compiled out when the
  * preprocessor macro NDEBUG is defined. (See also assert(3)).
@@ -1540,6 +1694,7 @@ dispatch_assert_queue_not(dispatch_queue_t queue)
 
 __END_DECLS
 
+DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
 #endif
