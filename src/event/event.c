@@ -35,11 +35,11 @@ _dispatch_unote_create(dispatch_source_type_t dst,
 	dispatch_unote_linkage_t dul;
 	dispatch_unote_class_t du;
 
-	if (mask & ~dst->dst_mask) {
+	if (!mask && dst->dst_mask) {
 		return DISPATCH_UNOTE_NULL;
 	}
 
-	if (dst->dst_mask && !mask) {
+	if (mask & ~dst->dst_mask) {
 		return DISPATCH_UNOTE_NULL;
 	}
 
