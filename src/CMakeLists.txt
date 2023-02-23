@@ -163,6 +163,10 @@ if(ENABLE_SWIFT)
   add_subdirectory(swift)
 endif()
 
+if(ENABLE_SWIFT AND NOT CMAKE_SYSTEM_NAME MATCHES "Darwin|Windows")
+  get_swift_host_arch(swift_arch)
+  set(INSTALL_TARGET_DIR "${INSTALL_TARGET_DIR}/${swift_arch}")
+endif()
 set_property(GLOBAL APPEND PROPERTY DISPATCH_EXPORTS dispatch)
 install(TARGETS dispatch
         EXPORT dispatchExports

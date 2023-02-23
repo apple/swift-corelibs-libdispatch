@@ -50,6 +50,9 @@ install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/swift/Dispatch.swiftdoc
   DESTINATION ${INSTALL_TARGET_DIR}/${swift_arch})
 set_property(GLOBAL APPEND PROPERTY DISPATCH_EXPORTS swiftDispatch)
+if(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin|Windows")
+  set(INSTALL_TARGET_DIR "${INSTALL_TARGET_DIR}/${swift_arch}")
+endif()
 install(TARGETS swiftDispatch
   EXPORT dispatchExports
   ARCHIVE DESTINATION ${INSTALL_TARGET_DIR}

@@ -31,6 +31,10 @@ if(INSTALL_PRIVATE_HEADERS)
           DESTINATION ${INSTALL_BLOCK_HEADERS_DIR})
 endif()
 set_property(GLOBAL APPEND PROPERTY DISPATCH_EXPORTS BlocksRuntime)
+if(ENABLE_SWIFT AND NOT CMAKE_SYSTEM_NAME MATCHES "Darwin|Windows")
+  get_swift_host_arch(swift_arch)
+  set(INSTALL_TARGET_DIR "${INSTALL_TARGET_DIR}/${swift_arch}")
+endif()
 install(TARGETS BlocksRuntime
         EXPORT dispatchExports
         ARCHIVE DESTINATION ${INSTALL_TARGET_DIR}
