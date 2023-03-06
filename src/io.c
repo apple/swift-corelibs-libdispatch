@@ -1436,19 +1436,23 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 				unsigned long value = 1;
 				int result = ioctlsocket((SOCKET)fd, (long)FIONBIO, &value);
 				(void)dispatch_assume_zero(result);
-			}
-			else {
+			} else {
 				// Try to make writing nonblocking, although pipes not coming
 				// from Foundation.Pipe may not have FILE_WRITE_ATTRIBUTES.
-				DWORD pipe_mode = PIPE_NOWAIT;
-				if (!SetNamedPipeHandleState((HANDLE)fd, &pipe_mode, NULL,
-						NULL)) {
-					// We may end up blocking on subsequent writes, but we
-					// don't have a good alternative. The WriteQuotaAvailable
-					// from NtQueryInformationFile erroneously returns 0 when
-					// there is a blocking read on the other end of the pipe.
-					_dispatch_fd_entry_debug("failed to set PIPE_NOWAIT",
-							fd_entry);
+				DWORD dwPipeMode = 0;
+				if (GetNamedPipeHandleState((HANDLE)fd, &dwPipeMode, NULL,
+						NULL, NULL, NULL, 0) && !(dwPipeMode & PIPE_NOWAIT)) {
+					dwPipeMode |= PIPE_NOWAIT;
+					if (!SetNamedPipeHandleState((HANDLE)fd, &dwPipeMode,
+							NULL, NULL)) {
+						// We may end up blocking on subsequent writes, but we
+						// don't have a good alternative.
+						// The WriteQuotaAvailable from NtQueryInformationFile
+						// erroneously returns 0 when there is a blocking read
+						// on the other end of the pipe.
+						_dispatch_fd_entry_debug("failed to set PIPE_NOWAIT",
+								fd_entry);
+					}
 				}
 			}
 
