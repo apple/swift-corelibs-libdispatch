@@ -165,7 +165,7 @@ private func toInt64Clamped(_ value: Double) -> Int64 {
 /// 	let t1 = DispatchTimeInterval.seconds(Int.max)
 ///		let t2 = DispatchTimeInterval.milliseconds(Int.max)
 ///		let result = t1 == t2   // true
-public enum DispatchTimeInterval {
+public enum DispatchTimeInterval: Equatable {
 	case seconds(Int)
 	case milliseconds(Int)
 	case microseconds(Int)
