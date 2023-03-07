@@ -2528,6 +2528,7 @@ syscall:
 				}
 				if (bSuccess && processed == 0) {
 					err = EAGAIN;
+					goto error;
 				}
 			} else {
 				bSuccess = WriteFile(hFile, buf, (DWORD)len,
