@@ -1432,9 +1432,30 @@ _dispatch_fd_entry_create_with_fd(dispatch_fd_t fd, uintptr_t hash)
 #if defined(_WIN32)
 		DWORD dwType = GetFileType((HANDLE)fd);
 		if (dwType == FILE_TYPE_PIPE) {
-			unsigned long value = 1;
-			int result = ioctlsocket((SOCKET)fd, (long)FIONBIO, &value);
-			(void)dispatch_assume_zero(result);
+			if (_dispatch_handle_is_socket((HANDLE)fd)) {
+				unsigned long value = 1;
+				int result = ioctlsocket((SOCKET)fd, (long)FIONBIO, &value);
+				(void)dispatch_assume_zero(result);
+			} else {
+				// Try to make writing nonblocking, although pipes not coming
+				// from Foundation.Pipe may not have FILE_WRITE_ATTRIBUTES.
+				DWORD dwPipeMode = 0;
+				if (GetNamedPipeHandleState((HANDLE)fd, &dwPipeMode, NULL,
+						NULL, NULL, NULL, 0) && !(dwPipeMode & PIPE_NOWAIT)) {
+					dwPipeMode |= PIPE_NOWAIT;
+					if (!SetNamedPipeHandleState((HANDLE)fd, &dwPipeMode,
+							NULL, NULL)) {
+						// We may end up blocking on subsequent writes, but we
+						// don't have a good alternative.
+						// The WriteQuotaAvailable from NtQueryInformationFile
+						// erroneously returns 0 when there is a blocking read
+						// on the other end of the pipe.
+						_dispatch_fd_entry_debug("failed to set PIPE_NOWAIT",
+								fd_entry);
+					}
+				}
+			}
+
 			_dispatch_stream_init(fd_entry,
 				_dispatch_get_default_queue(false));
 		} else {
@@ -2489,24 +2510,6 @@ syscall:
 				}
 				bSuccess = TRUE;
 			} else if (GetFileType(hFile) == FILE_TYPE_PIPE) {
-				// Unfortunately there isn't a good way to achieve O_NONBLOCK
-				// semantics when writing to a pipe. SetNamedPipeHandleState()
-				// can allow pipes to be switched into a "no wait" mode, but
-				// that doesn't work on most pipe handles because Windows
-				// doesn't consistently create pipes with FILE_WRITE_ATTRIBUTES
-				// access. The best we can do is to try to query the write quota
-				// and then write as much as we can.
-				IO_STATUS_BLOCK iosb;
-				FILE_PIPE_LOCAL_INFORMATION fpli;
-				NTSTATUS status = _dispatch_NtQueryInformationFile(hFile, &iosb,
-						&fpli, sizeof(fpli), FilePipeLocalInformation);
-				if (NT_SUCCESS(status)) {
-					if (fpli.WriteQuotaAvailable == 0) {
-						err = EAGAIN;
-						goto error;
-					}
-					len = MIN(len, fpli.WriteQuotaAvailable);
-				}
 				OVERLAPPED ovlOverlapped = {};
 				bSuccess = WriteFile(hFile, buf, (DWORD)len,
 						(LPDWORD)&processed, &ovlOverlapped);
@@ -2522,6 +2525,10 @@ syscall:
 						bSuccess = TRUE;
 						processed = 0;
 					}
+				}
+				if (bSuccess && processed == 0) {
+					err = EAGAIN;
+					goto error;
 				}
 			} else {
 				bSuccess = WriteFile(hFile, buf, (DWORD)len,
