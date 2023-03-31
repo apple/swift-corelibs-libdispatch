@@ -18,18 +18,6 @@ target_include_directories(DispatchStubs PRIVATE
 set_target_properties(DispatchStubs PROPERTIES
   POSITION_INDEPENDENT_CODE YES)
 
-
-if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
-  add_custom_command(OUTPUT ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PROJECT_SOURCE_DIR}/dispatch/darwin/module.modulemap ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap)
-else()
-  add_custom_command(OUTPUT ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap)
-endif()
-add_custom_target(module-map ALL
-  DEPENDS ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap)
-
-
 add_library(swiftDispatch
   Block.swift
   Data.swift
@@ -45,6 +33,8 @@ target_compile_options(swiftDispatch PRIVATE
   "SHELL:-Xcc -fmodule-map-file=${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
   "SHELL:-Xcc -I${PROJECT_SOURCE_DIR}"
   "SHELL:-Xcc -I${PROJECT_SOURCE_DIR}/src/swift/shims")
+target_compile_options(swiftDispatch PUBLIC
+  "SHELL:-vfsoverlay ${CMAKE_BINARY_DIR}/dispatch-vfs-overlay.yaml")
 set_target_properties(swiftDispatch PROPERTIES
   Swift_MODULE_NAME Dispatch
   Swift_MODULE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/swift
@@ -54,7 +44,6 @@ target_link_libraries(swiftDispatch PRIVATE
   BlocksRuntime::BlocksRuntime)
 target_link_libraries(swiftDispatch PUBLIC
   dispatch)
-add_dependencies(swiftDispatch module-map)
 
 get_swift_host_arch(swift_arch)
 install(FILES

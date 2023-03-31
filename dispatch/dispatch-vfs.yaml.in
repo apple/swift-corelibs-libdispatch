@@ -1,0 +1,11 @@
+---
+version: 0
+case-sensitive: false
+use-external-names: false
+roots:
+  - name: "@CMAKE_CURRENT_SOURCE_DIR@"
+    type: directory
+    contents:
+      - name: module.modulemap
+        type: file
+        external-contents: "@DISPATCH_MODULE_MAP@"
