@@ -18,6 +18,18 @@ target_include_directories(DispatchStubs PRIVATE
 set_target_properties(DispatchStubs PROPERTIES
   POSITION_INDEPENDENT_CODE YES)
 
+
+if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
+  add_custom_command(OUTPUT ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PROJECT_SOURCE_DIR}/dispatch/darwin/module.modulemap ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap)
+else()
+  add_custom_command(OUTPUT ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap)
+endif()
+add_custom_target(module-map ALL
+  DEPENDS ${PROJECT_SOURCE_DIR}/dispatch/module.modulemap)
+
+
 add_library(swiftDispatch
   Block.swift
   Data.swift
@@ -42,7 +54,7 @@ target_link_libraries(swiftDispatch PRIVATE
   BlocksRuntime::BlocksRuntime)
 target_link_libraries(swiftDispatch PUBLIC
   dispatch)
-add_dependencies(swiftDispatch module-maps)
+add_dependencies(swiftDispatch module-map)
 
 get_swift_host_arch(swift_arch)
 install(FILES
