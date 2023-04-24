@@ -16,7 +16,7 @@
 
 import CDispatch
 
-public struct DispatchTime : Comparable {
+public struct DispatchTime : Comparable, Sendable {
 #if HAVE_MACH
 	private static let timebaseInfo: mach_timebase_info_data_t = {
 		var info = mach_timebase_info_data_t(numer: 1, denom: 1)
@@ -96,7 +96,7 @@ extension DispatchTime {
 	}
 }
 
-public struct DispatchWallTime : Comparable {
+public struct DispatchWallTime : Comparable, Sendable {
 	public let rawValue: dispatch_time_t
 
 	public static func now() -> DispatchWallTime {
