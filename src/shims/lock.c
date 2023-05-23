@@ -266,6 +266,7 @@ void _dispatch_sema4_init(_dispatch_sema4_t *sema, int policy DISPATCH_UNUSED)
 
 	// lazily allocate the semaphore port
 
+	os_atomic_cmpxchg(sema, *sema, 0, relaxed);
 	while (!dispatch_assume(tmp = CreateSemaphore(NULL, 0, LONG_MAX, NULL))) {
 		_dispatch_temporary_resource_shortage();
 	}
