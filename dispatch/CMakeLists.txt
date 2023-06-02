@@ -1,13 +1,4 @@
 
-if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
-  set(DISPATCH_MODULE_MAP ${PROJECT_SOURCE_DIR}/dispatch/darwin/module.modulemap)
-else()
-  set(DISPATCH_MODULE_MAP ${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap)
-endif()
-configure_file(dispatch-vfs.yaml.in
-  ${CMAKE_BINARY_DIR}/dispatch-vfs-overlay.yaml
-  @ONLY)
-
 install(FILES
           base.h
           block.h
@@ -25,8 +16,19 @@ install(FILES
         DESTINATION
           "${INSTALL_DISPATCH_HEADERS_DIR}")
 if(ENABLE_SWIFT)
+  set(base_dir "${CMAKE_CURRENT_SOURCE_DIR}")
+  if(NOT BUILD_SHARED_LIBS)
+    set(base_dir "${CMAKE_CURRENT_SOURCE_DIR}/generic_static")
+  endif()
+
+  get_filename_component(
+    MODULE_MAP
+    module.modulemap
+    REALPATH
+    BASE_DIR "${base_dir}")
+
   install(FILES
-            ${DISPATCH_MODULE_MAP}
+            ${MODULE_MAP}
           DESTINATION
             "${INSTALL_DISPATCH_HEADERS_DIR}")
 endif()

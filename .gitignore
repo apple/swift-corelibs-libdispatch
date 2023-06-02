@@ -29,3 +29,4 @@ config
 configure
 libtool
 .dirstamp
+/dispatch/module.modulemap
