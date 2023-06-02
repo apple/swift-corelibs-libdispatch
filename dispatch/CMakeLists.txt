@@ -1,8 +1,10 @@
 
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
   set(DISPATCH_MODULE_MAP ${PROJECT_SOURCE_DIR}/dispatch/darwin/module.modulemap)
-else()
+elseif(BUILD_SHARED_LIBS)
   set(DISPATCH_MODULE_MAP ${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap)
+else()
+  set(DISPATCH_MODULE_MAP ${PROJECT_SOURCE_DIR}/dispatch/generic_static/module.modulemap)
 endif()
 configure_file(dispatch-vfs.yaml.in
   ${CMAKE_BINARY_DIR}/dispatch-vfs-overlay.yaml
