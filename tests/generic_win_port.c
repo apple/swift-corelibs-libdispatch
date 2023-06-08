@@ -188,7 +188,7 @@ gettimeofday(struct timeval *tp, void *tzp)
 typedef void (WINAPI *QueryUnbiasedInterruptTimePreciseT)(PULONGLONG);
 static QueryUnbiasedInterruptTimePreciseT QueryUnbiasedInterruptTimePrecisePtr;
 
-static BOOL
+static BOOL WINAPI
 mach_absolute_time_init(PINIT_ONCE InitOnce, PVOID Parameter, PVOID *lpContext)
 {
 	// QueryUnbiasedInterruptTimePrecise() is declared in the Windows headers
