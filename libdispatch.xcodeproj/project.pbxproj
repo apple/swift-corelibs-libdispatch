@@ -2789,6 +2789,11 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = E40041AA125D705F0022B135 /* libdispatch-resolver.xcconfig */;
 			buildSettings = {
+				OTHER_CPLUSPLUSFLAGS = (
+					"$(OTHER_CFLAGS)",
+					"-Xclang",
+					"-reorder-cxx-includes-hack",
+				);
 			};
 			name = Release;
 		};
@@ -3028,6 +3033,11 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = E4B515D9164B2E9B00E003AF /* libdispatch-introspection.xcconfig */;
 			buildSettings = {
+				OTHER_CPLUSPLUSFLAGS = (
+					"$(OTHER_CFLAGS)",
+					"-Xclang",
+					"-reorder-cxx-includes-hack",
+				);
 			};
 			name = Release;
 		};
@@ -3035,6 +3045,11 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = E4B515D9164B2E9B00E003AF /* libdispatch-introspection.xcconfig */;
 			buildSettings = {
+				OTHER_CPLUSPLUSFLAGS = (
+					"$(OTHER_CFLAGS)",
+					"-Xclang",
+					"-reorder-cxx-includes-hack",
+				);
 			};
 			name = Debug;
 		};
@@ -3049,6 +3064,11 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = E40041AA125D705F0022B135 /* libdispatch-resolver.xcconfig */;
 			buildSettings = {
+				OTHER_CPLUSPLUSFLAGS = (
+					"$(OTHER_CFLAGS)",
+					"-Xclang",
+					"-reorder-cxx-includes-hack",
+				);
 			};
 			name = Debug;
 		};

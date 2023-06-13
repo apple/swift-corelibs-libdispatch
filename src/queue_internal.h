@@ -46,6 +46,9 @@ DISPATCH_OPTIONS(dispatch_queue_flags, uint32_t,
 	DQF_LABEL_NEEDS_FREE    = 0x00200000, // queue label was strdup()ed
 	DQF_MUTABLE             = 0x00400000,
 	DQF_RELEASED            = 0x00800000, // xref_cnt == -1
+	// queue is targetting a specially configured wlh at the bottom.  DQF_MUTABLE
+	// must be false.
+	DQF_TARGET_SPECIAL_WLH  = 0x01000000,
 
 	//
 	// Only applies to sources

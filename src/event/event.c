@@ -595,7 +595,9 @@ _dispatch_timer_heap_max_target_before(dispatch_timer_heap_t dth, uint64_t limit
 			// skip subtree since none of the targets below can be before limit
 			idx = _dispatch_timer_heap_walk_skip(idx, count);
 		} else {
-			target = tmp;
+			if (tmp > target) {
+				target = tmp;
+			}
 			idx = _dispatch_timer_heap_walk_next(idx, count);
 		}
 	}

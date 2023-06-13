@@ -706,6 +706,13 @@ _dispatch_queue_label_needs_free(dispatch_queue_class_t dqu)
 }
 
 DISPATCH_ALWAYS_INLINE
+static inline bool
+_dispatch_queue_targets_special_wlh(dispatch_queue_class_t dqu)
+{
+	return _dispatch_queue_atomic_flags(dqu) & DQF_TARGET_SPECIAL_WLH;
+}
+
+DISPATCH_ALWAYS_INLINE
 static inline dispatch_invoke_flags_t
 _dispatch_queue_autorelease_frequency(dispatch_queue_class_t dqu)
 {
@@ -1845,8 +1852,9 @@ _dispatch_root_queue_push_inline(dispatch_queue_global_t dq,
 DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_queue_push_queue(dispatch_queue_t tq, dispatch_queue_class_t dq,
-		uint64_t dq_state)
+		uint64_t dq_state, dispatch_wakeup_flags_t flags)
 {
+	dispatch_assert(flags & DISPATCH_EVENT_LOOP_CONSUME_2);
 #if DISPATCH_USE_KEVENT_WORKLOOP
 	if (likely(_dq_state_is_base_wlh(dq_state))) {
 		_dispatch_trace_runtime_event(worker_request, dq._dq, 1);
