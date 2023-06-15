@@ -2510,6 +2510,23 @@ syscall:
 				}
 				bSuccess = TRUE;
 			} else if (GetFileType(hFile) == FILE_TYPE_PIPE) {
+				// WriteFile with more bytes than are available in the
+				// buffer of a NOWAIT pipe will immediately return 0,
+				// so clamp our requested write length to make progress.
+				IO_STATUS_BLOCK iosb;
+				FILE_PIPE_LOCAL_INFORMATION fpli;
+				NTSTATUS status = _dispatch_NtQueryInformationFile(hFile,
+						&iosb, &fpli, sizeof(fpli), FilePipeLocalInformation);
+				if (NT_SUCCESS(status)) {
+					// WriteQuotaAvailable is unreliable in the presence
+					// of a blocking reader, when it can return zero, so only
+					// account for it otherwise
+					if (fpli.WriteQuotaAvailable > 0) {
+						len = MIN(len, fpli.WriteQuotaAvailable);
+					}
+					len = MIN(len, fpli.OutboundQuota);
+				}
+
 				OVERLAPPED ovlOverlapped = {};
 				bSuccess = WriteFile(hFile, buf, (DWORD)len,
 						(LPDWORD)&processed, &ovlOverlapped);
