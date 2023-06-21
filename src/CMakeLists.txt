@@ -1,5 +1,4 @@
-
-if(NOT CMAKE_SYSTEM_NAME STREQUAL Darwin)
+if(NOT BlocksRuntime_FOUND)
   add_subdirectory(BlocksRuntime)
 endif()
 
