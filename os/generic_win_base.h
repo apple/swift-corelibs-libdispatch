@@ -18,14 +18,18 @@
 // Unices provide `roundup` via sys/param.h
 #define roundup(x, y) ((((x) + ((y) - 1)) / (y)) * (y))
 // Unices provide `MAX` via sys/param.h
+#ifndef MAX
 #define MAX(a,b) (((a)>(b))?(a):(b))
+#endif
 // Unices provide `MIN` via sys/param.h
+#ifndef MIN
 #define MIN(a,b) (((a)<(b))?(a):(b))
+#endif
 // Unices provide `howmany` via sys/param.h
 #define howmany(x, y)  (((x) + ((y) - 1)) / (y))
 
 typedef int mode_t;
-typedef void pthread_attr_t;
+typedef struct pthread_attr_t_ * pthread_attr_t;
 
 #ifndef API_AVAILABLE
 #define API_AVAILABLE(...)
