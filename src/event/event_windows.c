@@ -222,7 +222,7 @@ _dispatch_muxnote_disarm_events(dispatch_muxnote_t dmn,
 			// ignore error if socket was already closed
 			int err = WSAGetLastError();
 			if (err != WSAENOTSOCK) {
-				DISPATCH_INTERNAL_CRASH(err, "WSAEventSelect");
+				//DISPATCH_INTERNAL_CRASH(err, "WSAEventSelect");
 			}
 		}
 		dmn->dmn_network_events = lNetworkEvents;
