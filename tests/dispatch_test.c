@@ -35,8 +35,6 @@
 #include <sys/event.h>
 #elif __has_include(<poll.h>)
 #include <poll.h>
-#else
-#include <sys/poll.h>
 #endif
 #elif defined(_WIN32)
 #include <Windows.h>
