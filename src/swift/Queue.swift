@@ -240,7 +240,6 @@ extension DispatchQueue {
 	///
 	/// - parameter group: the dispatch group to associate with the submitted
 	/// work item. If this is `nil`, the work item is not associated with a group.
-	/// - parameter flags: flags that control the execution environment of the
 	/// - parameter qos: the QoS at which the work item should be executed.
 	///     Defaults to `DispatchQoS.unspecified`.
 	/// - parameter flags: flags that control the execution environment of the
