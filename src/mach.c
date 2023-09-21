@@ -285,7 +285,7 @@ dispatch_mach_connect(dispatch_mach_t dm, mach_port_t receive,
 		_dispatch_mach_arm_no_senders(dm, false);
 	}
 
-	uint32_t disconnect_cnt = os_atomic_and_orig2o(dmsr, dmsr_disconnect_cnt,
+	uint32_t disconnect_cnt = os_atomic_and_orig(&dmsr->dmsr_disconnect_cnt,
 			~DISPATCH_MACH_NEVER_CONNECTED, relaxed);
 	if (unlikely(!(disconnect_cnt & DISPATCH_MACH_NEVER_CONNECTED))) {
 		DISPATCH_CLIENT_CRASH(disconnect_cnt, "Channel already connected");
@@ -1389,7 +1389,7 @@ again:
 		} while ((dc = next_dc));
 	}
 
-	os_atomic_rmw_loop2o(dmsr, dmsr_state, old_state, new_state, release, {
+	os_atomic_rmw_loop(&dmsr->dmsr_state, old_state, new_state, release, {
 		if (old_state & DISPATCH_MACH_STATE_DIRTY) {
 			new_state = old_state;
 			new_state &= ~DISPATCH_MACH_STATE_DIRTY;
@@ -1408,7 +1408,7 @@ partial_drain:
 
 	if (_dispatch_object_has_type(dc,
 			DISPATCH_CONTINUATION_TYPE(MACH_SEND_BARRIER))) {
-		os_atomic_rmw_loop2o(dmsr, dmsr_state, old_state, new_state, release, {
+		os_atomic_rmw_loop(&dmsr->dmsr_state, old_state, new_state, release, {
 			new_state = old_state;
 			new_state |= DISPATCH_MACH_STATE_DIRTY;
 			new_state |= DISPATCH_MACH_STATE_PENDING_BARRIER;
@@ -1416,7 +1416,7 @@ partial_drain:
 			new_state &= ~DISPATCH_MACH_STATE_RECEIVED_OVERRIDE;
 		});
 	} else {
-		os_atomic_rmw_loop2o(dmsr, dmsr_state, old_state, new_state, release, {
+		os_atomic_rmw_loop(&dmsr->dmsr_state, old_state, new_state, release, {
 			new_state = old_state;
 			if (old_state & (DISPATCH_MACH_STATE_DIRTY |
 					DISPATCH_MACH_STATE_RECEIVED_OVERRIDE)) {
@@ -1493,7 +1493,7 @@ _dispatch_mach_send_invoke(dispatch_mach_t dm, dispatch_invoke_flags_t flags,
 
 	dispatch_qos_t oq_floor = _dispatch_get_basepri_override_qos_floor();
 retry:
-	os_atomic_rmw_loop2o(dmsr, dmsr_state, old_state, new_state, acquire, {
+	os_atomic_rmw_loop(&dmsr->dmsr_state, old_state, new_state, acquire, {
 		new_state = old_state;
 		if (unlikely((old_state & canlock_mask) != canlock_state)) {
 			if (!(send_flags & DM_SEND_INVOKE_MAKE_DIRTY)) {
@@ -1587,7 +1587,7 @@ _dispatch_mach_send_push(dispatch_mach_t dm, dispatch_object_t dou,
 			state_flags |= DISPATCH_MACH_STATE_PENDING_BARRIER;
 		}
 
-		os_atomic_rmw_loop2o(dmsr, dmsr_state, old_state, new_state, release, {
+		os_atomic_rmw_loop(&dmsr->dmsr_state, old_state, new_state, release, {
 			new_state = _dmsr_state_merge_override(old_state, qos);
 			new_state |= state_flags;
 		});
@@ -1598,7 +1598,7 @@ _dispatch_mach_send_push(dispatch_mach_t dm, dispatch_object_t dou,
 			_dispatch_release_2_no_dispose(dm);
 		}
 	} else {
-		os_atomic_rmw_loop2o(dmsr, dmsr_state, old_state, new_state, relaxed, {
+		os_atomic_rmw_loop(&dmsr->dmsr_state, old_state, new_state, relaxed, {
 			new_state = _dmsr_state_merge_override(old_state, qos);
 			if (old_state == new_state) {
 				os_atomic_rmw_loop_give_up(break);
@@ -1651,7 +1651,7 @@ _dispatch_mach_send_push_and_trydrain(dispatch_mach_t dm,
 
 	if (unlikely(dmsr->dmsr_disconnect_cnt ||
 			(dm->dq_atomic_flags & DSF_CANCELED))) {
-		os_atomic_rmw_loop2o(dmsr, dmsr_state, old_state, new_state, release, {
+		os_atomic_rmw_loop(&dmsr->dmsr_state, old_state, new_state, release, {
 			new_state = _dmsr_state_merge_override(old_state, qos);
 			new_state |= state_flags;
 		});
@@ -1665,7 +1665,7 @@ _dispatch_mach_send_push_and_trydrain(dispatch_mach_t dm,
 	canlock_mask = DISPATCH_MACH_STATE_UNLOCK_MASK |
 			DISPATCH_MACH_STATE_PENDING_BARRIER;
 	if (state_flags) {
-		os_atomic_rmw_loop2o(dmsr, dmsr_state, old_state, new_state, seq_cst, {
+		os_atomic_rmw_loop(&dmsr->dmsr_state, old_state, new_state, seq_cst, {
 			new_state = _dmsr_state_merge_override(old_state, qos);
 			new_state |= state_flags;
 			if (likely((old_state & canlock_mask) == 0)) {
@@ -1679,7 +1679,7 @@ _dispatch_mach_send_push_and_trydrain(dispatch_mach_t dm,
 			wflags &= ~(dispatch_wakeup_flags_t)DISPATCH_WAKEUP_CONSUME_2;
 		}
 	} else {
-		os_atomic_rmw_loop2o(dmsr, dmsr_state, old_state, new_state, acquire, {
+		os_atomic_rmw_loop(&dmsr->dmsr_state, old_state, new_state, acquire, {
 			new_state = _dmsr_state_merge_override(old_state, qos);
 			if (new_state == old_state) {
 				os_atomic_rmw_loop_give_up(return false);
@@ -2174,7 +2174,7 @@ _dispatch_mach_reconnect_invoke(dispatch_mach_t dm, dispatch_object_t dou)
 			dmsr->dmsr_send = dmsr_send;
 			dmsr->dmsr_checkin = dmsr_checkin;
 		}
-		(void)os_atomic_dec2o(dmsr, dmsr_disconnect_cnt, relaxed);
+		(void)os_atomic_dec(&dmsr->dmsr_disconnect_cnt, relaxed);
 	}
 	return disconnected;
 }
@@ -2185,7 +2185,7 @@ dispatch_mach_reconnect(dispatch_mach_t dm, mach_port_t send,
 		dispatch_mach_msg_t checkin)
 {
 	dispatch_mach_send_refs_t dmsr = dm->dm_send_refs;
-	(void)os_atomic_inc2o(dmsr, dmsr_disconnect_cnt, relaxed);
+	(void)os_atomic_inc(&dmsr->dmsr_disconnect_cnt, relaxed);
 	if (MACH_PORT_VALID(send) && checkin) {
 		dispatch_mach_msg_t dmsg = checkin;
 		dispatch_retain(dmsg);
@@ -2664,8 +2664,8 @@ _dispatch_mach_install(dispatch_mach_t dm, dispatch_wlh_t wlh,
 	dispatch_assert(!dm->ds_is_installed);
 	dm->ds_is_installed = true;
 
-	uint32_t disconnect_cnt = os_atomic_load2o(dm->dm_send_refs,
-			dmsr_disconnect_cnt, relaxed);
+	uint32_t disconnect_cnt = os_atomic_load(
+			&dm->dm_send_refs->dmsr_disconnect_cnt, relaxed);
 	if (unlikely(disconnect_cnt & DISPATCH_MACH_NEVER_CONNECTED)) {
 		DISPATCH_CLIENT_CRASH(disconnect_cnt, "Channel never connected");
 	}

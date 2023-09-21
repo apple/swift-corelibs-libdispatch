@@ -58,6 +58,7 @@ DISPATCH_EXPORT DISPATCH_NOTHROW
 void
 dispatch_atfork_prepare(void)
 {
+	_voucher_atfork_prepare();
 	_os_object_atfork_prepare();
 }
 
@@ -724,6 +725,17 @@ DISPATCH_VTABLE_INSTANCE(workloop,
 	.dq_activate    = _dispatch_queue_no_activate,
 	.dq_wakeup      = _dispatch_workloop_wakeup,
 	.dq_push        = _dispatch_workloop_push,
+);
+
+DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_serial_executor, lane,
+	.do_type        = DISPATCH_QUEUE_SERIAL_TYPE,
+	.do_dispose     = _dispatch_lane_dispose,
+	.do_debug       = _dispatch_queue_debug,
+	.do_invoke      = _dispatch_lane_invoke,
+
+	.dq_activate    = _dispatch_lane_activate,
+	.dq_wakeup      = _dispatch_lane_wakeup,
+	.dq_push        = _dispatch_lane_push,
 );
 
 DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_serial, lane,

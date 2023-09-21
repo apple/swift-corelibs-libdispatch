@@ -67,7 +67,7 @@ DISPATCH_ASSUME_ABI_SINGLE_BEGIN
  * reference to the queue until they have finished. Once all references to a
  * queue have been released, the queue will be deallocated by the system.
  */
-DISPATCH_DECL(dispatch_queue);
+DISPATCH_DECL_FACTORY_CLASS_SWIFT(dispatch_queue, DispatchQueue);
 
 /*!
  * @typedef dispatch_queue_global_t
@@ -99,10 +99,35 @@ DISPATCH_DECL(dispatch_queue);
  * Calls to dispatch_suspend(), dispatch_resume(), dispatch_set_context(), etc.,
  * will have no effect when used with queues of this type.
  */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
 #if defined(__DISPATCH_BUILDING_DISPATCH__) && !defined(__OBJC__)
 typedef struct dispatch_queue_global_s *dispatch_queue_global_t;
 #else
 DISPATCH_DECL_SUBCLASS(dispatch_queue_global, dispatch_queue);
+#endif
+
+/*!
+ * @typedef dispatch_queue_serial_executor_t
+ *
+ * @abstract
+ * An abstract class of dispatch queues which conform to the serial executor
+ * protocol.
+ *
+ * @discussion
+ * A serial executor in Swift Concurrency represents a mutual exclusion context.
+ * Queues with a singular owner, which invoke only one workItem at a time
+ * provide such a mutual exclusion context and are serial executors.
+ *
+ * Subclasses of this abstract class can be therefore be setup as Custom
+ * Executors for Swift Actors.
+ *
+ * See dispatch_queue_serial_t and dispatch_workloop_t.
+ */
+API_AVAILABLE(macos(14.0), ios(17.0), tvos(17.0), watchos(10.0))
+#if defined(__DISPATCH_BUILDING_DISPATCH__) && !defined(__OBJC__)
+typedef struct dispatch_lane_s *dispatch_queue_serial_executor_t;
+#else
+DISPATCH_DECL_SUBCLASS_SWIFT(dispatch_queue_serial_executor, dispatch_queue, _DispatchSerialExecutorQueue);
 #endif
 
 /*!
@@ -129,10 +154,11 @@ DISPATCH_DECL_SUBCLASS(dispatch_queue_global, dispatch_queue);
  * Serial queues are created by passing a dispatch queue attribute derived from
  * DISPATCH_QUEUE_SERIAL to dispatch_queue_create_with_target().
  */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
 #if defined(__DISPATCH_BUILDING_DISPATCH__) && !defined(__OBJC__)
 typedef struct dispatch_lane_s *dispatch_queue_serial_t;
 #else
-DISPATCH_DECL_SUBCLASS(dispatch_queue_serial, dispatch_queue);
+DISPATCH_DECL_SERIAL_EXECUTOR_SWIFT(dispatch_queue_serial, DispatchSerialQueue);
 #endif
 
 /*!
@@ -155,6 +181,7 @@ DISPATCH_DECL_SUBCLASS(dispatch_queue_serial, dispatch_queue);
  * dispatch_suspend(), dispatch_resume(), dispatch_set_context(), etc., will
  * have no effect when used on the main queue.
  */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
 #if defined(__DISPATCH_BUILDING_DISPATCH__) && !defined(__OBJC__)
 typedef struct dispatch_queue_static_s *dispatch_queue_main_t;
 #else
@@ -189,10 +216,11 @@ DISPATCH_DECL_SUBCLASS(dispatch_queue_main, dispatch_queue_serial);
  * avoidance when lower priority regular workitems (readers) are being invoked
  * and are preventing a higher priority barrier (writer) from being invoked.
  */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
 #if defined(__DISPATCH_BUILDING_DISPATCH__) && !defined(__OBJC__)
 typedef struct dispatch_lane_s *dispatch_queue_concurrent_t;
 #else
-DISPATCH_DECL_SUBCLASS(dispatch_queue_concurrent, dispatch_queue);
+DISPATCH_DECL_SUBCLASS_SWIFT(dispatch_queue_concurrent, dispatch_queue, DispatchConcurrentQueue);
 #endif
 
 __BEGIN_DECLS
@@ -228,6 +256,7 @@ __BEGIN_DECLS
 #ifdef __BLOCKS__
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_async(dispatch_queue_t queue, dispatch_block_t block);
 #endif
@@ -258,6 +287,7 @@ dispatch_async(dispatch_queue_t queue, dispatch_block_t block);
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchQueue.async(self:execute:)")
 void
 dispatch_async_f(dispatch_queue_t queue,
 		void *_Nullable context, dispatch_function_t work);
@@ -301,6 +331,7 @@ dispatch_async_f(dispatch_queue_t queue,
 #ifdef __BLOCKS__
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_SWIFT_NAME(DispatchQueue.sync(self:execute:))
 void
 dispatch_sync(dispatch_queue_t queue, DISPATCH_NOESCAPE dispatch_block_t block);
 #endif
@@ -329,6 +360,7 @@ dispatch_sync(dispatch_queue_t queue, DISPATCH_NOESCAPE dispatch_block_t block);
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchQueue.sync(self:execute:)")
 void
 dispatch_sync_f(dispatch_queue_t queue,
 		void *_Nullable context, dispatch_function_t work);
@@ -396,6 +428,7 @@ dispatch_sync_f(dispatch_queue_t queue,
 #ifdef __BLOCKS__
 API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_SWIFT_NAME(DispatchQueue.asyncAndWait(self:execute:))
 void
 dispatch_async_and_wait(dispatch_queue_t queue,
 		DISPATCH_NOESCAPE dispatch_block_t block);
@@ -425,6 +458,7 @@ dispatch_async_and_wait(dispatch_queue_t queue,
  */
 API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchQueue.asyncAndWait(self:execute:)")
 void
 dispatch_async_and_wait_f(dispatch_queue_t queue,
 		void *_Nullable context, dispatch_function_t work);
@@ -497,6 +531,7 @@ dispatch_async_and_wait_f(dispatch_queue_t queue,
 #ifdef __BLOCKS__
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_apply(size_t iterations,
 		dispatch_queue_t DISPATCH_APPLY_QUEUE_ARG_NULLABILITY queue,
@@ -532,6 +567,7 @@ dispatch_apply(size_t iterations,
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL4 DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchQueue.concurrentPerform(iterations:execute:).")
 void
 dispatch_apply_f(size_t iterations,
 		dispatch_queue_t DISPATCH_APPLY_QUEUE_ARG_NULLABILITY queue,
@@ -604,6 +640,7 @@ struct dispatch_queue_s _dispatch_main_q;
  * the main thread before main() is called.
  */
 DISPATCH_INLINE DISPATCH_ALWAYS_INLINE DISPATCH_CONST DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Use getter:DispatchQueue.main()")
 dispatch_queue_main_t
 dispatch_get_main_queue(void)
 {
@@ -643,6 +680,7 @@ dispatch_get_main_queue(void)
 #define DISPATCH_QUEUE_PRIORITY_LOW (-2)
 #define DISPATCH_QUEUE_PRIORITY_BACKGROUND INT16_MIN
 
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchQueue.GlobalQueuePriority")
 typedef long dispatch_queue_priority_t;
 
 /*!
@@ -684,6 +722,7 @@ typedef long dispatch_queue_priority_t;
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_CONST DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 dispatch_queue_global_t
 dispatch_get_global_queue(intptr_t identifier, uintptr_t flags);
 
@@ -693,6 +732,7 @@ dispatch_get_global_queue(intptr_t identifier, uintptr_t flags);
  * @abstract
  * Attribute for dispatch queues.
  */
+DISPATCH_REFINED_FOR_SWIFT
 DISPATCH_DECL(dispatch_queue_attr);
 
 /*!
@@ -779,6 +819,7 @@ struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent;
  */
 API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 dispatch_queue_attr_t
 dispatch_queue_attr_make_initially_inactive(
 		dispatch_queue_attr_t _Nullable attr);
@@ -833,10 +874,14 @@ dispatch_queue_attr_make_initially_inactive(
  * autorelease pool around the execution of a block that is submitted to it
  * asynchronously. This is the behavior of the global concurrent queues.
  */
+DISPATCH_REFINED_FOR_SWIFT
 DISPATCH_ENUM(dispatch_autorelease_frequency, unsigned long,
-	DISPATCH_AUTORELEASE_FREQUENCY_INHERIT DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 0,
-	DISPATCH_AUTORELEASE_FREQUENCY_WORK_ITEM DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 1,
-	DISPATCH_AUTORELEASE_FREQUENCY_NEVER DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0)) = 2,
+	DISPATCH_AUTORELEASE_FREQUENCY_INHERIT DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+			DISPATCH_SWIFT_UNAVAILABLE("Use DispatchQueue.AutoreleaseFrequency.inherit") = 0,
+	DISPATCH_AUTORELEASE_FREQUENCY_WORK_ITEM DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+			DISPATCH_SWIFT_UNAVAILABLE("Use DispatchQueue.AutoreleaseFrequency.workItem") = 1,
+	DISPATCH_AUTORELEASE_FREQUENCY_NEVER DISPATCH_ENUM_API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
+			DISPATCH_SWIFT_UNAVAILABLE("Use DispatchQueue.AutoreleaseFrequency.never") = 2,
 );
 
 /*!
@@ -848,7 +893,7 @@ DISPATCH_ENUM(dispatch_autorelease_frequency, unsigned long,
  *
  * @discussion
  * When a queue uses the per-workitem autorelease frequency (either directly
- * or inherithed from its target queue), any block submitted asynchronously to
+ * or inherited from its target queue), any block submitted asynchronously to
  * this queue (via dispatch_async(), dispatch_barrier_async(),
  * dispatch_group_notify(), etc...) is executed as if surrounded by a individual
  * Objective-C <code>@autoreleasepool</code> scope.
@@ -878,6 +923,7 @@ DISPATCH_ENUM(dispatch_autorelease_frequency, unsigned long,
  */
 API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 dispatch_queue_attr_t
 dispatch_queue_attr_make_with_autorelease_frequency(
 		dispatch_queue_attr_t _Nullable attr,
@@ -942,6 +988,7 @@ dispatch_queue_attr_make_with_autorelease_frequency(
  */
 API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_PURE DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 dispatch_queue_attr_t
 dispatch_queue_attr_make_with_qos_class(dispatch_queue_attr_t _Nullable attr,
 		dispatch_qos_class_t qos_class, int relative_priority);
@@ -1008,6 +1055,7 @@ dispatch_queue_attr_make_with_qos_class(dispatch_queue_attr_t _Nullable attr,
 API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT DISPATCH_SWIFT_NAME(DispatchQueue.init(__label:attr:queue:))
 dispatch_queue_t
 dispatch_queue_create_with_target(const char *_Nullable DISPATCH_UNSAFE_INDEXABLE label,
 		dispatch_queue_attr_t _Nullable attr, dispatch_queue_t _Nullable target)
@@ -1061,6 +1109,7 @@ dispatch_queue_create_with_target(const char *_Nullable DISPATCH_UNSAFE_INDEXABL
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT DISPATCH_SWIFT_NAME(DispatchQueue.init(__label:attr:))
 dispatch_queue_t
 dispatch_queue_create(const char *_Nullable DISPATCH_UNSAFE_INDEXABLE label,
 		dispatch_queue_attr_t _Nullable attr);
@@ -1090,6 +1139,7 @@ dispatch_queue_create(const char *_Nullable DISPATCH_UNSAFE_INDEXABLE label,
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 const char *
 dispatch_queue_get_label(dispatch_queue_t _Nullable queue);
 
@@ -1129,6 +1179,7 @@ dispatch_queue_get_label(dispatch_queue_t _Nullable queue);
  */
 API_AVAILABLE(macos(10.10), ios(8.0))
 DISPATCH_EXPORT DISPATCH_WARN_RESULT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 dispatch_qos_class_t
 dispatch_queue_get_qos_class(dispatch_queue_t queue,
 		int *_Nullable relative_priority_ptr);
@@ -1196,6 +1247,7 @@ dispatch_queue_get_qos_class(dispatch_queue_t queue,
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
+DISPATCH_SWIFT_NAME(DispatchObject.setTarget(self:queue:))
 void
 dispatch_set_target_queue(dispatch_object_t object,
 		dispatch_queue_t _Nullable queue);
@@ -1215,6 +1267,7 @@ dispatch_set_target_queue(dispatch_object_t object,
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW DISPATCH_NORETURN
+DISPATCH_SWIFT_NAME(dispatchMain())
 void
 dispatch_main(void);
 
@@ -1243,6 +1296,7 @@ dispatch_main(void);
 #ifdef __BLOCKS__
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_after(dispatch_time_t when, dispatch_queue_t queue,
 		dispatch_block_t block);
@@ -1275,6 +1329,7 @@ dispatch_after(dispatch_time_t when, dispatch_queue_t queue,
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NONNULL4 DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchQueue.asyncAfter(self:deadline:qos:flags:execute:)")
 void
 dispatch_after_f(dispatch_time_t when, dispatch_queue_t queue,
 		void *_Nullable context, dispatch_function_t work);
@@ -1321,6 +1376,7 @@ dispatch_after_f(dispatch_time_t when, dispatch_queue_t queue,
 #ifdef __BLOCKS__
 API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_barrier_async(dispatch_queue_t queue, dispatch_block_t block);
 #endif
@@ -1356,6 +1412,7 @@ dispatch_barrier_async(dispatch_queue_t queue, dispatch_block_t block);
  */
 API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchQueue.async(self:group:qos:flags:execute:)")
 void
 dispatch_barrier_async_f(dispatch_queue_t queue,
 		void *_Nullable context, dispatch_function_t work);
@@ -1384,6 +1441,7 @@ dispatch_barrier_async_f(dispatch_queue_t queue,
 #ifdef __BLOCKS__
 API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_barrier_sync(dispatch_queue_t queue,
 		DISPATCH_NOESCAPE dispatch_block_t block);
@@ -1416,6 +1474,7 @@ dispatch_barrier_sync(dispatch_queue_t queue,
  */
 API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchQueue.sync(self:flags:execute:)")
 void
 dispatch_barrier_sync_f(dispatch_queue_t queue,
 		void *_Nullable context, dispatch_function_t work);
@@ -1444,6 +1503,7 @@ dispatch_barrier_sync_f(dispatch_queue_t queue,
 #ifdef __BLOCKS__
 API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Unavailable in Swift")
 void
 dispatch_barrier_async_and_wait(dispatch_queue_t queue,
 		DISPATCH_NOESCAPE dispatch_block_t block);
@@ -1477,6 +1537,7 @@ dispatch_barrier_async_and_wait(dispatch_queue_t queue,
  */
 API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Unavailable in Swift")
 void
 dispatch_barrier_async_and_wait_f(dispatch_queue_t queue,
 		void *_Nullable context, dispatch_function_t work);
@@ -1519,6 +1580,7 @@ dispatch_barrier_async_and_wait_f(dispatch_queue_t queue,
  */
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_queue_set_specific(dispatch_queue_t queue, const void *key,
 		void *_Nullable context, dispatch_function_t _Nullable destructor);
@@ -1549,6 +1611,7 @@ dispatch_queue_set_specific(dispatch_queue_t queue, const void *key,
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_PURE DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void *_Nullable
 dispatch_queue_get_specific(dispatch_queue_t queue, const void *key);
 
@@ -1575,6 +1638,7 @@ dispatch_queue_get_specific(dispatch_queue_t queue, const void *key);
  */
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_PURE DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void *_Nullable
 dispatch_get_specific(const void *key);
 
@@ -1629,6 +1693,7 @@ dispatch_get_specific(const void *key);
  */
 API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_assert_queue(dispatch_queue_t queue)
 		DISPATCH_ALIAS_V2(dispatch_assert_queue);
@@ -1655,6 +1720,7 @@ dispatch_assert_queue(dispatch_queue_t queue)
  */
 API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_assert_queue_barrier(dispatch_queue_t queue);
 
@@ -1678,6 +1744,7 @@ dispatch_assert_queue_barrier(dispatch_queue_t queue);
  */
 API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_assert_queue_not(dispatch_queue_t queue)
 		DISPATCH_ALIAS_V2(dispatch_assert_queue_not);

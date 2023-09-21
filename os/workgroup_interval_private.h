@@ -68,6 +68,37 @@ int
 os_workgroup_attr_set_interval_type(os_workgroup_attr_t attr,
 		os_workgroup_interval_type_t type);
 
+/*!
+ * @enum os_workgroup_telemetry_flavor_t
+ *
+ * @abstract
+ * Flavors of os_workgroup telemetry that can be queried, each
+ * corresponding to a telemetry structure type.
+ */
+OS_ENUM(os_workgroup_telemetry_flavor, uint16_t,
+	/*!
+	 * @const OS_WORKGROUP_TELEMETRY_FLAVOR_BASIC
+	 * Telemetry as specified per the fields in os_workgroup_telemetry_basic_s
+	 */
+	OS_WORKGROUP_TELEMETRY_FLAVOR_BASIC = 1,
+);
+
+/*!
+ * @function os_workgroup_attr_set_telemetry_flavor
+ *
+ * @abstract
+ * Sets a telemetry flavor in the workgroup attribute which will determine
+ * the type of telemetry structure that the workgroup can query data for.
+ *
+ * Returns EINVAL if the telemetry flavor is invalid or if the workgroup
+ * attribute was not correctly initialized.
+ */
+SPI_AVAILABLE(macos(14.0), ios(17.0), tvos(17.0), watchos(10.0))
+OS_WORKGROUP_EXPORT OS_WORKGROUP_WARN_RESULT
+int
+os_workgroup_attr_set_telemetry_flavor(os_workgroup_attr_t wga,
+		os_workgroup_telemetry_flavor_t flavor);
+
 /*
  * @typedef os_workgroup_interval_data_flags_t
  *
@@ -131,6 +162,91 @@ OS_WORKGROUP_EXPORT
 int
 os_workgroup_interval_data_set_flags(os_workgroup_interval_data_t data,
 		os_workgroup_interval_data_flags_t flags);
+
+/*!
+ * @function os_workgroup_interval_data_set_flags
+ *
+ * @abstract
+ * Setter for os_workgroup_interval_data_t that specifies a telemetry flavor and
+ * a pointer to a telemetry structure of the corresponding flavor where telemetry
+ * data should be written out. Telemetry data will be written out to the pointer on
+ * a successful call to os_workgroup_interval_start(),
+ * os_workgroup_interval_update(), or os_workgroup_interval_finish() where the
+ * os_workgroup_interval_data_t was passed as a parameter.
+ *
+ * @param data
+ * Pointer to workgroup interval data structure initialized with
+ * OS_WORKGROUP_INTERVAL_DATA_INITIALIZER.
+ *
+ * @param flavor
+ * Specifies the kind of the telemetry to be retrieved.
+ *
+ * @param telemetry
+ * Pointer to a telemetry struct of the specified flavor where telemetry data
+ * should be written.
+ *
+ * @param size
+ * Size of the telemetry struct where telemetry data should be written.
+ *
+ * @result
+ * EINVAL is returned if the interval data passed in hasn't been initialized
+ * or if an unknown or invalid combination of flavor and size values are passed.
+ */
+SPI_AVAILABLE(macos(14.0), ios(17.0), tvos(17.0), watchos(10.0))
+OS_WORKGROUP_EXPORT
+int
+os_workgroup_interval_data_set_telemetry(os_workgroup_interval_data_t data,
+		os_workgroup_telemetry_flavor_t flavor, void *telemetry, size_t size);
+
+/*!
+ * @struct os_workgroup_telemetry_basic_s
+ *
+ * @abstract
+ * A structure containing telemetry data for a workgroup. Fields are cumulative and
+ * reflect aggregate statistics from threads while they are joined to the workgroup.
+ *
+ * @field wg_external_wakeups
+ * Number of times a thread joined to the workgroup was woken up by an "external"
+ * thread not joined to the workgroup.
+ *
+ * @field wg_total_wakeups
+ * Number of times a thread joined to the workgroup blocked and was woken up.
+ *
+ * @field wg_user_time_mach
+ * Time in Mach units that threads joined to the workgroup spent on-core running
+ * in user-space.
+ *
+ * @field wg_system_time_mach
+ * Time in Mach units that threads joined to the workgroup spent on-core running
+ * in the kernel.
+ *
+ * @field wg_cycles
+ * Number of CPU cycles consumed by threads in the workgroup. Always set to 0 if not
+ * supported by the underlying hardware.
+ *
+ * @field wg_instructions
+ * Number of instructions executed by threads in the workgroup. Always set to 0 if not
+ * supported by the underlying hardware.
+ */
+struct os_workgroup_telemetry_basic_s {
+	uint32_t        wg_external_wakeups;
+	uint32_t        wg_total_wakeups;
+	uint64_t        wg_user_time_mach;
+	uint64_t        wg_system_time_mach;
+	uint64_t        wg_cycles;
+	uint64_t        wg_instructions;
+};
+
+/*!
+ * @typedef os_workgroup_telemetry_basic, os_workgroup_telemetry_basic_t
+ *
+ * @abstract
+ * A structure containing basic telemetry data fields which represent aggregate
+ * statistics for the workgroup.
+ */
+typedef struct os_workgroup_telemetry_basic_s os_workgroup_telemetry_basic_s;
+typedef struct os_workgroup_telemetry_basic_s *os_workgroup_telemetry_basic_t;
+#define OS_WORKGROUP_TELEMETRY_INITIALIZER { 0 }
 
 /*
  * @function os_workgroup_interval_create
@@ -207,6 +323,8 @@ os_workgroup_interval_create(const char * _Nullable name, os_clockid_t clock,
  * other threads in the process (see os_workgroup_attr_flags_t).
  * The interval type specified by the attributes will be used as a fallback in
  * case the provided workload identifier is unknown.
+ * Any telemetry flavor specified by the attributes will also be used,
+ * regardless of whether the workload identifier is known.
  * See discussion for the detailed rules used to combine the information
  * specified by the `workload_id` and `wga` arguments.
  *

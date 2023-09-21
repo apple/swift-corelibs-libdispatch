@@ -625,7 +625,7 @@ _dispatch_event_merge_file_handle(dispatch_muxnote_t dmn)
 		_dispatch_retain_unote_owner(du);
 		dispatch_assert(dux_needs_rearm(du._du));
 		_dispatch_unote_state_clear_bit(du, DU_STATE_ARMED);
-		os_atomic_store2o(du._dr, ds_pending_data, ~1, relaxed);
+		os_atomic_store(&du._dr->ds_pending_data, ~1, relaxed);
 		dux_merge_evt(du._du, EV_ADD | EV_ENABLE | EV_DISPATCH, 1, 0);
 	}
 	LIST_FOREACH_SAFE(dul, &dmn->dmn_writers_head, du_link, dul_next) {
@@ -634,7 +634,7 @@ _dispatch_event_merge_file_handle(dispatch_muxnote_t dmn)
 		_dispatch_retain_unote_owner(du);
 		dispatch_assert(dux_needs_rearm(du._du));
 		_dispatch_unote_state_clear_bit(du, DU_STATE_ARMED);
-		os_atomic_store2o(du._dr, ds_pending_data, ~1, relaxed);
+		os_atomic_store(&du._dr->ds_pending_data, ~1, relaxed);
 		dux_merge_evt(du._du, EV_ADD | EV_ENABLE | EV_DISPATCH, 1, 0);
 	}
 	// Retained when posting the completion packet
@@ -661,7 +661,7 @@ _dispatch_event_merge_pipe_handle_read(dispatch_muxnote_t dmn,
 			flags = EV_DELETE | EV_DISPATCH;
 		}
 		_dispatch_unote_state_set(du, du_state);
-		os_atomic_store2o(du._dr, ds_pending_data, ~data, relaxed);
+		os_atomic_store(&du._dr->ds_pending_data, ~data, relaxed);
 		dux_merge_evt(du._du, flags, data, 0);
 	}
 	SetEvent(dmn->dmn_event);
@@ -681,9 +681,9 @@ _dispatch_event_merge_pipe_handle_write(dispatch_muxnote_t dmn,
 		_dispatch_unote_state_clear_bit(du, DU_STATE_ARMED);
 		uintptr_t data = dwBytesAvailable;
 		if (dwBytesAvailable > 0) {
-			os_atomic_store2o(du._dr, ds_pending_data, ~data, relaxed);
+			os_atomic_store(&du._dr->ds_pending_data, ~data, relaxed);
 		} else {
-			os_atomic_store2o(du._dr, ds_pending_data, 0, relaxed);
+			os_atomic_store(&du._dr->ds_pending_data, 0, relaxed);
 		}
 		dux_merge_evt(du._du, EV_ADD | EV_ENABLE | EV_DISPATCH, data, 0);
 	}
@@ -707,7 +707,7 @@ _dispatch_event_merge_socket(dispatch_unote_t du, DWORD dwBytesAvailable)
 		flags = EV_DELETE | EV_DISPATCH;
 	}
 	_dispatch_unote_state_set(du, du_state);
-	os_atomic_store2o(du._dr, ds_pending_data, ~data, relaxed);
+	os_atomic_store(&du._dr->ds_pending_data, ~data, relaxed);
 	dux_merge_evt(du._du, flags, data, 0);
 }
 

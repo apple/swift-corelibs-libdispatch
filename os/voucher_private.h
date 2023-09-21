@@ -71,7 +71,7 @@ __BEGIN_DECLS
  * Voucher objects are os_objects (c.f. <os/object.h>). They are memory-managed
  * with the os_retain()/os_release() functions or -[retain]/-[release] methods.
  */
-OS_OBJECT_DECL_CLASS(voucher);
+OS_OBJECT_DECL_SENDABLE_CLASS(voucher);
 
 /*!
  * @const VOUCHER_NULL

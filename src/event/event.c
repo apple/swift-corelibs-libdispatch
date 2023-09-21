@@ -853,7 +853,7 @@ _dispatch_timer_unote_register(dispatch_timer_source_refs_t dt,
 		dispatch_assert(_dispatch_unote_wlh(dt) == NULL);
 		_dispatch_unote_state_set(dt, DISPATCH_WLH_ANON, 0);
 	}
-	if (os_atomic_load2o(dt, dt_pending_config, relaxed)) {
+	if (os_atomic_load(&dt->dt_pending_config, relaxed)) {
 		_dispatch_timer_unote_configure(dt);
 	}
 }
@@ -863,7 +863,7 @@ _dispatch_timer_unote_configure(dispatch_timer_source_refs_t dt)
 {
 	dispatch_timer_config_t dtc;
 
-	dtc = os_atomic_xchg2o(dt, dt_pending_config, NULL, dependency);
+	dtc = os_atomic_xchg(&dt->dt_pending_config, NULL, dependency);
 	if (dtc->dtc_clock != _dispatch_timer_flags_to_clock(dt->du_timer_flags)) {
 		dt->du_timer_flags &= ~_DISPATCH_TIMER_CLOCK_MASK;
 		dt->du_timer_flags |= _dispatch_timer_flags_from_clock(dtc->dtc_clock);
@@ -872,7 +872,7 @@ _dispatch_timer_unote_configure(dispatch_timer_source_refs_t dt)
 	free(dtc);
 	// Clear any pending data that might have accumulated on
 	// older timer params <rdar://problem/8574886>
-	os_atomic_store2o(dt, ds_pending_data, 0, relaxed);
+	os_atomic_store(&dt->ds_pending_data, 0, relaxed);
 
 	if (_dispatch_unote_armed(dt)) {
 		return _dispatch_timer_unote_resume(dt);
@@ -1055,13 +1055,13 @@ _dispatch_timers_run(dispatch_timer_heap_t dth, uint32_t tidx,
 			_dispatch_timer_unote_disarm(dr, dth); // +2 is consumed by _merge_evt()
 			_dispatch_wlh_release(_dispatch_unote_wlh(dr));
 			_dispatch_unote_state_set(dr, DU_STATE_UNREGISTERED);
-			os_atomic_store2o(dr, ds_pending_data, 2, relaxed);
+			os_atomic_store(&dr->ds_pending_data, 2, relaxed);
 			_dispatch_trace_timer_fire(dr, 1, 1);
 			dux_merge_evt(dr, EV_ONESHOT, 0, 0);
 			continue;
 		}
 
-		if (os_atomic_load2o(dr, dt_pending_config, relaxed)) {
+		if (os_atomic_load(&dr->dt_pending_config, relaxed)) {
 			_dispatch_timer_unote_configure(dr);
 			continue;
 		}
@@ -1085,9 +1085,9 @@ _dispatch_timers_run(dispatch_timer_heap_t dth, uint32_t tidx,
 		// to make sure _dispatch_source_timer_data() will recompute the proper
 		// number of fired events when the source is resumed, and also use the
 		// MISSED marker for this similar purpose.
-		if (unlikely(os_atomic_load2o(dr, ds_pending_data, relaxed))) {
+		if (unlikely(os_atomic_load(&dr->ds_pending_data, relaxed))) {
 			_dispatch_timer_unote_disarm(dr, dth);
-			pending = os_atomic_or_orig2o(dr, ds_pending_data,
+			pending = os_atomic_or_orig(&dr->ds_pending_data,
 					DISPATCH_TIMER_DISARMED_MARKER, relaxed);
 		} else {
 			pending = _dispatch_timer_unote_compute_missed(dr, now, 0) << 1;
@@ -1098,11 +1098,11 @@ _dispatch_timers_run(dispatch_timer_heap_t dth, uint32_t tidx,
 				// armed, we need to take new retain counts
 				_dispatch_retain_unote_owner(dr);
 				_dispatch_timer_unote_arm(dr, dth, tidx);
-				os_atomic_store2o(dr, ds_pending_data, pending, relaxed);
+				os_atomic_store(&dr->ds_pending_data, pending, relaxed);
 			} else {
 				_dispatch_timer_unote_disarm(dr, dth);
 				pending |= DISPATCH_TIMER_DISARMED_MARKER;
-				os_atomic_store2o(dr, ds_pending_data, pending, release);
+				os_atomic_store(&dr->ds_pending_data, pending, release);
 			}
 		}
 		_dispatch_trace_timer_fire(dr, pending >> 1, pending >> 1);

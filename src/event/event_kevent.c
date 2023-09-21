@@ -492,12 +492,12 @@ _dispatch_kevent_merge(dispatch_unote_t du, dispatch_kevent_t ke)
 		// zero bytes happens when EV_EOF is set
 		dispatch_assert(ke->data >= 0l);
 		data = (unsigned long)ke->data;
-		os_atomic_store2o(du._dr, ds_pending_data, ~data, relaxed);
+		os_atomic_store(&du._dr->ds_pending_data, ~data, relaxed);
 		break;
 
 	case DISPATCH_UNOTE_ACTION_SOURCE_ADD_DATA:
 		data = (unsigned long)ke->data;
-		if (data) os_atomic_add2o(du._dr, ds_pending_data, data, relaxed);
+		if (data) os_atomic_add(&du._dr->ds_pending_data, data, relaxed);
 		break;
 
 	case DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS:
@@ -508,16 +508,16 @@ _dispatch_kevent_merge(dispatch_unote_t du, dispatch_kevent_t ke)
 
 			// We combine the data and status into a single 64-bit value.
 			value = DISPATCH_SOURCE_COMBINE_DATA_AND_STATUS(data, status);
-			os_atomic_rmw_loop2o(du._dr, ds_pending_data, odata, ndata, relaxed, {
+			os_atomic_rmw_loop(&du._dr->ds_pending_data, odata, ndata, relaxed, {
 				ndata = DISPATCH_SOURCE_GET_DATA(odata) | value;
 			});
 #if HAVE_MACH
 		} else if (du._du->du_filter == EVFILT_MACHPORT) {
 			data = DISPATCH_MACH_RECV_MESSAGE;
-			os_atomic_store2o(du._dr, ds_pending_data, data, relaxed);
+			os_atomic_store(&du._dr->ds_pending_data, data, relaxed);
 #endif
 		} else {
-			if (data) os_atomic_or2o(du._dr, ds_pending_data, data, relaxed);
+			if (data) os_atomic_or(&du._dr->ds_pending_data, data, relaxed);
 		}
 		break;
 
@@ -1173,7 +1173,7 @@ _dispatch_unote_register_muxed(dispatch_unote_t du)
 		LIST_INSERT_HEAD(&dmn->dmn_unotes_head, dul, du_link);
 #if HAVE_MACH
 		if (du._du->du_filter == DISPATCH_EVFILT_MACH_NOTIFICATION) {
-			os_atomic_store2o(du._dmsr, dmsr_notification_armed,
+			os_atomic_store(&du._dmsr->dmsr_notification_armed,
 					DISPATCH_MACH_NOTIFICATION_ARMED(dmn), relaxed);
 		}
 #endif
@@ -1207,7 +1207,7 @@ _dispatch_unote_unregister_muxed(dispatch_unote_t du)
 
 #if HAVE_MACH
 	if (dmn->dmn_kev.filter == DISPATCH_EVFILT_MACH_NOTIFICATION) {
-		os_atomic_store2o(du._dmsr, dmsr_notification_armed, false, relaxed);
+		os_atomic_store(&du._dmsr->dmsr_notification_armed, false, relaxed);
 	}
 #endif
 	_dispatch_unote_state_set(du, DU_STATE_UNREGISTERED);
@@ -1906,7 +1906,7 @@ again:
 		// see _dispatch_event_loop_drain() comments about the lazy handling
 		// of DISPATCH_EVENT_LOOP_OVERRIDE
 		dispatch_queue_t dq = (dispatch_queue_t)wlh;
-		uint64_t dq_state = os_atomic_load2o(dq, dq_state, relaxed);
+		uint64_t dq_state = os_atomic_load(&dq->dq_state, relaxed);
 
 		dispatch_assert(ddi->ddi_wlh_needs_delete);
 		ddi->ddi_wlh_needs_update = false;
@@ -2175,7 +2175,7 @@ _dispatch_event_loop_wait_for_ownership(dispatch_sync_context_t dsc)
 	uint64_t dq_state;
 	int i, n = 0;
 
-	dq_state = os_atomic_load2o((dispatch_queue_t)wlh, dq_state, relaxed);
+	dq_state = os_atomic_load(&((dispatch_queue_t)wlh)->dq_state, relaxed);
 	if (!_dq_state_drain_locked(dq_state) &&
 			_dq_state_is_enqueued_on_target(dq_state)) {
 		//
@@ -2531,27 +2531,20 @@ const dispatch_source_type_s _dispatch_source_type_nw_channel = {
 #if DISPATCH_USE_MEMORYSTATUS
 
 #if DISPATCH_USE_MEMORYPRESSURE_SOURCE
-#define DISPATCH_MEMORYPRESSURE_SOURCE_MASK ( \
-		DISPATCH_MEMORYPRESSURE_NORMAL | \
-		DISPATCH_MEMORYPRESSURE_WARN | \
-		DISPATCH_MEMORYPRESSURE_CRITICAL | \
-		DISPATCH_MEMORYPRESSURE_PROC_LIMIT_WARN | \
-		DISPATCH_MEMORYPRESSURE_PROC_LIMIT_CRITICAL | \
-		DISPATCH_MEMORYPRESSURE_MSL_STATUS)
 
-#define DISPATCH_MEMORYPRESSURE_MALLOC_MASK ( \
-		DISPATCH_MEMORYPRESSURE_WARN | \
-		DISPATCH_MEMORYPRESSURE_CRITICAL | \
-		DISPATCH_MEMORYPRESSURE_PROC_LIMIT_WARN | \
-		DISPATCH_MEMORYPRESSURE_PROC_LIMIT_CRITICAL | \
-		DISPATCH_MEMORYPRESSURE_MSL_STATUS)
-
+static void _dispatch_memorypressure_create(uintptr_t);
+DISPATCH_STATIC_GLOBAL(dispatch_source_t _dispatch_memorypressure_source);
 
 static void
 _dispatch_memorypressure_handler(void *context)
 {
 	dispatch_source_t ds = context;
 	unsigned long memorypressure = dispatch_source_get_data(ds);
+
+	if ((memorypressure & DISPATCH_MEMORYPRESSURE_MSL_STATUS) &&
+			(dispatch_source_get_mask(_dispatch_memorypressure_source) != malloc_memorypressure_mask_msl_4libdispatch)) {
+		_dispatch_memorypressure_create(malloc_memorypressure_mask_msl_4libdispatch);
+	}
 
 	if (memorypressure & DISPATCH_MEMORYPRESSURE_NORMAL) {
 		_dispatch_memory_warn = false;
@@ -2574,25 +2567,34 @@ _dispatch_memorypressure_handler(void *context)
 		}
 #endif
 	}
-	memorypressure &= DISPATCH_MEMORYPRESSURE_MALLOC_MASK;
-	if (memorypressure) {
-		malloc_memory_event_handler(memorypressure);
-	}
+	malloc_memory_event_handler(memorypressure);
 }
 
-DISPATCH_STATIC_GLOBAL(dispatch_source_t _dispatch_memorypressure_source);
-
+/* create a dispatch source for memory pressure notifications */
 static void
-_dispatch_memorypressure_init(void)
+_dispatch_memorypressure_create(uintptr_t mask)
 {
 	dispatch_source_t ds = dispatch_source_create(
 			DISPATCH_SOURCE_TYPE_MEMORYPRESSURE, 0,
-			DISPATCH_MEMORYPRESSURE_SOURCE_MASK, _dispatch_mgr_q._as_dq);
+			mask, _dispatch_mgr_q._as_dq);
 	dispatch_set_context(ds, ds);
 	dispatch_source_set_event_handler_f(ds, _dispatch_memorypressure_handler);
-	_dispatch_memorypressure_source = ds;
 	dispatch_activate(ds);
+	if (_dispatch_memorypressure_source) {
+		// cancel the previous source
+		dispatch_source_cancel(_dispatch_memorypressure_source);
+		dispatch_release(_dispatch_memorypressure_source);
+	}
+	_dispatch_memorypressure_source = ds;
 }
+
+/* initialize the default memory pressure notification source */
+static void
+_dispatch_memorypressure_init(void)
+{
+	_dispatch_memorypressure_create(malloc_memorypressure_mask_default_4libdispatch);
+}
+
 #endif // DISPATCH_USE_MEMORYPRESSURE_SOURCE
 
 #if TARGET_OS_SIMULATOR // rdar://problem/9219483
@@ -2994,14 +2996,14 @@ _dispatch_mach_notify_merge(mach_port_t name, uint32_t data, bool final)
 		}
 		dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
 		uint32_t fflags = (data & du._du->du_fflags);
-		os_atomic_store2o(du._du, dmsr_notification_armed, 0, relaxed);
+		os_atomic_store(&du._du->dmsr_notification_armed, 0, relaxed);
 		if (final || fflags) {
 			// consumed by dux_merge_evt()
 			_dispatch_retain_unote_owner(du);
 			if (final) _dispatch_unote_unregister_muxed(du);
 			if (fflags && dux_type(du._du)->dst_action ==
 					DISPATCH_UNOTE_ACTION_SOURCE_OR_FFLAGS) {
-				os_atomic_or2o(du._dr, ds_pending_data, fflags, relaxed);
+				os_atomic_or(&du._dr->ds_pending_data, fflags, relaxed);
 			}
 			dux_merge_evt(du._du, flags, fflags, 0);
 		}
@@ -3059,7 +3061,7 @@ _dispatch_mach_notification_set_armed(dispatch_mach_send_refs_t dmsr)
 		os_atomic_store(&DISPATCH_MACH_NOTIFICATION_ARMED(dmn), 1, relaxed);
 		LIST_FOREACH(dul, &dmn->dmn_unotes_head, du_link) {
 			dispatch_unote_t du = _dispatch_unote_linkage_get_unote(dul);
-			os_atomic_store2o(du._du, dmsr_notification_armed, 1, relaxed);
+			os_atomic_store(&du._du->dmsr_notification_armed, 1, relaxed);
 		}
 		_dispatch_debug("machport[0x%08x]: send-possible notification armed",
 				(mach_port_name_t)dmn->dmn_kev.ident);

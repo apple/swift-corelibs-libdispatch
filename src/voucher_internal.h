@@ -40,7 +40,7 @@
  * @group Voucher Creation SPI
  * SPI intended for clients that need to create vouchers.
  */
-OS_OBJECT_DECL_CLASS(voucher_recipe);
+OS_OBJECT_DECL_SENDABLE_CLASS(voucher_recipe);
 
 /*!
  * @function voucher_create
@@ -90,6 +90,7 @@ voucher_get_mach_voucher(voucher_t voucher);
 void _voucher_init(void);
 void _voucher_atfork_child(void);
 void _voucher_atfork_parent(void);
+void _voucher_atfork_prepare(void);
 void _voucher_activity_debug_channel_init(void);
 #if OS_VOUCHER_ACTIVITY_SPI && OS_VOUCHER_ACTIVITY_GENERATE_SWAPS
 void _voucher_activity_swap(firehose_activity_id_t old_id,
@@ -284,7 +285,7 @@ _voucher_retain_inline(struct voucher_s *voucher)
 {
 	// not using _os_object_refcnt* because we don't need barriers:
 	// vouchers are immutable and are in a hash table with a lock
-	int xref_cnt = os_atomic_inc2o(voucher, os_obj_xref_cnt, relaxed);
+	int xref_cnt = os_atomic_inc(&voucher->os_obj_xref_cnt, relaxed);
 	_voucher_trace(RETAIN, (voucher_t)voucher, xref_cnt + 1);
 	_dispatch_voucher_debug("retain  -> %d", voucher, xref_cnt + 1);
 	if (unlikely(xref_cnt <= 0)) {
@@ -299,7 +300,7 @@ _voucher_release_inline(struct voucher_s *voucher)
 {
 	// not using _os_object_refcnt* because we don't need barriers:
 	// vouchers are immutable and are in a hash table with a lock
-	int xref_cnt = os_atomic_dec2o(voucher, os_obj_xref_cnt, relaxed);
+	int xref_cnt = os_atomic_dec(&voucher->os_obj_xref_cnt, relaxed);
 	_voucher_trace(RELEASE, (voucher_t)voucher, xref_cnt + 1);
 	_dispatch_voucher_debug("release -> %d", voucher, xref_cnt + 1);
 	if (likely(xref_cnt >= 0)) {
@@ -343,7 +344,7 @@ _voucher_release_no_dispose(voucher_t voucher)
 #if !DISPATCH_VOUCHER_OBJC_DEBUG
 	// not using _os_object_refcnt* because we don't need barriers:
 	// vouchers are immutable and are in a hash table with a lock
-	int xref_cnt = os_atomic_dec2o(voucher, os_obj_xref_cnt, relaxed);
+	int xref_cnt = os_atomic_dec(&voucher->os_obj_xref_cnt, relaxed);
 	_voucher_trace(RELEASE, voucher, xref_cnt + 1);
 	_dispatch_voucher_debug("release -> %d", voucher, xref_cnt + 1);
 	if (likely(xref_cnt >= 0)) {

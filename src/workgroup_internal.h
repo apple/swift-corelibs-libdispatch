@@ -81,7 +81,7 @@ struct os_workgroup_attr_s {
 	uint32_t sig;
 	uint32_t wg_attr_flags;
 	os_workgroup_type_t wg_type;
-	uint16_t empty;
+	uint16_t wg_telemetry_flavor;
 	uint32_t internal_wl_id_flags;
 	uint32_t reserved[12];
 };
@@ -100,10 +100,17 @@ struct os_workgroup_join_token_s {
 		OS_WORKGROUP_INTERVAL_DATA_COMPLEXITY_HIGH \
 		)
 
-struct os_workgroup_interval_data_s {
+struct __attribute__((__packed__)) os_workgroup_interval_data_s {
 	uint32_t sig;
 	uint32_t wgid_flags;
-	uint32_t reserved[13];
+	void *telemetry_dst;
+	os_workgroup_telemetry_flavor_t telemetry_flavor;
+	uint16_t telemetry_size;
+#if defined(__LP64__)
+	uint32_t reserved[10];
+#else
+	uint32_t reserved[11];
+#endif
 };
 
 /* This is lazily allocated if the arena is used by clients */
@@ -196,6 +203,7 @@ _wg_arena(_os_workgroup_atomic_flags wgaf)
 	uint64_t volatile wg_state; \
 	work_interval_t wi; \
 	mach_port_t port; \
+	uint16_t telemetry_flavor; \
 	OS_WORKGROUP_HEADER_INTERNAL;
 
 struct os_workgroup_s {
@@ -222,5 +230,10 @@ _Static_assert(sizeof(struct os_workgroup_join_token_s) == sizeof(struct os_work
 		"Incorrect size of workgroup join token structure");
 _Static_assert(sizeof(struct os_workgroup_interval_data_s) == sizeof(struct os_workgroup_interval_data_opaque_s),
 		"Incorrect size of workgroup interval data structure");
+
+#define OS_WORKGROUP_TELEMETRY_BASIC_SIZE_V1 40
+
+_Static_assert(sizeof(struct os_workgroup_telemetry_basic_s) == OS_WORKGROUP_TELEMETRY_BASIC_SIZE_V1,
+			   "Unexpected size of os workgroup telemetry basic structure");
 
 #endif /* __OS_WORKGROUP_INTERNAL__ */

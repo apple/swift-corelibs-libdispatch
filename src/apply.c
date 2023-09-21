@@ -123,11 +123,11 @@ _dispatch_apply_invoke2(dispatch_apply_t da, long invoke_flags)
 	 * we can allocate an index simply by incrementing
 	 */
 	uint32_t worker_index = 0;
-	worker_index = os_atomic_inc_orig2o(da, da_worker_index, relaxed);
+	worker_index = os_atomic_inc_orig(&da->da_worker_index, relaxed);
 
 	_dispatch_apply_set_attr_behavior(da->da_attr, worker_index);
 
-	idx = os_atomic_inc_orig2o(da, da_index, acquire);
+	idx = os_atomic_inc_orig(&da->da_index, acquire);
 	if (unlikely(idx >= iter)) goto out;
 	/*
 	 * da_dc is only safe to access once the 'index lock' has been acquired
@@ -178,7 +178,7 @@ _dispatch_apply_invoke2(dispatch_apply_t da, long invoke_flags)
 			}
 			_dispatch_perfmon_workitem_inc();
 			done++;
-			idx = os_atomic_inc_orig2o(da, da_index, relaxed);
+			idx = os_atomic_inc_orig(&da->da_index, relaxed);
 		});
 	} while (likely(idx < iter));
 
@@ -192,7 +192,7 @@ _dispatch_apply_invoke2(dispatch_apply_t da, long invoke_flags)
 	/* The thread that finished the last workitem wakes up the possibly waiting
 	 * thread that called dispatch_apply. They could be one and the same.
 	 */
-	if (os_atomic_sub2o(da, da_todo, done, release) == 0) {
+	if (os_atomic_sub(&da->da_todo, done, release) == 0) {
 		_dispatch_thread_event_signal(&da->da_event);
 	}
 out:
@@ -202,7 +202,7 @@ out:
 		_dispatch_thread_event_wait(&da->da_event);
 		_dispatch_thread_event_destroy(&da->da_event);
 	}
-	if (os_atomic_dec2o(da, da_thr_cnt, release) == 0) {
+	if (os_atomic_dec(&da->da_thr_cnt, release) == 0) {
 		_dispatch_apply_destroy(da);
 	}
 }
@@ -321,7 +321,7 @@ _dispatch_queue_try_reserve_apply_width(dispatch_queue_t dq, int32_t da_width)
 		return 0;
 	}
 
-	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, relaxed, {
+	os_atomic_rmw_loop(&dq->dq_state, old_state, new_state, relaxed, {
 		width = (int32_t)_dq_state_available_width(old_state);
 		if (unlikely(!width)) {
 			os_atomic_rmw_loop_give_up(return 0);
@@ -343,7 +343,7 @@ _dispatch_queue_relinquish_width(dispatch_queue_t top_dq,
 	dispatch_queue_t dq = top_dq;
 
 	while (dq != stop_dq) {
-		os_atomic_sub2o(dq, dq_state, delta, relaxed);
+		os_atomic_sub(&dq->dq_state, delta, relaxed);
 		dq = dq->do_targetq;
 	}
 }

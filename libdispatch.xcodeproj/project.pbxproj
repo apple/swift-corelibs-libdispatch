@@ -29,6 +29,17 @@
 			name = libdispatch_tests;
 			productName = libdispatch_tests;
 		};
+		4BB242F02935DC4A0081B587 /* libdispatch_exclavekit */ = {
+			isa = PBXAggregateTarget;
+			buildConfigurationList = 4BB242F72935DC4A0081B587 /* Build configuration list for PBXAggregateTarget "libdispatch_exclavekit" */;
+			buildPhases = (
+			);
+			dependencies = (
+				4B3A88F129475908009DA175 /* PBXTargetDependency */,
+			);
+			name = libdispatch_exclavekit;
+			productName = libdispatch_exclavekit;
+		};
 		6E2ECAFD1C49C2FF00A30A32 /* libdispatch_kernel */ = {
 			isa = PBXAggregateTarget;
 			buildConfigurationList = 6E2ECAFE1C49C30000A30A32 /* Build configuration list for PBXAggregateTarget "libdispatch_kernel" */;
@@ -98,6 +109,9 @@
 /* End PBXAggregateTarget section */
 
 /* Begin PBXBuildFile section */
+		0117620D299D50F8007B4D84 /* dispatch_swift_shims.h in Headers */ = {isa = PBXBuildFile; fileRef = 01176208299D5059007B4D84 /* dispatch_swift_shims.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		018F6A4A29B40480005E6627 /* dispatch_swift_shims.h in Headers */ = {isa = PBXBuildFile; fileRef = 01176208299D5059007B4D84 /* dispatch_swift_shims.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		01A5F2252950589D00AFDFF4 /* Dispatch.apinotes in Headers */ = {isa = PBXBuildFile; fileRef = 01A5F2202950587900AFDFF4 /* Dispatch.apinotes */; settings = {ATTRIBUTES = (Public, ); }; };
 		2BBF5A60154B64D8002B20F9 /* allocator_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 2BBF5A5F154B64D8002B20F9 /* allocator_internal.h */; };
 		2BBF5A61154B64D8002B20F9 /* allocator_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 2BBF5A5F154B64D8002B20F9 /* allocator_internal.h */; };
 		2BBF5A63154B64F5002B20F9 /* allocator.c in Sources */ = {isa = PBXBuildFile; fileRef = 2BBF5A62154B64F5002B20F9 /* allocator.c */; };
@@ -105,6 +119,13 @@
 		2BBF5A66154B64F5002B20F9 /* allocator.c in Sources */ = {isa = PBXBuildFile; fileRef = 2BBF5A62154B64F5002B20F9 /* allocator.c */; };
 		2BE17C6418EA305E002CA4E8 /* layout_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 2BE17C6318EA305E002CA4E8 /* layout_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		2BE17C6518EA305E002CA4E8 /* layout_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 2BE17C6318EA305E002CA4E8 /* layout_private.h */; settings = {ATTRIBUTES = (Private, ); }; };
+		4B3CB0FF2941DBA0005EE04B /* once.c in Sources */ = {isa = PBXBuildFile; fileRef = 4B3CB0FB2941DB9F005EE04B /* once.c */; };
+		4B3CB1122941DC19005EE04B /* dispatch.h in Headers */ = {isa = PBXBuildFile; fileRef = 4B3CB1102941DC12005EE04B /* dispatch.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		4B3CB1142941DC21005EE04B /* once.h in Headers */ = {isa = PBXBuildFile; fileRef = 4B3CB1112941DC12005EE04B /* once.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		4B3CB1152941DC29005EE04B /* internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 4B3CB10A2941DBC6005EE04B /* internal.h */; };
+		4B3CB1162941DDC0005EE04B /* base.h in Headers */ = {isa = PBXBuildFile; fileRef = 72CC942F0ECCD8750031B751 /* base.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		4B3CB1182941E020005EE04B /* object.h in Headers */ = {isa = PBXBuildFile; fileRef = 4B3CB1172941E01E005EE04B /* object.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		4BD3E9C62954424F00D73EA2 /* module.modulemap in Headers */ = {isa = PBXBuildFile; fileRef = 4BD3E9C12954422000D73EA2 /* module.modulemap */; settings = {ATTRIBUTES = (Public, ); }; };
 		5A0095A210F274B0000E2A31 /* io_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 5A0095A110F274B0000E2A31 /* io_internal.h */; };
 		5A27262610F26F1900751FBC /* io.c in Sources */ = {isa = PBXBuildFile; fileRef = 5A27262510F26F1900751FBC /* io.c */; };
 		5A5D13AC0F6B280500197CC3 /* semaphore_internal.h in Headers */ = {isa = PBXBuildFile; fileRef = 5A5D13AB0F6B280500197CC3 /* semaphore_internal.h */; };
@@ -624,6 +645,13 @@
 			remoteGlobalIDString = E454824F16C1F0FE0042EC2D;
 			remoteInfo = apply_bench;
 		};
+		4B3A88F029475908009DA175 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 08FB7793FE84155DC02AAC07 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4B3CB0E42941D59E005EE04B;
+			remoteInfo = "libdispatch exclavekit";
+		};
 		6E2ECB011C49C31200A30A32 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 08FB7793FE84155DC02AAC07 /* Project object */;
@@ -746,10 +774,20 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		01176208299D5059007B4D84 /* dispatch_swift_shims.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = dispatch_swift_shims.h; sourceTree = "<group>"; };
+		01A5F2202950587900AFDFF4 /* Dispatch.apinotes */ = {isa = PBXFileReference; lastKnownFileType = text.apinotes; path = Dispatch.apinotes; sourceTree = "<group>"; };
 		2BBF5A5F154B64D8002B20F9 /* allocator_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = allocator_internal.h; sourceTree = "<group>"; };
 		2BBF5A62154B64F5002B20F9 /* allocator.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = allocator.c; sourceTree = "<group>"; };
 		2BE17C6318EA305E002CA4E8 /* layout_private.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = layout_private.h; sourceTree = "<group>"; };
 		4552536E19B1384900B88766 /* libdispatchtest.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = libdispatchtest.xcodeproj; path = tests/libdispatchtest.xcodeproj; sourceTree = "<group>"; };
+		4B3CB0D42941C987005EE04B /* libdispatch-exclavekit.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "libdispatch-exclavekit.xcconfig"; sourceTree = "<group>"; };
+		4B3CB0E52941D59E005EE04B /* libdispatch.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = libdispatch.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
+		4B3CB0FB2941DB9F005EE04B /* once.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = once.c; sourceTree = "<group>"; };
+		4B3CB10A2941DBC6005EE04B /* internal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = internal.h; sourceTree = "<group>"; };
+		4B3CB1102941DC12005EE04B /* dispatch.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = dispatch.h; path = dispatch/dispatch.h; sourceTree = "<group>"; };
+		4B3CB1112941DC12005EE04B /* once.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = once.h; path = dispatch/once.h; sourceTree = "<group>"; };
+		4B3CB1172941E01E005EE04B /* object.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = object.h; path = dispatch/object.h; sourceTree = "<group>"; };
+		4BD3E9C12954422000D73EA2 /* module.modulemap */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.module-map"; name = module.modulemap; path = dispatch/module.modulemap; sourceTree = "<group>"; };
 		5A0095A110F274B0000E2A31 /* io_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = io_internal.h; sourceTree = "<group>"; };
 		5A27262510F26F1900751FBC /* io.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; lineEnding = 0; path = io.c; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.c; };
 		5A5D13AB0F6B280500197CC3 /* semaphore_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = semaphore_internal.h; sourceTree = "<group>"; };
@@ -994,6 +1032,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		4B3CB0E32941D59E005EE04B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		6E040C601C499B1B00411A2E /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -1066,6 +1111,7 @@
 				E43570B8126E93380097AB9F /* provider.d */,
 				6E5ACCAF1D3BF2A0007DA2B4 /* event */,
 				6EF0B2641BA8C3A0007FA4F6 /* firehose */,
+				4B3CB0FA2941DB9F005EE04B /* exclavekit */,
 			);
 			name = "Dispatch Source";
 			path = src;
@@ -1083,6 +1129,7 @@
 				6E040C631C499B1B00411A2E /* libfirehose_kernel.a */,
 				6EB4E4091BA8BCAD00D7B9D2 /* libfirehose_server.a */,
 				E43B889A2241F19000215272 /* libdispatch.dylib */,
+				4B3CB0E52941D59E005EE04B /* libdispatch.dylib */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -1096,6 +1143,34 @@
 				4552540919B1384900B88766 /* apply_bench */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		4B3CB0FA2941DB9F005EE04B /* exclavekit */ = {
+			isa = PBXGroup;
+			children = (
+				4B3CB0FB2941DB9F005EE04B /* once.c */,
+			);
+			path = exclavekit;
+			sourceTree = "<group>";
+		};
+		4B3CB1032941DBBE005EE04B /* exclavekit */ = {
+			isa = PBXGroup;
+			children = (
+				4B3CB1102941DC12005EE04B /* dispatch.h */,
+				4B3CB1172941E01E005EE04B /* object.h */,
+				4B3CB1112941DC12005EE04B /* once.h */,
+				4BD3E9C12954422000D73EA2 /* module.modulemap */,
+			);
+			name = exclavekit;
+			path = src/exclavekit;
+			sourceTree = SOURCE_ROOT;
+		};
+		4B3CB1092941DBC6005EE04B /* exclavekit */ = {
+			isa = PBXGroup;
+			children = (
+				4B3CB10A2941DBC6005EE04B /* internal.h */,
+			);
+			path = exclavekit;
 			sourceTree = "<group>";
 		};
 		6E5ACCAE1D3BF27F007DA2B4 /* event */ = {
@@ -1293,6 +1368,7 @@
 				E40041A9125D70590022B135 /* libdispatch-resolved.xcconfig */,
 				C01866BE1C59735B0040FC07 /* libdispatch-mp-static.xcconfig */,
 				E4B515D9164B2E9B00E003AF /* libdispatch-introspection.xcconfig */,
+				4B3CB0D42941C987005EE04B /* libdispatch-exclavekit.xcconfig */,
 				6EB4E4421BA8BD7800D7B9D2 /* libfirehose.xcconfig */,
 				6E040C721C499C3600411A2E /* libfirehose_kernel.xcconfig */,
 				E422DA3614D2A7E7003C6EE4 /* libdispatch.aliases */,
@@ -1401,6 +1477,9 @@
 				96032E4C0F5CC8D100241C5F /* time.h */,
 				B6095819221DFA2A00F39D1F /* workloop.h */,
 				E421E5F81716ADA10090DC9B /* introspection.h */,
+				01A5F2202950587900AFDFF4 /* Dispatch.apinotes */,
+				4B3CB1032941DBBE005EE04B /* exclavekit */,
+				01176208299D5059007B4D84 /* dispatch_swift_shims.h */,
 			);
 			name = "Dispatch Public Headers";
 			path = dispatch;
@@ -1449,6 +1528,7 @@
 				6E5ACCAE1D3BF27F007DA2B4 /* event */,
 				6EF0B2661BA8C43D007FA4F6 /* firehose */,
 				FC1832A0109923B3003403D5 /* shims */,
+				4B3CB1092941DBC6005EE04B /* exclavekit */,
 			);
 			name = "Dispatch Project Headers";
 			path = src;
@@ -1457,6 +1537,19 @@
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
+		4B3CB0E12941D59E005EE04B /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4B3CB1122941DC19005EE04B /* dispatch.h in Headers */,
+				4B3CB1152941DC29005EE04B /* internal.h in Headers */,
+				4B3CB1182941E020005EE04B /* object.h in Headers */,
+				4B3CB1142941DC21005EE04B /* once.h in Headers */,
+				4BD3E9C62954424F00D73EA2 /* module.modulemap in Headers */,
+				4B3CB1162941DDC0005EE04B /* base.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		6E040C611C499B1B00411A2E /* Headers */ = {
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
@@ -1482,8 +1575,10 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0117620D299D50F8007B4D84 /* dispatch_swift_shims.h in Headers */,
 				9BA7221523E293CB0058472E /* workgroup_parallel.h in Headers */,
 				9B8ED5792350C79100507521 /* workgroup_object.h in Headers */,
+				01A5F2252950589D00AFDFF4 /* Dispatch.apinotes in Headers */,
 				FC7BEDA50E8361E600161930 /* dispatch.h in Headers */,
 				72CC94300ECCD8750031B751 /* base.h in Headers */,
 				961B99500F3E85C30006BC96 /* object.h in Headers */,
@@ -1565,6 +1660,7 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				018F6A4A29B40480005E6627 /* dispatch_swift_shims.h in Headers */,
 				9BA7221723E294140058472E /* workgroup_parallel.h in Headers */,
 				E43B88322241F19000215272 /* dispatch.h in Headers */,
 				E43B88332241F19000215272 /* base.h in Headers */,
@@ -1793,6 +1889,23 @@
 /* End PBXLegacyTarget section */
 
 /* Begin PBXNativeTarget section */
+		4B3CB0E42941D59E005EE04B /* libdispatch exclavekit */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4B3CB0E62941D59E005EE04B /* Build configuration list for PBXNativeTarget "libdispatch exclavekit" */;
+			buildPhases = (
+				4B3CB0E12941D59E005EE04B /* Headers */,
+				4B3CB0E22941D59E005EE04B /* Sources */,
+				4B3CB0E32941D59E005EE04B /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "libdispatch exclavekit";
+			productName = "libdispatch exclavekit";
+			productReference = 4B3CB0E52941D59E005EE04B /* libdispatch.dylib */;
+			productType = "com.apple.product-type.library.dynamic";
+		};
 		6E040C621C499B1B00411A2E /* libfirehose_kernel */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 6E040C6A1C499B1B00411A2E /* Build configuration list for PBXNativeTarget "libfirehose_kernel" */;
@@ -1973,6 +2086,12 @@
 					4552540A19B1389700B88766 = {
 						ProvisioningStyle = Manual;
 					};
+					4B3CB0E42941D59E005EE04B = {
+						CreatedOnToolsVersion = 14.3;
+					};
+					4BB242F02935DC4A0081B587 = {
+						CreatedOnToolsVersion = 14.3;
+					};
 					6E040C621C499B1B00411A2E = {
 						CreatedOnToolsVersion = 7.3;
 						ProvisioningStyle = Manual;
@@ -2047,10 +2166,12 @@
 				E4B51595164B2DA300E003AF /* libdispatch introspection */,
 				E43B88262241F19000215272 /* libdispatch_driverkit */,
 				C01866A41C5973210040FC07 /* libdispatch mp static */,
+				4B3CB0E42941D59E005EE04B /* libdispatch exclavekit */,
 				6E43553E215B5D9D00C13177 /* libdispatch_introspection */,
 				6EA833C22162D6380045EFDC /* libdispatch_introspection_Sim */,
 				3F3C9326128E637B0042B1F7 /* libdispatch_Sim */,
 				6E2ECAFD1C49C2FF00A30A32 /* libdispatch_kernel */,
+				4BB242F02935DC4A0081B587 /* libdispatch_exclavekit */,
 				C927F35A10FD7F0600C5AB8B /* libdispatch_tools */,
 				9BEBA56F20127D3300E6FD0D /* libdispatch_tools_Sim */,
 				4552540A19B1389700B88766 /* libdispatch_tests */,
@@ -2426,6 +2547,14 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		4B3CB0E22941D59E005EE04B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4B3CB0FF2941DBA0005EE04B /* once.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		6E040C5F1C499B1B00411A2E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -2712,6 +2841,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		4B3A88F129475908009DA175 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4B3CB0E42941D59E005EE04B /* libdispatch exclavekit */;
+			targetProxy = 4B3A88F029475908009DA175 /* PBXContainerItemProxy */;
+		};
 		6E2ECB021C49C31200A30A32 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 6E040C621C499B1B00411A2E /* libfirehose_kernel */;
@@ -2824,6 +2958,34 @@
 			name = Release;
 		};
 		4552540D19B1389700B88766 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		4B3CB0E72941D59E005EE04B /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 4B3CB0D42941C987005EE04B /* libdispatch-exclavekit.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		4B3CB0E82941D59E005EE04B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 4B3CB0D42941C987005EE04B /* libdispatch-exclavekit.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		4BB242F12935DC4A0081B587 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		4BB242F22935DC4A0081B587 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2977,6 +3139,7 @@
 				DRIVERKITROOT = /System/DriverKit;
 				SDKROOT = driverkit.internal;
 				SUPPORTED_PLATFORMS = macosx;
+				SYSTEM_HEADER_SEARCH_PATHS = "$(SDKROOT)/$(SDK_INSTALL_HEADERS_ROOT)/System/Library/Frameworks/System.framework/PrivateHeaders $(SDKROOT)/$(SDK_INSTALL_HEADERS_ROOT)/usr/local/include $(SDKROOT)/$(SDK_INSTALL_ROOT)/usr/include/c++/v1 $(SDKROOT)/$(SDK_INSTALL_HEADERS_ROOT)/usr/include";
 			};
 			name = Release;
 		};
@@ -2989,6 +3152,7 @@
 				DRIVERKITROOT = /System/DriverKit;
 				SDKROOT = driverkit.internal;
 				SUPPORTED_PLATFORMS = macosx;
+				SYSTEM_HEADER_SEARCH_PATHS = "$(SDKROOT)/$(SDK_INSTALL_HEADERS_ROOT)/System/Library/Frameworks/System.framework/PrivateHeaders $(SDKROOT)/$(SDK_INSTALL_HEADERS_ROOT)/usr/local/include $(SDKROOT)/$(SDK_INSTALL_ROOT)/usr/include/c++/v1 $(SDKROOT)/$(SDK_INSTALL_HEADERS_ROOT)/usr/include";
 			};
 			name = Debug;
 		};
@@ -3123,6 +3287,24 @@
 			buildConfigurations = (
 				4552540C19B1389700B88766 /* Release */,
 				4552540D19B1389700B88766 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4B3CB0E62941D59E005EE04B /* Build configuration list for PBXNativeTarget "libdispatch exclavekit" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4B3CB0E72941D59E005EE04B /* Release */,
+				4B3CB0E82941D59E005EE04B /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4BB242F72935DC4A0081B587 /* Build configuration list for PBXAggregateTarget "libdispatch_exclavekit" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4BB242F12935DC4A0081B587 /* Release */,
+				4BB242F22935DC4A0081B587 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

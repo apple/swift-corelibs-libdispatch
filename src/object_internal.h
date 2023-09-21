@@ -32,6 +32,8 @@
 #define OS_OBJECT_DECL_SUBCLASS(name, super)  DISPATCH_DECL(name)
 #endif
 
+#define DISPATCH_CLASS(name) OS_dispatch_##name
+
 #if USE_OBJC
 #define OS_OBJECT_EXTRA_VTABLE_SYMBOL(name) _OS_##name##_vtable
 #define DISPATCH_CLASS_SYMBOL(name) OS_dispatch_##name##_class
@@ -43,10 +45,9 @@
 		"__" OS_STRINGIFY(name) "_vtable"
 #define DISPATCH_CLASS_SYMBOL(name) _dispatch_##name##_vtable
 #define DISPATCH_CLASS_RAW_SYMBOL_NAME(name) \
-		"__dispatch_" OS_STRINGIFY(name) "_vtable"
+		"__" OS_STRINGIFY(DISPATCH_CLASS(name)) "_vtable"
 #endif
 
-#define DISPATCH_CLASS(name) OS_dispatch_##name
 #if USE_OBJC
 #define DISPATCH_OBJC_CLASS_DECL(name) \
 		extern void *DISPATCH_CLASS_SYMBOL(name) \
@@ -609,33 +610,32 @@ size_t _dispatch_objc_debug(dispatch_object_t dou, char* buf, size_t bufsiz);
 /*
  * Low level _os_atomic_refcnt_* actions
  *
- * _os_atomic_refcnt_inc2o(o, f):
+ * _os_atomic_refcnt_inc(o, f):
  *   performs a refcount increment and returns the new refcount value
  *
- * _os_atomic_refcnt_dec2o(o, f):
+ * _os_atomic_refcnt_dec(o, f):
  *   performs a refcount decrement and returns the new refcount value
  *
- * _os_atomic_refcnt_dispose_barrier2o(o, f):
+ * _os_atomic_refcnt_dispose_barrier(o, f):
  *   a barrier to perform prior to tearing down an object when the refcount
  *   reached -1.
  */
-#define _os_atomic_refcnt_perform2o(o, f, op, n, m)   ({ \
-		__typeof__(o) _o = (o); \
-		int _ref_cnt = os_atomic_load(&_o->f, relaxed); \
+#define _os_atomic_refcnt_perform(o, op, n, m)   ({ \
+		int _ref_cnt = os_atomic_load(o, relaxed); \
 		if (likely(_ref_cnt != _OS_OBJECT_GLOBAL_REFCNT)) { \
-			_ref_cnt = os_atomic_##op##2o(_o, f, n, m); \
+			_ref_cnt = os_atomic_##op(o, n, m); \
 		} \
 		_ref_cnt; \
 	})
 
-#define _os_atomic_refcnt_add_orig2o(o, m, n) \
-		_os_atomic_refcnt_perform2o(o, m, add_orig, n, relaxed)
+#define _os_atomic_refcnt_add_orig(o, n) \
+		_os_atomic_refcnt_perform(o, add_orig, n, relaxed)
 
-#define _os_atomic_refcnt_sub2o(o, m, n) \
-		_os_atomic_refcnt_perform2o(o, m, sub, n, release)
+#define _os_atomic_refcnt_sub(o, n) \
+		_os_atomic_refcnt_perform(o, sub, n, release)
 
-#define _os_atomic_refcnt_dispose_barrier2o(o, m) \
-		(void)os_atomic_load2o(o, m, acquire)
+#define _os_atomic_refcnt_dispose_barrier(o) \
+		(void)os_atomic_load(o, acquire)
 
 
 /*
@@ -655,22 +655,22 @@ size_t _dispatch_objc_debug(dispatch_object_t dou, char* buf, size_t bufsiz);
  *
  */
 #define _os_object_xrefcnt_inc_orig(o) \
-		_os_atomic_refcnt_add_orig2o(o, os_obj_xref_cnt, 1)
+		_os_atomic_refcnt_add_orig(&o->os_obj_xref_cnt, 1)
 
 #define _os_object_xrefcnt_dec(o) \
-		_os_atomic_refcnt_sub2o(o, os_obj_xref_cnt, 1)
+		_os_atomic_refcnt_sub(&o->os_obj_xref_cnt, 1)
 
 #define _os_object_xrefcnt_dispose_barrier(o) \
-		_os_atomic_refcnt_dispose_barrier2o(o, os_obj_xref_cnt)
+		_os_atomic_refcnt_dispose_barrier(&o->os_obj_xref_cnt)
 
 #define _os_object_refcnt_add_orig(o, n) \
-		_os_atomic_refcnt_add_orig2o(o, os_obj_ref_cnt, n)
+		_os_atomic_refcnt_add_orig(&o->os_obj_ref_cnt, n)
 
 #define _os_object_refcnt_sub(o, n) \
-		_os_atomic_refcnt_sub2o(o, os_obj_ref_cnt, n)
+		_os_atomic_refcnt_sub(&o->os_obj_ref_cnt, n)
 
 #define _os_object_refcnt_dispose_barrier(o) \
-		_os_atomic_refcnt_dispose_barrier2o(o, os_obj_ref_cnt)
+		_os_atomic_refcnt_dispose_barrier(&o->os_obj_ref_cnt)
 
 void _os_object_atfork_child(void);
 void _os_object_atfork_parent(void);

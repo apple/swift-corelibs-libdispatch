@@ -7,7 +7,7 @@
 
 /* Define to 1 if you have the declaration of `CLOCK_REALTIME', and to 0 if
    you don't. */
-#define CLOCK_REALTIME 0
+#define HAVE_DECL_CLOCK_REALTIME 0
 
 /* Define to 1 if you have the declaration of `CLOCK_UPTIME', and to 0 if you
    don't. */

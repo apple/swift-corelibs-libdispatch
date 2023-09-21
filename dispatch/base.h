@@ -258,6 +258,13 @@
 #define DISPATCH_SIZED_BY(X)
 #endif
 
+#define DISPATCH_OSX_SUPPORTS_AT_LEAST(macos, ios, tvos, watchos) \
+	 (	(defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && __MAC_OS_X_VERSION_MIN_REQUIRED >= macos) \
+	||	(defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && __IPHONE_OS_VERSION_MIN_REQUIRED >= ios) \
+	||	(defined(__TV_OS_VERSION_MIN_REQUIRED) && __TV_OS_VERSION_MIN_REQUIRED >= tvos) \
+	||	(defined(__WATCH_OS_VERSION_MIN_REQUIRED) && __WATCH_OS_VERSION_MIN_REQUIRED >= watchos) \
+	)
+
 #if !__has_feature(nullability)
 #ifndef _Nullable
 #define _Nullable
@@ -358,6 +365,7 @@
 
 DISPATCH_ASSUME_ABI_SINGLE_BEGIN
 
+DISPATCH_SWIFT_UNAVAILABLE("Unavailable in Swift")
 typedef void (*dispatch_function_t)(void *_Nullable);
 
 DISPATCH_ASSUME_ABI_SINGLE_END

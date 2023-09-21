@@ -35,7 +35,7 @@ DISPATCH_ASSUME_ABI_SINGLE_BEGIN
  * @abstract
  * A counting semaphore.
  */
-DISPATCH_DECL(dispatch_semaphore);
+DISPATCH_DECL_SWIFT(dispatch_semaphore, DispatchSemaphore);
 
 __BEGIN_DECLS
 
@@ -61,6 +61,7 @@ __BEGIN_DECLS
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
+DISPATCH_SWIFT_NAME(DispatchSemaphore.init(value:))
 dispatch_semaphore_t
 dispatch_semaphore_create(intptr_t value);
 
@@ -88,6 +89,7 @@ dispatch_semaphore_create(intptr_t value);
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 intptr_t
 dispatch_semaphore_wait(dispatch_semaphore_t dsema, dispatch_time_t timeout);
 
@@ -110,6 +112,7 @@ dispatch_semaphore_wait(dispatch_semaphore_t dsema, dispatch_time_t timeout);
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 intptr_t
 dispatch_semaphore_signal(dispatch_semaphore_t dsema);
 

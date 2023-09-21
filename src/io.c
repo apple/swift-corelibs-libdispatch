@@ -734,7 +734,7 @@ static void
 _dispatch_io_stop(dispatch_io_t channel)
 {
 	_dispatch_io_channel_debug("stop", channel);
-	(void)os_atomic_or2o(channel, atomic_flags, DIO_STOPPED, relaxed);
+	(void)os_atomic_or(&channel->atomic_flags, DIO_STOPPED, relaxed);
 	_dispatch_retain(channel);
 	dispatch_async(channel->queue, ^{
 		dispatch_async(channel->barrier_queue, ^{
@@ -793,7 +793,7 @@ dispatch_io_close(dispatch_io_t channel, unsigned long flags)
 			_dispatch_object_debug(channel, "%s", __func__);
 			_dispatch_io_channel_debug("close", channel);
 			if (!(channel->atomic_flags & (DIO_CLOSED|DIO_STOPPED))) {
-				(void)os_atomic_or2o(channel, atomic_flags, DIO_CLOSED,
+				(void)os_atomic_or(&channel->atomic_flags, DIO_CLOSED,
 						relaxed);
 				dispatch_fd_entry_t fd_entry = channel->fd_entry;
 				if (fd_entry) {
@@ -1657,10 +1657,10 @@ open:
 		if (err == EINTR) {
 			goto open;
 		}
-		(void)os_atomic_cmpxchg2o(fd_entry, err, 0, err, relaxed);
+		(void)os_atomic_cmpxchg(&fd_entry->err, 0, err, relaxed);
 		return err;
 	}
-	if (!os_atomic_cmpxchg2o(fd_entry, fd, -1, fd, relaxed)) {
+	if (!os_atomic_cmpxchg(&fd_entry->fd, -1, fd, relaxed)) {
 		// Lost the race with another open
 		_dispatch_fd_entry_guarded_close(fd_entry, fd);
 	} else {
@@ -2595,7 +2595,7 @@ error:
 	case ECANCELED:
 		return DISPATCH_OP_ERR;
 	case EBADF:
-		(void)os_atomic_cmpxchg2o(op->fd_entry, err, 0, err, relaxed);
+		(void)os_atomic_cmpxchg(&op->fd_entry->err, 0, err, relaxed);
 		return DISPATCH_OP_FD_ERR;
 	default:
 		return DISPATCH_OP_COMPLETE;

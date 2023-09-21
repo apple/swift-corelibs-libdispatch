@@ -179,7 +179,7 @@ _dispatch_object_is_barrier(dispatch_object_t dou)
 	if (dx_cluster(dou._do) != _DISPATCH_QUEUE_CLUSTER) {
 		return false;
 	}
-	dq_flags = os_atomic_load2o(dou._dq, dq_atomic_flags, relaxed);
+	dq_flags = os_atomic_load(&dou._dq->dq_atomic_flags, relaxed);
 	return dq_flags & DQF_BARRIER_BIT;
 }
 
@@ -302,7 +302,7 @@ _dispatch_retain_n_unsafe(dispatch_object_t dou, int n)
 	// is as terse as possible (this window is a possible dequeuer starvation).
 	//
 	// Other code should use the safe variants at all times.
-	os_atomic_add2o(dou._os_obj, os_obj_ref_cnt, n, relaxed);
+	os_atomic_add(&dou._os_obj->os_obj_ref_cnt, n, relaxed);
 }
 
 DISPATCH_ALWAYS_INLINE_NDEBUG
@@ -379,7 +379,7 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_queue_retain_storage(dispatch_queue_class_t dqu)
 {
-	int ref_cnt = os_atomic_inc2o(dqu._dq, dq_sref_cnt, relaxed);
+	int ref_cnt = os_atomic_inc(&dqu._dq->dq_sref_cnt, relaxed);
 	if (unlikely(ref_cnt <= 0)) {
 		_OS_OBJECT_CLIENT_CRASH("Resurrection of an object");
 	}
@@ -393,7 +393,7 @@ _dispatch_queue_release_storage(dispatch_queue_class_t dqu)
 	// need for visibility wrt to the allocation, the internal refcount already
 	// gives us that, and the object becomes immutable after the last internal
 	// refcount release.
-	int ref_cnt = os_atomic_dec2o(dqu._dq, dq_sref_cnt, relaxed);
+	int ref_cnt = os_atomic_dec(&dqu._dq->dq_sref_cnt, relaxed);
 	if (unlikely(ref_cnt >= 0)) {
 		return;
 	}
@@ -410,7 +410,7 @@ _dispatch_object_set_target_queue_inline(dispatch_object_t dou,
 		dispatch_queue_t tq)
 {
 	_dispatch_retain(tq);
-	tq = os_atomic_xchg2o(dou._do, do_targetq, tq, release);
+	tq = os_atomic_xchg(&dou._do->do_targetq, tq, release);
 	if (tq) _dispatch_release(tq);
 }
 
@@ -638,7 +638,7 @@ DISPATCH_ALWAYS_INLINE
 static inline dispatch_queue_flags_t
 _dispatch_queue_atomic_flags(dispatch_queue_class_t dqu)
 {
-	return os_atomic_load2o(dqu._dq, dq_atomic_flags, relaxed);
+	return os_atomic_load(&dqu._dq->dq_atomic_flags, relaxed);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -646,7 +646,7 @@ static inline dispatch_queue_flags_t
 _dispatch_queue_atomic_flags_set(dispatch_queue_class_t dqu,
 		dispatch_queue_flags_t bits)
 {
-	return os_atomic_or2o(dqu._dq, dq_atomic_flags, bits, relaxed);
+	return os_atomic_or(&dqu._dq->dq_atomic_flags, bits, relaxed);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -655,7 +655,7 @@ _dispatch_queue_atomic_flags_set_and_clear_orig(dispatch_queue_class_t dqu,
 		dispatch_queue_flags_t add_bits, dispatch_queue_flags_t clr_bits)
 {
 	dispatch_queue_flags_t oflags, nflags;
-	os_atomic_rmw_loop2o(dqu._dq, dq_atomic_flags, oflags, nflags, relaxed, {
+	os_atomic_rmw_loop(&dqu._dq->dq_atomic_flags, oflags, nflags, relaxed, {
 		nflags = (oflags | add_bits) & ~clr_bits;
 		if (nflags == oflags) os_atomic_rmw_loop_give_up(return oflags);
 	});
@@ -668,7 +668,7 @@ _dispatch_queue_atomic_flags_set_and_clear(dispatch_queue_class_t dqu,
 		dispatch_queue_flags_t add_bits, dispatch_queue_flags_t clr_bits)
 {
 	dispatch_queue_flags_t oflags, nflags;
-	os_atomic_rmw_loop2o(dqu._dq, dq_atomic_flags, oflags, nflags, relaxed, {
+	os_atomic_rmw_loop(&dqu._dq->dq_atomic_flags, oflags, nflags, relaxed, {
 		nflags = (oflags | add_bits) & ~clr_bits;
 		if (nflags == oflags) os_atomic_rmw_loop_give_up(return oflags);
 	});
@@ -680,7 +680,7 @@ static inline dispatch_queue_flags_t
 _dispatch_queue_atomic_flags_set_orig(dispatch_queue_class_t dqu,
 		dispatch_queue_flags_t bits)
 {
-	return os_atomic_or_orig2o(dqu._dq, dq_atomic_flags, bits, relaxed);
+	return os_atomic_or_orig(&dqu._dq->dq_atomic_flags, bits, relaxed);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -688,7 +688,7 @@ static inline dispatch_queue_flags_t
 _dispatch_queue_atomic_flags_clear(dispatch_queue_class_t dqu,
 		dispatch_queue_flags_t bits)
 {
-	return os_atomic_and2o(dqu._dq, dq_atomic_flags, ~bits, relaxed);
+	return os_atomic_and(&dqu._dq->dq_atomic_flags, ~bits, relaxed);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -933,7 +933,7 @@ _dq_state_is_suspended(uint64_t dq_state)
 	return dq_state & DISPATCH_QUEUE_SUSPEND_BITS_MASK;
 }
 #define DISPATCH_QUEUE_IS_SUSPENDED(x) \
-		_dq_state_is_suspended(os_atomic_load2o(x, dq_state, relaxed))
+		_dq_state_is_suspended(os_atomic_load(&x->dq_state, relaxed))
 
 DISPATCH_ALWAYS_INLINE
 static inline bool
@@ -1101,7 +1101,7 @@ _dq_state_drain_owner(uint64_t dq_state)
 	return _dispatch_lock_owner((dispatch_lock)dq_state);
 }
 #define DISPATCH_QUEUE_DRAIN_OWNER(dq) \
-	_dq_state_drain_owner(os_atomic_load2o(dq, dq_state, relaxed))
+	_dq_state_drain_owner(os_atomic_load(&dq->dq_state, relaxed))
 
 DISPATCH_ALWAYS_INLINE
 static inline bool
@@ -1192,7 +1192,7 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_queue_setter_assert_inactive(dispatch_queue_class_t dq)
 {
-	uint64_t dq_state = os_atomic_load2o(dq._dq, dq_state, relaxed);
+	uint64_t dq_state = os_atomic_load(&dq._dq->dq_state, relaxed);
 	if (likely(_dq_state_is_inactive(dq_state))) return;
 #ifndef __LP64__
 	dq_state >>= 32;
@@ -1223,7 +1223,7 @@ _dispatch_queue_init(dispatch_queue_class_t dqu, dispatch_queue_flags_t dqf,
 	dq_state |= initial_state_bits;
 	dq->do_next = DISPATCH_OBJECT_LISTLESS;
 	dqf |= DQF_WIDTH(width);
-	os_atomic_store2o(dq, dq_atomic_flags, dqf, relaxed);
+	os_atomic_store(&dq->dq_atomic_flags, dqf, relaxed);
 	dq->dq_state = dq_state;
 	dq->dq_serialnum =
 			os_atomic_inc_orig(&_dispatch_queue_serial_numbers, relaxed);
@@ -1245,7 +1245,7 @@ _dispatch_lane_try_inactive_suspend(dispatch_lane_class_t dqu)
 {
 	uint64_t old_state, new_state;
 
-	(void)os_atomic_rmw_loop2o(dqu._dl, dq_state, old_state, new_state, relaxed, {
+	(void)os_atomic_rmw_loop(&dqu._dl->dq_state, old_state, new_state, relaxed, {
 		if (unlikely(!_dq_state_is_inactive(old_state))) {
 			os_atomic_rmw_loop_give_up(return false);
 		}
@@ -1315,7 +1315,7 @@ _dispatch_queue_drain_try_lock(dispatch_queue_t dq,
 
 	dispatch_qos_t oq_floor = _dispatch_get_basepri_override_qos_floor();
 retry:
-	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, acquire, {
+	os_atomic_rmw_loop(&dq->dq_state, old_state, new_state, acquire, {
 		new_state = old_state;
 		if (likely(!(old_state & lock_fail_mask))) {
 			if (unlikely(_dq_state_needs_lock_override(old_state, oq_floor))) {
@@ -1362,7 +1362,7 @@ _dispatch_queue_drain_try_lock_wlh(dispatch_queue_t dq, uint64_t *dq_state)
 	uint64_t lock_bits = _dispatch_lock_value_for_self() |
 			DISPATCH_QUEUE_WIDTH_FULL_BIT | DISPATCH_QUEUE_IN_BARRIER;
 
-	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, acquire, {
+	os_atomic_rmw_loop(&dq->dq_state, old_state, new_state, acquire, {
 		new_state = old_state;
 		if (unlikely(_dq_state_is_suspended(old_state))) {
 			new_state &= ~DISPATCH_QUEUE_ENQUEUED;
@@ -1414,7 +1414,7 @@ _dispatch_queue_try_acquire_barrier_sync_and_suspend(dispatch_lane_t dq,
 			(suspend_count * DISPATCH_QUEUE_SUSPEND_INTERVAL);
 	uint64_t old_state, new_state;
 
-	return os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, acquire, {
+	return os_atomic_rmw_loop(&dq->dq_state, old_state, new_state, acquire, {
 		uint64_t role = old_state & DISPATCH_QUEUE_ROLE_MASK;
 		if (old_state != (init | role)) {
 			os_atomic_rmw_loop_give_up(break);
@@ -1442,7 +1442,7 @@ DISPATCH_ALWAYS_INLINE
 static inline void
 _dispatch_queue_reserve_sync_width(dispatch_lane_t dq)
 {
-	os_atomic_add2o(dq, dq_state, DISPATCH_QUEUE_WIDTH_INTERVAL, relaxed);
+	os_atomic_add(&dq->dq_state, DISPATCH_QUEUE_WIDTH_INTERVAL, relaxed);
 }
 
 /* Used by _dispatch_sync on non-serial queues
@@ -1464,7 +1464,7 @@ _dispatch_queue_try_reserve_sync_width(dispatch_lane_t dq)
 		return false;
 	}
 
-	return os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, relaxed, {
+	return os_atomic_rmw_loop(&dq->dq_state, old_state, new_state, relaxed, {
 		if (unlikely(!_dq_state_is_sync_runnable(old_state)) ||
 				_dq_state_is_dirty(old_state) ||
 				_dq_state_has_pending_barrier(old_state)) {
@@ -1485,7 +1485,7 @@ _dispatch_queue_try_acquire_async(dispatch_lane_t dq)
 {
 	uint64_t old_state, new_state;
 
-	return os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, acquire, {
+	return os_atomic_rmw_loop(&dq->dq_state, old_state, new_state, acquire, {
 		if (unlikely(!_dq_state_is_runnable(old_state) ||
 				_dq_state_is_dirty(old_state) ||
 				_dq_state_has_pending_barrier(old_state))) {
@@ -1513,7 +1513,7 @@ _dispatch_queue_try_upgrade_full_width(dispatch_lane_t dq, uint64_t owned)
 	uint64_t pending_barrier_width = DISPATCH_QUEUE_PENDING_BARRIER +
 			(dq->dq_width - 1) * DISPATCH_QUEUE_WIDTH_INTERVAL;
 
-	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, acquire, {
+	os_atomic_rmw_loop(&dq->dq_state, old_state, new_state, acquire, {
 		new_state = old_state - owned;
 		if (likely(!_dq_state_has_pending_barrier(old_state))) {
 			new_state += pending_barrier_width;
@@ -1565,7 +1565,7 @@ _dispatch_queue_drain_try_unlock(dispatch_queue_t dq, uint64_t owned, bool done)
 {
 	uint64_t old_state, new_state;
 
-	os_atomic_rmw_loop2o(dq, dq_state, old_state, new_state, release, {
+	os_atomic_rmw_loop(&dq->dq_state, old_state, new_state, release, {
 		new_state  = old_state - owned;
 		new_state &= ~DISPATCH_QUEUE_DRAIN_UNLOCK_MASK;
 		if (unlikely(_dq_state_is_suspended(old_state))) {
@@ -1576,7 +1576,7 @@ _dispatch_queue_drain_try_unlock(dispatch_queue_t dq, uint64_t owned, bool done)
 				// what the enqueuer that set DIRTY has done.
 				// the xor generates better assembly as DISPATCH_QUEUE_DIRTY
 				// is already in a register
-				os_atomic_xor2o(dq, dq_state, DISPATCH_QUEUE_DIRTY, acquire);
+				os_atomic_xor(&dq->dq_state, DISPATCH_QUEUE_DIRTY, acquire);
 				return false;
 			});
 		} else if (likely(done)) {
@@ -1611,7 +1611,7 @@ _dispatch_queue_move_to_contended_sync(dispatch_queue_t dq)
 {
 	uint64_t clearbits = DISPATCH_QUEUE_RECEIVED_SYNC_WAIT |
 			DISPATCH_QUEUE_UNCONTENDED_SYNC;
-	os_atomic_and2o(dq, dq_state, ~clearbits, relaxed);
+	os_atomic_and(&dq->dq_state, ~clearbits, relaxed);
 }
 
 #pragma mark -
@@ -1632,7 +1632,7 @@ _dispatch_queue_move_to_contended_sync(dispatch_queue_t dq)
 // release forces visibility of updates to the item before update to the tail
 #define os_mpsc_push_update_tail(Q, tail, _o_next)  ({ \
 		os_mpsc_node_type(Q) _tl = (tail); \
-		os_atomic_store2o(_tl, _o_next, NULL, relaxed); \
+		os_atomic_store(&_tl->_o_next, NULL, relaxed); \
 		_dispatch_set_enqueuer_for(_os_mpsc_tail Q); \
 		os_atomic_xchg(_os_mpsc_tail Q, _tl, release); \
 	})
@@ -1642,7 +1642,7 @@ _dispatch_queue_move_to_contended_sync(dispatch_queue_t dq)
 #define os_mpsc_push_update_prev(Q, prev, head, _o_next)  ({ \
 		os_mpsc_node_type(Q) _prev = (prev); \
 		if (likely(_prev)) { \
-			(void)os_atomic_store2o(_prev, _o_next, (head), relaxed); \
+			(void)os_atomic_store(&_prev->_o_next, (head), relaxed); \
 		} else { \
 			(void)os_atomic_store(_os_mpsc_head Q, (head), relaxed); \
 		} \
@@ -1693,7 +1693,7 @@ _dispatch_queue_move_to_contended_sync(dispatch_queue_t dq)
 
 #define os_mpsc_pop_head(Q, head, _o_next)  ({ \
 		os_mpsc_node_type(Q) _head = (head), _n; \
-		_n = os_atomic_load2o(_head, _o_next, dependency); \
+		_n = os_atomic_load(&_head->_o_next, dependency); \
 		os_atomic_store(_os_mpsc_head Q, _n, relaxed); \
 		/* 22708742: set tail to NULL with release, so that NULL write */ \
 		/* to head above doesn't clobber head from concurrent enqueuer */ \
@@ -1707,11 +1707,11 @@ _dispatch_queue_move_to_contended_sync(dispatch_queue_t dq)
 
 #define os_mpsc_undo_pop_list(Q, head, tail, next, _o_next)  ({ \
 		os_mpsc_node_type(Q) _hd = (head), _tl = (tail), _n = (next); \
-		os_atomic_store2o(_tl, _o_next, _n, relaxed); \
+		os_atomic_store(&_tl->_o_next, _n, relaxed); \
 		if (unlikely(!_n && \
 				!os_atomic_cmpxchg(_os_mpsc_tail Q, NULL, _tl, release))) { \
 			_n = os_mpsc_get_head(Q); \
-			os_atomic_store2o(_tl, _o_next, _n, relaxed); \
+			os_atomic_store(&_tl->_o_next, _n, relaxed); \
 		} \
 		os_atomic_store(_os_mpsc_head Q, _hd, relaxed); \
 	})
@@ -1987,7 +1987,7 @@ _dispatch_queue_class_probe(dispatch_lane_class_t dqu)
 	struct dispatch_object_s *tail;
 	// seq_cst wrt atomic store to dq_state <rdar://problem/14637483>
 	// seq_cst wrt atomic store to dq_flags <rdar://problem/22623242>
-	tail = os_atomic_load2o(dqu._dl, dq_items_tail, ordered);
+	tail = os_atomic_load(&dqu._dl->dq_items_tail, ordered);
 	return unlikely(tail != NULL);
 }
 
@@ -2064,7 +2064,7 @@ _dispatch_queue_set_bound_thread(dispatch_queue_class_t dqu)
 	// Tag thread-bound queues with the owning thread
 	dispatch_assert(_dispatch_queue_is_thread_bound(dqu));
 	uint64_t old_state, new_state;
-	os_atomic_rmw_loop2o(dqu._dq, dq_state, old_state, new_state, relaxed, {
+	os_atomic_rmw_loop(&dqu._dq->dq_state, old_state, new_state, relaxed, {
 		new_state = old_state;
 		new_state &= ~DISPATCH_QUEUE_DRAIN_OWNER_MASK;
 		new_state |= _dispatch_lock_value_for_self();
@@ -2076,7 +2076,7 @@ static inline void
 _dispatch_queue_clear_bound_thread(dispatch_queue_class_t dqu)
 {
 	dispatch_assert(_dispatch_queue_is_thread_bound(dqu));
-	os_atomic_and2o(dqu._dq, dq_state,
+	os_atomic_and(&dqu._dq->dq_state,
 			~DISPATCH_QUEUE_DRAIN_OWNER_MASK, relaxed);
 }
 

@@ -34,7 +34,7 @@ DISPATCH_ASSUME_ABI_SINGLE_BEGIN
  * @abstract
  * A group of blocks submitted to queues for asynchronous invocation.
  */
-DISPATCH_DECL(dispatch_group);
+DISPATCH_DECL_SWIFT(dispatch_group, DispatchGroup);
 
 __BEGIN_DECLS
 
@@ -55,6 +55,7 @@ __BEGIN_DECLS
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
+DISPATCH_SWIFT_NAME(DispatchGroup.init())
 dispatch_group_t
 dispatch_group_create(void);
 
@@ -84,6 +85,7 @@ dispatch_group_create(void);
 #ifdef __BLOCKS__
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_group_async(dispatch_group_t group,
 	dispatch_queue_t queue,
@@ -119,6 +121,7 @@ dispatch_group_async(dispatch_group_t group,
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL2 DISPATCH_NONNULL4
 DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchQueue.async(self:group:qos:flags:execute:)")
 void
 dispatch_group_async_f(dispatch_group_t group,
 	dispatch_queue_t queue,
@@ -161,6 +164,7 @@ dispatch_group_async_f(dispatch_group_t group,
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 intptr_t
 dispatch_group_wait(dispatch_group_t group, dispatch_time_t timeout);
 
@@ -197,6 +201,7 @@ dispatch_group_wait(dispatch_group_t group, dispatch_time_t timeout);
 #ifdef __BLOCKS__
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_group_notify(dispatch_group_t group,
 	dispatch_queue_t queue,
@@ -228,6 +233,7 @@ dispatch_group_notify(dispatch_group_t group,
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL2 DISPATCH_NONNULL4
 DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchGroup.notify(self:qos:flags:queue:execute:)")
 void
 dispatch_group_notify_f(dispatch_group_t group,
 	dispatch_queue_t queue,
@@ -251,6 +257,7 @@ dispatch_group_notify_f(dispatch_group_t group,
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_SWIFT_NAME(DispatchGroup.enter(self:))
 void
 dispatch_group_enter(dispatch_group_t group);
 
@@ -270,6 +277,7 @@ dispatch_group_enter(dispatch_group_t group);
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_SWIFT_NAME(DispatchGroup.leave(self:))
 void
 dispatch_group_leave(dispatch_group_t group);
 

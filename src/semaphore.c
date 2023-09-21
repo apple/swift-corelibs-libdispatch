@@ -56,7 +56,7 @@ _dispatch_semaphore_dispose(dispatch_object_t dou,
 
 	if (dsema->dsema_value < dsema->dsema_orig) {
 		DISPATCH_CLIENT_CRASH(dsema->dsema_orig - dsema->dsema_value,
-				"Semaphore object deallocated while in use");
+				"Semaphore object deallocated while in use (current value < original value)");
 	}
 
 	_dispatch_sema4_dispose(&dsema->dsema_sema, _DSEMA4_POLICY_FIFO);
@@ -92,7 +92,7 @@ _dispatch_semaphore_signal_slow(dispatch_semaphore_t dsema)
 intptr_t
 dispatch_semaphore_signal(dispatch_semaphore_t dsema)
 {
-	long value = os_atomic_inc2o(dsema, dsema_value, release);
+	long value = os_atomic_inc(&dsema->dsema_value, release);
 	if (likely(value > 0)) {
 		return 0;
 	}
@@ -121,7 +121,7 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 	case DISPATCH_TIME_NOW:
 		orig = dsema->dsema_value;
 		while (orig < 0) {
-			if (os_atomic_cmpxchgv2o(dsema, dsema_value, orig, orig + 1,
+			if (os_atomic_cmpxchgv(&dsema->dsema_value, orig, orig + 1,
 					&orig, relaxed)) {
 				return _DSEMA4_TIMEOUT();
 			}
@@ -138,7 +138,7 @@ _dispatch_semaphore_wait_slow(dispatch_semaphore_t dsema,
 intptr_t
 dispatch_semaphore_wait(dispatch_semaphore_t dsema, dispatch_time_t timeout)
 {
-	long value = os_atomic_dec2o(dsema, dsema_value, acquire);
+	long value = os_atomic_dec(&dsema->dsema_value, acquire);
 	if (likely(value >= 0)) {
 		return 0;
 	}
@@ -157,9 +157,9 @@ _dispatch_group_create_with_count(uint32_t n)
 	dg->do_next = DISPATCH_OBJECT_LISTLESS;
 	dg->do_targetq = _dispatch_get_default_queue(false);
 	if (n) {
-		os_atomic_store2o(dg, dg_bits,
+		os_atomic_store(&dg->dg_bits,
 				(uint32_t)-n * DISPATCH_GROUP_VALUE_INTERVAL, relaxed);
-		os_atomic_store2o(dg, do_ref_cnt, 1, relaxed); // <rdar://22318411>
+		os_atomic_store(&dg->do_ref_cnt, 1, relaxed); // <rdar://22318411>
 	}
 	return dg;
 }
@@ -179,7 +179,7 @@ _dispatch_group_create_and_enter(void)
 void
 _dispatch_group_dispose(dispatch_object_t dou, DISPATCH_UNUSED bool *allow_free)
 {
-	uint64_t dg_state = os_atomic_load2o(dou._dg, dg_state, relaxed);
+	uint64_t dg_state = os_atomic_load(&dou._dg->dg_state, relaxed);
 
 	if (unlikely((uint32_t)dg_state)) {
 		DISPATCH_CLIENT_CRASH((uintptr_t)dg_state,
@@ -191,7 +191,7 @@ size_t
 _dispatch_group_debug(dispatch_object_t dou, char *buf, size_t bufsiz)
 {
 	dispatch_group_t dg = dou._dg;
-	uint64_t dg_state = os_atomic_load2o(dg, dg_state, relaxed);
+	uint64_t dg_state = os_atomic_load(&dg->dg_state, relaxed);
 
 	size_t offset = 0;
 	offset += dsnprintf(&buf[offset], bufsiz - offset, "%s[%p] = { ",
@@ -212,7 +212,7 @@ _dispatch_group_wait_slow(dispatch_group_t dg, uint32_t gen,
 {
 	for (;;) {
 		int rc = _dispatch_wait_on_address(&dg->dg_gen, gen, timeout, 0);
-		if (likely(gen != os_atomic_load2o(dg, dg_gen, acquire))) {
+		if (likely(gen != os_atomic_load(&dg->dg_gen, acquire))) {
 			return 0;
 		}
 		if (rc == ETIMEDOUT) {
@@ -226,7 +226,7 @@ dispatch_group_wait(dispatch_group_t dg, dispatch_time_t timeout)
 {
 	uint64_t old_state, new_state;
 
-	os_atomic_rmw_loop2o(dg, dg_state, old_state, new_state, relaxed, {
+	os_atomic_rmw_loop(&dg->dg_state, old_state, new_state, relaxed, {
 		if ((old_state & DISPATCH_GROUP_VALUE_MASK) == 0) {
 			os_atomic_rmw_loop_give_up_with_fence(acquire, return 0);
 		}
@@ -276,7 +276,7 @@ dispatch_group_leave(dispatch_group_t dg)
 {
 	// The value is incremented on a 64bits wide atomic so that the carry for
 	// the -1 -> 0 transition increments the generation atomically.
-	uint64_t new_state, old_state = os_atomic_add_orig2o(dg, dg_state,
+	uint64_t new_state, old_state = os_atomic_add_orig(&dg->dg_state,
 			DISPATCH_GROUP_VALUE_INTERVAL, release);
 	uint32_t old_value = (uint32_t)(old_state & DISPATCH_GROUP_VALUE_MASK);
 
@@ -294,7 +294,7 @@ dispatch_group_leave(dispatch_group_t dg)
 				new_state &= ~DISPATCH_GROUP_HAS_NOTIFS;
 			}
 			if (old_state == new_state) break;
-		} while (unlikely(!os_atomic_cmpxchgv2o(dg, dg_state,
+		} while (unlikely(!os_atomic_cmpxchgv(&dg->dg_state,
 				old_state, new_state, &old_state, relaxed)));
 		return _dispatch_group_wake(dg, old_state, true);
 	}
@@ -310,7 +310,7 @@ dispatch_group_enter(dispatch_group_t dg)
 {
 	// The value is decremented on a 32bits wide atomic so that the carry
 	// for the 0 -> -1 transition is not propagated to the upper 32bits.
-	uint32_t old_bits = os_atomic_sub_orig2o(dg, dg_bits,
+	uint32_t old_bits = os_atomic_sub_orig(&dg->dg_bits,
 			DISPATCH_GROUP_VALUE_INTERVAL, acquire);
 	uint32_t old_value = old_bits & DISPATCH_GROUP_VALUE_MASK;
 	if (unlikely(old_value == 0)) {
@@ -337,7 +337,7 @@ _dispatch_group_notify(dispatch_group_t dg, dispatch_queue_t dq,
 	if (os_mpsc_push_was_empty(prev)) _dispatch_retain(dg);
 	os_mpsc_push_update_prev(os_mpsc(dg, dg_notify), prev, dsn, do_next);
 	if (os_mpsc_push_was_empty(prev)) {
-		os_atomic_rmw_loop2o(dg, dg_state, old_state, new_state, release, {
+		os_atomic_rmw_loop(&dg->dg_state, old_state, new_state, release, {
 			new_state = old_state | DISPATCH_GROUP_HAS_NOTIFS;
 			if ((uint32_t)old_state == 0) {
 				os_atomic_rmw_loop_give_up({

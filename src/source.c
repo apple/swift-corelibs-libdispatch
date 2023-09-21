@@ -170,7 +170,7 @@ dispatch_source_get_data(dispatch_source_t ds)
 	}
 #endif
 #endif // DISPATCH_USE_MEMORYSTATUS
-	uint64_t value = os_atomic_load2o(dr, ds_data, relaxed);
+	uint64_t value = os_atomic_load(&dr->ds_data, relaxed);
 	return (unsigned long)(dr->du_has_extended_status ?
 			DISPATCH_SOURCE_GET_DATA(value) : value);
 }
@@ -220,13 +220,13 @@ dispatch_source_merge_data(dispatch_source_t ds, uintptr_t val)
 
 	switch (dr->du_filter) {
 	case DISPATCH_EVFILT_CUSTOM_ADD:
-		os_atomic_add2o(dr, ds_pending_data, val, relaxed);
+		os_atomic_add(&dr->ds_pending_data, val, relaxed);
 		break;
 	case DISPATCH_EVFILT_CUSTOM_OR:
-		os_atomic_or2o(dr, ds_pending_data, val, relaxed);
+		os_atomic_or(&dr->ds_pending_data, val, relaxed);
 		break;
 	case DISPATCH_EVFILT_CUSTOM_REPLACE:
-		os_atomic_store2o(dr, ds_pending_data, val, relaxed);
+		os_atomic_store(&dr->ds_pending_data, val, relaxed);
 		break;
 	default:
 		DISPATCH_CLIENT_CRASH(dr->du_filter, "Invalid source type");
@@ -434,7 +434,7 @@ dispatch_source_set_registration_handler_f(dispatch_source_t ds,
 bool
 _dispatch_source_will_reenable_kevent_4NW(dispatch_source_t ds)
 {
-	uint64_t dq_state = os_atomic_load2o(ds, dq_state, relaxed);
+	uint64_t dq_state = os_atomic_load(&ds->dq_state, relaxed);
 
 	if (unlikely(!_dq_state_drain_locked_by_self(dq_state))) {
 		DISPATCH_CLIENT_CRASH(0, "_dispatch_source_will_reenable_kevent_4NW "
@@ -507,7 +507,7 @@ static inline bool
 _dispatch_source_refs_needs_configuration(dispatch_unote_t du)
 {
 	return du._du->du_is_timer &&
-			os_atomic_load2o(du._dt, dt_pending_config, relaxed);
+			os_atomic_load(&du._dt->dt_pending_config, relaxed);
 }
 
 DISPATCH_ALWAYS_INLINE
@@ -517,7 +517,7 @@ _dispatch_source_refs_needs_rearm(dispatch_unote_t du)
 	if (!du._du->du_is_timer) {
 		return _dispatch_unote_needs_rearm(du);
 	}
-	if (os_atomic_load2o(du._dt, dt_pending_config, relaxed)) {
+	if (os_atomic_load(&du._dt->dt_pending_config, relaxed)) {
 		return true;
 	}
 	if (_dispatch_unote_needs_rearm(du)) {
@@ -557,7 +557,7 @@ _dispatch_source_latch_and_call(dispatch_source_t ds, dispatch_queue_t cq,
 {
 	dispatch_source_refs_t dr = ds->ds_refs;
 	dispatch_continuation_t dc = _dispatch_source_get_handler(dr, DS_EVENT_HANDLER);
-	uint64_t prev = os_atomic_xchg2o(dr, ds_pending_data, 0, relaxed);
+	uint64_t prev = os_atomic_xchg(&dr->ds_pending_data, 0, relaxed);
 
 	if (dr->du_is_timer && (dr->du_timer_flags & DISPATCH_TIMER_AFTER)) {
 		_dispatch_trace_item_pop(cq, dc); // see _dispatch_after
@@ -643,7 +643,7 @@ _dispatch_source_refs_unregister(dispatch_source_t ds, uint32_t options)
 
 	// deferred unregistration
 	dispatch_queue_flags_t oqf, nqf;
-	os_atomic_rmw_loop2o(ds, dq_atomic_flags, oqf, nqf, relaxed, {
+	os_atomic_rmw_loop(&ds->dq_atomic_flags, oqf, nqf, relaxed, {
 		if (oqf & (DSF_NEEDS_EVENT | DSF_DELETED)) {
 			os_atomic_rmw_loop_give_up(break);
 		}
@@ -820,7 +820,7 @@ _dispatch_source_invoke2(dispatch_source_t ds, dispatch_invoke_context_t dic,
 
 	dqf = _dispatch_queue_atomic_flags(ds);
 	if (!(dqf & (DSF_CANCELED | DQF_RELEASED)) &&
-			os_atomic_load2o(dr, ds_pending_data, relaxed)) {
+			os_atomic_load(&dr->ds_pending_data, relaxed)) {
 		// The source has pending data to deliver via the event handler callback
 		// on the target queue. Some sources need to be rearmed on the kevent
 		// queue after event delivery.
@@ -1005,7 +1005,7 @@ _dispatch_source_wakeup(dispatch_source_t ds, dispatch_qos_t qos,
 		// from the target queue
 		tq = DISPATCH_QUEUE_WAKEUP_TARGET;
 	} else if (!(dqf & (DSF_CANCELED | DQF_RELEASED)) &&
-			os_atomic_load2o(dr, ds_pending_data, relaxed)) {
+			os_atomic_load(&dr->ds_pending_data, relaxed)) {
 		// The source has pending data to deliver to the target queue.
 		tq = DISPATCH_QUEUE_WAKEUP_TARGET;
 	} else if ((dqf & (DSF_CANCELED | DQF_RELEASED)) && !(dqf & DSF_DELETED)) {
@@ -1073,7 +1073,7 @@ dispatch_source_cancel_and_wait(dispatch_source_t ds)
 	}
 
 	_dispatch_object_debug(ds, "%s", __func__);
-	os_atomic_rmw_loop2o(ds, dq_atomic_flags, old_dqf, new_dqf, relaxed, {
+	os_atomic_rmw_loop(&ds->dq_atomic_flags, old_dqf, new_dqf, relaxed, {
 		new_dqf = old_dqf | DSF_CANCELED;
 		if (old_dqf & DSF_CANCEL_WAITER) {
 			os_atomic_rmw_loop_give_up(break);
@@ -1102,7 +1102,7 @@ dispatch_source_cancel_and_wait(dispatch_source_t ds)
 			DISPATCH_QUEUE_WIDTH_FULL_BIT | DISPATCH_QUEUE_IN_BARRIER;
 	uint64_t old_state, new_state;
 
-	os_atomic_rmw_loop2o(ds, dq_state, old_state, new_state, seq_cst, {
+	os_atomic_rmw_loop(&ds->dq_state, old_state, new_state, seq_cst, {
 		new_state = old_state;
 		if (likely(_dq_state_is_runnable(old_state) &&
 				!_dq_state_drain_locked(old_state))) {
@@ -1153,7 +1153,7 @@ wakeup:
 	dispatch_queue_flags_t dqf = _dispatch_queue_atomic_flags(ds);
 	while (unlikely(!(dqf & DSF_DELETED))) {
 		if (unlikely(!(dqf & DSF_CANCEL_WAITER))) {
-			if (!os_atomic_cmpxchgv2o(ds, dq_atomic_flags,
+			if (!os_atomic_cmpxchgv(&ds->dq_atomic_flags,
 					dqf, dqf | DSF_CANCEL_WAITER, &dqf, relaxed)) {
 				continue;
 			}
@@ -1195,7 +1195,7 @@ _dispatch_source_merge_evt(dispatch_unote_t du, uint32_t flags,
 		}
 		// if the resource behind the ident vanished, the event handler can't
 		// do anything useful anymore, so do not try to call it at all
-		os_atomic_store2o(du._dr, ds_pending_data, 0, relaxed);
+		os_atomic_store(&du._dr->ds_pending_data, 0, relaxed);
 	}
 
 	_dispatch_debug("kevent-source[%p]: merged kevent[%p]", ds, du._dr);
@@ -1366,7 +1366,7 @@ dispatch_source_set_timer(dispatch_source_t ds, dispatch_time_t start,
 	}
 
 	_dispatch_source_timer_telemetry(ds, dtc->dtc_clock, &dtc->dtc_timer);
-	dtc = os_atomic_xchg2o(dt, dt_pending_config, dtc, release);
+	dtc = os_atomic_xchg(&dt->dt_pending_config, dtc, release);
 	if (dtc) free(dtc);
 	dx_wakeup(ds, 0, DISPATCH_WAKEUP_MAKE_DIRTY);
 }
@@ -1443,7 +1443,7 @@ _dispatch_after(dispatch_time_t when, dispatch_queue_t dq,
 	// reference `ds` so that it doesn't show up as a leak
 	dc->dc_data = ds;
 	_dispatch_trace_item_push(dq, dc);
-	os_atomic_store2o(dt, ds_handler[DS_EVENT_HANDLER], dc, relaxed);
+	os_atomic_store(&dt->ds_handler[DS_EVENT_HANDLER], dc, relaxed);
 
 	dispatch_clock_t clock;
 	uint64_t target;

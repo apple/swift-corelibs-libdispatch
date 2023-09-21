@@ -198,6 +198,29 @@ _voucher_hash_remove(voucher_t v)
 	_voucher_hash_mark_not_enqueued(v);
 }
 
+static void
+_voucher_hash_reset_locked(void) {
+	/*
+	 * Because voucher ports are not inherited by children, we empty the
+	 * voucher hash table. We need to leave the voucher instances around,
+	 * though, in case anyone has any references to them. So, we decompose the
+	 * linked list, and strip all of the members of any kernel voucher
+	 * references that they might have.
+	 */
+	for (unsigned int i = 0; i < VL_HASH_SIZE; i++) {
+		voucher_hash_head_s *head = &_voucher_hash[i];
+		voucher_t v;
+		while ((v = _voucher_hash_get_next(head->vhh_first)) != VOUCHER_NULL) {
+			v->v_kvoucher = MACH_VOUCHER_NULL;
+			v->v_ipc_kvoucher = MACH_VOUCHER_NULL;
+
+			_voucher_hash_remove(v);
+		}
+	}
+
+	memset(_voucher_hash, ~(uintptr_t)VOUCHER_NULL, sizeof(_voucher_hash));
+}
+
 static voucher_t
 _voucher_find_and_retain(mach_voucher_t kv)
 {
@@ -207,7 +230,7 @@ _voucher_find_and_retain(mach_voucher_t kv)
 	voucher_t v = _voucher_hash_get_next(head->vhh_first);
 	while (v) {
 		if (v->v_ipc_kvoucher == kv) {
-			int xref_cnt = os_atomic_inc2o(v, os_obj_xref_cnt, relaxed);
+			int xref_cnt = os_atomic_inc(&v->os_obj_xref_cnt, relaxed);
 			_dispatch_voucher_debug("retain  -> %d", v, xref_cnt + 1);
 			if (unlikely(xref_cnt < 0)) {
 				_dispatch_voucher_debug("over-release", v);
@@ -215,7 +238,7 @@ _voucher_find_and_retain(mach_voucher_t kv)
 			}
 			if (xref_cnt == 0) {
 				// resurrection: raced with _voucher_remove
-				(void)os_atomic_inc2o(v, os_obj_ref_cnt, relaxed);
+				(void)os_atomic_inc(&v->os_obj_ref_cnt, relaxed);
 			}
 			break;
 		}
@@ -236,6 +259,15 @@ _voucher_insert(voucher_t v)
 		_dispatch_voucher_debug("corruption", v);
 		DISPATCH_CLIENT_CRASH(0, "Voucher corruption");
 	}
+	if (unlikely(v->v_activity != 0)) {
+		_dispatch_voucher_debug("Activity data corruption", v);
+		DISPATCH_INTERNAL_CRASH(v->v_activity, "base voucher has non-zero activity value");
+	}
+	if (unlikely(v->v_kvbase != VOUCHER_NULL)) {
+		_dispatch_voucher_debug("Incoming voucher with corrupted base", v);
+		_dispatch_voucher_debug("Corrupted base for incoming voucher", v->v_kvbase);
+		DISPATCH_INTERNAL_CRASH(v->v_kvbase, "base voucher has nested base voucher");
+	}
 	_voucher_hash_enqueue(kv, v);
 	_voucher_hash_lock_unlock();
 }
@@ -251,7 +283,7 @@ _voucher_remove(voucher_t v)
 		DISPATCH_CLIENT_CRASH(0, "Voucher corruption");
 	}
 	// check for resurrection race with _voucher_find_and_retain
-	if (os_atomic_load2o(v, os_obj_xref_cnt, ordered) < 0) {
+	if (os_atomic_load(&v->os_obj_xref_cnt, ordered) < 0) {
 		if (_voucher_hash_is_enqueued(v)) _voucher_hash_remove(v);
 	}
 	_voucher_hash_lock_unlock();
@@ -423,7 +455,7 @@ _voucher_get_mach_voucher(voucher_t voucher)
 	if (dispatch_assume_zero(kr) || !kv) {
 		return MACH_VOUCHER_NULL;
 	}
-	if (!os_atomic_cmpxchgv2o(voucher, v_ipc_kvoucher, MACH_VOUCHER_NULL,
+	if (!os_atomic_cmpxchgv(&voucher->v_ipc_kvoucher, MACH_VOUCHER_NULL,
 			kv, &kvo, relaxed)) {
 		_voucher_dealloc_mach_voucher(kv);
 		kv = kvo;
@@ -818,34 +850,25 @@ _voucher_activity_debug_channel_init(void)
 	}
 }
 
-static bool
-_voucher_hash_is_empty() {
+void
+_voucher_atfork_prepare(void)
+{
+	// unlocked in _voucher_atfork_parent and reset in _voucher_atfork_child
 	_voucher_hash_lock_lock();
-
-	bool empty = true;
-	for (unsigned int i = 0; i < VL_HASH_SIZE; i++) {
-		voucher_hash_head_s *head = &_voucher_hash[i];
-		if (_voucher_hash_get_next(head->vhh_first) != VOUCHER_NULL) {
-			empty = false;
-			break;
-		}
-	}
-	_voucher_hash_lock_unlock();
-
-	return empty;
 }
 
 void
 _voucher_atfork_parent(void)
 {
-	if (!_voucher_hash_is_empty()){
-		_dispatch_fork_becomes_unsafe();
-	}
+	_voucher_hash_lock_unlock(); // taken in _voucher_atfork_prepare
 }
 
 void
 _voucher_atfork_child(void)
 {
+	_voucher_hash_reset_locked();
+	_voucher_hash_lock.dul_lock = DLOCK_ONCE_UNLOCKED;
+
 	_dispatch_thread_setspecific(dispatch_voucher_key, NULL);
 	_voucher_task_mach_voucher_pred = 0;
 	_voucher_task_mach_voucher = MACH_VOUCHER_NULL;

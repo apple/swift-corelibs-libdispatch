@@ -242,6 +242,12 @@ _os_workgroup_set_current(os_workgroup_t new_wg)
 }
 
 static inline bool
+_os_workgroup_telemetry_flavor_is_valid(os_workgroup_telemetry_flavor_t flavor)
+{
+	return (flavor == OS_WORKGROUP_TELEMETRY_FLAVOR_BASIC);
+}
+
+static inline bool
 _os_workgroup_client_interval_data_initialized(
 		os_workgroup_interval_data_t data)
 {
@@ -268,6 +274,11 @@ _os_workgroup_interval_data_complexity(os_workgroup_interval_data_t data)
 }
 
 static inline bool
+_os_workgroup_interval_data_telemetry_requested(os_workgroup_interval_data_t data) {
+	return data != NULL && _os_workgroup_telemetry_flavor_is_valid(data->telemetry_flavor);
+}
+
+static inline bool
 _os_workgroup_attr_is_resolved(os_workgroup_attr_t attr)
 {
 	return (attr->sig == _OS_WORKGROUP_ATTR_RESOLVED_INIT);
@@ -290,6 +301,12 @@ static inline bool
 _os_workgroup_attr_is_differentiated(os_workgroup_attr_t attr)
 {
 	return (attr->wg_attr_flags & OS_WORKGROUP_ATTR_UNDIFFERENTIATED) == 0;
+}
+
+static inline bool
+_os_workgroup_attr_has_telemetry_enabled(os_workgroup_attr_t attr)
+{
+	return attr->wg_telemetry_flavor != 0;
 }
 
 static inline bool
@@ -460,6 +477,10 @@ _os_workgroup_create_work_interval(os_workgroup_attr_t attr,
 
 	if (_os_workgroup_attr_has_workload_id(attr)) {
 		flags |= WORK_INTERVAL_FLAG_HAS_WORKLOAD_ID;
+	}
+
+	if (_os_workgroup_attr_has_telemetry_enabled(attr)) {
+		flags |= WORK_INTERVAL_FLAG_ENABLE_TELEMETRY_DATA;
 	}
 
 	work_interval_t wi;
@@ -818,6 +839,46 @@ _workgroup_init(void)
 	pthread_install_workgroup_functions_np(&_os_workgroup_pthread_functions);
 }
 
+static inline bool
+_os_workgroup_interval_invalid_telemetry_request(os_workgroup_interval_t wgi,
+										os_workgroup_interval_data_t data)
+{
+	return _os_workgroup_interval_data_telemetry_requested(data) &&
+		   data->telemetry_flavor != wgi->telemetry_flavor;
+}
+
+static void
+_os_workgroup_interval_copy_telemetry_data(os_workgroup_interval_t wgi,
+										   os_workgroup_interval_data_t data)
+{
+#if TARGET_OS_SIMULATOR
+	/* Not yet supported on the simulator */
+	(void)wgi;
+	(void)data;
+#else
+	struct work_interval_data wi_data;
+
+	work_interval_instance_get_telemetry_data(wgi->wii, &wi_data, sizeof(wi_data));
+
+	/* Note that the requested telemetry flavor and struct size were
+	 * already validated in os_workgroup_interval_data_set_telemetry() */
+
+	os_workgroup_telemetry_basic_t basic_telemetry;
+
+	switch(data->telemetry_flavor) {
+		case OS_WORKGROUP_TELEMETRY_FLAVOR_BASIC:
+			basic_telemetry = (os_workgroup_telemetry_basic_t)data->telemetry_dst;
+			basic_telemetry->wg_external_wakeups = wi_data.wid_external_wakeups;
+			basic_telemetry->wg_total_wakeups = wi_data.wid_total_wakeups;
+			basic_telemetry->wg_cycles = wi_data.wid_cycles;
+			basic_telemetry->wg_instructions = wi_data.wid_instructions;
+			basic_telemetry->wg_user_time_mach = wi_data.wid_user_time_mach;
+			basic_telemetry->wg_system_time_mach = wi_data.wid_system_time_mach;
+			break;
+	}
+#endif
+}
+
 #pragma mark Private functions
 
 int
@@ -832,6 +893,32 @@ os_workgroup_interval_data_set_flags(os_workgroup_interval_data_t data,
 		ret = EINVAL;
 	}
 	return ret;
+}
+
+int
+os_workgroup_interval_data_set_telemetry(os_workgroup_interval_data_t data,
+		os_workgroup_telemetry_flavor_t flavor, void *telemetry, size_t size)
+{
+	if (!_os_workgroup_telemetry_flavor_is_valid(flavor)) {
+		errno = EINVAL;
+		return errno;
+	}
+
+	/* Validate the value of size for the specified flavor */
+	switch(flavor) {
+		case OS_WORKGROUP_TELEMETRY_FLAVOR_BASIC:
+			if (size != OS_WORKGROUP_TELEMETRY_BASIC_SIZE_V1) {
+				errno = EINVAL;
+				return errno;
+			}
+			break;
+	}
+
+	data->telemetry_flavor = flavor;
+	data->telemetry_dst = telemetry;
+	data->telemetry_size = (uint16_t)size;
+
+	return 0;
 }
 
 int
@@ -859,6 +946,20 @@ os_workgroup_attr_set_flags(os_workgroup_attr_t attr,
 		ret = EINVAL;
 	}
 
+	return ret;
+}
+
+int
+os_workgroup_attr_set_telemetry_flavor(os_workgroup_attr_t attr,
+		os_workgroup_telemetry_flavor_t flavor)
+{
+	int ret = 0;
+	if (_os_workgroup_client_attr_is_valid(attr) &&
+		_os_workgroup_telemetry_flavor_is_valid(flavor)) {
+		attr->wg_telemetry_flavor = flavor;
+	} else {
+		ret = EINVAL;
+	}
 	return ret;
 }
 
@@ -903,6 +1004,13 @@ os_workgroup_create(const char *name, os_workgroup_attr_t attr)
 
 	/* We don't support propagating workgroups yet */
 	if (_os_workgroup_attr_is_propagating(attr)) {
+		errno = ENOTSUP;
+		return NULL;
+	}
+
+	/* We don't yet support enabling a telemetry flavor from
+	 * the creation functions that only return os_workgroup_t */
+	if (_os_workgroup_attr_has_telemetry_enabled(attr)) {
 		errno = ENOTSUP;
 		return NULL;
 	}
@@ -973,6 +1081,7 @@ os_workgroup_interval_create(const char *name, os_clockid_t clock,
 	wgi->wii_lock = OS_UNFAIR_LOCK_INIT;
 	wgi->wg_type = attr->wg_type;
 	wgi->wg_state = OS_WORKGROUP_OWNER;
+	wgi->telemetry_flavor = attr->wg_telemetry_flavor;
 
 	_os_workgroup_set_name(wgi->_as_wg, name);
 
@@ -1028,6 +1137,13 @@ os_workgroup_create_with_workload_id(const char * name,
 	if (_os_workgroup_attr_is_propagating(attr)) {
 		_os_workgroup_error_log("Unsupported attribute flags: 0x%x",
 				attr->wg_attr_flags);
+		errno = ENOTSUP;
+		return NULL;
+	}
+
+	/* We don't yet support enabling a telemetry flavor from
+	 * the creation functions that only return os_workgroup_t */
+	if (_os_workgroup_attr_has_telemetry_enabled(attr)) {
 		errno = ENOTSUP;
 		return NULL;
 	}
@@ -1131,6 +1247,7 @@ os_workgroup_interval_create_with_workload_id(const char *name,
 	wgi->wii_lock = OS_UNFAIR_LOCK_INIT;
 	wgi->wg_type = attr->wg_type;
 	wgi->wg_state = OS_WORKGROUP_OWNER;
+	wgi->telemetry_flavor = attr->wg_telemetry_flavor;
 
 	int ret = _os_workgroup_set_work_interval_workload_id(wgi->_as_wg,
 			workload_id, attr->internal_wl_id_flags);
@@ -1209,6 +1326,13 @@ os_workgroup_parallel_create(const char *name, os_workgroup_attr_t attr)
 
 	/* We don't support propagating workgroups yet */
 	if (_os_workgroup_attr_is_propagating(attr)) {
+		errno = ENOTSUP;
+		return NULL;
+	}
+
+	/* We don't yet support enabling a telemetry flavor from this
+	 * creation function that only returns os_workgroup_parallel_t */
+	if (_os_workgroup_attr_has_telemetry_enabled(attr)) {
 		errno = ENOTSUP;
 		return NULL;
 	}
@@ -1630,6 +1754,11 @@ os_workgroup_interval_start(os_workgroup_interval_t wgi, uint64_t start,
 		os_crash("Thread is not a member of the workgroup");
 	}
 
+	if (_os_workgroup_interval_invalid_telemetry_request(wgi, data)) {
+		errno = EINVAL;
+		return errno;
+	}
+
 	if (deadline < start || (!_start_time_is_in_past(wgi->clock, start))) {
 		errno = EINVAL;
 		return errno;
@@ -1679,10 +1808,13 @@ os_workgroup_interval_start(os_workgroup_interval_t wgi, uint64_t start,
 		/* If we failed to start the interval in the kernel, clear the started
 		 * field */
 		os_atomic_and(&wgi->wg_state, ~OS_WORKGROUP_INTERVAL_STARTED, relaxed);
+	} else {
+		if (_os_workgroup_interval_data_telemetry_requested(data)) {
+			_os_workgroup_interval_copy_telemetry_data(wgi, data);
+		}
 	}
 
 	os_unfair_lock_unlock(&wgi->wii_lock);
-
 	return rv;
 }
 
@@ -1693,6 +1825,11 @@ os_workgroup_interval_update(os_workgroup_interval_t wgi, uint64_t deadline,
 	os_workgroup_t cur_wg = _os_workgroup_get_current();
 	if (cur_wg != wgi->_as_wg) {
 		os_crash("Thread is not a member of the workgroup");
+	}
+
+	if (_os_workgroup_interval_invalid_telemetry_request(wgi, data)) {
+		errno = EINVAL;
+		return errno;
 	}
 
 	bool success = os_unfair_lock_trylock(&wgi->wii_lock);
@@ -1732,6 +1869,10 @@ os_workgroup_interval_update(os_workgroup_interval_t wgi, uint64_t deadline,
 	int rv = work_interval_instance_update(wii);
 	if (rv != 0) {
 		rv = errno;
+	} else {
+		if (_os_workgroup_interval_data_telemetry_requested(data)) {
+			_os_workgroup_interval_copy_telemetry_data(wgi, data);
+		}
 	}
 
 	os_unfair_lock_unlock(&wgi->wii_lock);
@@ -1745,6 +1886,11 @@ os_workgroup_interval_finish(os_workgroup_interval_t wgi,
 	os_workgroup_t cur_wg = _os_workgroup_get_current();
 	if (cur_wg != wgi->_as_wg) {
 		os_crash("Thread is not a member of the workgroup");
+	}
+
+	if (_os_workgroup_interval_invalid_telemetry_request(wgi, data)) {
+		errno = EINVAL;
+		return errno;
 	}
 
 	bool success = os_unfair_lock_trylock(&wgi->wii_lock);
@@ -1789,6 +1935,10 @@ os_workgroup_interval_finish(os_workgroup_interval_t wgi,
 	} else {
 		/* If we succeeded in finishing, clear the started bit */
 		os_atomic_and(&wgi->wg_state, ~OS_WORKGROUP_INTERVAL_STARTED, relaxed);
+
+		if (_os_workgroup_interval_data_telemetry_requested(data)) {
+			_os_workgroup_interval_copy_telemetry_data(wgi, data);
+		}
 	}
 
 	os_unfair_lock_unlock(&wgi->wii_lock);

@@ -149,7 +149,7 @@ _dispatch_introspection_lane_get_info(dispatch_lane_class_t dqu)
 {
 	dispatch_lane_t dq = dqu._dl;
 	bool global = _dispatch_object_is_global(dq);
-	uint64_t dq_state = os_atomic_load2o(dq, dq_state, relaxed);
+	uint64_t dq_state = os_atomic_load(&dq->dq_state, relaxed);
 
 	dispatch_introspection_queue_s diq = {
 		.queue = dq->_as_dq,
@@ -172,7 +172,7 @@ DISPATCH_ALWAYS_INLINE
 static inline dispatch_introspection_queue_s
 _dispatch_introspection_workloop_get_info(dispatch_workloop_t dwl)
 {
-	uint64_t dq_state = os_atomic_load2o(dwl, dq_state, relaxed);
+	uint64_t dq_state = os_atomic_load(&dwl->dq_state, relaxed);
 
 	dispatch_introspection_queue_s diq = {
 		.queue = dwl->_as_dq,
@@ -256,7 +256,7 @@ _dispatch_introspection_continuation_get_info(dispatch_queue_t dq,
 	} else if (func == _dispatch_apply_invoke ||
 			func == _dispatch_apply_redirect_invoke) {
 		dispatch_apply_t da = ctxt;
-		if (os_atomic_load2o(da, da_todo, relaxed)) {
+		if (os_atomic_load(&da->da_todo, relaxed)) {
 			dc = da->da_dc;
 			dq = dc->dc_other;
 			ctxt = dc->dc_ctxt;
@@ -321,7 +321,7 @@ _dispatch_introspection_source_get_info(dispatch_source_t ds)
 		hdlr_is_block = (dc->dc_flags & DC_FLAG_BLOCK);
 	}
 
-	uint64_t dq_state = os_atomic_load2o(ds, dq_state, relaxed);
+	uint64_t dq_state = os_atomic_load(&ds->dq_state, relaxed);
 	dispatch_introspection_source_s dis = {
 		.source = ds,
 		.target_queue = ds->do_targetq,
@@ -343,7 +343,7 @@ dispatch_introspection_source_s
 _dispatch_introspection_mach_get_info(dispatch_mach_t dm)
 {
 	dispatch_mach_recv_refs_t dmrr = dm->dm_recv_refs;
-	uint64_t dq_state = os_atomic_load2o(dm, dq_state, relaxed);
+	uint64_t dq_state = os_atomic_load(&dm->dq_state, relaxed);
 
 	dispatch_introspection_source_s dis = {
 		.source = upcast(dm)._ds,
