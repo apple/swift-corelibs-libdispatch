@@ -285,10 +285,12 @@ else()
   set(INSTALL_OS_HEADERS_DIR "include/os" CACHE PATH "Path where the headers will be installed")
 endif()
 
-configure_file("${PROJECT_SOURCE_DIR}/cmake/libdispatch.pc.in"
-               "${PROJECT_BINARY_DIR}/libdispatch.pc" @ONLY)
+if(NOT APPLE)
+  configure_file("${PROJECT_SOURCE_DIR}/cmake/libdispatch.pc.in"
+                 "${PROJECT_BINARY_DIR}/libdispatch.pc" @ONLY)
 
-install(FILES ${PROJECT_BINARY_DIR}/libdispatch.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+  install(FILES ${PROJECT_BINARY_DIR}/libdispatch.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+endif
 
 add_subdirectory(dispatch)
 add_subdirectory(man)
