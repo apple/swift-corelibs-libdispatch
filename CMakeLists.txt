@@ -286,7 +286,7 @@ else()
 endif()
 
 configure_file("${PROJECT_SOURCE_DIR}/cmake/libdispatch.pc.in"
-               "${PROJECT_BINARY_DIR}/libdispatch.pc")
+               "${PROJECT_BINARY_DIR}/libdispatch.pc" @ONLY)
 
 install(FILES ${PROJECT_BINARY_DIR}/libdispatch.pc DESTINATION ${INSTALL_LIBDIR}/pkgconfig)
 
