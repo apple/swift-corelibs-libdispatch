@@ -290,7 +290,7 @@ if(NOT APPLE)
                  "${PROJECT_BINARY_DIR}/libdispatch.pc" @ONLY)
 
   install(FILES ${PROJECT_BINARY_DIR}/libdispatch.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
-endif
+endif()
 
 add_subdirectory(dispatch)
 add_subdirectory(man)
