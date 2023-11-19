@@ -285,6 +285,10 @@ else()
   set(INSTALL_OS_HEADERS_DIR "include/os" CACHE PATH "Path where the headers will be installed")
 endif()
 
+configure_file("${PROJECT_SOURCE_DIR}/cmake/libdispatch.pc.in"
+               "${PROJECT_BINARY_DIR}/libdispatch.pc")
+
+install(FILES ${PROJECT_BINARY_DIR}/libdispatch.pc DESTINATION ${INSTALL_LIBDIR}/pkgconfig)
 
 add_subdirectory(dispatch)
 add_subdirectory(man)
