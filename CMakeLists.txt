@@ -88,6 +88,7 @@ include(DispatchSanitization)
 include(DispatchCompilerWarnings)
 include(DTrace)
 include(SwiftSupport)
+include(PkgConfigGeneration)
 
 # NOTE(abdulras) this is the CMake supported way to control whether we generate
 # shared or static libraries.  This impacts the behaviour of `add_library` in
@@ -283,13 +284,6 @@ else()
   set(INSTALL_DISPATCH_HEADERS_DIR "include/dispatch" CACHE PATH "Path where the headers will be installed")
   set(INSTALL_BLOCK_HEADERS_DIR "include" CACHE PATH "Path where the headers will be installed for the blocks runtime")
   set(INSTALL_OS_HEADERS_DIR "include/os" CACHE PATH "Path where the headers will be installed")
-endif()
-
-if(NOT APPLE)
-  configure_file("${PROJECT_SOURCE_DIR}/cmake/libdispatch.pc.in"
-                 "${PROJECT_BINARY_DIR}/libdispatch.pc" @ONLY)
-
-  install(FILES ${PROJECT_BINARY_DIR}/libdispatch.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 endif()
 
 add_subdirectory(dispatch)
