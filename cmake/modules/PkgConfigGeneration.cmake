@@ -12,7 +12,7 @@ if(UNIX AND NOT APPLE)
   # Configure the pkg-config file from the template
   configure_file("${PROJECT_SOURCE_DIR}/cmake/libdispatch.pc.in"
                  "${PROJECT_BINARY_DIR}/libdispatch.pc" @ONLY)
-
+  
   # Install the generated pkg-config file to the appropriate directory
   install(FILES "${PROJECT_BINARY_DIR}/libdispatch.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 endif()
