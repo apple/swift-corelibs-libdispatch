@@ -2374,10 +2374,7 @@ _dispatch_operation_perform(dispatch_operation_t op)
 			}
 			op->buf = _aligned_malloc(op->buf_siz, siInfo.dwPageSize);
 #else
-			err = posix_memalign(&op->buf, (size_t)PAGE_SIZE, op->buf_siz);
-			if (err != 0) {
-				goto error;
-			}
+			op->buf = aligned_alloc((size_t)PAGE_SIZE, op->buf_siz)
 #endif
 			_dispatch_op_debug("buffer allocated", op);
 		} else if (op->direction == DOP_DIR_WRITE) {
