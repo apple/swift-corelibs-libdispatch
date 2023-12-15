@@ -32,20 +32,7 @@
 #define __has_builtin(builtin) 0
 #endif
 
-#if __has_builtin(__sync_bool_compare_and_swap)
-#define OSAtomicCompareAndSwapInt(_Old, _New, _Ptr)                            \
-  __sync_bool_compare_and_swap(_Ptr, _Old, _New)
-#else
-#define _CRT_SECURE_NO_WARNINGS 1
-#include <Windows.h>
-static __inline bool OSAtomicCompareAndSwapInt(int oldi, int newi,
-                                               int volatile *dst) {
-  // fixme barrier is overkill -- see objc-os.h
-  int original = InterlockedCompareExchange((LONG volatile *)dst, newi, oldi);
-  return (original == oldi);
-}
-#endif
-
+#include <stdatomic.h>
 /***********************
 Globals
 ************************/
@@ -64,21 +51,22 @@ Internal Utilities
 ********************************************************************************/
 
 
-static int32_t latching_incr_int(volatile int32_t *where) {
+static int32_t latching_incr_int(_Atomic(int32_t) *where) {
     while (1) {
-        int32_t old_value = *where;
+        int32_t old_value = atomic_load_explicit(where, memory_order_relaxed);
         if ((old_value & BLOCK_REFCOUNT_MASK) == BLOCK_REFCOUNT_MASK) {
             return BLOCK_REFCOUNT_MASK;
         }
-        if (OSAtomicCompareAndSwapInt(old_value, old_value+2, where)) {
+
+        if (atomic_compare_exchange_weak(where, &old_value, old_value + 2)) {
             return old_value+2;
         }
     }
 }
 
-static bool latching_incr_int_not_deallocating(volatile int32_t *where) {
+static bool latching_incr_int_not_deallocating(_Atomic(int32_t) *where) {
     while (1) {
-        int32_t old_value = *where;
+        int32_t old_value = atomic_load_explicit(where, memory_order_relaxed);
         if (old_value & BLOCK_DEALLOCATING) {
             // if deallocating we can't do this
             return false;
@@ -87,7 +75,7 @@ static bool latching_incr_int_not_deallocating(volatile int32_t *where) {
             // if latched, we're leaking this block, and we succeed
             return true;
         }
-        if (OSAtomicCompareAndSwapInt(old_value, old_value+2, where)) {
+        if (atomic_compare_exchange_weak(where, &old_value, old_value + 2)) {
             // otherwise, we must store a new retained value without the deallocating bit set
             return true;
         }
@@ -96,9 +84,9 @@ static bool latching_incr_int_not_deallocating(volatile int32_t *where) {
 
 
 // return should_deallocate?
-static bool latching_decr_int_should_deallocate(volatile int32_t *where) {
+static bool latching_decr_int_should_deallocate(_Atomic(int32_t) *where) {
     while (1) {
-        int32_t old_value = *where;
+        int32_t old_value = atomic_load_explicit(where, memory_order_relaxed);
         if ((old_value & BLOCK_REFCOUNT_MASK) == BLOCK_REFCOUNT_MASK) {
             return false; // latched high
         }
@@ -111,16 +99,16 @@ static bool latching_decr_int_should_deallocate(volatile int32_t *where) {
             new_value = old_value - 1;
             result = true;
         }
-        if (OSAtomicCompareAndSwapInt(old_value, new_value, where)) {
+        if (atomic_compare_exchange_weak(where, &old_value, new_value)) {
             return result;
         }
     }
 }
 
 // hit zero?
-static bool latching_decr_int_now_zero(volatile int32_t *where) {
+static bool latching_decr_int_now_zero(_Atomic(int32_t) *where) {
     while (1) {
-        int32_t old_value = *where;
+        int32_t old_value = atomic_load_explicit(where, memory_order_relaxed);
         if ((old_value & BLOCK_REFCOUNT_MASK) == BLOCK_REFCOUNT_MASK) {
             return false; // latched high
         }
@@ -128,7 +116,7 @@ static bool latching_decr_int_now_zero(volatile int32_t *where) {
             return false;   // underflow, latch low
         }
         int32_t new_value = old_value - 2;
-        if (OSAtomicCompareAndSwapInt(old_value, new_value, where)) {
+        if (atomic_compare_exchange_weak(where, &old_value, new_value)) {
             return (new_value & BLOCK_REFCOUNT_MASK) == 0;
         }
     }

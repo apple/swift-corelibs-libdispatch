@@ -48,43 +48,43 @@
 #endif
 
 static dispatch_group_t g;
-static volatile size_t r_count, w_count, workers, readers, writers, crw, count, drain;
+static _Atomic(size_t) r_count, w_count, workers, readers, writers, crw, count, drain;
 
 static void
 writer(void *ctxt)
 {
-	size_t w = __sync_add_and_fetch(&writers, 1), *m = (size_t *)ctxt;
+	size_t w = atomic_fetch_add(&writers, 1, memory_order_relaxed) + 1, *m = (size_t *)ctxt;
 	if (w > *m) *m = w;
 
 	usleep(10000);
 	size_t busy = BUSY;
-	while (busy--) if (readers) __sync_add_and_fetch(&crw, 1);
+	while (busy--) if (readers) atomic_fetch_add(&crw, 1, memory_order_relaxed);
 
-	if (__sync_sub_and_fetch(&w_count, 1) == 0) {
+	if (atomic_fetch_sub(&w_count, 1, memory_order_relaxed) == 0) {
 		if (r_count == 0) {
 			dispatch_async(dispatch_get_main_queue(), ^{test_stop();});
 		}
 	}
-	__sync_sub_and_fetch(&writers, 1);
+	atomic_fetch_sub(&writers, 1, memory_order_relaxed)
 	dispatch_group_leave(g);
 }
 
 static void
 reader(void *ctxt)
 {
-	size_t r = __sync_add_and_fetch(&readers, 1), *m = (size_t *)ctxt;
+	size_t r = atomic_fetch_add(&readers, 1, memory_order_relaxed) + 1, *m = (size_t *)ctxt;
 	if (r > *m) *m = r;
 
 	usleep(10000);
 	size_t busy = BUSY;
-	while (busy--) if (writers) __sync_add_and_fetch(&crw, 1);
+	while (busy--) if (writers) atomic_fetch_add(&crw, 1, memory_order_relaxed);
 
-	if (__sync_sub_and_fetch(&r_count, 1) == 0) {
+	if (atomic_fetch_sub(&r_count, 1, memory_order_relaxed) - 1 == 0) {
 		if (r_count == 0) {
 			dispatch_async(dispatch_get_main_queue(), ^{test_stop();});
 		}
 	}
-	__sync_sub_and_fetch(&readers, 1);
+	atomic_fetch_sub(&readers, 1, memory_order_relaxed);
 }
 
 static void
@@ -101,12 +101,12 @@ test_readsync(dispatch_queue_t rq, dispatch_queue_t wq, size_t n)
 		dispatch_group_async(g,
 				dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH,
 				DISPATCH_QUEUE_OVERCOMMIT), ^{
-			__sync_add_and_fetch(&workers, 1);
+			atomic_fetch_add(&workers, 1, memory_order_relaxed);
 			do {
 				usleep(100000);
 			} while (workers < n);
 			for (;;) {
-				size_t idx = __sync_add_and_fetch(&count, 1);
+				size_t idx = atomic_fetch_add(&count, 1, memory_order_relaxed) + 1;
 				if (idx > LAPS) break;
 				dispatch_sync_f(rq, mr, reader);
 				if (!(idx % INTERVAL)) {
@@ -116,10 +116,10 @@ test_readsync(dispatch_queue_t rq, dispatch_queue_t wq, size_t n)
 				dispatch_sync_f(rq, mr, reader);
 				if (!(idx % (INTERVAL*10))) {
 					// Let the queue drain
-					__sync_add_and_fetch(&drain, 1);
+					atomic_fetch_sub(&drain, 1, memory_order_relaxed);
 					usleep(10000);
 					dispatch_barrier_sync(wq, ^{});
-					__sync_sub_and_fetch(&drain, 1);
+					atomic_fetch_sub(&drain, 1, memory_order_relaxed);
 				} else while (drain) usleep(1000);
 			}
 		});

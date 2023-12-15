@@ -21,6 +21,7 @@
 #include <dispatch/dispatch.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdatomic.h>
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
 #endif
@@ -33,14 +34,14 @@
 
 static const char *ctxts[] = {"ctxt for app", "ctxt for key 1",
 		"ctxt for key 2", "ctxt for key 1 bis", "ctxt for key 4"};
-volatile long ctxts_destroyed;
+atomic_long ctxts_destroyed;
 static dispatch_group_t g;
 
 static void
 destructor(void *ctxt)
 {
 	fprintf(stderr, "destructor of %s\n", (char*)ctxt);
-	(void)__sync_add_and_fetch(&ctxts_destroyed, 1);
+	atomic_fetch_sub(&ctxts_destroyed, 1, memory_order_relaxed);
 	dispatch_group_leave(g);
 }
 
