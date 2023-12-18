@@ -71,7 +71,7 @@ __BEGIN_DECLS
  * Voucher objects are os_objects (c.f. <os/object.h>). They are memory-managed
  * with the os_retain()/os_release() functions or -[retain]/-[release] methods.
  */
-OS_OBJECT_DECL_CLASS(voucher);
+OS_OBJECT_DECL_SENDABLE_CLASS(voucher);
 
 /*!
  * @const VOUCHER_NULL
@@ -520,7 +520,7 @@ voucher_get_current_persona(void);
  * @function voucher_get_current_persona_originator_info
  *
  * @abstract
- * Retrieve the ’originator’ process persona info for the currently adopted
+ * Retrieve the ’originator�? process persona info for the currently adopted
  * voucher.
  *
  * @discussion
@@ -544,7 +544,7 @@ voucher_get_current_persona_originator_info(
  * @function voucher_get_current_persona_proximate_info
  *
  * @abstract
- * Retrieve the ’proximate’ process persona info for the currently adopted
+ * Retrieve the ’proximate�? process persona info for the currently adopted
  * voucher.
  *
  * @discussion

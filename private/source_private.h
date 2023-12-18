@@ -78,7 +78,7 @@ DISPATCH_SOURCE_TYPE_DECL(interval);
  * @const DISPATCH_SOURCE_TYPE_VFS
  * @discussion Apple-internal dispatch source that monitors for vfs events
  * defined by dispatch_vfs_flags_t.
- * The handle is a process identifier (pid_t).
+ * The handle is required to be NULL.
  */
 #define DISPATCH_SOURCE_TYPE_VFS (&_dispatch_source_type_vfs)
 API_AVAILABLE(macos(10.6), ios(4.0)) DISPATCH_LINUX_UNAVAILABLE()

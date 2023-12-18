@@ -123,7 +123,7 @@ bool
 _os_object_retain_weak(_os_object_t obj)
 {
 	int xref_cnt, nxref_cnt;
-	os_atomic_rmw_loop2o(obj, os_obj_xref_cnt, xref_cnt, nxref_cnt, relaxed, {
+	os_atomic_rmw_loop(&obj->os_obj_xref_cnt, xref_cnt, nxref_cnt, relaxed, {
 		if (unlikely(xref_cnt == _OS_OBJECT_GLOBAL_REFCNT)) {
 			os_atomic_rmw_loop_give_up(return true); // global object
 		}

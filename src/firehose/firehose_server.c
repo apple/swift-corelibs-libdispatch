@@ -208,8 +208,8 @@ static void
 firehose_client_notify(firehose_client_t fc, mach_port_t reply_port)
 {
 	firehose_push_reply_t push_reply = {
-		.fpr_mem_flushed_pos = os_atomic_load2o(fc, fc_mem_flushed_pos,relaxed),
-		.fpr_io_flushed_pos = os_atomic_load2o(fc, fc_io_flushed_pos, relaxed),
+		.fpr_mem_flushed_pos = os_atomic_load(&fc->fc_mem_flushed_pos, relaxed),
+		.fpr_io_flushed_pos = os_atomic_load(&fc->fc_io_flushed_pos, relaxed),
 	};
 	kern_return_t kr;
 
@@ -243,9 +243,9 @@ firehose_client_acquire_head(firehose_buffer_t fb, bool for_io)
 {
 	uint16_t head;
 	if (for_io) {
-		head = os_atomic_load2o(&fb->fb_header, fbh_ring_io_head, acquire);
+		head = os_atomic_load(&fb->fb_header.fbh_ring_io_head, acquire);
 	} else {
-		head = os_atomic_load2o(&fb->fb_header, fbh_ring_mem_head, acquire);
+		head = os_atomic_load(&fb->fb_header.fbh_ring_mem_head, acquire);
 	}
 	return head;
 }
@@ -371,13 +371,11 @@ firehose_client_drain_one(firehose_client_t fc, mach_port_t port, uint32_t flags
 		// and we only need 16bits from it. and on 32bit arm, there's no way to
 		// perform an atomic load of a 64bit quantity on read-only memory.
 		if (for_io) {
-			os_atomic_add2o(fc, fc_io_flushed_pos, count, relaxed);
-			client_flushed = os_atomic_load2o(&fb->fb_header,
-				fbh_ring_tail.frp_io_flushed, relaxed);
+			os_atomic_add(&fc->fc_io_flushed_pos, count, relaxed);
+			client_flushed = os_atomic_load(&fb->fb_header.fbh_ring_tail.frp_io_flushed, relaxed);
 		} else {
-			os_atomic_add2o(fc, fc_mem_flushed_pos, count, relaxed);
-			client_flushed = os_atomic_load2o(&fb->fb_header,
-				fbh_ring_tail.frp_mem_flushed, relaxed);
+			os_atomic_add(&fc->fc_mem_flushed_pos, count, relaxed);
+			client_flushed = os_atomic_load(&fb->fb_header.fbh_ring_tail.frp_mem_flushed, relaxed);
 		}
 		if (!fc->fc_pid) {
 			// will fire firehose_client_notify() because port is MACH_PORT_DEAD
@@ -648,8 +646,8 @@ firehose_client_handle_mach_event(void *ctx, dispatch_mach_reason_t reason,
 		break;
 
 	case DISPATCH_MACH_CANCELED:
-		if (!_os_atomic_refcnt_sub2o(fc, fc_mach_channel_refcnt, 1)) {
-			_os_atomic_refcnt_dispose_barrier2o(fc, fc_mach_channel_refcnt);
+		if (!_os_atomic_refcnt_sub(&fc->fc_mach_channel_refcnt, 1)) {
+			_os_atomic_refcnt_dispose_barrier(&fc->fc_mach_channel_refcnt);
 
 			firehose_mach_port_send_release(fc->fc_sendp);
 			fc->fc_sendp = MACH_PORT_NULL;
@@ -867,7 +865,7 @@ firehose_client_get_metadata_buffer(firehose_client_t client, size_t *size)
 void *
 firehose_client_get_context(firehose_client_t fc)
 {
-	return os_atomic_load2o(fc, fc_ctxt, relaxed);
+	return os_atomic_load(&fc->fc_ctxt, relaxed);
 }
 
 void
@@ -879,7 +877,7 @@ firehose_client_set_strings_cached(firehose_client_t fc)
 void *
 firehose_client_set_context(firehose_client_t fc, void *ctxt)
 {
-	return os_atomic_xchg2o(fc, fc_ctxt, ctxt, relaxed);
+	return os_atomic_xchg(&fc->fc_ctxt, ctxt, relaxed);
 }
 
 void
@@ -1238,7 +1236,7 @@ firehose_snapshot_tickle_clients(firehose_snapshot_t fs, bool for_io)
 	// cheating: equivalent to dispatch_group_enter() n times
 	// without the acquire barriers that we don't need
 	if (n) {
-		os_atomic_sub2o(fs->fs_group, dg_bits,
+		os_atomic_sub(&fs->fs_group->dg_bits,
 				n * DISPATCH_GROUP_VALUE_INTERVAL, relaxed);
 	}
 }

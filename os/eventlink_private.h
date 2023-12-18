@@ -26,7 +26,7 @@ OS_OBJECT_ASSUME_NONNULL_BEGIN
 typedef struct os_eventlink_s *os_eventlink_t;
 #else
 API_AVAILABLE(macos(10.16), ios(14.0), tvos(14.0), watchos(7.0))
-OS_OBJECT_DECL_CLASS(os_eventlink);
+OS_OBJECT_DECL_SENDABLE_CLASS(os_eventlink);
 #endif
 
 /*!

@@ -167,52 +167,6 @@ typedef struct { unsigned long __opaque_zero; } os_atomic_dependency_t;
 
 #endif // !__has_include(<os/atomic_private.h>)
 
-#define os_atomic_load2o(p, f, m) \
-		os_atomic_load(&(p)->f, m)
-#define os_atomic_store2o(p, f, v, m) \
-		os_atomic_store(&(p)->f, (v), m)
-#define os_atomic_xchg2o(p, f, v, m) \
-		os_atomic_xchg(&(p)->f, (v), m)
-#define os_atomic_cmpxchg2o(p, f, e, v, m) \
-		os_atomic_cmpxchg(&(p)->f, (e), (v), m)
-#define os_atomic_cmpxchgv2o(p, f, e, v, g, m) \
-		os_atomic_cmpxchgv(&(p)->f, (e), (v), (g), m)
-#define os_atomic_add2o(p, f, v, m) \
-		os_atomic_add(&(p)->f, (v), m)
-#define os_atomic_add_orig2o(p, f, v, m) \
-		os_atomic_add_orig(&(p)->f, (v), m)
-#define os_atomic_sub2o(p, f, v, m) \
-		os_atomic_sub(&(p)->f, (v), m)
-#define os_atomic_sub_orig2o(p, f, v, m) \
-		os_atomic_sub_orig(&(p)->f, (v), m)
-#define os_atomic_and2o(p, f, v, m) \
-		os_atomic_and(&(p)->f, (v), m)
-#define os_atomic_and_orig2o(p, f, v, m) \
-		os_atomic_and_orig(&(p)->f, (v), m)
-#define os_atomic_or2o(p, f, v, m) \
-		os_atomic_or(&(p)->f, (v), m)
-#define os_atomic_or_orig2o(p, f, v, m) \
-		os_atomic_or_orig(&(p)->f, (v), m)
-#define os_atomic_xor2o(p, f, v, m) \
-		os_atomic_xor(&(p)->f, (v), m)
-#define os_atomic_xor_orig2o(p, f, v, m) \
-		os_atomic_xor_orig(&(p)->f, (v), m)
-
-#define os_atomic_load_with_dependency_on2o(p, f, e) \
-		os_atomic_load_with_dependency_on(&(p)->f, e)
-
-#define os_atomic_inc2o(p, f, m) \
-		os_atomic_add2o(p, f, 1, m)
-#define os_atomic_inc_orig2o(p, f, m) \
-		os_atomic_add_orig2o(p, f, 1, m)
-#define os_atomic_dec2o(p, f, m) \
-		os_atomic_sub2o(p, f, 1, m)
-#define os_atomic_dec_orig2o(p, f, m) \
-		os_atomic_sub_orig2o(p, f, 1, m)
-
-#define os_atomic_rmw_loop2o(p, f, ov, nv, m, ...) \
-		os_atomic_rmw_loop(&(p)->f, ov, nv, m, __VA_ARGS__)
-
 #define os_atomic_rmw_loop_give_up_with_fence(m, expr) \
 		({ os_atomic_thread_fence(m); expr; __builtin_unreachable(); })
 

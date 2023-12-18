@@ -231,12 +231,26 @@ endif()
 
 
 if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
-  add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-fmodule-map-file=${PROJECT_SOURCE_DIR}/dispatch/darwin/module.modulemap>
-                      $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-fmodule-map-file=${PROJECT_SOURCE_DIR}/private/darwin/module.modulemap>)
+  add_custom_command(OUTPUT
+                       "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                       "${PROJECT_SOURCE_DIR}/private/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/dispatch/darwin/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/private/darwin/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
 else()
-  add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-fmodule-map-file=${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap>
-                      $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-fmodule-map-file=${PROJECT_SOURCE_DIR}/private/generic/module.modulemap>)
+  add_custom_command(OUTPUT
+                       "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                       "${PROJECT_SOURCE_DIR}/private/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/dispatch/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                     COMMAND
+                       ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/private/generic/module.modulemap" "${PROJECT_SOURCE_DIR}/private/module.modulemap")
 endif()
+add_custom_target(module-maps ALL
+                  DEPENDS
+                     "${PROJECT_SOURCE_DIR}/dispatch/module.modulemap"
+                     "${PROJECT_SOURCE_DIR}/private/module.modulemap")
 
 configure_file("${PROJECT_SOURCE_DIR}/cmake/config.h.in"
                "${PROJECT_BINARY_DIR}/config/config_ac.h")

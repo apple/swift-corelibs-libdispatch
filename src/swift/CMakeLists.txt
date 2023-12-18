@@ -44,6 +44,7 @@ target_link_libraries(swiftDispatch PRIVATE
   BlocksRuntime::BlocksRuntime)
 target_link_libraries(swiftDispatch PUBLIC
   dispatch)
+add_dependencies(swiftDispatch module-maps)
 
 get_swift_host_arch(swift_arch)
 install(FILES

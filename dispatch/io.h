@@ -54,6 +54,7 @@ __BEGIN_DECLS
 #if defined(_WIN32)
 typedef intptr_t dispatch_fd_t;
 #else
+DISPATCH_SWIFT_UNAVAILABLE("Unavailable in Swift")
 typedef int dispatch_fd_t;
 #endif
 
@@ -109,6 +110,7 @@ typedef int dispatch_fd_t;
  */
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL3 DISPATCH_NONNULL4 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_read(dispatch_fd_t fd,
 	size_t length,
@@ -148,6 +150,7 @@ dispatch_read(dispatch_fd_t fd,
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NONNULL3 DISPATCH_NONNULL4
 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_write(dispatch_fd_t fd,
 	dispatch_data_t data,
@@ -165,7 +168,7 @@ dispatch_write(dispatch_fd_t fd,
  * file descriptor. I/O channels are first class dispatch objects and may be
  * retained and released, suspended and resumed, etc.
  */
-DISPATCH_DECL(dispatch_io);
+DISPATCH_DECL_SWIFT(dispatch_io, DispatchIO);
 
 /*!
  * @typedef dispatch_io_type_t
@@ -188,6 +191,7 @@ DISPATCH_DECL(dispatch_io);
 #define DISPATCH_IO_STREAM 0
 #define DISPATCH_IO_RANDOM 1
 
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchIO.StreamType")
 typedef unsigned long dispatch_io_type_t;
 
 #ifdef __BLOCKS__
@@ -219,6 +223,7 @@ typedef unsigned long dispatch_io_type_t;
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT DISPATCH_SWIFT_NAME(DispatchIO.init(__type:fd:queue:handler:))
 dispatch_io_t
 dispatch_io_create(dispatch_io_type_t type,
 	dispatch_fd_t fd,
@@ -255,6 +260,7 @@ dispatch_io_create(dispatch_io_type_t type,
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT DISPATCH_SWIFT_NAME(DispatchIO.init(__type:path:oflag:mode:queue:handler:))
 dispatch_io_t
 dispatch_io_create_with_path(dispatch_io_type_t type,
 	const char *DISPATCH_UNSAFE_INDEXABLE path, int oflag,
@@ -295,6 +301,7 @@ dispatch_io_create_with_path(dispatch_io_type_t type,
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED
 DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT DISPATCH_SWIFT_NAME(DispatchIO.init(__type:io:queue:handler:))
 dispatch_io_t
 dispatch_io_create_with_io(dispatch_io_type_t type,
 	dispatch_io_t io,
@@ -309,6 +316,7 @@ dispatch_io_create_with_io(dispatch_io_type_t type,
  * @param data		The data object to be handled.
  * @param error		An errno condition for the operation.
  */
+DISPATCH_SWIFT_UNAVAILABLE("Unavailable in Swift")
 typedef void (^dispatch_io_handler_t)(bool done, dispatch_data_t _Nullable data,
 		int error);
 
@@ -357,6 +365,7 @@ typedef void (^dispatch_io_handler_t)(bool done, dispatch_data_t _Nullable data,
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL4 DISPATCH_NONNULL5
 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_io_read(dispatch_io_t channel,
 	off_t offset,
@@ -410,6 +419,7 @@ dispatch_io_read(dispatch_io_t channel,
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NONNULL3 DISPATCH_NONNULL4
 DISPATCH_NONNULL5 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_io_write(dispatch_io_t channel,
 	off_t offset,
@@ -427,6 +437,7 @@ dispatch_io_write(dispatch_io_t channel,
  */
 #define DISPATCH_IO_STOP 0x1
 
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchIO.CloseFlags")
 typedef unsigned long dispatch_io_close_flags_t;
 
 /*!
@@ -448,6 +459,7 @@ typedef unsigned long dispatch_io_close_flags_t;
  */
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_io_close(dispatch_io_t channel, dispatch_io_close_flags_t flags);
 
@@ -475,6 +487,7 @@ dispatch_io_close(dispatch_io_t channel, dispatch_io_close_flags_t flags);
  */
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_SWIFT_NAME(DispatchIO.barrier(self:execute:))
 void
 dispatch_io_barrier(dispatch_io_t channel, dispatch_block_t barrier);
 #endif /* __BLOCKS__ */
@@ -495,6 +508,7 @@ dispatch_io_barrier(dispatch_io_t channel, dispatch_block_t barrier);
  */
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_NOTHROW
+DISPATCH_SWIFT_NAME(getter:DispatchIO.fileDescriptor(self:))
 dispatch_fd_t
 dispatch_io_get_descriptor(dispatch_io_t channel);
 
@@ -516,6 +530,7 @@ dispatch_io_get_descriptor(dispatch_io_t channel);
  */
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_SWIFT_NAME(DispatchIO.setLimit(self:highWater:))
 void
 dispatch_io_set_high_water(dispatch_io_t channel, size_t high_water);
 
@@ -547,6 +562,7 @@ dispatch_io_set_high_water(dispatch_io_t channel, size_t high_water);
  */
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_SWIFT_NAME(DispatchIO.setLimit(self:lowWater:))
 void
 dispatch_io_set_low_water(dispatch_io_t channel, size_t low_water);
 
@@ -560,6 +576,7 @@ dispatch_io_set_low_water(dispatch_io_t channel, size_t low_water);
  */
 #define DISPATCH_IO_STRICT_INTERVAL 0x1
 
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchIO.IntervalFlags")
 typedef unsigned long dispatch_io_interval_flags_t;
 
 /*!
@@ -586,6 +603,7 @@ typedef unsigned long dispatch_io_interval_flags_t;
  */
 API_AVAILABLE(macos(10.7), ios(5.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_io_set_interval(dispatch_io_t channel,
 	uint64_t interval,

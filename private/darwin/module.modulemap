@@ -1,10 +1,13 @@
-module DispatchPrivate [system] [extern_c] {
+module DispatchPrivate [system] {
 	umbrella header "private.h"
+	exclude header "channel_private.h"
+	exclude header "introspection_private.h"
 	exclude header "mach_private.h"
+	exclude header "swift_concurrency_private.h"
 	export *
 }
 
-module DispatchIntrospectionPrivate [system] [extern_c] {
+module DispatchIntrospectionPrivate [system] {
 	header "introspection_private.h"
 	export *
 }

@@ -46,6 +46,9 @@ DISPATCH_OPTIONS(dispatch_queue_flags, uint32_t,
 	DQF_LABEL_NEEDS_FREE    = 0x00200000, // queue label was strdup()ed
 	DQF_MUTABLE             = 0x00400000,
 	DQF_RELEASED            = 0x00800000, // xref_cnt == -1
+	// queue is targetting a specially configured wlh at the bottom.  DQF_MUTABLE
+	// must be false.
+	DQF_TARGET_SPECIAL_WLH  = 0x01000000,
 
 	//
 	// Only applies to sources
@@ -772,7 +775,8 @@ dispatch_assert_valid_lane_type(dispatch_queue_pthread_root_s);
 DISPATCH_CLASS_DECL(queue, QUEUE);
 DISPATCH_CLASS_DECL_BARE(lane, QUEUE);
 DISPATCH_CLASS_DECL(workloop, QUEUE);
-DISPATCH_SUBCLASS_DECL(queue_serial, queue, lane);
+DISPATCH_SUBCLASS_DECL(queue_serial_executor, queue, lane);
+DISPATCH_SUBCLASS_DECL(queue_serial, queue_serial_executor, lane);
 DISPATCH_SUBCLASS_DECL(queue_main, queue_serial, lane);
 DISPATCH_SUBCLASS_DECL(queue_concurrent, queue, lane);
 DISPATCH_SUBCLASS_DECL(queue_global, queue, lane);

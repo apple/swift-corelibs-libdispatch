@@ -7,7 +7,7 @@
 
 /* Define to 1 if you have the declaration of `CLOCK_REALTIME', and to 0 if
    you don't. */
-#define CLOCK_REALTIME 0
+#define HAVE_DECL_CLOCK_REALTIME 0
 
 /* Define to 1 if you have the declaration of `CLOCK_UPTIME', and to 0 if you
    don't. */
@@ -76,6 +76,10 @@
 /* Define to 1 if you have the declaration of `VQ_DESIRED_DISK', and to 0 if
  you don't. */
 #define HAVE_DECL_VQ_DESIRED_DISK 1
+
+/* Define to 1 if you have the declaration of `VQ_FREE_SPACE_CHANGE`, and to 0
+ * if you don't */
+#define HAVE_DECL_VQ_FREE_SPACE_CHANGE 1
 
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #define HAVE_DLFCN_H 1

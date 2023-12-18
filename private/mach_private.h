@@ -32,12 +32,12 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
-__BEGIN_DECLS
-
 #define DISPATCH_MACH_SPI_VERSION 20200229
 
 #include <mach/mach.h>
 #include <mach/message.h>
+
+__BEGIN_DECLS
 
 DISPATCH_ASSUME_NONNULL_BEGIN
 
