@@ -24,8 +24,6 @@
 #define PERSONA_ID_NONE ((uid_t)-1)
 #endif
 
-#if !DISPATCH_VARIANT_DYLD_STUB
-
 #if VOUCHER_USE_MACH_VOUCHER
 #if !HAVE_PTHREAD_WORKQUEUE_QOS
 #error Unsupported configuration, workqueue QoS support is required
@@ -100,9 +98,6 @@ _voucher_clone(const voucher_t ov, voucher_fields_t ignore_fields)
 			v->v_kvbase = _voucher_retain(kvb);
 			v->v_kvoucher = kvb->v_kvoucher;
 			v->v_kv_has_importance = kvb->v_kv_has_importance;
-		}
-		if (fields & VOUCHER_FIELD_PRIORITY) {
-			v->v_priority = ov->v_priority;
 		}
 		if (fields & VOUCHER_FIELD_ACTIVITY) {
 			v->v_activity = ov->v_activity;
@@ -203,6 +198,29 @@ _voucher_hash_remove(voucher_t v)
 	_voucher_hash_mark_not_enqueued(v);
 }
 
+static void
+_voucher_hash_reset_locked(void) {
+	/*
+	 * Because voucher ports are not inherited by children, we empty the
+	 * voucher hash table. We need to leave the voucher instances around,
+	 * though, in case anyone has any references to them. So, we decompose the
+	 * linked list, and strip all of the members of any kernel voucher
+	 * references that they might have.
+	 */
+	for (unsigned int i = 0; i < VL_HASH_SIZE; i++) {
+		voucher_hash_head_s *head = &_voucher_hash[i];
+		voucher_t v;
+		while ((v = _voucher_hash_get_next(head->vhh_first)) != VOUCHER_NULL) {
+			v->v_kvoucher = MACH_VOUCHER_NULL;
+			v->v_ipc_kvoucher = MACH_VOUCHER_NULL;
+
+			_voucher_hash_remove(v);
+		}
+	}
+
+	memset(_voucher_hash, ~(uintptr_t)VOUCHER_NULL, sizeof(_voucher_hash));
+}
+
 static voucher_t
 _voucher_find_and_retain(mach_voucher_t kv)
 {
@@ -212,7 +230,7 @@ _voucher_find_and_retain(mach_voucher_t kv)
 	voucher_t v = _voucher_hash_get_next(head->vhh_first);
 	while (v) {
 		if (v->v_ipc_kvoucher == kv) {
-			int xref_cnt = os_atomic_inc2o(v, os_obj_xref_cnt, relaxed);
+			int xref_cnt = os_atomic_inc(&v->os_obj_xref_cnt, relaxed);
 			_dispatch_voucher_debug("retain  -> %d", v, xref_cnt + 1);
 			if (unlikely(xref_cnt < 0)) {
 				_dispatch_voucher_debug("over-release", v);
@@ -220,7 +238,7 @@ _voucher_find_and_retain(mach_voucher_t kv)
 			}
 			if (xref_cnt == 0) {
 				// resurrection: raced with _voucher_remove
-				(void)os_atomic_inc2o(v, os_obj_ref_cnt, relaxed);
+				(void)os_atomic_inc(&v->os_obj_ref_cnt, relaxed);
 			}
 			break;
 		}
@@ -240,6 +258,15 @@ _voucher_insert(voucher_t v)
 		_dispatch_voucher_debug("corruption", v);
 		DISPATCH_CLIENT_CRASH(0, "Voucher corruption");
 	}
+	if (unlikely(v->v_activity != 0)) {
+		_dispatch_voucher_debug("Activity data corruption", v);
+		DISPATCH_INTERNAL_CRASH(v->v_activity, "base voucher has non-zero activity value");
+	}
+	if (unlikely(v->v_kvbase != VOUCHER_NULL)) {
+		_dispatch_voucher_debug("Incoming voucher with corrupted base", v);
+		_dispatch_voucher_debug("Corrupted base for incoming voucher", v->v_kvbase);
+		DISPATCH_INTERNAL_CRASH(v->v_kvbase, "base voucher has nested base voucher");
+	}
 	_voucher_hash_enqueue(kv, v);
 	_voucher_hash_lock_unlock();
 }
@@ -255,7 +282,7 @@ _voucher_remove(voucher_t v)
 		DISPATCH_CLIENT_CRASH(0, "Voucher corruption");
 	}
 	// check for resurrection race with _voucher_find_and_retain
-	if (os_atomic_load2o(v, os_obj_xref_cnt, ordered) < 0) {
+	if (os_atomic_load(&v->os_obj_xref_cnt, ordered) < 0) {
 		if (_voucher_hash_is_enqueued(v)) _voucher_hash_remove(v);
 	}
 	_voucher_hash_lock_unlock();
@@ -352,17 +379,14 @@ voucher_replace_default_voucher(void)
 		_voucher_mach_recipe_size(sizeof(_voucher_mach_udata_s)) + \
 		_voucher_extra_size(v)))
 
+#if !DISPATCH_SEND_ACTIVITY_IN_MSGV
 DISPATCH_ALWAYS_INLINE
 static inline mach_voucher_attr_recipe_size_t
 _voucher_mach_recipe_init(mach_voucher_attr_recipe_t mvar_buf, voucher_s *v,
-		mach_voucher_t kvb, pthread_priority_t pp)
+		mach_voucher_t kvb)
 {
 	mach_voucher_attr_recipe_size_t extra = _voucher_extra_size(v);
 	mach_voucher_attr_recipe_size_t size = 0;
-
-	// normalize to just the QoS class and 0 relative priority
-	pp &= _PTHREAD_PRIORITY_QOS_CLASS_MASK;
-	if (pp) pp |= _PTHREAD_PRIORITY_PRIORITY_MASK;
 
 	*mvar_buf++ = (mach_voucher_attr_recipe_data_t){
 		.key = MACH_VOUCHER_ATTR_KEY_ALL,
@@ -371,18 +395,7 @@ _voucher_mach_recipe_init(mach_voucher_attr_recipe_t mvar_buf, voucher_s *v,
 	};
 	size += _voucher_mach_recipe_size(0);
 
-	if (pp) {
-		ipc_pthread_priority_value_t value = (ipc_pthread_priority_value_t)pp;
-		*mvar_buf++ = (mach_voucher_attr_recipe_data_t){
-			.key = MACH_VOUCHER_ATTR_KEY_PTHPRIORITY,
-			.command = MACH_VOUCHER_ATTR_PTHPRIORITY_CREATE,
-			.content_size = sizeof(value),
-		};
-		mvar_buf = _dispatch_memappend(mvar_buf, &value);
-		size += _voucher_mach_recipe_size(sizeof(value));
-	}
-
-	if ((v && v->v_activity) || pp) {
+	if (v && v->v_activity) {
 		_voucher_mach_udata_s *udata_buf;
 		unsigned udata_size = 0;
 
@@ -398,20 +411,12 @@ _voucher_mach_recipe_init(mach_voucher_attr_recipe_t mvar_buf, voucher_s *v,
 		};
 		udata_buf = (_voucher_mach_udata_s *)(mvar_buf->content);
 
-		if (v && v->v_activity) {
-			*udata_buf = (_voucher_mach_udata_s){
-				.vmu_magic = VOUCHER_MAGIC_V3,
-				.vmu_priority = (_voucher_priority_t)pp,
-				.vmu_activity = v->v_activity,
-				.vmu_activity_pid = v->v_activity_creator,
-				.vmu_parent_activity = v->v_parent_activity,
-			};
-		} else {
-			*udata_buf = (_voucher_mach_udata_s){
-				.vmu_magic = VOUCHER_MAGIC_V3,
-				.vmu_priority = (_voucher_priority_t)pp,
-			};
-		}
+		*udata_buf = (_voucher_mach_udata_s){
+			.vmu_magic = VOUCHER_MAGIC_V3,
+			.vmu_activity = v->v_activity,
+			.vmu_activity_pid = v->v_activity_creator,
+			.vmu_parent_activity = v->v_parent_activity,
+		};
 
 		mvar_buf = (mach_voucher_attr_recipe_t)(mvar_buf->content + udata_size);
 		size += _voucher_mach_recipe_size(udata_size);
@@ -423,6 +428,7 @@ _voucher_mach_recipe_init(mach_voucher_attr_recipe_t mvar_buf, voucher_s *v,
 	}
 	return size;
 }
+#endif
 
 mach_voucher_t
 _voucher_get_mach_voucher(voucher_t voucher)
@@ -431,8 +437,10 @@ _voucher_get_mach_voucher(voucher_t voucher)
 	if (voucher->v_ipc_kvoucher) return voucher->v_ipc_kvoucher;
 	mach_voucher_t kvb = voucher->v_kvoucher;
 	if (!kvb) kvb = _voucher_get_task_mach_voucher();
-	if (!voucher->v_activity && !voucher->v_priority &&
-			!_voucher_extra_size(voucher)) {
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
+	return kvb;
+#else
+	if (!voucher->v_activity && !_voucher_extra_size(voucher)) {
 		return kvb;
 	}
 
@@ -441,12 +449,12 @@ _voucher_get_mach_voucher(voucher_t voucher)
 	mach_voucher_t kv, kvo;
 	kern_return_t kr;
 
-	size = _voucher_mach_recipe_init(mvar, voucher, kvb, voucher->v_priority);
+	size = _voucher_mach_recipe_init(mvar, voucher, kvb);
 	kr = _voucher_create_mach_voucher(mvar, size, &kv);
 	if (dispatch_assume_zero(kr) || !kv) {
 		return MACH_VOUCHER_NULL;
 	}
-	if (!os_atomic_cmpxchgv2o(voucher, v_ipc_kvoucher, MACH_VOUCHER_NULL,
+	if (!os_atomic_cmpxchgv(&voucher->v_ipc_kvoucher, MACH_VOUCHER_NULL,
 			kv, &kvo, relaxed)) {
 		_voucher_dealloc_mach_voucher(kv);
 		kv = kvo;
@@ -459,34 +467,63 @@ _voucher_get_mach_voucher(voucher_t voucher)
 		_dispatch_voucher_debug("kvoucher[0x%08x] create", voucher, kv);
 	}
 	return kv;
+#endif
 }
 
-mach_voucher_t
-_voucher_create_mach_voucher_with_priority(voucher_t voucher,
-		pthread_priority_t priority)
-{
-	if (priority == _voucher_get_priority(voucher)) {
-		return MACH_VOUCHER_NULL; // caller will use _voucher_get_mach_voucher
-	}
-	kern_return_t kr;
-	mach_voucher_t kv, kvb = voucher ? voucher->v_kvoucher : MACH_VOUCHER_NULL;
-	if (!kvb) kvb = _voucher_get_task_mach_voucher();
-
-	mach_voucher_attr_recipe_t mvar = _voucher_mach_recipe_alloca(voucher);
-	mach_voucher_attr_recipe_size_t size;
-
-	size = _voucher_mach_recipe_init(mvar, voucher, kvb, priority);
-	kr = _voucher_create_mach_voucher(mvar, size, &kv);
-	if (dispatch_assume_zero(kr) || !kv) {
-		return MACH_VOUCHER_NULL;
-	}
-	_dispatch_kvoucher_debug("create with priority from voucher[%p]", kv,
-			voucher);
-	return kv;
-}
-
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
 static voucher_t
-_voucher_create_with_mach_voucher(mach_voucher_t kv, mach_msg_bits_t msgh_bits)
+_voucher_create_with_mach_voucher(mach_voucher_t kv, mach_msg_bits_t msgh_bits,
+	_voucher_mach_udata_s *udata, mach_msg_size_t udata_sz)
+{
+	voucher_t v;
+	voucher_t bv = VOUCHER_NULL;
+
+	if (kv) {
+		bv = _voucher_find_and_retain(kv);
+		if (bv) {
+			_dispatch_voucher_debug("kvoucher[0x%08x] found", bv, kv);
+			_voucher_dealloc_mach_voucher(kv);
+		} else {
+			bv = _voucher_alloc(0);
+			bv->v_ipc_kvoucher = bv->v_kvoucher = kv;
+			bv->v_kv_has_importance = !!(msgh_bits & MACH_MSGH_BITS_RAISEIMP);
+			_voucher_insert(bv);
+			_voucher_trace(CREATE, bv, kv, 0);
+		}
+	}
+
+	if (udata_sz < offsetof(_voucher_mach_udata_s, _vmu_after_activity) ||
+		udata->vmu_magic != VOUCHER_MAGIC_V3 || !udata->vmu_activity) {
+		return bv;
+	}
+
+	if (bv) {
+		/* base voucher should not contain activity data */
+		if (bv->v_activity != 0) {
+			DISPATCH_INTERNAL_CRASH(bv->v_activity, "base voucher has non-zero activity value");
+		}
+		if (bv->v_kvbase != VOUCHER_NULL) {
+			DISPATCH_INTERNAL_CRASH(bv->v_kvbase, "base voucher has nested base voucher");
+		}
+		v = _voucher_clone(bv, VOUCHER_FIELD_ACTIVITY);
+		voucher_release(bv);
+	} else {
+		v = _voucher_alloc(0);
+	}
+
+	/* set up activity data on voucher_t */
+	v->v_activity = udata->vmu_activity;
+	v->v_activity_creator = udata->vmu_activity_pid;
+	v->v_parent_activity = udata->vmu_parent_activity;
+
+	_voucher_trace(CREATE, v, v->v_kvoucher, v->v_activity);
+	_dispatch_voucher_debug("kvoucher[0x%08x] create", v, kv);
+	return v;
+}
+#else
+static voucher_t
+_voucher_create_with_mach_voucher(mach_voucher_t kv, mach_msg_bits_t msgh_bits,
+	DISPATCH_UNUSED _voucher_mach_udata_s *unused_udata, DISPATCH_UNUSED mach_msg_size_t unused_udata_sz)
 {
 	if (!kv) return NULL;
 	kern_return_t kr;
@@ -520,11 +557,6 @@ _voucher_create_with_mach_voucher(mach_voucher_t kv, mach_msg_bits_t msgh_bits)
 	v->v_ipc_kvoucher = v->v_kvoucher = kv;
 	v->v_kv_has_importance = !!(msgh_bits & MACH_MSGH_BITS_RAISEIMP);
 
-	if (udata_sz >= offsetof(_voucher_mach_udata_s,_vmu_after_priority)){
-		if (udata->vmu_magic == VOUCHER_MAGIC_V3) {
-			v->v_priority = udata->vmu_priority;
-		}
-	}
 	bool remove_kv_userdata = false;
 	if (udata_sz >= offsetof(_voucher_mach_udata_s, _vmu_after_activity)) {
 #if !RDAR_25050791
@@ -577,39 +609,7 @@ _voucher_create_with_mach_voucher(mach_voucher_t kv, mach_msg_bits_t msgh_bits)
 	_dispatch_voucher_debug("kvoucher[0x%08x] create", v, kv);
 	return v;
 }
-
-voucher_t
-_voucher_create_with_priority_and_mach_voucher(voucher_t ov,
-		pthread_priority_t priority, mach_voucher_t kv)
-{
-	if (priority == _voucher_get_priority(ov)) {
-		if (kv) _voucher_dealloc_mach_voucher(kv);
-		return ov ? _voucher_retain(ov) : NULL;
-	}
-	voucher_t v = _voucher_find_and_retain(kv);
-	voucher_fields_t ignore_fields = VOUCHER_FIELD_PRIORITY;
-
-	if (v) {
-		_dispatch_voucher_debug("kvoucher[0x%08x] find", v, kv);
-		_voucher_dealloc_mach_voucher(kv);
-		return v;
-	}
-
-	if (kv) ignore_fields |= VOUCHER_FIELD_KVOUCHER;
-	v = _voucher_clone(ov, ignore_fields);
-	if (priority) {
-		v->v_priority = (_voucher_priority_t)priority;
-	}
-	if (kv) {
-		v->v_ipc_kvoucher = v->v_kvoucher = kv;
-		_voucher_insert(v);
-		_dispatch_voucher_debug("kvoucher[0x%08x] create with priority from "
-				"voucher[%p]", v, kv, ov);
-		_dispatch_voucher_debug_machport(kv);
-	}
-	_voucher_trace(CREATE, v, v->v_kvoucher, v->v_activity);
-	return v;
-}
+#endif /* DISPATCH_SEND_ACTIVITY_IN_MSGV */
 
 voucher_t
 _voucher_create_without_importance(voucher_t ov)
@@ -709,11 +709,32 @@ _voucher_create_accounting_voucher(voucher_t ov)
 }
 
 voucher_t
+_voucher_create_with_mach_msgv(mach_msg_header_t *msg, mach_msg_aux_header_t *aux)
+{
+	mach_msg_bits_t msgh_bits;
+
+	_voucher_mach_udata_aux_s *msgv_aux = (_voucher_mach_udata_aux_s *)aux;
+	_voucher_mach_udata_s *udata = NULL;
+	mach_msg_size_t udata_sz = 0, aux_sz = 0;
+	mach_voucher_t kv = _voucher_mach_msg_get(msg, &msgh_bits);
+
+	if (msgv_aux) {
+		aux_sz = msgv_aux->header.msgdh_size;
+		if (unlikely(aux_sz < sizeof(mach_msg_aux_header_t))) {
+			DISPATCH_INTERNAL_CRASH(aux_sz, "Invalid msg aux data size.");
+		}
+		udata_sz = aux_sz - sizeof(mach_msg_aux_header_t);
+		udata = udata_sz ? &msgv_aux->udata: NULL;
+	}
+	return _voucher_create_with_mach_voucher(kv, msgh_bits, udata, udata_sz);
+}
+
+voucher_t
 voucher_create_with_mach_msg(mach_msg_header_t *msg)
 {
 	mach_msg_bits_t msgh_bits;
 	mach_voucher_t kv = _voucher_mach_msg_get(msg, &msgh_bits);
-	return _voucher_create_with_mach_voucher(kv, msgh_bits);
+	return _voucher_create_with_mach_voucher(kv, msgh_bits, NULL, 0);
 }
 
 void
@@ -791,12 +812,13 @@ _voucher_dispose(voucher_t voucher)
 	voucher->v_activity = 0;
 	voucher->v_activity_creator = 0;
 	voucher->v_parent_activity = 0;
-	voucher->v_priority = 0;
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
 	voucher->v_recipe_extra_size = 0;
 	voucher->v_recipe_extra_offset = 0;
 #endif
+#if !USE_OBJC
 	return _os_object_dealloc((_os_object_t)voucher);
+#endif // !USE_OBJC
 }
 
 void
@@ -828,8 +850,24 @@ _voucher_activity_debug_channel_init(void)
 }
 
 void
+_voucher_atfork_prepare(void)
+{
+	// unlocked in _voucher_atfork_parent and reset in _voucher_atfork_child
+	_voucher_hash_lock_lock();
+}
+
+void
+_voucher_atfork_parent(void)
+{
+	_voucher_hash_lock_unlock(); // taken in _voucher_atfork_prepare
+}
+
+void
 _voucher_atfork_child(void)
 {
+	_voucher_hash_reset_locked();
+	_voucher_hash_lock.dul_lock = DLOCK_ONCE_UNLOCKED;
+
 	_dispatch_thread_setspecific(dispatch_voucher_key, NULL);
 	_voucher_task_mach_voucher_pred = 0;
 	_voucher_task_mach_voucher = MACH_VOUCHER_NULL;
@@ -839,6 +877,39 @@ _voucher_atfork_child(void)
 	_voucher_aid_next = 0;
 	_firehose_task_buffer_pred = 0;
 	_firehose_task_buffer = NULL; // firehose buffer is VM_INHERIT_NONE
+}
+
+static void
+_voucher_process_can_use_arbitrary_personas_init(void *__unused ctxt)
+{
+#if VOUCHER_USE_PERSONA_ADOPT_ANY
+	mach_voucher_t kv = _voucher_get_task_mach_voucher();
+	kern_return_t kr;
+
+	mach_voucher_attr_content_t result_out;
+	mach_msg_type_number_t result_out_size;
+
+	boolean_t local_result;
+	result_out = (mach_voucher_attr_content_t) &local_result;
+	result_out_size = sizeof(local_result);
+
+	kr = mach_voucher_attr_command(kv, MACH_VOUCHER_ATTR_KEY_BANK,
+		BANK_PERSONA_ADOPT_ANY, NULL, 0, result_out, &result_out_size);
+	if (kr != KERN_SUCCESS) {
+		DISPATCH_INTERNAL_CRASH(kr, "mach_voucher_attr_command(BANK_PERSONA_ADOPT_ANY) failed");
+	}
+
+	_voucher_process_can_use_arbitrary_personas = !!local_result;
+#endif /* VOUCHER_USE_PERSONA_ADOPT_ANY */
+}
+
+bool
+voucher_process_can_use_arbitrary_personas(void)
+{
+	dispatch_once_f(&_voucher_process_can_use_arbitrary_personas_pred, NULL,
+		_voucher_process_can_use_arbitrary_personas_init);
+
+	return _voucher_process_can_use_arbitrary_personas;
 }
 
 voucher_t
@@ -913,13 +984,10 @@ mach_voucher_persona_self(mach_voucher_t *persona_mach_voucher)
 	mach_voucher_t bkv = MACH_VOUCHER_NULL;
 	kern_return_t kr = KERN_NOT_SUPPORTED;
 #if VOUCHER_USE_PERSONA
-	mach_voucher_t kv = _voucher_get_task_mach_voucher();
-
 	const mach_voucher_attr_recipe_data_t bank_send_recipe[] = {
 		[0] = {
 			.key = MACH_VOUCHER_ATTR_KEY_BANK,
-			.command = MACH_VOUCHER_ATTR_COPY,
-			.previous_voucher = kv,
+			.command = MACH_VOUCHER_ATTR_BANK_CREATE,
 		},
 		[1] = {
 			.key = MACH_VOUCHER_ATTR_KEY_BANK,
@@ -968,7 +1036,7 @@ mach_voucher_persona_for_originator(uid_t persona_id,
 	_dispatch_memappend(bank_modify_recipe[1].content, &modify_info);
 	kr = _voucher_create_mach_voucher(bank_modify_recipe,
 			bank_modify_recipe_size, &bkv);
-	if (dispatch_assume_zero(kr)) {
+	if (kr) {
 		bkv = MACH_VOUCHER_NULL;
 	}
 #else // VOUCHER_USE_PERSONA
@@ -1110,9 +1178,25 @@ voucher_mach_msg_state_t
 voucher_mach_msg_adopt(mach_msg_header_t *msg)
 {
 	mach_msg_bits_t msgh_bits;
+	_voucher_mach_udata_s *udata = NULL;
+	mach_msg_size_t udata_sz = 0;
+
 	mach_voucher_t kv = _voucher_mach_msg_get(msg, &msgh_bits);
 	if (!kv) return VOUCHER_MACH_MSG_STATE_UNCHANGED;
-	voucher_t v = _voucher_create_with_mach_voucher(kv, msgh_bits);
+
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
+	_voucher_mach_udata_aux_s *aux = _dispatch_thread_getspecific(dispatch_msgv_aux_key);
+	if (aux) {
+		mach_msg_size_t aux_sz = aux->header.msgdh_size;
+		if (aux_sz >= sizeof(mach_msg_aux_header_t)) {
+			udata_sz = aux_sz - sizeof(mach_msg_aux_header_t);
+			udata = udata_sz ? &aux->udata : NULL;
+		}
+	}
+#endif
+
+	voucher_t v = _voucher_create_with_mach_voucher(kv, msgh_bits, udata, udata_sz);
+
 	return (voucher_mach_msg_state_t)_voucher_adopt(v);
 }
 
@@ -1126,13 +1210,48 @@ voucher_mach_msg_revert(voucher_mach_msg_state_t state)
 #if DISPATCH_USE_LIBKERNEL_VOUCHER_INIT
 #include <_libkernel_init.h>
 
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
+static mach_msg_size_t
+voucher_mach_msg_fill_aux(mach_msg_aux_header_t *aux, mach_msg_size_t aux_sz)
+{
+	voucher_t v = _voucher_get();
+
+	if (!(v && v->v_activity)) return 0;
+	if (aux_sz < DISPATCH_MSGV_AUX_MAX_SIZE) return 0;
+
+	_Static_assert(LIBSYSCALL_MSGV_AUX_MAX_SIZE >= DISPATCH_MSGV_AUX_MAX_SIZE,
+			"aux buffer size in libsyscall too small");
+	_voucher_mach_udata_aux_s *udata_aux = (_voucher_mach_udata_aux_s *)aux;
+
+	udata_aux->header.msgdh_size = DISPATCH_MSGV_AUX_MAX_SIZE;
+	udata_aux->header.msgdh_reserved = 0;
+
+	udata_aux->udata = (_voucher_mach_udata_s){
+		.vmu_magic           = VOUCHER_MAGIC_V3,
+		/* .vmu_priority is unused */
+		.vmu_activity        = v->v_activity,
+		.vmu_activity_pid    = v->v_activity_creator,
+		.vmu_parent_activity = v->v_parent_activity,
+	};
+
+	return DISPATCH_MSGV_AUX_MAX_SIZE;
+}
+#endif
+
 static const struct _libkernel_voucher_functions _voucher_libkernel_functions =
 {
-	.version = 1,
+	.version = 3,
 	.voucher_mach_msg_set = voucher_mach_msg_set,
 	.voucher_mach_msg_clear = voucher_mach_msg_clear,
 	.voucher_mach_msg_adopt = voucher_mach_msg_adopt,
 	.voucher_mach_msg_revert = voucher_mach_msg_revert,
+
+	/* available starting version 3 */
+#if DISPATCH_SEND_ACTIVITY_IN_MSGV
+	.voucher_mach_msg_fill_aux = voucher_mach_msg_fill_aux,
+#else
+	.voucher_mach_msg_fill_aux = NULL,
+#endif
 };
 
 static void
@@ -1156,6 +1275,22 @@ voucher_activity_initialize_4libtrace(voucher_activity_hooks_t hooks)
 		DISPATCH_CLIENT_CRASH(_voucher_libtrace_hooks,
 				"voucher_activity_initialize_4libtrace called twice");
 	}
+
+
+	// HACK: we can't call into os_variant until after the initialization of
+	// dispatch and XPC, but we want to do it before the end of libsystem
+	// initialization to avoid having to synchronize _dispatch_mode explicitly,
+	// so this happens to be just the right spot
+#if HAVE_OS_FAULT_WITH_PAYLOAD && TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+	if (_dispatch_getenv_bool("LIBDISPATCH_NO_FAULTS", false)) {
+		return;
+	} else if (getpid() == 1 ||
+			!os_variant_has_internal_diagnostics("com.apple.libdispatch")) {
+		return;
+	}
+
+	_dispatch_mode &= ~DISPATCH_MODE_NO_FAULTS;
+#endif // HAVE_OS_FAULT_WITH_PAYLOAD && TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
 }
 
 void
@@ -1613,15 +1748,11 @@ _voucher_debug(voucher_t v, char *buf, size_t bufsiz)
 				buf, bufsiz, offset, VOUCHER_DETAIL_PREFIX, MAX_HEX_DATA_SIZE);
 		bufprintf("]");
 	}
-	if (v->v_priority) {
-		bufprintf(", QOS 0x%x", v->v_priority);
-	}
 	if (v->v_activity) {
 		bufprintf(", activity 0x%llx (pid: 0x%16llx, parent 0x%llx)",
 				v->v_activity, v->v_activity_creator, v->v_parent_activity);
 	}
 	bufprintf(" }");
-	
 	return offset;
 }
 
@@ -1634,7 +1765,7 @@ format_hex_data(char *prefix, char *desc, uint8_t *data, size_t data_len,
 	uint8_t *pc = data;
 
 	if (desc) {
- 		bufprintf("%s%s:\n", prefix, desc);
+		bufprintf("%s%s:\n", prefix, desc);
 	}
 
 	ssize_t offset_in_row = -1;
@@ -1672,10 +1803,6 @@ format_recipe_detail(mach_voucher_attr_recipe_t recipe, char *buf,
 	bufprintf("Content size: %u\n", recipe->content_size);
 
 	switch (recipe->key) {
-	case MACH_VOUCHER_ATTR_KEY_ATM:
-		bufprintprefix();
-		bufprintf("ATM ID: %llu", *(uint64_t *)(uintptr_t)recipe->content);
-		break;
 	case MACH_VOUCHER_ATTR_KEY_IMPORTANCE:
 		bufprintprefix();
 		bufprintf("IMPORTANCE INFO: %s", (char *)recipe->content);
@@ -1740,7 +1867,7 @@ voucher_kvoucher_debug(mach_port_t task, mach_port_name_t voucher, char *buf,
 	} else {
 		bufprintprefix();
 		bufprintf("Invalid voucher: 0x%x\n", voucher);
-   	}
+	}
 
 done:
 	return offset;
@@ -1818,22 +1945,6 @@ _voucher_get_mach_voucher(voucher_t voucher)
 {
 	(void)voucher;
 	return MACH_VOUCHER_NULL;
-}
-
-mach_voucher_t
-_voucher_create_mach_voucher_with_priority(voucher_t voucher,
-		pthread_priority_t priority)
-{
-	(void)voucher; (void)priority;
-	return MACH_VOUCHER_NULL;
-}
-
-voucher_t
-_voucher_create_with_priority_and_mach_voucher(voucher_t voucher,
-		pthread_priority_t priority, mach_voucher_t kv)
-{
-	(void)voucher; (void)priority; (void)kv;
-	return NULL;
 }
 
 voucher_t
@@ -1919,6 +2030,12 @@ voucher_get_current_persona_proximate_info(struct proc_persona_info *persona_inf
 }
 #endif // __has_include(<mach/mach.h>)
 
+bool
+voucher_process_can_use_arbitrary_personas(void)
+{
+	return false;
+}
+
 void
 _voucher_activity_debug_channel_init(void)
 {
@@ -1938,8 +2055,8 @@ _voucher_init(void)
 void*
 voucher_activity_get_metadata_buffer(size_t *length)
 {
-    *length = 0;
-    return NULL;
+	*length = 0;
+	return NULL;
 }
 
 voucher_t
@@ -2026,17 +2143,3 @@ _voucher_debug(voucher_t v, char* buf, size_t bufsiz)
 }
 
 #endif // VOUCHER_USE_MACH_VOUCHER
-
-#else // DISPATCH_VARIANT_DYLD_STUB
-
-firehose_activity_id_t
-voucher_get_activity_id_4dyld(void)
-{
-#if VOUCHER_USE_MACH_VOUCHER
-	return _voucher_get_activity_id(_voucher_get(), NULL);
-#else
-	return 0;
-#endif
-}
-
-#endif // DISPATCH_VARIANT_DYLD_STUB

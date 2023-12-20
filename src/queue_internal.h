@@ -35,7 +35,7 @@
 #pragma mark -
 #pragma mark dispatch_queue_flags, dq_state
 
-DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
+DISPATCH_OPTIONS(dispatch_queue_flags, uint32_t,
 	DQF_NONE                = 0x00000000,
 	DQF_AUTORELEASE_ALWAYS  = 0x00010000,
 	DQF_AUTORELEASE_NEVER   = 0x00020000,
@@ -46,6 +46,9 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
 	DQF_LABEL_NEEDS_FREE    = 0x00200000, // queue label was strdup()ed
 	DQF_MUTABLE             = 0x00400000,
 	DQF_RELEASED            = 0x00800000, // xref_cnt == -1
+	// queue is targetting a specially configured wlh at the bottom.  DQF_MUTABLE
+	// must be false.
+	DQF_TARGET_SPECIAL_WLH  = 0x01000000,
 
 	//
 	// Only applies to sources
@@ -121,20 +124,16 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
  */
 #define DISPATCH_QUEUE_HAS_SIDE_SUSPEND_CNT	0x0200000000000000ull
 /*
- * i: inactive bit (bit 56)
+ * i: inactive state (bit 56-55)
  *    This bit means that the object is inactive (see dispatch_activate)
  */
-#define DISPATCH_QUEUE_INACTIVE				0x0100000000000000ull
+#define DISPATCH_QUEUE_INACTIVE				0x0180000000000000ull
+#define DISPATCH_QUEUE_ACTIVATED			0x0100000000000000ull
+#define DISPATCH_QUEUE_ACTIVATING			0x0080000000000000ull
 /*
- * na: needs activation (bit 55)
- *    This bit is set if the object is created inactive. It tells
- *    dispatch_queue_wakeup to perform various tasks at first wakeup.
- *
- *    This bit is cleared as part of the first wakeup. Having that bit prevents
- *    the object from being woken up (because _dq_state_should_wakeup will say
- *    no), except in the dispatch_activate/dispatch_resume codepath.
+ * This mask covers the inactive bits state
  */
-#define DISPATCH_QUEUE_NEEDS_ACTIVATION		0x0080000000000000ull
+#define DISPATCH_QUEUE_INACTIVE_BITS_MASK	0x0180000000000000ull
 /*
  * This mask covers the suspend count (sc), side suspend count bit (ssc),
  * inactive (i) and needs activation (na) bits
@@ -322,7 +321,7 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
  *
  * sw: has received sync wait (bit 35, if role DISPATCH_QUEUE_ROLE_BASE_WLH)
  *    Set when a queue owner has been exposed to the kernel because of
- *    dispatch_sync() contention.
+ *    contention with dispatch_sync().
  */
 #define DISPATCH_QUEUE_RECEIVED_OVERRIDE	0x0000000800000000ull
 #define DISPATCH_QUEUE_RECEIVED_SYNC_WAIT	0x0000000800000000ull
@@ -338,14 +337,14 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
  *    drain stealers (like the QoS Override codepath). It holds the identity
  *    (thread port) of the current drainer.
  *
- * st: sync transfer (bit 1 or 30)
- *    Set when a dispatch_sync() is transferred to
+ * us: uncontended sync (bit 1 or 30)
+ *    Set when a dispatch_sync() isn't contending
  *
  * e: enqueued bit (bit 0 or 31)
  *    Set when a queue is enqueued on its target queue
  */
 #define DISPATCH_QUEUE_DRAIN_OWNER_MASK		((uint64_t)DLOCK_OWNER_MASK)
-#define DISPATCH_QUEUE_SYNC_TRANSFER		((uint64_t)DLOCK_FAILED_TRYLOCK_BIT)
+#define DISPATCH_QUEUE_UNCONTENDED_SYNC		((uint64_t)DLOCK_FAILED_TRYLOCK_BIT)
 #define DISPATCH_QUEUE_ENQUEUED				((uint64_t)DLOCK_WAITERS_BIT)
 
 #define DISPATCH_QUEUE_DRAIN_PRESERVED_BITS_MASK \
@@ -354,7 +353,7 @@ DISPATCH_ENUM(dispatch_queue_flags, uint32_t,
 
 #define DISPATCH_QUEUE_DRAIN_UNLOCK_MASK \
 		(DISPATCH_QUEUE_DRAIN_OWNER_MASK | DISPATCH_QUEUE_RECEIVED_OVERRIDE | \
-		DISPATCH_QUEUE_RECEIVED_SYNC_WAIT | DISPATCH_QUEUE_SYNC_TRANSFER)
+		DISPATCH_QUEUE_RECEIVED_SYNC_WAIT | DISPATCH_QUEUE_UNCONTENDED_SYNC)
 
 /*
  *******************************************************************************
@@ -461,11 +460,12 @@ typedef struct dispatch_queue_specific_head_s {
 	TAILQ_HEAD(, dispatch_queue_specific_s) dqsh_entries;
 } *dispatch_queue_specific_head_t;
 
-#define DISPATCH_WORKLOOP_ATTR_HAS_SCHED 0x1u
-#define DISPATCH_WORKLOOP_ATTR_HAS_POLICY 0x2u
-#define DISPATCH_WORKLOOP_ATTR_HAS_CPUPERCENT 0x4u
-#define DISPATCH_WORKLOOP_ATTR_HAS_QOS_CLASS 0x8u
-#define DISPATCH_WORKLOOP_ATTR_NEEDS_DESTROY 0x10u
+#define DISPATCH_WORKLOOP_ATTR_HAS_SCHED      0x0001u
+#define DISPATCH_WORKLOOP_ATTR_HAS_POLICY     0x0002u
+#define DISPATCH_WORKLOOP_ATTR_HAS_CPUPERCENT 0x0004u
+#define DISPATCH_WORKLOOP_ATTR_HAS_QOS_CLASS  0x0008u
+#define DISPATCH_WORKLOOP_ATTR_NEEDS_DESTROY  0x0010u
+#define DISPATCH_WORKLOOP_ATTR_HAS_OBSERVERS  0x0020u
 typedef struct dispatch_workloop_attr_s *dispatch_workloop_attr_t;
 typedef struct dispatch_workloop_attr_s {
 	uint32_t dwla_flags;
@@ -478,6 +478,8 @@ typedef struct dispatch_workloop_attr_s {
 		uint8_t percent;
 		uint32_t refillms;
 	} dwla_cpupercent;
+	os_workgroup_t workgroup;
+	dispatch_pthread_root_queue_observer_hooks_s dwla_observers;
 } dispatch_workloop_attr_s;
 
 /*
@@ -503,6 +505,7 @@ typedef struct dispatch_workloop_attr_s {
  *  '--> dispatch_lane_class_t
  *        +--> struct dispatch_lane_s
  *        |     +--> struct dispatch_source_s
+ *        |     +--> struct dispatch_channel_s
  *        |     '--> struct dispatch_mach_s
  *        +--> struct dispatch_queue_static_s
  *        '--> struct dispatch_queue_global_s
@@ -600,6 +603,7 @@ typedef struct dispatch_workloop_attr_s {
 		struct dispatch_source_refs_s *ds_refs; \
 		struct dispatch_timer_source_refs_s *ds_timer_refs; \
 		struct dispatch_mach_recv_refs_s *dm_recv_refs; \
+		struct dispatch_channel_callbacks_s const *dch_callbacks; \
 	}; \
 	int volatile dq_sref_cnt
 
@@ -643,7 +647,46 @@ struct dispatch_queue_static_s {
 			struct dispatch_object_s *volatile dq_items_tail); \
 	int volatile dgq_thread_pool_size; \
 	struct dispatch_object_s *volatile dq_items_head; \
-	int volatile dgq_pending
+	int volatile dgq_pending;
+
+// 97049903: dgq_pending has semaphore-like like semantics:
+//
+//	dgq_pending = 0 means semaphore is available
+//		If we are on the push side, take the semaphore and also the responsibility
+//		of moving state machine forward by requesting for a thread.
+//
+//		If we are a drainer for the root queue who has just come out and we
+//		see dgq_pending = 0, there has been an underflow, error out.
+//
+//	dgq_pending > 0 means semaphore is taken.
+//		If we are on the push side, dgq_pending > 0 has a dirty-bit like
+//		semantic since the enqueuer has updated the queue head/tail, sees that
+//		there are {concurrent contended, requested} drainers and therefore lets
+//		the drainers do a rest of the evaluation. We don't need an
+//		explicit DIRTY_BIT for enqueuers to set in this case since we know that we
+//		are racing with drainers who are already doing loads off the dq_items_tail
+//		and head which is what the enqueuer modified.
+//
+//		We however need to make sure that the publish to the dq_items_tail is
+//		always visible for the enqueuer.
+//
+//		If we're on the drain side,
+//
+//			(1) If we have just entered userspace, we drop the semaphore (ie
+//			decrement dqg_pending with acquire) and attempt to drain the
+//			specified global root queue
+//
+//			(2) If we don't hit contention and get to drain an item, great - we are
+//			now working on the workitem and we have already released our hold on
+//			the semaphore.
+//
+//			(3) If we hit contention, we retake the semaphore (store release
+//			dgq_pending increment) so that more threads aren't requested by
+//			enqueuers. We now hold the responsibility of taking state machine
+//			forward due to any changes done to the queue including by concurrent
+//			enqueuers. Spin/backoff and evaluate if the queue has quiesced enough.
+//			If it looks to have elements on it, goto (1) as if we had just entered
+//			userspace and repeat. Else return and park.
 
 struct dispatch_queue_global_s {
 	DISPATCH_QUEUE_ROOT_CLASS_HEADER(lane);
@@ -673,6 +716,10 @@ bool
 _dispatch_queue_is_exclusively_owned_by_current_thread_4IOHID(
 		dispatch_queue_t queue);
 
+DISPATCH_EXPORT DISPATCH_NOTHROW
+void
+_dispatch_workloop_set_observer_hooks_4IOHID(dispatch_workloop_t workloop,
+		dispatch_pthread_root_queue_observer_hooks_t observer_hooks);
 #endif // __APPLE__
 
 #if DISPATCH_USE_PTHREAD_POOL
@@ -728,13 +775,15 @@ dispatch_assert_valid_lane_type(dispatch_queue_pthread_root_s);
 DISPATCH_CLASS_DECL(queue, QUEUE);
 DISPATCH_CLASS_DECL_BARE(lane, QUEUE);
 DISPATCH_CLASS_DECL(workloop, QUEUE);
-DISPATCH_SUBCLASS_DECL(queue_serial, queue, lane);
+DISPATCH_SUBCLASS_DECL(queue_serial_executor, queue, lane);
+DISPATCH_SUBCLASS_DECL(queue_serial, queue_serial_executor, lane);
 DISPATCH_SUBCLASS_DECL(queue_main, queue_serial, lane);
 DISPATCH_SUBCLASS_DECL(queue_concurrent, queue, lane);
 DISPATCH_SUBCLASS_DECL(queue_global, queue, lane);
 #if DISPATCH_USE_PTHREAD_ROOT_QUEUES
 DISPATCH_INTERNAL_SUBCLASS_DECL(queue_pthread_root, queue, lane);
 #endif
+DISPATCH_INTERNAL_SUBCLASS_DECL(queue_cooperative, queue, lane);
 DISPATCH_INTERNAL_SUBCLASS_DECL(queue_runloop, queue_serial, lane);
 DISPATCH_INTERNAL_SUBCLASS_DECL(queue_mgr, queue_serial, lane);
 
@@ -779,12 +828,18 @@ void _dispatch_queue_invoke_finish(dispatch_queue_t dq,
 dispatch_priority_t _dispatch_queue_compute_priority_and_wlh(
 		dispatch_queue_class_t dq, dispatch_wlh_t *wlh_out);
 
+DISPATCH_ENUM(dispatch_resume_op, int,
+	DISPATCH_RESUME,
+	DISPATCH_ACTIVATE,
+	DISPATCH_ACTIVATION_DONE,
+);
+void _dispatch_lane_resume(dispatch_lane_class_t dq, dispatch_resume_op_t how);
+
 void _dispatch_lane_set_target_queue(dispatch_lane_t dq, dispatch_queue_t tq);
 void _dispatch_lane_class_dispose(dispatch_queue_class_t dq, bool *allow_free);
 void _dispatch_lane_dispose(dispatch_lane_class_t dq, bool *allow_free);
 void _dispatch_lane_suspend(dispatch_lane_class_t dq);
-void _dispatch_lane_resume(dispatch_lane_class_t dq, bool activate);
-void _dispatch_lane_activate(dispatch_lane_class_t dq, bool *allow_resume);
+void _dispatch_lane_activate(dispatch_lane_class_t dq);
 void _dispatch_lane_invoke(dispatch_lane_class_t dq,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 void _dispatch_lane_push(dispatch_lane_class_t dq, dispatch_object_t dou,
@@ -807,6 +862,7 @@ void _dispatch_workloop_wakeup(dispatch_workloop_t dwl, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
 
 void _dispatch_root_queue_poke(dispatch_queue_global_t dq, int n, int floor);
+void _dispatch_root_queue_poke_and_wakeup(dispatch_queue_global_t dq, int n, int floor);
 void _dispatch_root_queue_wakeup(dispatch_queue_global_t dq, dispatch_qos_t qos,
 		dispatch_wakeup_flags_t flags);
 void _dispatch_root_queue_push(dispatch_queue_global_t dq,
@@ -853,45 +909,56 @@ DISPATCH_COLD
 size_t _dispatch_queue_debug_attr(dispatch_queue_t dq,
 		char *buf, size_t bufsiz);
 
-#define DISPATCH_ROOT_QUEUE_COUNT (DISPATCH_QOS_NBUCKETS * 2)
+#define DISPATCH_ROOT_QUEUE_FLAVORS 3
+#define DISPATCH_ROOT_QUEUE_COUNT (DISPATCH_QOS_NBUCKETS * DISPATCH_ROOT_QUEUE_FLAVORS)
 
 // must be in lowest to highest qos order (as encoded in dispatch_qos_t)
-// overcommit qos index values need bit 1 set
 enum {
 	DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS = 0,
 	DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS_COOPERATIVE,
 	DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS,
 	DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_BACKGROUND_QOS_COOPERATIVE,
 	DISPATCH_ROOT_QUEUE_IDX_UTILITY_QOS,
 	DISPATCH_ROOT_QUEUE_IDX_UTILITY_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_UTILITY_QOS_COOPERATIVE,
 	DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS,
 	DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_DEFAULT_QOS_COOPERATIVE,
 	DISPATCH_ROOT_QUEUE_IDX_USER_INITIATED_QOS,
 	DISPATCH_ROOT_QUEUE_IDX_USER_INITIATED_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_USER_INITIATED_QOS_COOPERATIVE,
 	DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS,
 	DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS_OVERCOMMIT,
+	DISPATCH_ROOT_QUEUE_IDX_USER_INTERACTIVE_QOS_COOPERATIVE,
 	_DISPATCH_ROOT_QUEUE_IDX_COUNT,
 };
+
+#define DISPATCH_ROOT_QUEUE_IDX_OFFSET_OVERCOMMIT \
+		(DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS_OVERCOMMIT - DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS)
+#define DISPATCH_ROOT_QUEUE_IDX_OFFSET_COOPERATIVE \
+		(DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS_COOPERATIVE - DISPATCH_ROOT_QUEUE_IDX_MAINTENANCE_QOS)
 
 // skip zero
 // 1 - main_q
 // 2 - mgr_q
 // 3 - mgr_root_q
-// 4,5,6,7,8,9,10,11,12,13,14,15 - global queues
-// 17 - workloop_fallback_q
+// 4 - 21 - global queues
+// 22 - workloop_fallback_q
 // we use 'xadd' on Intel, so the initial value == next assigned
-#define DISPATCH_QUEUE_SERIAL_NUMBER_INIT 17
+#define DISPATCH_QUEUE_SERIAL_NUMBER_INIT 22
 extern unsigned long volatile _dispatch_queue_serial_numbers;
 
 // mark the workloop fallback queue to avoid finalizing objects on the base
 // queue of custom outside-of-qos workloops
-#define DISPATCH_QUEUE_SERIAL_NUMBER_WLF 16
+#define DISPATCH_QUEUE_SERIAL_NUMBER_WLF 22
 
 extern struct dispatch_queue_static_s _dispatch_mgr_q; // serial 2
 #if DISPATCH_USE_MGR_THREAD && DISPATCH_USE_PTHREAD_ROOT_QUEUES
 extern struct dispatch_queue_global_s _dispatch_mgr_root_queue; // serial 3
 #endif
-extern struct dispatch_queue_global_s _dispatch_root_queues[]; // serials 4 - 15
+extern struct dispatch_queue_global_s _dispatch_root_queues[]; // serials 4 - 21
 
 #if DISPATCH_DEBUG
 #define DISPATCH_ASSERT_ON_MANAGER_QUEUE() \
@@ -957,7 +1024,7 @@ dispatch_queue_attr_info_t _dispatch_queue_attr_to_info(dispatch_queue_attr_t);
 #if DISPATCH_SIZEOF_PTR == 8
 #define DISPATCH_CONTINUATION_HEADER(x) \
 	union { \
-		const void *do_vtable; \
+		const void *__ptrauth_objc_isa_pointer do_vtable; \
 		uintptr_t dc_flags; \
 	}; \
 	union { \
@@ -981,7 +1048,7 @@ dispatch_queue_attr_info_t _dispatch_queue_attr_to_info(dispatch_queue_attr_t);
 	}; \
 	struct voucher_s *dc_voucher; \
 	union { \
-		const void *do_vtable; \
+		const void *__ptrauth_objc_isa_pointer do_vtable; \
 		uintptr_t dc_flags; \
 	}; \
 	struct dispatch_##x##_s *volatile do_next; \
@@ -991,7 +1058,7 @@ dispatch_queue_attr_info_t _dispatch_queue_attr_to_info(dispatch_queue_attr_t);
 #else
 #define DISPATCH_CONTINUATION_HEADER(x) \
 	union { \
-		const void *do_vtable; \
+		const void *__ptrauth_objc_isa_pointer do_vtable; \
 		uintptr_t dc_flags; \
 	}; \
 	union { \
@@ -1042,6 +1109,8 @@ dispatch_queue_attr_info_t _dispatch_queue_attr_to_info(dispatch_queue_attr_t);
 // continuation is an internal implementation detail that should not be
 // introspected
 #define DC_FLAG_NO_INTROSPECTION		0x200ul
+// The item is a channel item, not a continuation
+#define DC_FLAG_CHANNEL_ITEM			0x400ul
 
 typedef struct dispatch_continuation_s {
 	DISPATCH_CONTINUATION_HEADER(continuation);
@@ -1049,6 +1118,36 @@ typedef struct dispatch_continuation_s {
 
 dispatch_assert_aliases(dispatch_continuation_s, dispatch_object_s, do_next);
 dispatch_assert_aliases(dispatch_continuation_s, dispatch_object_s, do_vtable);
+
+/* Swift runtime objects to be enqueued into dispatch */
+struct dispatch_swift_continuation_s;
+
+struct dispatch_swift_continuation_extra_vtable_s {
+	unsigned long const do_type;
+	void DISPATCH_VTABLE_ENTRY(do_invoke)(struct dispatch_swift_continuation_s *,
+			void *, dispatch_swift_job_invoke_flags_t flags);
+};
+
+typedef struct dispatch_swift_continuation_vtable_s {
+	_OS_OBJECT_CLASS_HEADER();
+	struct dispatch_swift_continuation_extra_vtable_s _os_obj_vtable;
+} const *dispatch_swift_continuation_vtable_t;
+
+/* This is the internal representation of a Swift object that will be enqueued
+ * onto dispatch. The actual object may be bigger but we only care about this
+ * piece of it. The vtable the continuation points to, will be interpreted as a
+ * dispatch_swift_continuation_vtable_t even if it is bigger.
+ */
+typedef struct dispatch_swift_continuation_s {
+	struct dispatch_object_s _as_do[0];
+	_DISPATCH_OBJECT_HEADER_INTERNAL(swift_continuation);
+	void *opaque1;
+	void *opaque2;
+	void *opaque3;
+} *dispatch_swift_continuation_t;
+
+dispatch_static_assert(sizeof(struct dispatch_swift_continuation_s) ==
+	sizeof(struct dispatch_object_s));
 
 typedef struct dispatch_sync_context_s {
 	struct dispatch_continuation_s _as_dc[0];
@@ -1062,12 +1161,11 @@ typedef struct dispatch_sync_context_s {
 	uint8_t dsc_override_qos;
 	uint16_t dsc_autorelease : 2;
 	uint16_t dsc_wlh_was_first : 1;
+	uint16_t dsc_wlh_self_wakeup : 1;
 	uint16_t dsc_wlh_is_workloop : 1;
 	uint16_t dsc_waiter_needs_cancel : 1;
 	uint16_t dsc_release_storage : 1;
-#if DISPATCH_INTROSPECTION
 	uint16_t dsc_from_async : 1;
-#endif
 } *dispatch_sync_context_t;
 
 typedef struct dispatch_continuation_vtable_s {
@@ -1076,7 +1174,7 @@ typedef struct dispatch_continuation_vtable_s {
 } const *dispatch_continuation_vtable_t;
 
 #ifndef DISPATCH_CONTINUATION_CACHE_LIMIT
-#if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+#if (TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR) || DISPATCH_TARGET_DK_EMBEDDED
 #define DISPATCH_CONTINUATION_CACHE_LIMIT 112 // one 256k heap for 64 threads
 #define DISPATCH_CONTINUATION_CACHE_LIMIT_MEMORYPRESSURE_PRESSURE_WARN 16
 #else
@@ -1162,7 +1260,8 @@ struct dispatch_apply_s {
 #if !OS_OBJECT_HAVE_OBJC1
 	dispatch_continuation_t da_dc;
 #endif
-	size_t volatile da_index, da_todo;
+	size_t _Atomic da_index;
+	size_t _Atomic da_todo;
 	size_t da_iterations;
 #if OS_OBJECT_HAVE_OBJC1
 	dispatch_continuation_t da_dc;
@@ -1171,11 +1270,28 @@ struct dispatch_apply_s {
 	dispatch_thread_event_s da_event;
 	dispatch_invoke_flags_t da_flags;
 	int32_t da_thr_cnt;
+	uint32_t _Atomic da_worker_index;
+	dispatch_apply_attr_t da_attr;
 };
 dispatch_static_assert(offsetof(struct dispatch_continuation_s, dc_flags) ==
 		offsetof(struct dispatch_apply_s, da_dc),
 		"These fields must alias so that leaks instruments work");
 typedef struct dispatch_apply_s *dispatch_apply_t;
+
+#define DISPATCH_APPLY_ATTR_SIG 0xA11AB000
+struct dispatch_apply_attr_s {
+	uint32_t sig;
+	uint32_t flags;
+	size_t per_cluster_parallelism;
+	uintptr_t guard; /* To prevent copying */
+#if defined(__LP64__)
+	uint8_t unused[40];
+#else
+	uint8_t unused[48];
+#endif
+};
+dispatch_static_assert(sizeof(struct dispatch_apply_attr_s) == __DISPATCH_APPLY_ATTR_SIZE__,
+		"Opaque dispatch apply attr and internal apply attr size should match");
 
 #pragma mark -
 #pragma mark dispatch_block_t

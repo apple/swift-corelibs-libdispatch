@@ -254,17 +254,34 @@ _dispatch_time_now_cached(dispatch_clock_t clock,
 
 DISPATCH_ALWAYS_INLINE
 static inline void
-_dispatch_time_to_clock_and_value(dispatch_time_t time,
+_dispatch_time_to_clock_and_value(dispatch_time_t time, bool allow_now,
 		dispatch_clock_t *clock, uint64_t *value)
 {
 	uint64_t actual_value;
+
+	if (allow_now) {
+		switch (time) {
+		case DISPATCH_TIME_NOW:
+			*clock = DISPATCH_CLOCK_UPTIME;
+			*value = _dispatch_uptime();
+			return;
+		case DISPATCH_MONOTONICTIME_NOW:
+			*clock = DISPATCH_CLOCK_MONOTONIC;
+			*value = _dispatch_monotonic_time();
+			return;
+		case DISPATCH_WALLTIME_NOW:
+			*clock = DISPATCH_CLOCK_WALL;
+			*value = _dispatch_get_nanoseconds();
+			return;
+		}
+	}
+
 	if ((int64_t)time < 0) {
 		// Wall time or mach continuous time
 		if (time & DISPATCH_WALLTIME_MASK) {
 			// Wall time (value 11 in bits 63, 62)
 			*clock = DISPATCH_CLOCK_WALL;
-			actual_value = time == (dispatch_time_t)DISPATCH_WALLTIME_NOW ?
-					_dispatch_get_nanoseconds() : (uint64_t)-time;
+			actual_value = (uint64_t)-time;
 		} else {
 			// Continuous time (value 10 in bits 63, 62).
 			*clock = DISPATCH_CLOCK_MONOTONIC;

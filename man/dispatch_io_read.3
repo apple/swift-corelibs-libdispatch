@@ -26,30 +26,34 @@
 .Fc
 .Sh DESCRIPTION
 The dispatch I/O framework is an API for asynchronous read and write I/O
-operations. It is an application of the ideas and idioms present in the
+operations.
+It is an application of the ideas and idioms present in the
 .Xr dispatch 3
-framework to device I/O. Dispatch I/O enables an application to more easily
-avoid blocking I/O operations and allows it to more directly express its I/O
-requirements than by using the raw POSIX file API. Dispatch I/O will make a
-best effort to optimize how and when asynchronous I/O operations are performed
-based on the capabilities of the targeted device.
+framework to device I/O.
+Dispatch I/O enables an application to more easily avoid blocking I/O operations
+and allows it to more directly express its I/O requirements than by using the
+raw POSIX file API.
+Dispatch I/O will make a best effort to optimize how and when asynchronous I/O
+operations are performed based on the capabilities of the targeted device.
 .Pp
 This page provides details on how to read from and write to dispatch I/O
-channels. Creation and configuration of these channels is covered in the
+channels.
+Creation and configuration of these channels is covered in the
 .Xr dispatch_io_create 3
-page. The dispatch I/O framework also provides the convenience functions
+page.
+The dispatch I/O framework also provides the convenience functions
 .Xr dispatch_read 3
 and
 .Xr dispatch_write 3
 for uses that do not require the full functionality provided by I/O channels.
-.Pp
 .Sh FUNDAMENTALS
 The
 .Fn dispatch_io_read
 and
 .Fn dispatch_io_write
 functions are used to perform asynchronous read and write operations on
-dispatch I/O channels. They can be thought of as asynchronous versions of the
+dispatch I/O channels.
+They can be thought of as asynchronous versions of the
 .Xr fread 3
 and
 .Xr fwrite 3
@@ -68,7 +72,8 @@ been read since the handler's previous invocation.
 .Pp
 The
 .Va offset
-parameter indicates where the read operation should begin. For a channel of
+parameter indicates where the read operation should begin.
+For a channel of
 .Dv DISPATCH_IO_RANDOM
 type it is interpreted relative to the position of the file pointer when the
 channel was created, for a channel of
@@ -79,7 +84,8 @@ pointer position.
 The
 .Va length
 parameter indicates the number of bytes that should be read from the I/O
-channel. Pass
+channel.
+Pass
 .Dv SIZE_MAX
 to keep reading until EOF is encountered (for a channel created from a
 disk-based file this happens when reading past the end of the physical file).
@@ -97,14 +103,14 @@ remains to be written as part of this I/O operation.
 .Pp
 The
 .Va offset
-parameter indicates where the write operation should begin. It is interpreted
-as for read operations above.
+parameter indicates where the write operation should begin.
+It is interpreted as for read operations above.
 .Pp
 The
 .Va data
 parameter specifies the location and amount of data to be written, encapsulated
-as a dispatch data object. The object is retained by the system until the write
-operation is complete.
+as a dispatch data object.
+The object is retained by the system until the write operation is complete.
 .Sh I/O HANDLER BLOCKS
 Dispatch I/O handler blocks submitted to a channel via the
 .Fn dispatch_io_read
@@ -113,9 +119,9 @@ or
 functions will be executed one or more times depending on system load and the
 channel's configuration settings (see
 .Xr dispatch_io_create 3
-for details). The handler block need not be reentrant safe,
-no new I/O handler instance is submitted until the previously enqueued handler
-block has returned.
+for details).
+The handler block need not be reentrant safe, no new I/O handler instance is
+submitted until the previously enqueued handler block has returned.
 .Pp
 The dispatch
 .Va data
@@ -129,12 +135,14 @@ for details).
 Once an I/O handler block is invoked with the
 .Va done
 flag set, the associated I/O operation is complete and that handler block will
-not be run again. If an unrecoverable error occurs while performing the I/O
-operation, the handler block will be submitted with the
+not be run again.
+If an unrecoverable error occurs while performing the I/O operation, the handler
+block will be submitted with the
 .Va done
 flag set and the appropriate POSIX error code in the
 .Va error
-parameter. An invocation of a handler block with the
+parameter.
+An invocation of a handler block with the
 .Va done
 flag set, zero
 .Va error

@@ -34,7 +34,7 @@
 
 #define _DISPATCH_IO_LABEL_SIZE 16
 
-#if TARGET_OS_IPHONE // rdar://problem/9032036
+#if TARGET_OS_IPHONE || DISPATCH_TARGET_DK_EMBEDDED // rdar://problem/9032036
 #define DIO_MAX_CHUNK_SIZE				(512u * 1024)
 #define DIO_HASH_SIZE					64u  // must be a power of two
 #else

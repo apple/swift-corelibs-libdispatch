@@ -78,7 +78,7 @@ DISPATCH_SOURCE_TYPE_DECL(interval);
  * @const DISPATCH_SOURCE_TYPE_VFS
  * @discussion Apple-internal dispatch source that monitors for vfs events
  * defined by dispatch_vfs_flags_t.
- * The handle is a process identifier (pid_t).
+ * The handle is required to be NULL.
  */
 #define DISPATCH_SOURCE_TYPE_VFS (&_dispatch_source_type_vfs)
 API_AVAILABLE(macos(10.6), ios(4.0)) DISPATCH_LINUX_UNAVAILABLE()
@@ -166,6 +166,9 @@ __END_DECLS
  *
  * @constant DISPATCH_SOCK_NOTIFY_ACK
  * Notify acknowledgement
+ *
+ * @constant DISPATCH_SOCK_WAKE_PKT
+ * Notify reception of wake packet
  */
 enum {
 	DISPATCH_SOCK_CONNRESET = 0x00000001,
@@ -183,6 +186,7 @@ enum {
 	DISPATCH_SOCK_DISCONNECTED = 0x00001000,
 	DISPATCH_SOCK_CONNINFO_UPDATED = 0x00002000,
 	DISPATCH_SOCK_NOTIFY_ACK = 0x00004000,
+	DISPATCH_SOCK_WAKE_PKT DISPATCH_ENUM_API_AVAILABLE(macos(13.0), ios(16.0), tvos(16.0), watchos(9.0))= 0x00008000,
 };
 
 /*!
@@ -190,9 +194,15 @@ enum {
  *
  * @constant DISPATCH_NW_CHANNEL_FLOW_ADV_UPDATE
  * Received network channel flow advisory.
+ * @constant DISPATCH_NW_CHANNEL_CHANNEL_EVENT
+ * Received network channel event.
+ * @constant DISPATCH_NW_CHANNEL_INTF_ADV_UPDATE
+ * Received network channel interface advisory.
  */
 enum {
 	DISPATCH_NW_CHANNEL_FLOW_ADV_UPDATE = 0x00000001,
+	DISPATCH_NW_CHANNEL_CHANNEL_EVENT = 0x00000002,
+	DISPATCH_NW_CHANNEL_INTF_ADV_UPDATE = 0x00000004,
 };
 
 /*!
@@ -234,6 +244,9 @@ enum {
  * @constant DISPATCH_VFS_NEARLOWDISK
  * Filesystem is nearly full (below NEARLOWDISK level).
  *
+ * @constant DISPATCH_VFS_SERVEREVENT
+ * Server issued a notification/warning
+ *
  * @constant DISPATCH_VFS_DESIREDDISK
  * Filesystem has exceeded the DESIREDDISK level
  *
@@ -251,6 +264,7 @@ enum {
 	DISPATCH_VFS_NOTRESPLOCK = 0x0080,
 	DISPATCH_VFS_UPDATE = 0x0100,
 	DISPATCH_VFS_VERYLOWDISK = 0x0200,
+	DISPATCH_VFS_SERVEREVENT = 0x0800,
 	DISPATCH_VFS_QUOTA = 0x1000,
 	DISPATCH_VFS_NEARLOWDISK = 0x2000,
 	DISPATCH_VFS_DESIREDDISK = 0x4000,
@@ -324,6 +338,18 @@ enum {
  */
 enum {
 	DISPATCH_MACH_SEND_POSSIBLE = 0x8,
+};
+
+/*!
+ * @enum dispatch_source_mach_recv_flags_t
+ *
+ * @constant DISPATCH_MACH_RECV_SYNC_PEEK
+ * The receive source will participate in synchronous IPC priority inversion
+ * avoidance when possible.
+ */
+enum {
+	DISPATCH_MACH_RECV_SYNC_PEEK DISPATCH_ENUM_API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(4.0)) =
+			0x00008000,
 };
 
 /*!
@@ -636,7 +662,7 @@ typedef struct dispatch_source_extended_data_s {
  * argument, the remaining space in data will have been populated with zeroes.
  */
 API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
-DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
+DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
 size_t
 dispatch_source_get_extended_data(dispatch_source_t source,

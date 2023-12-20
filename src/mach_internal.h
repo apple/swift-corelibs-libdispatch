@@ -99,7 +99,7 @@ void _dispatch_mach_ipc_handoff_invoke(dispatch_continuation_t dc,
 void _dispatch_mach_msg_async_reply_invoke(dispatch_continuation_t dc,
 		dispatch_invoke_context_t dic, dispatch_invoke_flags_t flags);
 void _dispatch_mach_dispose(dispatch_mach_t dm, bool *allow_free);
-void _dispatch_mach_activate(dispatch_mach_t dm, bool *allow_resume);
+void _dispatch_mach_activate(dispatch_mach_t dm);
 void _dispatch_mach_invoke(dispatch_mach_t dm, dispatch_invoke_context_t dic,
 		dispatch_invoke_flags_t flags);
 void _dispatch_mach_wakeup(dispatch_mach_t dm, dispatch_qos_t qos,
@@ -109,10 +109,10 @@ size_t _dispatch_mach_debug(dispatch_mach_t dm, char* buf, size_t bufsiz);
 void _dispatch_mach_notification_merge_evt(dispatch_unote_t du,
 		uint32_t flags, uintptr_t data, pthread_priority_t pp);
 void _dispatch_mach_merge_msg(dispatch_unote_t du, uint32_t flags,
-		mach_msg_header_t *msg, mach_msg_size_t msgsz,
+		mach_msg_header_t *msg, mach_msg_size_t msgsz, mach_msg_aux_header_t *aux,
 		pthread_priority_t msg_pp, pthread_priority_t ovr_pp);
 void _dispatch_mach_reply_merge_msg(dispatch_unote_t du, uint32_t flags,
-		mach_msg_header_t *msg, mach_msg_size_t msgsz,
+		mach_msg_header_t *msg, mach_msg_size_t msgsz, mach_msg_aux_header_t *aux,
 		pthread_priority_t msg_pp, pthread_priority_t ovr_pp);
 void _dispatch_xpc_sigterm_merge_evt(dispatch_unote_t du, uint32_t flags,
 		uintptr_t data, pthread_priority_t pp);

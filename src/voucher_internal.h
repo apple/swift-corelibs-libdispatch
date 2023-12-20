@@ -40,7 +40,7 @@
  * @group Voucher Creation SPI
  * SPI intended for clients that need to create vouchers.
  */
-OS_OBJECT_DECL_CLASS(voucher_recipe);
+OS_OBJECT_DECL_SENDABLE_CLASS(voucher_recipe);
 
 /*!
  * @function voucher_create
@@ -89,6 +89,8 @@ voucher_get_mach_voucher(voucher_t voucher);
 
 void _voucher_init(void);
 void _voucher_atfork_child(void);
+void _voucher_atfork_parent(void);
+void _voucher_atfork_prepare(void);
 void _voucher_activity_debug_channel_init(void);
 #if OS_VOUCHER_ACTIVITY_SPI && OS_VOUCHER_ACTIVITY_GENERATE_SWAPS
 void _voucher_activity_swap(firehose_activity_id_t old_id,
@@ -101,18 +103,11 @@ void DISPATCH_TSD_DTOR_CC _voucher_thread_cleanup(void *voucher);
 mach_voucher_t _voucher_get_mach_voucher(voucher_t voucher);
 voucher_t _voucher_create_without_importance(voucher_t voucher);
 voucher_t _voucher_create_accounting_voucher(voucher_t voucher);
-mach_voucher_t _voucher_create_mach_voucher_with_priority(voucher_t voucher,
-		pthread_priority_t priority);
-voucher_t _voucher_create_with_priority_and_mach_voucher(voucher_t voucher,
-		pthread_priority_t priority, mach_voucher_t kv);
 void _voucher_dealloc_mach_voucher(mach_voucher_t kv);
 
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
 _OS_OBJECT_DECL_SUBCLASS_INTERFACE(voucher_recipe, object)
 #endif
-
-voucher_t voucher_retain(voucher_t voucher);
-void voucher_release(voucher_t voucher);
 
 #define VOUCHER_NO_MACH_VOUCHER MACH_PORT_DEAD
 
@@ -140,11 +135,17 @@ typedef struct _voucher_mach_udata_s {
 	uint8_t _vmu_after_activity[0];
 } _voucher_mach_udata_s;
 
+typedef struct _voucher_mach_udata_aux_s {
+	mach_msg_aux_header_t header;
+	_voucher_mach_udata_s udata;
+} _voucher_mach_udata_aux_s;
+
+#define DISPATCH_MSGV_AUX_MAX_SIZE sizeof(_voucher_mach_udata_aux_s)
+
 OS_ENUM(voucher_fields, uint16_t,
 	VOUCHER_FIELD_NONE		= 0,
 	VOUCHER_FIELD_KVOUCHER	= 1u << 0,
-	VOUCHER_FIELD_PRIORITY	= 1u << 1,
-	VOUCHER_FIELD_ACTIVITY	= 1u << 2,
+	VOUCHER_FIELD_ACTIVITY	= 1u << 1,
 
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
 	VOUCHER_FIELD_EXTRA		= 1u << 15,
@@ -155,7 +156,7 @@ OS_ENUM(voucher_fields, uint16_t,
 
 typedef struct voucher_s {
 	_OS_OBJECT_HEADER(
-	struct voucher_vtable_s *os_obj_isa,
+	struct voucher_vtable_s *__ptrauth_objc_isa_pointer os_obj_isa,
 	os_obj_ref_cnt,
 	os_obj_xref_cnt);
 	struct voucher_hash_entry_s {
@@ -167,7 +168,6 @@ typedef struct voucher_s {
 	firehose_activity_id_t v_activity;
 	uint64_t v_activity_creator;
 	firehose_activity_id_t v_parent_activity;
-	_voucher_priority_t v_priority;
 	unsigned int v_kv_has_importance:1;
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
 	size_t v_recipe_extra_offset;
@@ -233,7 +233,7 @@ _voucher_hash_store_to_prev_ptr(uintptr_t prev_ptr, struct voucher_s *v)
 #if VOUCHER_ENABLE_RECIPE_OBJECTS
 typedef struct voucher_recipe_s {
 	_OS_OBJECT_HEADER(
-	const _os_object_vtable_s *os_obj_isa,
+	const _os_object_vtable_s *__ptrauth_objc_isa_pointer os_obj_isa,
 	os_obj_ref_cnt,
 	os_obj_xref_cnt);
 	size_t vr_allocation_size;
@@ -242,7 +242,7 @@ typedef struct voucher_recipe_s {
 } voucher_recipe_s;
 #endif
 
-#if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+#if (TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR) || DISPATCH_TARGET_DK_EMBEDDED
 #define VL_HASH_SIZE  64u // must be a power of two
 #else
 #define VL_HASH_SIZE 256u // must be a power of two
@@ -285,7 +285,7 @@ _voucher_retain_inline(struct voucher_s *voucher)
 {
 	// not using _os_object_refcnt* because we don't need barriers:
 	// vouchers are immutable and are in a hash table with a lock
-	int xref_cnt = os_atomic_inc2o(voucher, os_obj_xref_cnt, relaxed);
+	int xref_cnt = os_atomic_inc(&voucher->os_obj_xref_cnt, relaxed);
 	_voucher_trace(RETAIN, (voucher_t)voucher, xref_cnt + 1);
 	_dispatch_voucher_debug("retain  -> %d", voucher, xref_cnt + 1);
 	if (unlikely(xref_cnt <= 0)) {
@@ -300,7 +300,7 @@ _voucher_release_inline(struct voucher_s *voucher)
 {
 	// not using _os_object_refcnt* because we don't need barriers:
 	// vouchers are immutable and are in a hash table with a lock
-	int xref_cnt = os_atomic_dec2o(voucher, os_obj_xref_cnt, relaxed);
+	int xref_cnt = os_atomic_dec(&voucher->os_obj_xref_cnt, relaxed);
 	_voucher_trace(RELEASE, (voucher_t)voucher, xref_cnt + 1);
 	_dispatch_voucher_debug("release -> %d", voucher, xref_cnt + 1);
 	if (likely(xref_cnt >= 0)) {
@@ -309,7 +309,7 @@ _voucher_release_inline(struct voucher_s *voucher)
 	if (unlikely(xref_cnt < -1)) {
 		_OS_OBJECT_CLIENT_CRASH("Voucher over-release");
 	}
-	return _os_object_xref_dispose((_os_object_t)voucher);
+	return _voucher_xref_dispose((voucher_t)voucher);
 }
 
 #if DISPATCH_PURE_C
@@ -344,7 +344,7 @@ _voucher_release_no_dispose(voucher_t voucher)
 #if !DISPATCH_VOUCHER_OBJC_DEBUG
 	// not using _os_object_refcnt* because we don't need barriers:
 	// vouchers are immutable and are in a hash table with a lock
-	int xref_cnt = os_atomic_dec2o(voucher, os_obj_xref_cnt, relaxed);
+	int xref_cnt = os_atomic_dec(&voucher->os_obj_xref_cnt, relaxed);
 	_voucher_trace(RELEASE, voucher, xref_cnt + 1);
 	_dispatch_voucher_debug("release -> %d", voucher, xref_cnt + 1);
 	if (likely(xref_cnt >= 0)) {
@@ -433,13 +433,6 @@ _voucher_clear(void)
 }
 
 DISPATCH_ALWAYS_INLINE
-static inline pthread_priority_t
-_voucher_get_priority(voucher_t v)
-{
-	return v ? (pthread_priority_t)v->v_priority : 0;
-}
-
-DISPATCH_ALWAYS_INLINE
 static inline firehose_activity_id_t
 _voucher_get_activity_id(voucher_t v, uint64_t *creator_pid)
 {
@@ -447,9 +440,14 @@ _voucher_get_activity_id(voucher_t v, uint64_t *creator_pid)
 	return v ? v->v_activity : 0;
 }
 
+voucher_t _voucher_create_with_mach_msgv(mach_msg_header_t *msg, mach_msg_aux_header_t *aux);
 void _voucher_task_mach_voucher_init(void* ctxt);
 extern dispatch_once_t _voucher_task_mach_voucher_pred;
 extern mach_voucher_t _voucher_task_mach_voucher;
+
+extern dispatch_once_t _voucher_process_can_use_arbitrary_personas_pred;
+extern bool _voucher_process_can_use_arbitrary_personas;
+
 #if VOUCHER_USE_EMPTY_MACH_BASE_VOUCHER
 #define _voucher_default_task_mach_voucher MACH_VOUCHER_NULL
 #else
@@ -695,14 +693,6 @@ _voucher_clear(void)
 }
 
 DISPATCH_ALWAYS_INLINE
-static inline pthread_priority_t
-_voucher_get_priority(voucher_t voucher)
-{
-	(void)voucher;
-	return 0;
-}
-
-DISPATCH_ALWAYS_INLINE
 static inline bool
 _voucher_mach_msg_set_mach_voucher(mach_msg_header_t *msg, mach_voucher_t kv,
 		bool move_send)
@@ -716,7 +706,7 @@ DISPATCH_ALWAYS_INLINE
 static inline bool
 _voucher_mach_msg_set(mach_msg_header_t *msg, voucher_t voucher)
 {
-	(void)msg; (void)voucher;
+	(void)msg; (void)voucher;;
 	return false;
 }
 
