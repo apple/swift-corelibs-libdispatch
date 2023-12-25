@@ -32,7 +32,7 @@
 // Returns UINT_MAX if all the bits in p were already set.
 DISPATCH_ALWAYS_INLINE
 static inline unsigned int
-os_atomic_set_first_bit(volatile unsigned long *p, unsigned int max)
+os_atomic_set_first_bit(unsigned long *p, unsigned int max)
 {
 	unsigned long val, bit;
 	if (max > (sizeof(val) * 8)) {
@@ -82,7 +82,7 @@ os_atomic_set_first_bit(volatile unsigned long *p, unsigned int max)
 
 DISPATCH_ALWAYS_INLINE
 static inline unsigned int
-os_atomic_set_first_bit(volatile unsigned long *p, unsigned int max_index)
+os_atomic_set_first_bit(unsigned long *p, unsigned int max)
 {
 	unsigned int index;
 	unsigned long b, b_masked;
@@ -94,7 +94,7 @@ os_atomic_set_first_bit(volatile unsigned long *p, unsigned int max_index)
 			os_atomic_rmw_loop_give_up(return UINT_MAX);
 		}
 		index--;
-		if (unlikely(index > max_index)) {
+		if (unlikely(index > max)) {
 			os_atomic_rmw_loop_give_up(return UINT_MAX);
 		}
 		b_masked = b | (1UL << index);
