@@ -98,21 +98,16 @@ void *_dispatch_wait_for_enqueuer(void **ptr);
 #define _dispatch_contention_spins() \
 		((DISPATCH_CONTENTION_SPINS_MIN) + ((DISPATCH_CONTENTION_SPINS_MAX) - \
 		(DISPATCH_CONTENTION_SPINS_MIN)) / 2)
-#elif defined(_WIN32)
+#else
 // Use randomness to prevent threads from resonating at the same frequency and
 // permanently contending. Windows doesn't provide rand_r(), so use a simple
 // LCG. (msvcrt has rand_s(), but its security guarantees aren't optimal here.)
+// The implementation of rand() can contain a lock (known with glibc at least).
 #define _dispatch_contention_spins() ({ \
 		static os_atomic(unsigned int) _seed = 1; \
 		unsigned int _next = os_atomic_load(&_seed, relaxed); \
 		os_atomic_store(&_seed, _next * 1103515245 + 12345, relaxed); \
 		((_next >> 24) & (DISPATCH_CONTENTION_SPINS_MAX)) | \
-				(DISPATCH_CONTENTION_SPINS_MIN); })
-#else
-// Use randomness to prevent threads from resonating at the same
-// frequency and permanently contending.
-#define _dispatch_contention_spins() ({ \
-		((unsigned int)rand() & (DISPATCH_CONTENTION_SPINS_MAX)) | \
 				(DISPATCH_CONTENTION_SPINS_MIN); })
 #endif
 #define _dispatch_contention_wait_until(c) ({ \
