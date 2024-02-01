@@ -2373,6 +2373,11 @@ _dispatch_operation_perform(dispatch_operation_t op)
 				bQueried = true;
 			}
 			op->buf = _aligned_malloc(op->buf_siz, siInfo.dwPageSize);
+#elif defined(__ANDROID_API__) && __ANDROID_API__ < 28
+			err = posix_memalign(&op->buf, (size_t)PAGE_SIZE, op->buf_siz);
+			if (err != 0) {
+				goto error;
+			}
 #else
 			op->buf = aligned_alloc((size_t)PAGE_SIZE, op->buf_siz)
 #endif
