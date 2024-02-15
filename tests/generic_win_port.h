@@ -7,7 +7,9 @@
 #include <Windows.h>
 
 typedef int kern_return_t;
+#ifndef _PID_T_
 typedef int pid_t;
+#endif
 
 #if defined(_WIN64)
 typedef long long ssize_t;
@@ -68,8 +70,10 @@ mach_timebase_info(mach_timebase_info_t tbi)
 	return 0;
 }
 
+#ifndef HAVE_MKSTEMP
 dispatch_fd_t
 mkstemp(char *tmpl);
+#endif
 
 void
 print_winapi_error(const char *function_name, DWORD error);

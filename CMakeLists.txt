@@ -18,14 +18,18 @@ if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-  include(DispatchWindowsSupport)
-  dispatch_windows_arch_spelling(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_MSVC_ARCH)
-  dispatch_windows_include_for_arch(${DISPATCH_MSVC_ARCH} DISPATCH_INCLUDES)
-  include_directories(BEFORE SYSTEM ${DISPATCH_INCLUDES})
-  dispatch_windows_lib_for_arch(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_LIBDIR)
-  link_directories(${DISPATCH_LIBDIR})
+  if(NOT MINGW)
+    include(DispatchWindowsSupport)
+    dispatch_windows_arch_spelling(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_MSVC_ARCH)
+    dispatch_windows_include_for_arch(${DISPATCH_MSVC_ARCH} DISPATCH_INCLUDES)
+    include_directories(BEFORE SYSTEM ${DISPATCH_INCLUDES})
+    dispatch_windows_lib_for_arch(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_LIBDIR)
+    link_directories(${DISPATCH_LIBDIR})
+  endif()
 
   include(CheckCSourceCompiles)
+  include(CheckSymbolExists)
+
   check_c_source_compiles([=[
 #include <Windows.h>
 int main(int argc, char *argv[]) {
@@ -53,6 +57,22 @@ int main(int argc, char *argv[]) {
 ]=] DISPATCH_HAVE_EXTENDED_SLPI_22000)
   if(DISPATCH_HAVE_EXTENDED_SLPI_22000)
     add_compile_definitions(DISPATCH_HAVE_EXTENDED_SLPI_22000)
+  endif()
+
+  check_c_source_compiles([=[
+#include <Windows.h>
+#include <winternl.h>
+int main(int argc, char *argv[]) {
+  FILE_PIPE_LOCAL_INFORMATION fpli;
+}
+]=] HAVE_FILE_PIPE_LOCAL_INFORMATION)
+  if(HAVE_FILE_PIPE_LOCAL_INFORMATION)
+    add_compile_definitions(HAVE_FILE_PIPE_LOCAL_INFORMATION)
+  endif()
+
+  check_symbol_exists(mkstemp "stdlib.h" HAVE_MKSTEMP)
+  if(HAVE_MKSTEMP)
+    add_compile_definitions(HAVE_MKSTEMP)
   endif()
 endif()
 

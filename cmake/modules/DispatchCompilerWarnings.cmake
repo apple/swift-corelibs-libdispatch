@@ -1,6 +1,8 @@
 
-if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
+if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC" OR MINGW)
   # TODO: someone needs to provide the msvc equivalent warning flags
+  # -fms-extensions will enable __popcnt64
+  add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-fms-extensions>)
 else()
   add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Werror>)
   add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wall>)

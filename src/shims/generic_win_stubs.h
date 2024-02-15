@@ -49,6 +49,7 @@ bool _dispatch_handle_is_socket(HANDLE hFile);
 void _dispatch_QueryInterruptTimePrecise(PULONGLONG lpInterruptTimePrecise);
 void _dispatch_QueryUnbiasedInterruptTimePrecise(PULONGLONG lpUnbiasedInterruptTimePrecise);
 
+#ifndef HAVE_FILE_PIPE_LOCAL_INFORMATION
 enum {
 	FilePipeLocalInformation = 24,
 };
@@ -65,6 +66,7 @@ typedef struct _FILE_PIPE_LOCAL_INFORMATION {
 	ULONG NamedPipeState;
 	ULONG NamedPipeEnd;
 } FILE_PIPE_LOCAL_INFORMATION, *PFILE_PIPE_LOCAL_INFORMATION;
+#endif
 
 NTSTATUS _dispatch_NtQueryInformationFile(HANDLE FileHandle,
 		PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation, ULONG Length,
