@@ -7,7 +7,7 @@
 #include <Windows.h>
 
 typedef int kern_return_t;
-#ifndef _PID_T_
+#ifndef HAVE_PID_T
 typedef int pid_t;
 #endif
 

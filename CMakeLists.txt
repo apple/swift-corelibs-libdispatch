@@ -74,6 +74,26 @@ int main(int argc, char *argv[]) {
   if(HAVE_MKSTEMP)
     add_compile_definitions(HAVE_MKSTEMP)
   endif()
+
+  check_c_source_compiles([=[
+#include <sys/types.h>
+int main(int argc, char *argv[]) {
+  mode_t mode;
+}
+]=] HAVE_MODE_T)
+  if(HAVE_MODE_T)
+    add_compile_definitions(HAVE_MODE_T)
+  endif()
+
+  check_c_source_compiles([=[
+#include <sys/types.h>
+int main(int argc, char *argv[]) {
+  pid_t mode;
+}
+]=] HAVE_PID_T)
+  if(HAVE_PID_T)
+    add_compile_definitions(HAVE_PID_T)
+  endif()
 endif()
 
 set(CMAKE_C_STANDARD 11)
