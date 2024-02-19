@@ -24,7 +24,9 @@
 // Unices provide `howmany` via sys/param.h
 #define howmany(x, y)  (((x) + ((y) - 1)) / (y))
 
+#ifndef HAVE_MODE_T
 typedef int mode_t;
+#endif
 typedef void pthread_attr_t;
 
 #ifndef API_AVAILABLE
