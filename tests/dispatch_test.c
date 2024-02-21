@@ -33,6 +33,8 @@
 #if __has_include(<sys/event.h>)
 #define HAS_SYS_EVENT_H 1
 #include <sys/event.h>
+#elif __has_include(<poll.h>)
+#include <poll.h>
 #else
 #include <sys/poll.h>
 #endif
