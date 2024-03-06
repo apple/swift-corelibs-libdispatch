@@ -24,6 +24,7 @@
 #include <dispatch/dispatch.h>
 
 DISPATCH_ASSUME_NONNULL_BEGIN
+DISPATCH_ASSUME_ABI_SINGLE_BEGIN
 
 /*!
  * @header
@@ -183,6 +184,7 @@ dispatch_introspection_hook_queue_callout_end(dispatch_queue_t queue,
 
 __END_DECLS
 
+DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
 #endif

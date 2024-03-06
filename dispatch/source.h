@@ -36,6 +36,7 @@
 #endif
 
 DISPATCH_ASSUME_NONNULL_BEGIN
+DISPATCH_ASSUME_ABI_SINGLE_BEGIN
 
 /*!
  * @header
@@ -54,7 +55,7 @@ DISPATCH_ASSUME_NONNULL_BEGIN
  * Dispatch sources are used to automatically submit event handler blocks to
  * dispatch queues in response to external events.
  */
-DISPATCH_SOURCE_DECL(dispatch_source)
+DISPATCH_SOURCE_DECL_SWIFT(dispatch_source, DispatchSource, DispatchSourceProtocol);
 
 __BEGIN_DECLS
 
@@ -69,6 +70,7 @@ __BEGIN_DECLS
  * signal number, process identifier, etc.), and how the mask argument is
  * interpreted.
  */
+DISPATCH_REFINED_FOR_SWIFT
 typedef const struct dispatch_source_type_s *dispatch_source_type_t;
 
 /*!
@@ -80,7 +82,7 @@ typedef const struct dispatch_source_type_s *dispatch_source_type_t;
  */
 #define DISPATCH_SOURCE_TYPE_DATA_ADD (&_dispatch_source_type_data_add)
 API_AVAILABLE(macos(10.6), ios(4.0))
-DISPATCH_SOURCE_TYPE_DECL(data_add);
+DISPATCH_SOURCE_TYPE_DECL_SWIFT(data_add, DispatchSourceUserDataAdd);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_DATA_OR
@@ -91,7 +93,7 @@ DISPATCH_SOURCE_TYPE_DECL(data_add);
  */
 #define DISPATCH_SOURCE_TYPE_DATA_OR (&_dispatch_source_type_data_or)
 API_AVAILABLE(macos(10.6), ios(4.0))
-DISPATCH_SOURCE_TYPE_DECL(data_or);
+DISPATCH_SOURCE_TYPE_DECL_SWIFT(data_or, DispatchSourceUserDataOr);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_DATA_REPLACE
@@ -106,7 +108,7 @@ DISPATCH_SOURCE_TYPE_DECL(data_or);
  */
 #define DISPATCH_SOURCE_TYPE_DATA_REPLACE (&_dispatch_source_type_data_replace)
 API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0), watchos(4.0))
-DISPATCH_SOURCE_TYPE_DECL(data_replace);
+DISPATCH_SOURCE_TYPE_DECL_SWIFT(data_replace, DispatchSourceUserDataReplace);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_MACH_SEND
@@ -117,17 +119,18 @@ DISPATCH_SOURCE_TYPE_DECL(data_replace);
  */
 #define DISPATCH_SOURCE_TYPE_MACH_SEND (&_dispatch_source_type_mach_send)
 API_AVAILABLE(macos(10.6), ios(4.0)) DISPATCH_LINUX_UNAVAILABLE()
-DISPATCH_SOURCE_TYPE_DECL(mach_send);
+DISPATCH_SOURCE_TYPE_DECL_SWIFT(mach_send, DispatchSourceMachSend);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_MACH_RECV
  * @discussion A dispatch source that monitors a Mach port for pending messages.
  * The handle is a Mach port with a receive right (mach_port_t).
- * The mask is unused (pass zero for now).
+ * The mask is a mask of desired events from dispatch_source_mach_recv_flags_t,
+ * but no flags are currently defined (pass zero for now).
  */
 #define DISPATCH_SOURCE_TYPE_MACH_RECV (&_dispatch_source_type_mach_recv)
 API_AVAILABLE(macos(10.6), ios(4.0)) DISPATCH_LINUX_UNAVAILABLE()
-DISPATCH_SOURCE_TYPE_DECL(mach_recv);
+DISPATCH_SOURCE_TYPE_DECL_SWIFT(mach_recv, DispatchSourceMachReceive);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_MEMORYPRESSURE
@@ -140,7 +143,7 @@ DISPATCH_SOURCE_TYPE_DECL(mach_recv);
 #define DISPATCH_SOURCE_TYPE_MEMORYPRESSURE \
 		(&_dispatch_source_type_memorypressure)
 API_AVAILABLE(macos(10.9), ios(8.0)) DISPATCH_LINUX_UNAVAILABLE()
-DISPATCH_SOURCE_TYPE_DECL(memorypressure);
+DISPATCH_SOURCE_TYPE_DECL_SWIFT(memorypressure, DispatchSourceMemoryPressure);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_PROC
@@ -151,7 +154,7 @@ DISPATCH_SOURCE_TYPE_DECL(memorypressure);
  */
 #define DISPATCH_SOURCE_TYPE_PROC (&_dispatch_source_type_proc)
 API_AVAILABLE(macos(10.6), ios(4.0)) DISPATCH_LINUX_UNAVAILABLE()
-DISPATCH_SOURCE_TYPE_DECL(proc);
+DISPATCH_SOURCE_TYPE_DECL_SWIFT(proc, DispatchSourceProcess);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_READ
@@ -162,7 +165,7 @@ DISPATCH_SOURCE_TYPE_DECL(proc);
  */
 #define DISPATCH_SOURCE_TYPE_READ (&_dispatch_source_type_read)
 API_AVAILABLE(macos(10.6), ios(4.0))
-DISPATCH_SOURCE_TYPE_DECL(read);
+DISPATCH_SOURCE_TYPE_DECL_SWIFT(read, DispatchSourceRead);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_SIGNAL
@@ -172,7 +175,7 @@ DISPATCH_SOURCE_TYPE_DECL(read);
  */
 #define DISPATCH_SOURCE_TYPE_SIGNAL (&_dispatch_source_type_signal)
 API_AVAILABLE(macos(10.6), ios(4.0))
-DISPATCH_SOURCE_TYPE_DECL(signal);
+DISPATCH_SOURCE_TYPE_DECL_SWIFT(signal, DispatchSourceSignal);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_TIMER
@@ -183,7 +186,7 @@ DISPATCH_SOURCE_TYPE_DECL(signal);
  */
 #define DISPATCH_SOURCE_TYPE_TIMER (&_dispatch_source_type_timer)
 API_AVAILABLE(macos(10.6), ios(4.0))
-DISPATCH_SOURCE_TYPE_DECL(timer);
+DISPATCH_SOURCE_TYPE_DECL_SWIFT(timer, DispatchSourceTimer);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_VNODE
@@ -194,7 +197,7 @@ DISPATCH_SOURCE_TYPE_DECL(timer);
  */
 #define DISPATCH_SOURCE_TYPE_VNODE (&_dispatch_source_type_vnode)
 API_AVAILABLE(macos(10.6), ios(4.0)) DISPATCH_LINUX_UNAVAILABLE()
-DISPATCH_SOURCE_TYPE_DECL(vnode);
+DISPATCH_SOURCE_TYPE_DECL_SWIFT(vnode, DispatchSourceFileSystemObject);
 
 /*!
  * @const DISPATCH_SOURCE_TYPE_WRITE
@@ -205,7 +208,7 @@ DISPATCH_SOURCE_TYPE_DECL(vnode);
  */
 #define DISPATCH_SOURCE_TYPE_WRITE (&_dispatch_source_type_write)
 API_AVAILABLE(macos(10.6), ios(4.0))
-DISPATCH_SOURCE_TYPE_DECL(write);
+DISPATCH_SOURCE_TYPE_DECL_SWIFT(write, DispatchSourceWrite);
 
 /*!
  * @typedef dispatch_source_mach_send_flags_t
@@ -216,7 +219,14 @@ DISPATCH_SOURCE_TYPE_DECL(write);
  */
 #define DISPATCH_MACH_SEND_DEAD	0x1
 
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchSource.MachSendEvent")
 typedef unsigned long dispatch_source_mach_send_flags_t;
+
+/*!
+ * @typedef dispatch_source_mach_recv_flags_t
+ * Type of dispatch_source_mach_recv flags
+ */
+typedef unsigned long dispatch_source_mach_recv_flags_t;
 
 /*!
  * @typedef dispatch_source_memorypressure_flags_t
@@ -246,6 +256,7 @@ typedef unsigned long dispatch_source_mach_send_flags_t;
 #define DISPATCH_MEMORYPRESSURE_WARN		0x02
 #define DISPATCH_MEMORYPRESSURE_CRITICAL	0x04
 
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchSource.MemoryPressureEvent")
 typedef unsigned long dispatch_source_memorypressure_flags_t;
 
 /*!
@@ -270,6 +281,7 @@ typedef unsigned long dispatch_source_memorypressure_flags_t;
 #define DISPATCH_PROC_EXEC		0x20000000
 #define DISPATCH_PROC_SIGNAL	0x08000000
 
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchSource.ProcessEvent")
 typedef unsigned long dispatch_source_proc_flags_t;
 
 /*!
@@ -310,6 +322,7 @@ typedef unsigned long dispatch_source_proc_flags_t;
 #define DISPATCH_VNODE_REVOKE	0x40
 #define DISPATCH_VNODE_FUNLOCK	0x100
 
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchSource.FileSystemEvent")
 typedef unsigned long dispatch_source_vnode_flags_t;
 
 /*!
@@ -330,6 +343,7 @@ typedef unsigned long dispatch_source_vnode_flags_t;
 
 #define DISPATCH_TIMER_STRICT 0x1
 
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchSource.TimerFlags")
 typedef unsigned long dispatch_source_timer_flags_t;
 
 /*!
@@ -348,6 +362,8 @@ typedef unsigned long dispatch_source_timer_flags_t;
  * Dispatch sources are created in an inactive state. After creating the
  * source and setting any desired attributes (i.e. the handler, context, etc.),
  * a call must be made to dispatch_activate() in order to begin event delivery.
+ *
+ * A source must have been activated before being disposed.
  *
  * Calling dispatch_set_target_queue() on a source once it has been activated
  * is not allowed (see dispatch_activate() and dispatch_set_target_queue()).
@@ -379,6 +395,7 @@ typedef unsigned long dispatch_source_timer_flags_t;
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_MALLOC DISPATCH_RETURNS_RETAINED DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 dispatch_source_t
 dispatch_source_create(dispatch_source_type_t type,
 	uintptr_t handle,
@@ -401,6 +418,7 @@ dispatch_source_create(dispatch_source_type_t type,
 #ifdef __BLOCKS__
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_source_set_event_handler(dispatch_source_t source,
 	dispatch_block_t _Nullable handler);
@@ -423,6 +441,7 @@ dispatch_source_set_event_handler(dispatch_source_t source,
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("DispatchSource.setEventHandler(self:handler:)")
 void
 dispatch_source_set_event_handler_f(dispatch_source_t source,
 	dispatch_function_t _Nullable handler);
@@ -458,6 +477,7 @@ dispatch_source_set_event_handler_f(dispatch_source_t source,
 #ifdef __BLOCKS__
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_source_set_cancel_handler(dispatch_source_t source,
 	dispatch_block_t _Nullable handler);
@@ -483,6 +503,7 @@ dispatch_source_set_cancel_handler(dispatch_source_t source,
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchSource.setCancelHandler(self:handler:)")
 void
 dispatch_source_set_cancel_handler_f(dispatch_source_t source,
 	dispatch_function_t _Nullable handler);
@@ -511,6 +532,7 @@ dispatch_source_set_cancel_handler_f(dispatch_source_t source,
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_source_cancel(dispatch_source_t source);
 
@@ -530,6 +552,7 @@ dispatch_source_cancel(dispatch_source_t source);
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 intptr_t
 dispatch_source_testcancel(dispatch_source_t source);
 
@@ -562,6 +585,7 @@ dispatch_source_testcancel(dispatch_source_t source);
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 uintptr_t
 dispatch_source_get_handle(dispatch_source_t source);
 
@@ -582,7 +606,7 @@ dispatch_source_get_handle(dispatch_source_t source);
  *  DISPATCH_SOURCE_TYPE_DATA_OR:         n/a
  *  DISPATCH_SOURCE_TYPE_DATA_REPLACE:    n/a
  *  DISPATCH_SOURCE_TYPE_MACH_SEND:       dispatch_source_mach_send_flags_t
- *  DISPATCH_SOURCE_TYPE_MACH_RECV:       n/a
+ *  DISPATCH_SOURCE_TYPE_MACH_RECV:       dispatch_source_mach_recv_flags_t
  *  DISPATCH_SOURCE_TYPE_MEMORYPRESSURE   dispatch_source_memorypressure_flags_t
  *  DISPATCH_SOURCE_TYPE_PROC:            dispatch_source_proc_flags_t
  *  DISPATCH_SOURCE_TYPE_READ:            n/a
@@ -594,6 +618,7 @@ dispatch_source_get_handle(dispatch_source_t source);
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 uintptr_t
 dispatch_source_get_mask(dispatch_source_t source);
 
@@ -619,7 +644,7 @@ dispatch_source_get_mask(dispatch_source_t source);
  *  DISPATCH_SOURCE_TYPE_DATA_OR:         application defined data
  *  DISPATCH_SOURCE_TYPE_DATA_REPLACE:    application defined data
  *  DISPATCH_SOURCE_TYPE_MACH_SEND:       dispatch_source_mach_send_flags_t
- *  DISPATCH_SOURCE_TYPE_MACH_RECV:       n/a
+ *  DISPATCH_SOURCE_TYPE_MACH_RECV:       dispatch_source_mach_recv_flags_t
  *  DISPATCH_SOURCE_TYPE_MEMORYPRESSURE   dispatch_source_memorypressure_flags_t
  *  DISPATCH_SOURCE_TYPE_PROC:            dispatch_source_proc_flags_t
  *  DISPATCH_SOURCE_TYPE_READ:            estimated bytes available to read
@@ -633,6 +658,7 @@ dispatch_source_get_mask(dispatch_source_t source);
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_WARN_RESULT DISPATCH_PURE
 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 uintptr_t
 dispatch_source_get_data(dispatch_source_t source);
 
@@ -654,6 +680,7 @@ dispatch_source_get_data(dispatch_source_t source);
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_source_merge_data(dispatch_source_t source, uintptr_t value);
 
@@ -707,6 +734,7 @@ dispatch_source_merge_data(dispatch_source_t source, uintptr_t value);
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_source_set_timer(dispatch_source_t source,
 	dispatch_time_t start,
@@ -737,6 +765,7 @@ dispatch_source_set_timer(dispatch_source_t source,
 #ifdef __BLOCKS__
 API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_REFINED_FOR_SWIFT
 void
 dispatch_source_set_registration_handler(dispatch_source_t source,
 	dispatch_block_t _Nullable handler);
@@ -762,12 +791,14 @@ dispatch_source_set_registration_handler(dispatch_source_t source,
  */
 API_AVAILABLE(macos(10.7), ios(4.3))
 DISPATCH_EXPORT DISPATCH_NONNULL1 DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchSource.setRegistrationHandler(self:handler:)")
 void
 dispatch_source_set_registration_handler_f(dispatch_source_t source,
 	dispatch_function_t _Nullable handler);
 
 __END_DECLS
 
+DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
 #endif

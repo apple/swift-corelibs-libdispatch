@@ -30,6 +30,12 @@
 #include <os/object.h>
 #include <stddef.h>
 #include <stdint.h>
+#if __has_include(<ptrauth.h>)
+#include <ptrauth.h>
+#endif
+#ifndef __ptrauth_objc_isa_pointer
+#define __ptrauth_objc_isa_pointer
+#endif
 
 #if __GNUC__
 #define OS_OBJECT_NOTHROW __attribute__((__nothrow__))
@@ -63,7 +69,7 @@
 #define _OS_OBJECT_GLOBAL_REFCNT INT_MAX
 
 #define _OS_OBJECT_HEADER(isa, ref_cnt, xref_cnt) \
-        isa; /* must be pointer-sized */ \
+        isa; /* must be pointer-sized and use __ptrauth_objc_isa_pointer */ \
         int volatile ref_cnt; \
         int volatile xref_cnt
 
@@ -97,10 +103,26 @@
 
 #define OS_OBJECT_CLASS(name) OS_##name
 
+#if OS_OBJECT_USE_OBJC
+#define OS_OBJECT_USES_XREF_DISPOSE() \
+	- (oneway void)release { \
+		_os_object_release((OS_object *) self); \
+	}
+#endif
+
+#if __has_attribute(objc_nonlazy_class)
+#define OS_OBJECT_NONLAZY_CLASS        __attribute__((objc_nonlazy_class))
+#define OS_OBJECT_NONLAZY_CLASS_LOAD
+#else
+#define OS_OBJECT_NONLAZY_CLASS
+#define OS_OBJECT_NONLAZY_CLASS_LOAD  + (void)load { }
+#endif
+
 #if OS_OBJECT_USE_OBJC && OS_OBJECT_SWIFT3
 @interface OS_OBJECT_CLASS(object) (OSObjectPrivate)
+// Note: objects who want _xref_dispose to be called need
+// to use OS_OBJECT_USES_XREF_DISPOSE()
 - (void)_xref_dispose;
-- (void)_dispose;
 @end
 OS_OBJECT_DECL_PROTOCOL(object, <NSObject>);
 typedef OS_OBJECT_CLASS(object) *_os_object_t;
@@ -113,11 +135,10 @@ typedef OS_OBJECT_CLASS(object) *_os_object_t;
 #define _OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL(name, super) \
 		OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL(name, super)
 #elif OS_OBJECT_USE_OBJC
-API_AVAILABLE(macos(10.8), ios(6.0))
-OS_OBJECT_EXPORT
-@interface OS_OBJECT_CLASS(object) : NSObject
+@interface OS_OBJECT_CLASS(object) (OSObjectPrivate)
+// Note: objects who want _xref_dispose to be called need
+// to use OS_OBJECT_USES_XREF_DISPOSE()
 - (void)_xref_dispose;
-- (void)_dispose;
 @end
 typedef OS_OBJECT_CLASS(object) *_os_object_t;
 #define _OS_OBJECT_DECL_SUBCLASS_INTERFACE(name, super) \
@@ -141,7 +162,7 @@ API_AVAILABLE(macos(10.8), ios(6.0))
 OS_OBJECT_EXPORT OS_OBJECT_MALLOC OS_OBJECT_WARN_RESULT OS_OBJECT_NOTHROW
 OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 _os_object_t
-_os_object_alloc(const void *cls, size_t size);
+_os_object_alloc(const void * _Nullable cls, size_t size);
 
 API_AVAILABLE(macos(10.8), ios(6.0))
 OS_OBJECT_EXPORT OS_OBJECT_MALLOC OS_OBJECT_WARN_RESULT OS_OBJECT_NOTHROW
@@ -171,6 +192,12 @@ OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
 OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
 void
 _os_object_release(_os_object_t object);
+
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0), bridgeos(4.0))
+OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW
+OS_SWIFT_UNAVAILABLE("Unavailable in Swift")
+void
+_os_object_release_without_xref_dispose(_os_object_t object);
 
 API_AVAILABLE(macos(10.8), ios(6.0))
 OS_OBJECT_EXPORT OS_OBJECT_NONNULL OS_OBJECT_NOTHROW

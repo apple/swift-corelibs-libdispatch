@@ -91,7 +91,7 @@ struct dispatch_block_private_data_s {
 		if (dbpd_magic != DISPATCH_BLOCK_PRIVATE_DATA_MAGIC) return;
 		if (dbpd_group) {
 			if (!dbpd_performed) dispatch_group_leave(dbpd_group);
-			_os_object_release(dbpd_group->_as_os_obj);
+			_os_object_release_without_xref_dispose(dbpd_group->_as_os_obj);
 		}
 		if (dbpd_queue) {
 			_os_object_release_internal_n(dbpd_queue->_as_os_obj, 2);

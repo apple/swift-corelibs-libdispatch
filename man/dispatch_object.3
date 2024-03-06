@@ -53,13 +53,13 @@ and
 respectively.
 .Pp
 The dispatch framework does not guarantee that any given client has the last or
-only reference to a given object. Objects may be retained internally by the
-system.
+only reference to a given object.
+Objects may be retained internally by the system.
 .Ss INTEGRATION WITH OBJECTIVE-C
 .Bd -filled -offset indent
 When building with an Objective-C or Objective-C++ compiler, dispatch objects
-are declared as Objective-C types. This results in the following differences
-compared to building as plain C/C++:
+are declared as Objective-C types.
+This results in the following differences compared to building as plain C/C++:
 .Bl -dash
 .It
 if Objective-C Automated Reference Counting is enabled, dispatch objects are
@@ -72,13 +72,15 @@ functions will produce build errors.
 .Em Note :
 when ARC is enabled, care needs to be taken with dispatch API returning an
 interior pointer that is only valid as long as an associated object has not
-been released. If that object is held in a variable with automatic storage, it
-may need to be annotated with the
+been released.
+If that object is held in a variable with automatic storage, it may need to be
+annotated with the
 .Li objc_precise_lifetime
 attribute, or stored in a
 .Li __strong
 instance variable instead, to ensure that the object is not prematurely
-released. The functions returning interior pointers are
+released.
+The functions returning interior pointers are
 .Xr dispatch_data_create_map 3
 and
 .Xr dispatch_data_apply 3 .
@@ -116,10 +118,9 @@ preprocessor macro to
 When building with a plain C/C++ compiler or when integration with Objective-C
 is disabled, dispatch objects are
 .Em not
-automatically retained and released when captured by a block. Therefore, when a
-dispatch object is captured by a block that will be executed asynchronously,
-the object must be manually retained and released:
-.Pp
+automatically retained and released when captured by a block.
+Therefore, when a dispatch object is captured by a block that will be executed
+asynchronously, the object must be manually retained and released:
 .Bd -literal -offset indent
 dispatch_retain(object);
 dispatch_async(queue, ^{
@@ -129,13 +130,15 @@ dispatch_async(queue, ^{
 .Ed
 .Sh ACTIVATION
 Dispatch objects such as queues and sources may be created in an inactive
-state. Objects in this state must be activated before any blocks
-associated with them will be invoked. Calling
+state.
+Objects in this state must be activated before any blocks associated with them
+will be invoked.
+Calling
 .Fn dispatch_activate
 on an active object has no effect.
 .Pp
-Changing attributes such as the target queue or a source handler is no longer permitted
-once the object has been activated (see
+Changing attributes such as the target queue or a source handler is no longer
+permitted once the object has been activated (see
 .Xr dispatch_set_target_queue 3 ,
 .Xr dispatch_source_set_event_handler 3 ).
 .Sh SUSPENSION
@@ -144,7 +147,8 @@ or resumed with the functions
 .Fn dispatch_suspend
 and
 .Fn dispatch_resume
-respectively. Other dispatch objects do not support suspension.
+respectively.
+Other dispatch objects do not support suspension.
 .Pp
 The dispatch framework always checks the suspension status before executing a
 block, but such changes never affect a block during execution (non-preemptive).
@@ -155,18 +159,20 @@ a dispatch source is undefined.
 .Pp
 .Em Important :
 suspension applies to all aspects of the dispatch object life cycle, including
-the finalizer function and cancellation handler. Suspending an object causes it
-to be retained and resuming an object causes it to be released. Therefore it is
-important to balance calls to
+the finalizer function and cancellation handler.
+Suspending an object causes it to be retained and resuming an object causes it
+to be released.
+Therefore it is important to balance calls to
 .Fn dispatch_suspend
 and
 .Fn dispatch_resume
 such that the dispatch object is fully resumed when the last reference is
-released. The result of releasing all references to a dispatch object while in
+released.
+The result of releasing all references to a dispatch object while in
 an inactive or suspended state is undefined.
 .Sh CONTEXT POINTERS
-Dispatch objects support supplemental context pointers. The value of the
-context pointer may be retrieved and updated with
+Dispatch objects support supplemental context pointers.
+The value of the context pointer may be retrieved and updated with
 .Fn dispatch_get_context
 and
 .Fn dispatch_set_context
@@ -176,8 +182,8 @@ The
 specifies an optional per-object finalizer function that is invoked
 asynchronously if the context pointer is not NULL when the last
 reference to the object is released.
-This gives the
-application an opportunity to free the context data associated with the object.
+This gives the application an opportunity to free the context data associated
+with the object.
 The finalizer will be run on the object's target queue.
 .Sh SEE ALSO
 .Xr dispatch 3 ,

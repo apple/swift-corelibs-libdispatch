@@ -31,20 +31,23 @@ and
 .Fn dispatch_sync
 functions schedule blocks for concurrent execution within the
 .Xr dispatch 3
-framework. Blocks are submitted to a queue which dictates the policy for their
-execution. See
+framework.
+Blocks are submitted to a queue which dictates the policy for their execution.
+See
 .Xr dispatch_queue_create 3
 for more information about creating dispatch queues.
 .Pp
 These functions support efficient temporal synchronization, background
-concurrency and data-level concurrency. These same functions can also be used
-for efficient notification of the completion of asynchronous blocks (a.k.a.
-callbacks).
+concurrency and data-level concurrency.
+These same functions can also be used for efficient notification of the
+completion of asynchronous blocks (a.k.a.  callbacks).
 .Sh TEMPORAL SYNCHRONIZATION
 Synchronization is often required when multiple threads of execution access
-shared data concurrently. The simplest form of synchronization is
-mutual-exclusion (a lock), whereby different subsystems execute concurrently
-until a shared critical section is entered. In the
+shared data concurrently.
+The simplest form of synchronization is mutual-exclusion (a lock), whereby
+different subsystems execute concurrently until a shared critical section is
+entered.
+In the
 .Xr pthread 3
 family of procedures, temporal synchronization is accomplished like so:
 .Bd -literal -offset indent
@@ -60,7 +63,8 @@ assert(r == 0);
 The
 .Fn dispatch_sync
 function may be used with a serial queue to accomplish the same style of
-synchronization. For example:
+synchronization.
+For example:
 .Bd -literal -offset indent
 dispatch_sync(my_queue, ^{
 	// critical section
@@ -74,19 +78,21 @@ left without restoring the queue to a reentrant state.
 The
 .Fn dispatch_async
 function may be used to implement deferred critical sections when the result
-of the block is not needed locally. Deferred critical sections have the same
-synchronization properties as the above code, but are non-blocking and
-therefore more efficient to perform. For example:
+of the block is not needed locally.
+Deferred critical sections have the same synchronization properties as the above
+code, but are non-blocking and therefore more efficient to perform.
+For example:
 .Bd -literal
 dispatch_async(my_queue, ^{
 	// critical section
 });
 .Ed
 .Sh BACKGROUND CONCURRENCY
-.The
+The
 .Fn dispatch_async
 function may be used to execute trivial background tasks on a global concurrent
-queue. For example:
+queue.
+For example:
 .Bd -literal
 dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0), ^{
 	// background operation
@@ -98,8 +104,9 @@ This approach is an efficient replacement for
 .Sh COMPLETION CALLBACKS
 Completion callbacks can be accomplished via nested calls to the
 .Fn dispatch_async
-function. It is important to remember to retain the destination queue before the
-first call to
+function.
+It is important to remember to retain the destination queue before the first
+call to
 .Fn dispatch_async ,
 and to release that queue at the end of the completion callback to ensure the
 destination queue is not deallocated while the completion callback is pending.
@@ -130,21 +137,24 @@ async_read(object_t obj,
 .Sh RECURSIVE LOCKS
 While
 .Fn dispatch_sync
-can replace a lock, it cannot replace a recursive lock. Unlike locks, queues
-support both asynchronous and synchronous operations, and those operations are
-ordered by definition. A recursive call to
+can replace a lock, it cannot replace a recursive lock.
+Unlike locks, queues support both asynchronous and synchronous operations, and
+those operations are ordered by definition.
+A recursive call to
 .Fn dispatch_sync
 causes a simple deadlock as the currently executing block waits for the next
 block to complete, but the next block will not start until the currently
 running block completes.
 .Pp
-As the dispatch framework was designed, we studied recursive locks. We found
-that the vast majority of recursive locks are deployed retroactively when
-ill-defined lock hierarchies are discovered. As a consequence, the adoption of
-recursive locks often mutates obvious bugs into obscure ones. This study also
-revealed an insight: if reentrancy is unavoidable, then reader/writer locks are
-preferable to recursive locks. Disciplined use of reader/writer locks enable
-reentrancy only when reentrancy is safe (the "read" side of the lock).
+As the dispatch framework was designed, we studied recursive locks.
+We found that the vast majority of recursive locks are deployed retroactively
+when ill-defined lock hierarchies are discovered.
+As a consequence, the adoption of recursive locks often mutates obvious bugs
+into obscure ones.
+This study also revealed an insight: if reentrancy is unavoidable, then
+reader/writer locks are preferable to recursive locks.
+Disciplined use of reader/writer locks enable reentrancy only when reentrancy is
+safe (the "read" side of the lock).
 .Pp
 Nevertheless, if it is absolutely necessary, what follows is an imperfect way of
 implementing recursive locks using the dispatch framework:
@@ -168,17 +178,17 @@ calls
 .Fn dispatch_sync
 against queue B which runs on thread Y which recursively calls
 .Fn dispatch_sync
-against queue A, which deadlocks both examples. This is bug-for-bug compatible
-with nontrivial pthread usage. In fact, nontrivial reentrancy is impossible to
-support in recursive locks once the ultimate level of reentrancy is deployed
-(IPC or RPC).
+against queue A, which deadlocks both examples.
+This is bug-for-bug compatible with nontrivial pthread usage.
+In fact, nontrivial reentrancy is impossible to support in recursive locks once
+the ultimate level of reentrancy is deployed (IPC or RPC).
 .Sh IMPLIED REFERENCES
 Synchronous functions within the dispatch framework hold an implied reference
-on the target queue. In other words, the synchronous function borrows the
-reference of the calling function (this is valid because the calling function
-is blocked waiting for the result of the synchronous function, and therefore
-cannot modify the reference count of the target queue until after the
-synchronous function has returned).
+on the target queue.
+In other words, the synchronous function borrows the reference of the calling
+function (this is valid because the calling function is blocked waiting for the
+result of the synchronous function, and therefore cannot modify the reference
+count of the target queue until after the synchronous function has returned).
 For example:
 .Bd -literal
 queue = dispatch_queue_create("com.example.queue", NULL);
@@ -199,9 +209,11 @@ Conceptually,
 is a convenient wrapper around
 .Fn dispatch_async
 with the addition of a semaphore to wait for completion of the block, and a
-wrapper around the block to signal its completion. See
+wrapper around the block to signal its completion.
+See
 .Xr dispatch_semaphore_create 3
-for more information about dispatch semaphores. The actual implementation of the
+for more information about dispatch semaphores.
+The actual implementation of the
 .Fn dispatch_sync
 function may be optimized and differ from the above description.
 .Pp
@@ -226,7 +238,6 @@ parameter is passed to the
 .Fa function
 when it is invoked on the target
 .Fa queue .
-.Pp
 .Sh SEE ALSO
 .Xr dispatch 3 ,
 .Xr dispatch_apply 3 ,

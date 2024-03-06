@@ -29,7 +29,7 @@
 
 #pragma mark - platform macros
 
-DISPATCH_ENUM(dispatch_lock_options, uint32_t,
+DISPATCH_OPTIONS(dispatch_lock_options, uint32_t,
 	DLOCK_LOCK_NONE				= 0x00000000,
 	DLOCK_LOCK_DATA_CONTENTION  = 0x00010000,
 );
@@ -252,7 +252,7 @@ int _dispatch_wait_on_address(uint32_t volatile *address, uint32_t value,
 void _dispatch_wake_by_address(uint32_t volatile *address);
 
 #pragma mark - thread event
-/**
+/*!
  * @typedef dispatch_thread_event_t
  *
  * @abstract
@@ -301,7 +301,7 @@ static inline void
 _dispatch_thread_event_signal(dispatch_thread_event_t dte)
 {
 #if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
-	if (os_atomic_inc_orig(&dte->dte_value, release) == 0) {
+	if (os_atomic_add_orig(&dte->dte_value, 1u, release) == 0) {
 		// 0 -> 1 transition doesn't need a signal
 		// force a wake even when the value is corrupt,
 		// waiters do the validation
@@ -319,7 +319,7 @@ static inline void
 _dispatch_thread_event_wait(dispatch_thread_event_t dte)
 {
 #if HAVE_UL_COMPARE_AND_WAIT || HAVE_FUTEX
-	if (os_atomic_dec(&dte->dte_value, acquire) == 0) {
+	if (os_atomic_sub(&dte->dte_value, 1u, acquire) == 0) {
 		// 1 -> 0 is always a valid transition, so we can return
 		// for any other value, take the slow path which checks it's not corrupt
 		return;

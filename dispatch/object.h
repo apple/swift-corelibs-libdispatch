@@ -26,7 +26,12 @@
 #include <dispatch/base.h> // for HeaderDoc
 #endif
 
+#if __has_include(<sys/qos.h>)
+#include <sys/qos.h>
+#endif
+
 DISPATCH_ASSUME_NONNULL_BEGIN
+DISPATCH_ASSUME_ABI_SINGLE_BEGIN
 
 /*!
  * @typedef dispatch_object_t
@@ -48,16 +53,42 @@ DISPATCH_ASSUME_NONNULL_BEGIN
  * analyzer, and enables them to be added to Cocoa collections.
  * See <os/object.h> for details.
  */
-OS_OBJECT_DECL_CLASS(dispatch_object);
+DISPATCH_SWIFT_NAME(DispatchObject) OS_OBJECT_DECL_CLASS(dispatch_object);
 
 #if OS_OBJECT_SWIFT3
-#define DISPATCH_DECL(name) OS_OBJECT_DECL_SUBCLASS_SWIFT(name, dispatch_object)
-#define DISPATCH_DECL_SUBCLASS(name, base) OS_OBJECT_DECL_SUBCLASS_SWIFT(name, base)
+#define DISPATCH_DECL(name) OS_OBJECT_DECL_SENDABLE_SUBCLASS_SWIFT(name, dispatch_object)
+#define DISPATCH_DECL_SUBCLASS(name, base) OS_OBJECT_DECL_SENDABLE_SUBCLASS_SWIFT(name, base)
+/*
+ * DISPATCH_DECL_FACTORY_CLASS_SWIFT adopts _hasMissingDesignatedInitializers swift attribute.
+ * That makes subclasses of this class stop inheriting its initializers.
+ */
+#define DISPATCH_DECL_FACTORY_CLASS_SWIFT(name, swift_name) \
+		OS_OBJECT_SWIFT_HAS_MISSING_DESIGNATED_INIT DISPATCH_DECL_SWIFT(name, swift_name)
+#define DISPATCH_DECL_SWIFT(name, swift_name) DISPATCH_SWIFT_NAME(swift_name) DISPATCH_DECL(name)
+#define DISPATCH_DECL_SUBCLASS_SWIFT(name, base, swift_name) \
+		DISPATCH_SWIFT_NAME(swift_name) DISPATCH_DECL_SUBCLASS(name, base)
+
+/*
+ * DISPATCH_DECL_SERIAL_EXECUTOR_SWIFT is for declaring subclasses of a serial executor base class. 
+ */
+#if DISPATCH_OSX_SUPPORTS_AT_LEAST(140000, 170000, 170000, 100000)
+#define DISPATCH_DECL_SERIAL_EXECUTOR_SWIFT(name, swift_name) \
+	DISPATCH_DECL_SUBCLASS_SWIFT(name, dispatch_queue_serial_executor, swift_name)
+#else
+#define DISPATCH_DECL_SERIAL_EXECUTOR_SWIFT(name, swift_name) \
+	DISPATCH_DECL_SUBCLASS_SWIFT(name, dispatch_queue, swift_name)
+#endif
+
 #else // OS_OBJECT_SWIFT3
 #define DISPATCH_DECL(name) OS_OBJECT_DECL_SUBCLASS(name, dispatch_object)
 #define DISPATCH_DECL_SUBCLASS(name, base) OS_OBJECT_DECL_SUBCLASS(name, base)
-
+#define DISPATCH_DECL_FACTORY_CLASS_SWIFT(name, swift_name) DISPATCH_DECL_SWIFT(name, swift_name)
+#define DISPATCH_DECL_SWIFT(name, swift_name) DISPATCH_DECL(name)
+#define DISPATCH_DECL_SUBCLASS_SWIFT(name, base, swift_name) DISPATCH_DECL_SUBCLASS(name, base)
+#define DISPATCH_DECL_SERIAL_EXECUTOR_SWIFT(name, swift_name) \
+		DISPATCH_DECL_SUBCLASS_SWIFT(name, dispatch_queue, swift_name)
 DISPATCH_INLINE DISPATCH_ALWAYS_INLINE DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Unavailable in Swift")
 void
 _dispatch_object_validate(dispatch_object_t object)
 {
@@ -84,6 +115,11 @@ private:
 		typedef struct name##_s : public dispatch_object_s {} *name##_t
 #define DISPATCH_DECL_SUBCLASS(name, base) \
 		typedef struct name##_s : public base##_s {} *name##_t
+#define DISPATCH_DECL_FACTORY_CLASS_SWIFT(name, swift_name) DISPATCH_DECL_SWIFT(name, swift_name)
+#define DISPATCH_DECL_SWIFT(name, swift_name) DISPATCH_DECL(name)
+#define DISPATCH_DECL_SUBCLASS_SWIFT(name, base, swift_name) DISPATCH_DECL_SUBCLASS(name, base)
+#define DISPATCH_DECL_SERIAL_EXECUTOR_SWIFT(name, swift_name) \
+		DISPATCH_DECL_SUBCLASS_SWIFT(name, dispatch_queue, swift_name)
 #define DISPATCH_GLOBAL_OBJECT(type, object) (static_cast<type>(&(object)))
 #define DISPATCH_RETURNS_RETAINED
 #else /* Plain C */
@@ -95,6 +131,7 @@ typedef union {
 	struct dispatch_queue_attr_s *_dqa;
 	struct dispatch_group_s *_dg;
 	struct dispatch_source_s *_ds;
+	struct dispatch_channel_s *_dch;
 	struct dispatch_mach_s *_dm;
 	struct dispatch_mach_msg_s *_dmsg;
 	struct dispatch_semaphore_s *_dsema;
@@ -104,6 +141,11 @@ typedef union {
 #endif // !__DISPATCH_BUILDING_DISPATCH__
 #define DISPATCH_DECL(name) typedef struct name##_s *name##_t
 #define DISPATCH_DECL_SUBCLASS(name, base) typedef base##_t name##_t
+#define DISPATCH_DECL_FACTORY_CLASS_SWIFT(name, swift_name) DISPATCH_DECL_SWIFT(name, swift_name)
+#define DISPATCH_DECL_SWIFT(name, swift_name) DISPATCH_DECL(name)
+#define DISPATCH_DECL_SUBCLASS_SWIFT(name, base, swift_name) DISPATCH_DECL_SUBCLASS(name, base)
+#define DISPATCH_DECL_SERIAL_EXECUTOR_SWIFT(name, swift_name) \
+		DISPATCH_DECL_SUBCLASS_SWIFT(name, dispatch_queue, swift_name)
 #define DISPATCH_GLOBAL_OBJECT(type, object) ((type)&(object))
 #define DISPATCH_RETURNS_RETAINED
 #endif
@@ -115,20 +157,40 @@ typedef union {
 		OS_OBJECT_DECL_PROTOCOL(dispatch_source_##name, <OS_dispatch_source>); \
 		OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL( \
 				dispatch_source, dispatch_source_##name)
+#define DISPATCH_SOURCE_TYPE_DECL_SWIFT(name, swift_name) \
+		DISPATCH_EXPORT struct dispatch_source_type_s \
+				_dispatch_source_type_##name; \
+		DISPATCH_SWIFT_NAME(swift_name) \
+		OS_OBJECT_DECL_PROTOCOL(dispatch_source_##name, <OS_dispatch_source>); \
+		OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL( \
+				dispatch_source, dispatch_source_##name)
 #define DISPATCH_SOURCE_DECL(name) \
 		DISPATCH_DECL(name); \
+		OS_OBJECT_DECL_PROTOCOL(name, <NSObject>); \
+		OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL(name, name)
+#define DISPATCH_SOURCE_DECL_SWIFT(name, swift_name, protocol_name) \
+		DISPATCH_SWIFT_NAME(swift_name) \
+		DISPATCH_DECL(name); \
+		DISPATCH_SWIFT_NAME(protocol_name) \
 		OS_OBJECT_DECL_PROTOCOL(name, <NSObject>); \
 		OS_OBJECT_CLASS_IMPLEMENTS_PROTOCOL(name, name)
 #ifndef DISPATCH_DATA_DECL
 #define DISPATCH_DATA_DECL(name) OS_OBJECT_DECL_SWIFT(name)
 #endif // DISPATCH_DATA_DECL
+#define DISPATCH_DATA_DECL_SWIFT(name, swift_name) \
+		DISPATCH_SWIFT_NAME(swift_name) \
+		DISPATCH_DATA_DECL(name)
 #else
 #define DISPATCH_SOURCE_DECL(name) \
 		DISPATCH_DECL(name);
+#define DISPATCH_SOURCE_DECL_SWIFT(name, swift_name, protocol_name) DISPATCH_SOURCE_DECL(name)
 #define DISPATCH_DATA_DECL(name) DISPATCH_DECL(name)
+#define DISPATCH_DATA_DECL_SWIFT(name, swift_name) DISPATCH_DATA_DECL(name)
 #define DISPATCH_SOURCE_TYPE_DECL(name) \
 		DISPATCH_EXPORT const struct dispatch_source_type_s \
 		_dispatch_source_type_##name
+#define DISPATCH_SOURCE_TYPE_DECL_SWIFT(name, swift_name) \
+		DISPATCH_SOURCE_TYPE_DECL(name)
 #endif
 
 #ifdef __BLOCKS__
@@ -173,10 +235,22 @@ typedef union {
  * Instead, the block literal must be copied to the heap with the Block_copy()
  * function or by sending it a -[copy] message.
  */
+DISPATCH_SWIFT_UNAVAILABLE("Unavailable in Swift")
 typedef void (^dispatch_block_t)(void);
 #endif // __BLOCKS__
 
 __BEGIN_DECLS
+
+/*!
+ * @typedef dispatch_qos_class_t
+ * Alias for qos_class_t type.
+ */
+DISPATCH_SWIFT_UNAVAILABLE("Use DispatchQoS")
+#if __has_include(<sys/qos.h>)
+typedef qos_class_t dispatch_qos_class_t;
+#else
+typedef unsigned int dispatch_qos_class_t;
+#endif
 
 /*!
  * @function dispatch_retain
@@ -247,6 +321,7 @@ dispatch_release(dispatch_object_t object);
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_PURE DISPATCH_WARN_RESULT
 DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Unavailable in Swift")
 void *_Nullable
 dispatch_get_context(dispatch_object_t object);
 
@@ -265,6 +340,7 @@ dispatch_get_context(dispatch_object_t object);
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Unavailable in Swift")
 void
 dispatch_set_context(dispatch_object_t object, void *_Nullable context);
 
@@ -291,6 +367,7 @@ dispatch_set_context(dispatch_object_t object, void *_Nullable context);
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Unavailable in Swift")
 void
 dispatch_set_finalizer_f(dispatch_object_t object,
 		dispatch_function_t _Nullable finalizer);
@@ -319,6 +396,7 @@ dispatch_set_finalizer_f(dispatch_object_t object,
  */
 API_AVAILABLE(macos(10.12), ios(10.0), tvos(10.0), watchos(3.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_SWIFT_NAME(DispatchObject.activate(self:))
 void
 dispatch_activate(dispatch_object_t object);
 
@@ -342,6 +420,7 @@ dispatch_activate(dispatch_object_t object);
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_SWIFT_NAME(DispatchObject.suspend(self:))
 void
 dispatch_suspend(dispatch_object_t object);
 
@@ -371,8 +450,53 @@ dispatch_suspend(dispatch_object_t object);
  */
 API_AVAILABLE(macos(10.6), ios(4.0))
 DISPATCH_EXPORT DISPATCH_NONNULL_ALL DISPATCH_NOTHROW
+DISPATCH_SWIFT_NAME(DispatchObject.resume(self:))
 void
 dispatch_resume(dispatch_object_t object);
+
+/*!
+ * @function dispatch_set_qos_class_floor
+ *
+ * @abstract
+ * Sets the QOS class floor on a dispatch queue, source or workloop.
+ *
+ * @discussion
+ * The QOS class of workitems submitted to this object asynchronously will be
+ * elevated to at least the specified QOS class floor. The QOS of the workitem
+ * will be used if higher than the floor even when the workitem has been created
+ * without "ENFORCE" semantics.
+ *
+ * Setting the QOS class floor is equivalent to the QOS effects of configuring
+ * a queue whose target queue has a QoS class set to the same value.
+ *
+ * @param object
+ * A dispatch queue, workloop, or source to configure.
+ * The object must be inactive.
+ *
+ * Passing another object type or an object that has been activated is undefined
+ * and will cause the process to be terminated.
+ *
+ * @param qos_class
+ * A QOS class value:
+ *  - QOS_CLASS_USER_INTERACTIVE
+ *  - QOS_CLASS_USER_INITIATED
+ *  - QOS_CLASS_DEFAULT
+ *  - QOS_CLASS_UTILITY
+ *  - QOS_CLASS_BACKGROUND
+ * Passing any other value is undefined.
+ *
+ * @param relative_priority
+ * A relative priority within the QOS class. This value is a negative
+ * offset from the maximum supported scheduler priority for the given class.
+ * Passing a value greater than zero or less than QOS_MIN_RELATIVE_PRIORITY
+ * is undefined.
+ */
+API_AVAILABLE(macos(10.14), ios(12.0), tvos(12.0), watchos(5.0))
+DISPATCH_EXPORT DISPATCH_NOTHROW
+DISPATCH_SWIFT_UNAVAILABLE("Unavailable in Swift")
+void
+dispatch_set_qos_class_floor(dispatch_object_t object,
+		dispatch_qos_class_t qos_class, int relative_priority);
 
 #ifdef __BLOCKS__
 /*!
@@ -535,16 +659,19 @@ API_DEPRECATED("unsupported interface", macos(10.6,10.9), ios(4.0,6.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW DISPATCH_COLD
 __attribute__((__format__(printf,2,3)))
 void
-dispatch_debug(dispatch_object_t object, const char *message, ...);
+dispatch_debug(dispatch_object_t object,
+			   const char *DISPATCH_UNSAFE_INDEXABLE message, ...);
 
 API_DEPRECATED("unsupported interface", macos(10.6,10.9), ios(4.0,6.0))
 DISPATCH_EXPORT DISPATCH_NONNULL2 DISPATCH_NOTHROW DISPATCH_COLD
 __attribute__((__format__(printf,2,0)))
 void
-dispatch_debugv(dispatch_object_t object, const char *message, va_list ap);
+dispatch_debugv(dispatch_object_t object,
+				const char *DISPATCH_UNSAFE_INDEXABLE message, va_list ap);
 
 __END_DECLS
 
+DISPATCH_ASSUME_ABI_SINGLE_END
 DISPATCH_ASSUME_NONNULL_END
 
 #endif

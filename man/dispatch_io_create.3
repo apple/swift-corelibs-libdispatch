@@ -57,18 +57,22 @@
 .Fc
 .Sh DESCRIPTION
 The dispatch I/O framework is an API for asynchronous read and write I/O
-operations. It is an application of the ideas and idioms present in the
+operations.
+It is an application of the ideas and idioms present in the
 .Xr dispatch 3
-framework to device I/O. Dispatch I/O enables an application to more easily
-avoid blocking I/O operations and allows it to more directly express its I/O
-requirements than by using the raw POSIX file API. Dispatch I/O will make a
-best effort to optimize how and when asynchronous I/O operations are performed
-based on the capabilities of the targeted device.
+framework to device I/O.
+Dispatch I/O enables an application to more easily avoid blocking I/O operations
+and allows it to more directly express its I/O requirements than by using the
+raw POSIX file API.
+Dispatch I/O will make a best effort to optimize how and when asynchronous I/O
+operations are performed based on the capabilities of the targeted device.
 .Pp
 This page provides details on how to create and configure dispatch I/O
-channels. Reading from and writing to these channels is covered in the
+channels.
+Reading from and writing to these channels is covered in the
 .Xr dispatch_io_read 3
-page. The dispatch I/O framework also provides the convenience functions
+page.
+The dispatch I/O framework also provides the convenience functions
 .Xr dispatch_read 3
 and
 .Xr dispatch_write 3
@@ -82,16 +86,17 @@ Dispatch I/O channels can have one of the following types:
 .Bl -tag -width DISPATCH_IO_STREAM -compact -offset indent
 .It DISPATCH_IO_STREAM
 channels that represent a stream of bytes and do not support reads and writes
-at arbitrary offsets, such as pipes or sockets. Channels of this type perform
-read and write operations sequentially at the current file pointer position and
-ignore any offset specified. Depending on the underlying file descriptor, read
-operations may be performed simultaneously with write operations.
+at arbitrary offsets, such as pipes or sockets.
+Channels of this type perform read and write operations sequentially at the
+current file pointer position and ignore any offset specified.
+Depending on the underlying file descriptor, read operations may be performed
+simultaneously with write operations.
 .It DISPATCH_IO_RANDOM
-channels that represent random access files on disk. Only supported for
-seekable file descriptors and paths. Channels of this type may perform
-submitted read and write operations concurrently at the specified offset
-(interpreted relative to the position of the file pointer when the channel was
-created).
+channels that represent random access files on disk.
+Only supported for seekable file descriptors and paths.
+Channels of this type may perform submitted read and write operations
+concurrently at the specified offset (interpreted relative to the position of
+the file pointer when the channel was created).
 .El
 .Sh CHANNEL OPENING AND CLOSING
 The
@@ -102,13 +107,13 @@ functions create a dispatch I/O channel of provided
 .Fa type
 from a file descriptor
 .Fa fd
-or an absolute pathname, respectively. They can be thought of as analogous to
-the
+or an absolute pathname, respectively.
+They can be thought of as analogous to the
 .Xr fdopen 3
 POSIX function and the
 .Xr fopen 3
-function in the standard C library. For a channel created from a pathname, the
-provided
+function in the standard C library.
+For a channel created from a pathname, the provided
 .Fa path ,
 .Fa oflag
 and
@@ -122,20 +127,22 @@ The provided
 block will be submitted to the specified
 .Fa queue
 when all I/O operations on the channel have completed and it is closed or
-reaches the end of its lifecycle. If an error occurs during channel creation,
-the
+reaches the end of its lifecycle.
+If an error occurs during channel creation, the
 .Fa cleanup_handler
 block will be submitted immediately and passed an
 .Fa error
-parameter with the POSIX error encountered. If an invalid
+parameter with the POSIX error encountered.
+If an invalid
 .Fa type
 or a non-absolute
 .Fa path
 argument is specified, these functions will return NULL and the
 .Fa cleanup_handler
-will not be invoked. After successfully creating a dispatch I/O channel from a
-file descriptor, the application must take care not to modify that file
-descriptor until the associated
+will not be invoked.
+After successfully creating a dispatch I/O channel from a file descriptor, the
+application must take care not to modify that file descriptor until the
+associated
 .Fa cleanup_handler
 is invoked, see
 .Sx "FILEDESCRIPTOR OWNERSHIP"
@@ -143,14 +150,15 @@ for details.
 .Pp
 The
 .Fn dispatch_io_close
-function closes a dispatch I/O channel to new submissions of I/O operations. If
+function closes a dispatch I/O channel to new submissions of I/O operations.
+If
 .Dv DISPATCH_IO_STOP
 is passed in the
 .Fa flags
 parameter, the system will in addition not perform the I/O operations already
 submitted to the channel that are still pending and will make a best effort to
-interrupt any ongoing operations. Handlers for operations so affected will be
-passed the
+interrupt any ongoing operations.
+Handlers for operations so affected will be passed the
 .Er ECANCELED
 error code, along with any partial results.
 .Sh CHANNEL CONFIGURATION
@@ -164,8 +172,7 @@ and
 .Fn dispatch_io_set_low_water
 functions configure the water mark settings of a
 .Fa channel .
-The system will read
-or write at least the number of bytes specified by
+The system will read or write at least the number of bytes specified by
 .Fa low_water
 before submitting an I/O handler with partial results, and will make a best
 effort to submit an I/O handler as soon as the number of bytes read or written
@@ -176,17 +183,18 @@ The
 .Fn dispatch_io_set_interval
 function configures the time
 .Fa interval
-at which I/O handlers are submitted (measured in nanoseconds). If
+at which I/O handlers are submitted (measured in nanoseconds).
+If
 .Dv DISPATCH_IO_STRICT_INTERVAL
 is passed in the
 .Fa flags
 parameter, the interval will be strictly observed even if there is an
 insufficient amount of data to deliver; otherwise delivery will be skipped for
 intervals where the amount of available data is inferior to the channel's
-low-water mark. Note that the system may defer enqueueing interval I/O handlers
+low-water mark.
+Note that the system may defer enqueueing interval I/O handlers
 by a small unspecified amount of leeway in order to align with other system
 activity for improved system performance or power consumption.
-.Pp
 .Sh DATA DELIVERY
 The size of data objects passed to I/O handlers for a channel will never be
 larger than the high-water mark set on the channel; it will also never be
@@ -202,53 +210,57 @@ the channel has an interval with the
 flag set
 .El
 Bear in mind that dispatch I/O channels will typically deliver amounts of data
-significantly higher than the low-water mark. The default value for the
-low-water mark is unspecified, but must be assumed to allow intermediate
-handler invocations. The default value for the high-water mark is
-unlimited (i.e.\&
+significantly higher than the low-water mark.
+The default value for the low-water mark is unspecified, but must be assumed to
+allow intermediate handler invocations.
+The default value for the high-water mark is unlimited (i.e.\&
 .Dv SIZE_MAX ) .
 Channels that require intermediate results of fixed size should have both the
-low-water and the high-water mark set to that size. Channels that do not wish
-to receive any intermediate results should have the low-water mark set to
+low-water and the high-water mark set to that size.
+Channels that do not wish to receive any intermediate results should have the
+low-water mark set to
 .Dv SIZE_MAX .
-.Pp
 .Sh FILEDESCRIPTOR OWNERSHIP
 When an application creates a dispatch I/O channel from a file descriptor with
 the
 .Fn dispatch_io_create
 function, the system takes control of that file descriptor until the channel is
 closed, an error occurs on the file descriptor or all references to the channel
-are released. At that time the channel's cleanup handler will be enqueued and
-control over the file descriptor relinquished, making it safe for the
-application to
+are released.
+At that time the channel's cleanup handler will be enqueued and control over the
+file descriptor relinquished, making it safe for the application to
 .Xr close 2
-the file descriptor. While a file descriptor is under the control of a dispatch
-I/O channel, file descriptor flags such as
+the file descriptor.
+While a file descriptor is under the control of a dispatch I/O channel, file
+descriptor flags such as
 .Dv O_NONBLOCK
-will be modified by the system on behalf of the application. It is an error for
-the application to modify a file descriptor directly while it is under the
-control of a dispatch I/O channel, but it may create further I/O channels
-from that file descriptor or use the
+will be modified by the system on behalf of the application.
+It is an error for the application to modify a file descriptor directly while it
+is under the control of a dispatch I/O channel, but it may create further I/O
+channels from that file descriptor or use the
 .Xr dispatch_read 3
 and
 .Xr dispatch_write 3
-convenience functions with that file descriptor. If multiple I/O channels have
+convenience functions with that file descriptor.
+If multiple I/O channels have
 been created from the same file descriptor, all the associated cleanup handlers
 will be submitted together once the last channel has been closed resp.\& all
-references to those channels have been released. If convenience functions have
-also been used on that file descriptor, submission of their handlers will be
-tied to the submission of the channel cleanup handlers as well.
-.Pp
+references to those channels have been released.
+If convenience functions have also been used on that file descriptor, submission
+of their handlers will be tied to the submission of the channel cleanup handlers
+as well.
 .Sh BARRIER OPERATIONS
 The
 .Fn dispatch_io_barrier
-function schedules a barrier operation on an I/O channel. The specified barrier
-block will be run once, after all current I/O operations (such as
-.Xr read 2 or
+function schedules a barrier operation on an I/O channel.
+The specified barrier block will be run once, after all current I/O operations
+(such as
+.Xr read 2
+or
 .Xr write 2 )
 on the underlying
-file descriptor have finished. No new I/O operations will start until the
-barrier block finishes.
+file descriptor have finished.
+No new I/O operations will start until the barrier block finishes.
 .Pp
 The barrier block may operate on the underlying file descriptor with functions
 like
@@ -266,17 +278,17 @@ There is no synchronization between a barrier block and any
 .Xr dispatch_io_read 3
 or
 .Xr dispatch_io_write 3
-handler blocks; they may be running at the same time. The barrier block itself
-is responsible for any required synchronization.
+handler blocks; they may be running at the same time.
+The barrier block itself is responsible for any required synchronization.
 .Sh MEMORY MODEL
 Dispatch I/O channel objects are retained and released via calls to
 .Fn dispatch_retain
 and
 .Fn dispatch_release .
 .Sh SEE ALSO
+.Xr open 2 ,
 .Xr dispatch 3 ,
 .Xr dispatch_io_read 3 ,
 .Xr dispatch_object 3 ,
 .Xr dispatch_read 3 ,
-.Xr fopen 3 ,
-.Xr open 2
+.Xr fopen 3

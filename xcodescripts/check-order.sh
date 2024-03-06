@@ -23,12 +23,16 @@ test "$ACTION" = install || exit 0
 
 list_objc_syms ()
 {
-    nm -arch $1 -nU ${DSTROOT}/usr/lib/system/libdispatch.dylib | grep _OBJC | cut -d' ' -f3
+    nm -arch $1 -jnU ${DSTROOT}/usr/lib/system/libdispatch.dylib | grep -E '^_OBJC_(CLASS|METACLASS)_\$'
 }
 
 list_mutable_data_syms ()
 {
-    nm -arch $1 -m ${DSTROOT}/usr/lib/system/libdispatch.dylib |grep __DATA|egrep -v '(__const|__crash_info)'|sed 's/^.* //'
+    nm -arch $1 -m ${DSTROOT}/usr/lib/system/libdispatch.dylib | awk '
+        /__DATA.* _OBJC_(CLASS|METACLASS)_\$/{ print $NF; next }
+        /__const|__crash_info| _OBJC| __OBJC/{ next }
+        /__DATA/{ print $NF }
+    '
 }
 
 list_objc_order ()
