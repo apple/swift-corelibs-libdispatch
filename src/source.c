@@ -1401,8 +1401,8 @@ _dispatch_source_debug_attr(dispatch_source_t ds, char* buf, size_t bufsiz)
 	return dsnprintf(buf, bufsiz, "target = %s[%p], ident = 0x%llx, "
 			"mask = 0x%x, pending_data = 0x%llx, registered = %d, "
 			"armed = %d, %s%s%s",
-			target && target->dq_label ? target->dq_label : "", target,
-			(unsigned long long)dr->du_ident, dr->du_fflags,
+			target && target->dq_label ? target->dq_label : "",
+			target, (unsigned long long)dr->du_ident, dr->du_fflags,
 			(unsigned long long)dr->ds_pending_data,
 			_du_state_registered(du_state), _du_state_armed(du_state),
 			(dqf & DSF_CANCELED) ? "cancelled, " : "",

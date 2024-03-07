@@ -183,6 +183,12 @@ set_tests_properties(dispatch_io_pipe_close PROPERTIES TIMEOUT 5)
 add_unit_test(dispatch_c99 SOURCES dispatch_c99.c)
 add_unit_test(dispatch_plusplus SOURCES dispatch_plusplus.cpp)
 
+if (DISPATCH_USE_INTERNAL_WORKQUEUE)
+  add_unit_test(dispatch_workqueue
+                SOURCES
+                  dispatch_workqueue.c)
+endif()
+
 # test-specific link options
 if(WIN32)
   target_link_libraries(dispatch_io_muxed PRIVATE WS2_32)
