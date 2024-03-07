@@ -172,7 +172,7 @@ _dispatch_workq_count_runnable_workers(dispatch_workq_monitor_t mon)
 		if (bytes_read > 0) {
 			buf[bytes_read] = '\0';
 			char state;
-			if (sscanf(buf, "%*d %*s %c", &state) == 1) {
+			if (sscanf(strrchr(buf, ')') + 2, "%c", &state) == 1) {
 				// _dispatch_debug("workq: Worker %d, state %c\n", tid, state);
 				if (state == 'R') {
 					running_count++;
