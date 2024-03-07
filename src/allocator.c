@@ -211,7 +211,7 @@ DISPATCH_ALWAYS_INLINE_NDEBUG DISPATCH_CONST
 static bool
 bitmap_is_full(bitmap_t bits)
 {
-	return (bits == BITMAP_ALL_ONES);
+	return atomic_load_explicit(bits, memory_order_relaxed) == BITMAP_ALL_ONES);
 }
 
 #define NO_BITS_WERE_UNSET (UINT_MAX)
@@ -220,7 +220,7 @@ bitmap_is_full(bitmap_t bits)
 // allowed to be set.
 DISPATCH_ALWAYS_INLINE_NDEBUG
 static unsigned int
-bitmap_set_first_unset_bit_upto_index(volatile bitmap_t *bitmap,
+bitmap_set_first_unset_bit_upto_index(bitmap_t *bitmap,
 		unsigned int max_index)
 {
 	// No barriers needed in acquire path: the just-allocated
@@ -233,7 +233,7 @@ bitmap_set_first_unset_bit_upto_index(volatile bitmap_t *bitmap,
 
 DISPATCH_ALWAYS_INLINE
 static unsigned int
-bitmap_set_first_unset_bit(volatile bitmap_t *bitmap)
+bitmap_set_first_unset_bit(bitmap_t *bitmap)
 {
 	return bitmap_set_first_unset_bit_upto_index(bitmap, UINT_MAX);
 }
@@ -244,7 +244,7 @@ bitmap_set_first_unset_bit(volatile bitmap_t *bitmap)
 // Return true if this bit was the last in the bitmap, and it is now all zeroes
 DISPATCH_ALWAYS_INLINE_NDEBUG
 static bool
-bitmap_clear_bit(volatile bitmap_t *bitmap, unsigned int index,
+bitmap_clear_bit(bitmap_t *bitmap, unsigned int index,
 		bool exclusively)
 {
 #if DISPATCH_DEBUG
@@ -267,8 +267,8 @@ bitmap_clear_bit(volatile bitmap_t *bitmap, unsigned int index,
 
 DISPATCH_ALWAYS_INLINE_NDEBUG
 static void
-mark_bitmap_as_full_if_still_full(volatile bitmap_t *supermap,
-		unsigned int bitmap_index, volatile bitmap_t *bitmap)
+mark_bitmap_as_full_if_still_full(bitmap_t *supermap,
+		unsigned int bitmap_index, bitmap_t *bitmap)
 {
 #if DISPATCH_DEBUG
 	dispatch_assert(bitmap_index < BITMAPS_PER_SUPERMAP);
@@ -321,12 +321,12 @@ alloc_continuation_from_magazine(struct dispatch_magazine_s *magazine)
 	unsigned int s, b, index;
 
 	for (s = 0; s < SUPERMAPS_PER_MAGAZINE; s++) {
-		volatile bitmap_t *supermap = supermap_address(magazine, s);
+		bitmap_t *supermap = supermap_address(magazine, s);
 		if (bitmap_is_full(*supermap)) {
 			continue;
 		}
 		for (b = 0; b < BITMAPS_PER_SUPERMAP; b++) {
-			volatile bitmap_t *bitmap = bitmap_address(magazine, s, b);
+			bitmap_t *bitmap = bitmap_address(magazine, s, b);
 			index = bitmap_set_first_unset_bit(bitmap);
 			if (index != NO_BITS_WERE_UNSET) {
 				set_last_found_page(
@@ -530,44 +530,37 @@ _dispatch_alloc_maybe_madvise_page(dispatch_continuation_t c)
 		// page can't be madvised; maybe it contains non-continuations
 		return;
 	}
-	// Are all the continuations in this page unallocated?
-	volatile bitmap_t *page_bitmaps;
+
+	bitmap_t *page_bitmaps;
 	get_maps_and_indices_for_continuation((dispatch_continuation_t)page, NULL,
-			NULL, (bitmap_t **)&page_bitmaps, NULL);
+			NULL, &page_bitmaps, NULL);
 	unsigned int i;
+
+	// Try to take ownership of them all, and if it fails, unlock the ones we locked
 	for (i = 0; i < BITMAPS_PER_PAGE; i++) {
-		if (page_bitmaps[i] != 0) {
-			return;
-		}
-	}
-	// They are all unallocated, so we could madvise the page. Try to
-	// take ownership of them all.
-	int last_locked = 0;
-	do {
-		if (!os_atomic_cmpxchg(&page_bitmaps[last_locked], BITMAP_C(0),
+		if (!os_atomic_cmpxchg(&page_bitmaps[i], BITMAP_C(0),
 				BITMAP_ALL_ONES, relaxed)) {
 			// We didn't get one; since there is a cont allocated in
 			// the page, we can't madvise. Give up and unlock all.
-			goto unlock;
+			break;
 		}
-	} while (++last_locked < (signed)BITMAPS_PER_PAGE);
-#if DISPATCH_DEBUG
-	//fprintf(stderr, "%s: madvised page %p for cont %p (next = %p), "
-	//		"[%u+1]=%u bitmaps at %p\n", __func__, page, c, c->do_next,
-	//		last_locked-1, BITMAPS_PER_PAGE, &page_bitmaps[0]);
-	// Scribble to expose use-after-free bugs
-	// madvise (syscall) flushes these stores
-	memset(page, DISPATCH_ALLOCATOR_SCRIBBLE, DISPATCH_ALLOCATOR_PAGE_SIZE);
-#endif
-	(void)dispatch_assume_zero(madvise(page, DISPATCH_ALLOCATOR_PAGE_SIZE,
-			MADV_FREE));
-
-unlock:
-	while (last_locked > 1) {
-		page_bitmaps[--last_locked] = BITMAP_C(0);
 	}
-	if (last_locked) {
-		os_atomic_store(&page_bitmaps[0], BITMAP_C(0), relaxed);
+
+	if (i >= BITMAPS_PER_PAGE) {
+#if DISPATCH_DEBUG
+		// fprintf(stderr, "%s: madvised page %p for cont %p (next = %p), "
+		//		"[%u+1]=%u bitmaps at %p\n", __func__, page, c, c->do_next,
+		//		last_locked-1, BITMAPS_PER_PAGE, &page_bitmaps[0]);
+		//  Scribble to expose use-after-free bugs
+		//  madvise (syscall) flushes these stores
+		memset(page, DISPATCH_ALLOCATOR_SCRIBBLE, DISPATCH_ALLOCATOR_PAGE_SIZE);
+#endif
+		// madvise the page
+		(void)dispatch_assume_zero(madvise(page, DISPATCH_ALLOCATOR_PAGE_SIZE,
+				MADV_FREE));
+	}
+	while (i) {
+		os_atomic_store(&page_bitmaps[--i], BITMAP_C(0), relaxed);
 	}
 	return;
 }
