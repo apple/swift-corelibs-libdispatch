@@ -61,7 +61,6 @@ public struct DispatchData : RandomAccessCollection {
 	/// Initialize a `Data` with copied memory content.
 	///
 	/// - parameter bytes: A pointer to the memory. It will be copied.
-	/// - parameter count: The number of bytes to copy.
 	public init(bytes buffer: UnsafeRawBufferPointer) {
 		let d = buffer.baseAddress == nil ? _swift_dispatch_data_empty()
 					: dispatch_data_create(buffer.baseAddress!, buffer.count, nil,
@@ -84,7 +83,6 @@ public struct DispatchData : RandomAccessCollection {
 	/// Initialize a `Data` without copying the bytes.
 	///
 	/// - parameter bytes: A pointer to the bytes.
-	/// - parameter count: The size of the bytes.
 	/// - parameter deallocator: Specifies the mechanism to free the indicated buffer.
 	public init(bytesNoCopy bytes: UnsafeRawBufferPointer, deallocator: Deallocator = .free) {
 		let (q, b) = deallocator._deallocator
@@ -162,7 +160,6 @@ public struct DispatchData : RandomAccessCollection {
 	/// Append bytes to the data.
 	///
 	/// - parameter bytes: A pointer to the bytes to copy in to the data.
-	/// - parameter count: The number of bytes to copy.
 	public mutating func append(_ bytes: UnsafeRawBufferPointer) {
 		// Nil base address does nothing.
 		guard bytes.baseAddress != nil else { return }
@@ -172,7 +169,7 @@ public struct DispatchData : RandomAccessCollection {
 
 	/// Append data to the data.
 	///
-	/// - parameter data: The data to append to this data.
+	/// - parameter other: The data to append to this data.
 	public mutating func append(_ other: DispatchData) {
 		let data = CDispatch.dispatch_data_create_concat(__wrapped.__wrapped, other.__wrapped.__wrapped)
 		__wrapped = __DispatchData(data: data, owned: true)
@@ -181,7 +178,7 @@ public struct DispatchData : RandomAccessCollection {
 	/// Append a buffer of bytes to the data.
 	///
 	/// - parameter buffer: The buffer of bytes to append. The size is calculated from `SourceType` and `buffer.count`.
-	public mutating func append<SourceType>(_ buffer : UnsafeBufferPointer<SourceType>) {
+	public mutating func append<SourceType>(_ buffer: UnsafeBufferPointer<SourceType>) {
 		self.append(UnsafeRawBufferPointer(buffer))
 	}
 
