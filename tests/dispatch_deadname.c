@@ -98,7 +98,7 @@ test_mach_debug_port(mach_port_t name, const char *str, unsigned int line)
 #endif
 
 static dispatch_group_t g;
-static volatile long sent, received;
+static atomic_long sent, received;
 
 void
 test_dead_name(void)
@@ -202,7 +202,7 @@ test_receive_and_dead_name(void)
 	ds = dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, mp, 0,
 			dispatch_get_global_queue(0, 0));
 	dispatch_source_set_event_handler(ds, ^{
-		__sync_add_and_fetch(&received, 1);
+		atomic_fetch_add(&received, 1, memory_order_relaxed);
 		usleep(100000); // rdar://problem/7676437 race with send source re-arm
 		mach_msg_empty_rcv_t msg = { .header = {
 			.msgh_size = sizeof(mach_msg_empty_rcv_t),
@@ -263,7 +263,7 @@ send_until_timeout(mach_port_t mp)
 			test_mach_error("mach_msg(MACH_SEND_MSG)", kr, KERN_SUCCESS);
 			if (kr) test_stop();
 		}
-	} while (!kr && __sync_add_and_fetch(&sent, 1) < TEST_SP_MSGCOUNT);
+	} while (!kr && (atomic_fetch_add(&sent, 1, memory_order_relaxed) + 1) < TEST_SP_MSGCOUNT);
 	test_mach_debug_port(mp);
 	return kr;
 }
@@ -275,8 +275,8 @@ test_send_possible(void) // rdar://problem/8758200
 	kern_return_t kr;
 	mach_port_t mp;
 
-	sent = 0;
-	received = 0;
+	sent = ATOMIC_VAR_INIT(0);
+	received = ATOMIC_VAR_INIT(0);
 	dispatch_group_enter(g);
 	kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &mp);
 	test_mach_error("mach_port_allocate", kr, KERN_SUCCESS);
@@ -338,7 +338,7 @@ test_send_possible(void) // rdar://problem/8758200
 				test_mach_error("mach_msg(MACH_RCV_MSG)", kr, KERN_SUCCESS);
 				if (kr) test_stop();
 			}
-		} while (!kr && __sync_add_and_fetch(&received, 1));
+		} while (!kr && (atomic_fetch_add(&received, 1, memory_order_relaxed) + 1));
 		test_mach_debug_port(mp);
 	});
 	dispatch_source_set_cancel_handler(ds, ^{
@@ -390,7 +390,7 @@ static boolean_t
 test_mig_callback(mach_msg_header_t *message __attribute__((unused)),
 		mach_msg_header_t *reply)
 {
-	__sync_add_and_fetch(&received, 1);
+	atomic_fetch_add(&received, 1, memory_order_relaxed);
 	reply->msgh_remote_port = 0;
 	return false;
 }
@@ -402,7 +402,7 @@ test_mig_server_large_msg(void) // rdar://problem/8422992
 	kern_return_t kr;
 	mach_port_t mp;
 
-	received = 0;
+	received = ATOMIC_VAR_INIT(0);
 	dispatch_group_enter(g);
 	kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &mp);
 	test_mach_error("mach_port_allocate", kr, KERN_SUCCESS);

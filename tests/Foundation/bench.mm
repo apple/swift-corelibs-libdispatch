@@ -83,8 +83,8 @@ force_a_thread(void *arg)
 	return arg;
 }
 
-static volatile int32_t global;
-static volatile int64_t w_global;
+static atomic_int global;
+static _Atomic(int64_t) w_global;
 
 #if TARGET_OS_EMBEDDED
 static const size_t cnt = 5000000;
@@ -191,7 +191,7 @@ int
 main(void)
 {
 	pthread_mutex_t plock = PTHREAD_MUTEX_INITIALIZER;
-	OSSpinLock slock = OS_SPINLOCK_INIT;
+	os_unfair_lock slock = OS_UNFAIR_LOCK_INIT;
 	BasicObject *bo;
 	BasicClass *bc;
 	pthread_t pthr_pause;
@@ -219,8 +219,7 @@ main(void)
 	cycles_per_nanosecond = (long double)freq / (long double)NSEC_PER_SEC;
 
 #if BENCH_SLOW
-	NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
-	assert(pool);
+	@autoreleasepool {
 #endif
 
 	/* Malloc has different logic for threaded apps. */
@@ -371,9 +370,7 @@ main(void)
 	}
 	print_result2(s, "\"description\" ObjC call:");
 
-	[pool release];
-
-	pool = NULL;
+	} // For the autorelease pool
 #endif
 
 	s = mach_absolute_time();
@@ -554,30 +551,30 @@ main(void)
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		__sync_lock_test_and_set(&global, 0);
+		atomic_xchg(&global, 0);
 	}
 	print_result(s, "Atomic xchg:");
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		__sync_val_compare_and_swap(&global, 1, 0);
+		atomic_cmpxchg(&global, 1, 0);
 	}
 	print_result(s, "Atomic cmpxchg:");
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		__sync_fetch_and_add(&global, 1);
+		atomic_fetch_add(&global, 1);
 	}
 	print_result(s, "Atomic increment:");
 
 	{
-		global = 0;
-		volatile int32_t *g = &global;
+		global = ATOMIC_VAR_INIT(0);
+		atomic_int *g = &global;
 
 		s = mach_absolute_time();
 		for (i = cnt; i; i--) {
 			uint32_t result;
-			__sync_and_and_fetch(g, 1);
+			atomic_fetch_and(g, 1);
 			result = *g;
 			if (result) {
 				abort();
@@ -587,13 +584,13 @@ main(void)
 	}
 
 	{
-		global = 0;
-		volatile int32_t *g = &global;
+		global = ATOMIC_VAR_INIT(0);
+		atomic_int *g = &global;
 
 		s = mach_absolute_time();
 		for (i = cnt; i; i--) {
 			uint32_t result;
-			result = __sync_and_and_fetch(g, 1);
+			result = atomic_fetch_and(g, 1);
 			if (result) {
 				abort();
 			}
@@ -601,43 +598,44 @@ main(void)
 		print_result(s, "Atomic and-and-fetch, using result:");
 	}
 
-	global = 0;
+	global = ATOMIC_VAR_INIT(0);
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		OSAtomicIncrement32Barrier(&global);
+		__c11_atomic_fetch_add(&global, 1, memory_order_seq_cst);
 	}
-	print_result(s, "OSAtomicIncrement32Barrier:");
+	print_result(s, "atomic_fetch_add with memory_order_seq_cst barrier:");
 
-	global = 0;
+	global = ATOMIC_VAR_INIT(0);
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		OSAtomicIncrement32(&global);
+		__c11_atomic_fetch_add(&global, 1, memory_order_relaxed);
 	}
-	print_result(s, "OSAtomicIncrement32:");
+	print_result(s, "atomic_fetch_add with memory_order_relaxed barrier:");
 
-	w_global = 0;
+	w_global = ATOMIC_VAR_INIT(0);
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		OSAtomicIncrement64Barrier(&w_global);
+		__c11_atomic_fetch_add(&wglobal, 1, memory_order_seq_cst);
 	}
-	print_result(s, "OSAtomicIncrement64Barrier:");
+	print_result(s, "64-bit atomic_fetch_add with memory_order_seq_cst barrier:");
 
-	w_global = 0;
+	w_global = ATOMIC_VAR_INIT(0);
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		OSAtomicIncrement64(&w_global);
+		__c11_atomic_fetch_add(&wglobal, 1, memory_order_relaxed);
 	}
-	print_result(s, "OSAtomicIncrement64:");
+	print_result(s, "64-bit atomic_fetch_add with memory_order_seq_cst barrier:");
 
-	global = 0;
+	global = ATOMIC_VAR_INIT(0);
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		while (!__sync_bool_compare_and_swap(&global, 0, 1)) {
+		atomic_int zero = ATOMIC_VAR_INIT(0);
+		while (!atomic_compare_exchange_weak(&global, &zero, 1)) {
 			do {
 #if defined(__i386__) || defined(__x86_64__)
 				__asm__ __volatile__ ("pause");
@@ -646,16 +644,16 @@ main(void)
 #endif
 			} while (global);
 		}
-		global = 0;
+		global = ATOMIC_VAR_INIT(0);
 	}
 	print_result(s, "Inlined spin lock/unlock:");
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {
-		OSSpinLockLock(&slock);
-		OSSpinLockUnlock(&slock);
+		os_unfair_lock_lock(&slock);
+		os_unfair_lock_unlock(&slock);
 	}
-	print_result(s, "OSSpinLock/Unlock:");
+	print_result(s, "os_unfair_lock_lock/unlock:");
 
 	s = mach_absolute_time();
 	for (i = cnt; i; i--) {

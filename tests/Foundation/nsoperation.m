@@ -54,7 +54,7 @@ main(void)
 {
 	dispatch_test_start("NSOperation");
 
-	NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+	@ autoreleasepool {
 
 	NSOperationQueue *queue = [[[NSOperationQueue alloc] init] autorelease];
 	test_ptr_notnull("NSOperationQueue", queue);
@@ -67,7 +67,7 @@ main(void)
 
 	[[NSRunLoop mainRunLoop] run];
 
-	[pool release];
+	}
 
 	return 0;
 }

@@ -30,26 +30,25 @@ const size_t final = 50000, desclen = 538892;
 #else
 const size_t final = 1000, desclen = 8892;
 #endif
-NSAutoreleasePool *pool = nil;
 
 static void
 work(void* ctxt __attribute__((unused)))
 {
-	pool = [[NSAutoreleasePool alloc] init];
+	@autoreleasepool {
 	NSMutableArray *a = [NSMutableArray array];
-	OSSpinLock sl = OS_SPINLOCK_INIT, *l = &sl;
+	os_unfair_lock sl = OS_UNFAIR_LOCK_INIT, *l = &sl;
 
 	dispatch_apply(final, dispatch_get_global_queue(0, 0), ^(size_t i){
 		NSDecimalNumber *n = [NSDecimalNumber decimalNumberWithDecimal:
 				[[NSNumber numberWithInteger:i] decimalValue]];
-		OSSpinLockLock(l);
+		os_unfair_lock_lock(l);
 		[a addObject:n];
-		OSSpinLockUnlock(l);
+		os_unfair_lock_unlock(l);
 	});
 	test_long("count", [a count], final);
 	test_long("description length", [[a description] length], desclen);
 	a = nil;
-	[pool drain];
+	}
 	test_stop_after_delay((void*)(intptr_t)1);
 }
 

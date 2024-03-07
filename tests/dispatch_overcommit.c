@@ -30,14 +30,12 @@
 #endif
 #include <stdlib.h>
 #include <assert.h>
-#ifdef __APPLE__
-#include <libkern/OSAtomic.h>
-#endif
+#include <stdatomic.h>
 
 #include <bsdtests.h>
 #include "dispatch_test.h"
 
-int32_t count = 0;
+atomic_int count = ATOMIC_VAR_INIT(0);
 const int32_t final = 32;
 
 int
@@ -56,7 +54,7 @@ main(void)
 		dispatch_set_target_queue(queue, dispatch_get_global_queue(0, DISPATCH_QUEUE_OVERCOMMIT));
 
 		dispatch_async(queue, ^{
-			OSAtomicIncrement32(&count);
+			__c11_atomic_fetch_add(&count, 1, memory_order_relaxed);
 			if (count == final) {
 				test_long("count", count, final);
 				test_stop();

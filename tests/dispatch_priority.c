@@ -41,7 +41,7 @@
 #include <bsdtests.h>
 #include "dispatch_test.h"
 
-static volatile int done;
+static atomic_int done;
 
 #ifdef DISPATCH_QUEUE_PRIORITY_BACKGROUND // <rdar://problem/7439794>
 #define USE_BACKGROUND_PRIORITY 1
@@ -75,7 +75,7 @@ static union {
 	char padding[64];
 } counts[PRIORITIES];
 
-static volatile long iterations;
+static atomic_long iterations;
 static long total;
 static size_t prio0, priorities = PRIORITIES;
 
@@ -143,13 +143,13 @@ cpubusy(void* context)
 		if (done) break;
 	}
 
-	volatile long *count = context;
-	long iterdone = __sync_sub_and_fetch(&iterations, 1);
+	atomic_long * count = context;
+	long iterdone = atomic_fetch_sub(&iterations, 1, memory_order_relaxed) - 1;
 
 	if (iterdone >= 0) {
-		__sync_add_and_fetch(count, 1);
+		atomic_fetch_add(count, 1, memory_order_relaxed);
 		if (!iterdone) {
-			__sync_add_and_fetch(&done, 1);
+			atomic_fetch_add(done, 1, memory_order_relaxed);
 			usleep(100000);
 			histogram();
 			dispatch_time_t delay = DISPATCH_TIME_NOW;
@@ -165,7 +165,7 @@ submit_work(dispatch_queue_t queue, void* context)
 {
 	int i;
 
-	for (i = n_blocks(); i; --i) {
+	for (i = n_blocks(); i > 0; --i) {
 		dispatch_async_f(queue, context, cpubusy);
 	}
 

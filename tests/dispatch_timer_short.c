@@ -21,11 +21,11 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <stdio.h>
+#include <stdatomic.h>
 #include <string.h>
 #include <math.h>
 #ifdef __APPLE__
 #include <mach/mach_time.h>
-#include <libkern/OSAtomic.h>
 #endif
 
 #include <dispatch/dispatch.h>
@@ -42,7 +42,7 @@ static dispatch_source_t t[N];
 static dispatch_queue_t q;
 static dispatch_group_t g;
 
-static volatile int32_t count;
+static atomic_uint count;
 static mach_timebase_info_data_t tbi;
 static uint64_t start, last;
 
@@ -52,7 +52,7 @@ static
 void
 test_fin(void *cxt)
 {
-	uint32_t finalCount = (uint32_t)count;
+	unsigned int finalCount = count;
 	fprintf(stderr, "Called back every %llu us on average\n",
 			(delay/finalCount)/NSEC_PER_USEC);
 	test_long_less_than("Frequency", 1,
@@ -110,7 +110,7 @@ test_short_timer(void)
 			fprintf(stderr, "First timer callback  (after %4llu ms)\n",
 					elapsed_ms(start));
 		}
-		OSAtomicIncrement32(&count);
+		__c11_atomic_fetch_add(&count, 1, memory_order_relaxed);
 		if (elapsed_ms(last) >= 100) {
 			fprintf(stderr, "%5d timer callbacks (after %4llu ms)\n", count,
 					elapsed_ms(start));

@@ -37,7 +37,7 @@
 #include <bsdtests.h>
 #include "dispatch_test.h"
 
-static volatile size_t done, concur;
+static _Atomic(size_t) done, concur;
 static int use_group_async;
 static uint32_t activecpu;
 static uint32_t min_acceptable_concurrency;
@@ -57,7 +57,7 @@ static void
 work(void* ctxt __attribute__((unused)))
 {
 	usleep(1000);
-	__sync_add_and_fetch(&done, 1);
+	atomic_fetch_add(&done, 1, memory_order_relaxed);
 
 	if (!use_group_async) dispatch_group_leave(gw);
 }
@@ -65,7 +65,7 @@ work(void* ctxt __attribute__((unused)))
 static void
 submit_work(void* ctxt)
 {
-	size_t c = __sync_add_and_fetch(&concur, 1), *m = (size_t *)ctxt, i;
+	size_t c =atomic_fetch_add(&concur, 1, memory_order_relaxed) + 1, *m = (size_t *)ctxt, i;
 	if (c > *m) *m = c;
 
 	for (i = 0; i < workers; ++i) {
@@ -78,7 +78,7 @@ submit_work(void* ctxt)
 	}
 
 	usleep(10000);
-	__sync_sub_and_fetch(&concur, 1);
+	atomic_fetch_sub(&concur, 1, memory_order_relaxed);
 
 	if (!use_group_async) dispatch_group_leave(g);
 }
@@ -132,11 +132,11 @@ test_concur_async(size_t n, size_t qw)
 static void
 sync_work(void* ctxt)
 {
-	size_t c = __sync_add_and_fetch(&concur, 1), *m = (size_t *)ctxt;
+	size_t c = atomic_fetch_add(&concur, 1, memory_order_relaxed) + 1, *m = (size_t *)ctxt;
 	if (c > *m) *m = c;
 
 	usleep(10000);
-	__sync_sub_and_fetch(&concur, 1);
+	atomic_fetch_sub(&concur, 1, memory_order_relaxed);
 }
 
 static void
@@ -172,11 +172,11 @@ test_concur_sync(size_t n, size_t qw)
 static void
 apply_work(void* ctxt, size_t i)
 {
-	size_t c = __sync_add_and_fetch(&concur, 1), *m = ((size_t *)ctxt) + i;
+	size_t c = atomic_fetch_add(&concur, 1, memory_order_relaxed) + 1, *m = ((size_t *)ctxt) + i;
 	if (c > *m) *m = c;
 
 	usleep(100000);
-	__sync_sub_and_fetch(&concur, 1);
+	atomic_fetch_sub(&concur, 1, memory_order_relaxed);
 }
 
 static void

@@ -24,9 +24,7 @@
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <unistd.h>
 #endif
-#ifdef __APPLE__
-#include <libkern/OSAtomic.h>
-#endif
+#include <stdatomic.h>
 #include <assert.h>
 #ifdef __ANDROID__
 #include <linux/sysctl.h>
@@ -61,8 +59,8 @@
 #endif
 
 static char **pages;
-static volatile int32_t handler_call_count;
-static volatile int32_t page_count;
+static atomic_int handler_call_count;
+static atomic_int page_count;
 static int32_t max_page_count;
 static dispatch_source_t vm_source;
 static dispatch_queue_t vm_queue;
@@ -140,7 +138,7 @@ main(void)
 			test_skip("Memory pressure at start of test");
 			cleanup();
 		}
-		if (OSAtomicIncrement32Barrier(&handler_call_count) != NOTIFICATIONS) {
+		if (__c11_atomic_fetch_add(&handler_call_count, 1, memory_order_seq_cst) + 1 != NOTIFICATIONS) {
 			log_msg("Ignoring vm pressure notification\n");
 			interval = 1;
 			return;
@@ -165,7 +163,8 @@ main(void)
 			}
 			bzero(p, ALLOC_SIZE);
 			pages[page_count] = p;
-			if (!(OSAtomicIncrement32Barrier(&page_count) % interval)) {
+			__c11_atomic_fetch_add(&handler_call_count, 1, memory_order_seq_cst);
+			if (!(__c11_atomic_fetch_add(&handler_call_count, 1, memory_order_seq_cst) + 1) % interval) {
 				log_msg("Allocated %ldMB\n", pg2mb(page_count));
 				usleep(200000);
 			}

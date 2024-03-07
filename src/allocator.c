@@ -542,31 +542,33 @@ _dispatch_alloc_maybe_madvise_page(dispatch_continuation_t c)
 	}
 	// They are all unallocated, so we could madvise the page. Try to
 	// take ownership of them all.
-	int last_locked = 0;
-	do {
-		if (!os_atomic_cmpxchg(&page_bitmaps[last_locked], BITMAP_C(0),
+	for (i = 0; i < BITMAPS_PER_PAGE; i++) {
+		if (!os_atomic_cmpxchg(&page_bitmaps[i], BITMAP_C(0),
 				BITMAP_ALL_ONES, relaxed)) {
 			// We didn't get one; since there is a cont allocated in
 			// the page, we can't madvise. Give up and unlock all.
-			goto unlock;
+			break;
 		}
-	} while (++last_locked < (signed)BITMAPS_PER_PAGE);
-#if DISPATCH_DEBUG
-	//fprintf(stderr, "%s: madvised page %p for cont %p (next = %p), "
-	//		"[%u+1]=%u bitmaps at %p\n", __func__, page, c, c->do_next,
-	//		last_locked-1, BITMAPS_PER_PAGE, &page_bitmaps[0]);
-	// Scribble to expose use-after-free bugs
-	// madvise (syscall) flushes these stores
-	memset(page, DISPATCH_ALLOCATOR_SCRIBBLE, DISPATCH_ALLOCATOR_PAGE_SIZE);
-#endif
-	(void)dispatch_assume_zero(madvise(page, DISPATCH_ALLOCATOR_PAGE_SIZE,
-			MADV_FREE));
-
-unlock:
-	while (last_locked > 1) {
-		page_bitmaps[--last_locked] = BITMAP_C(0);
 	}
-	if (last_locked) {
+
+	if (i >= BITMAPS_PER_PAGE) {
+#if DISPATCH_DEBUG
+		// fprintf(stderr, "%s: madvised page %p for cont %p (next = %p), "
+		//		"[%u+1]=%u bitmaps at %p\n", __func__, page, c, c->do_next,
+		//		last_locked-1, BITMAPS_PER_PAGE, &page_bitmaps[0]);
+		//  Scribble to expose use-after-free bugs
+		//  madvise (syscall) flushes these stores
+		memset(page, DISPATCH_ALLOCATOR_SCRIBBLE, DISPATCH_ALLOCATOR_PAGE_SIZE);
+#endif
+		// madvise the page
+		(void)dispatch_assume_zero(madvise(page, DISPATCH_ALLOCATOR_PAGE_SIZE,
+										   MADV_FREE));
+	}
+
+	while (i > 1) {
+		page_bitmaps[--i] = BITMAP_C(0);
+	}
+	if (i) {
 		os_atomic_store(&page_bitmaps[0], BITMAP_C(0), relaxed);
 	}
 	return;
