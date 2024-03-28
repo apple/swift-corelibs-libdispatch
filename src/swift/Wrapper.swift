@@ -44,7 +44,7 @@ public class DispatchObject {
 }
 
 
-public class DispatchGroup : DispatchObject {
+public class DispatchGroup : DispatchObject, @unchecked Sendable {
 	internal let __wrapped:dispatch_group_t;
 
 	final internal override func wrapped() -> dispatch_object_t {
@@ -68,7 +68,7 @@ public class DispatchGroup : DispatchObject {
 	}
 }
 
-public class DispatchSemaphore : DispatchObject {
+public class DispatchSemaphore : DispatchObject, @unchecked Sendable {
 	internal let __wrapped: dispatch_semaphore_t;
 
 	final internal override func wrapped() -> dispatch_object_t {
@@ -84,8 +84,8 @@ public class DispatchSemaphore : DispatchObject {
 	}
 }
 
-public class DispatchIO : DispatchObject {
-	internal let __wrapped:dispatch_io_t
+public class DispatchIO : DispatchObject, @unchecked Sendable {
+	internal let __wrapped: dispatch_io_t
 
 	final internal override func wrapped() -> dispatch_object_t {
 		return unsafeBitCast(__wrapped, to: dispatch_object_t.self)
@@ -127,7 +127,7 @@ public class DispatchIO : DispatchObject {
 	}
 }
 
-public class DispatchQueue : DispatchObject {
+public class DispatchQueue : DispatchObject, @unchecked Sendable {
 	internal let __wrapped:dispatch_queue_t;
 
 	final internal override func wrapped() -> dispatch_object_t {
@@ -156,6 +156,7 @@ public class DispatchQueue : DispatchObject {
 }
 
 public class DispatchSource : DispatchObject,
+	@unchecked Sendable,
 	DispatchSourceProtocol,	DispatchSourceRead,
 	DispatchSourceSignal, DispatchSourceTimer,
 	DispatchSourceUserDataAdd, DispatchSourceUserDataOr,
