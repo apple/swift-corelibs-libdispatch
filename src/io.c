@@ -2373,8 +2373,13 @@ _dispatch_operation_perform(dispatch_operation_t op)
 				bQueried = true;
 			}
 			op->buf = _aligned_malloc(op->buf_siz, siInfo.dwPageSize);
-#else
+#elif defined(HAVE_ALIGNED_ALLOC)
 			op->buf = aligned_alloc((size_t)PAGE_SIZE, op->buf_siz);
+#else
+			err = posix_memalign(&op->buf, (size_t)PAGE_SIZE, op->buf_siz);
+			if (err != 0) {
+				goto error;
+			}
 #endif
 			_dispatch_op_debug("buffer allocated", op);
 		} else if (op->direction == DOP_DIR_WRITE) {
