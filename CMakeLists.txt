@@ -188,6 +188,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL Android)
 endif()
 
 check_function_exists(_pthread_workqueue_init HAVE__PTHREAD_WORKQUEUE_INIT)
+check_function_exists(aligned_alloc HAVE_ALIGNED_ALLOC)
 check_function_exists(getprogname HAVE_GETPROGNAME)
 check_function_exists(mach_absolute_time HAVE_MACH_ABSOLUTE_TIME)
 check_function_exists(mach_approximate_time HAVE_MACH_APPROXIMATE_TIME)
