@@ -123,6 +123,24 @@ else()
   target_compile_options(dispatch PRIVATE -Wall)
 endif()
 
+# Work around a release-mode miscompile on windows arm64
+# Disable /Os and /Ot in /O1 and /O2 on queue.c
+if(("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC") AND
+   (("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "ARM64") OR
+    ("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "aarch64")))
+  string(TOUPPER "${CMAKE_BUILD_TYPE}" uppercase_CMAKE_BUILD_TYPE)
+  set(FLAGS_BUILD_TYPE "${CMAKE_C_FLAGS_${uppercase_CMAKE_BUILD_TYPE}}")
+  string(REGEX MATCHALL "/[Oo][12]" FLAGS "${CMAKE_C_FLAGS} ${FLAGS_BUILD_TYPE}")
+  if (FLAGS)
+    if (FLAGS MATCHES "1$")
+      set(FLAGS "/Od;/Og;/Oy;/Ob2;/GF;/Gy")
+    elseif (FLAGS MATCHES "2$")
+      set(FLAGS "/Od;/Og;/Oi;/Oy;/Ob2;/GF;/Gy")
+    endif()
+    set_source_files_properties(queue.c PROPERTIES COMPILE_OPTIONS "${FLAGS}")
+  endif()
+endif()
+
 # FIXME(compnerd) add check for -fblocks?
 target_compile_options(dispatch PRIVATE -fblocks)
 

@@ -238,6 +238,7 @@ randomize_name(char *out)
 	}
 }
 
+#ifndef HAVE_MKSTEMP
 dispatch_fd_t
 mkstemp(char *tmpl)
 {
@@ -257,6 +258,7 @@ mkstemp(char *tmpl)
 	errno = EEXIST;
 	return -1;
 }
+#endif
 
 void
 print_winapi_error(const char *function_name, DWORD error)

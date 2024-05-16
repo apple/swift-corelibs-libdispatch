@@ -24,6 +24,11 @@
 
 #if defined(_WIN32)
 #include <wct.h>
+
+#if !defined(WCT_MAX_NODE_COUNT)
+#define WCT_MAX_NODE_COUNT 16
+#endif
+
 #endif
 
 /*

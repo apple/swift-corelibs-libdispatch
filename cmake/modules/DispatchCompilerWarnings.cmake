@@ -1,6 +1,10 @@
 
 if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
   # TODO: someone needs to provide the msvc equivalent warning flags
+elseif(WIN32)
+  # Tareting Windows but using a non-MSVC compiler.  Set -fms-extensions
+  # so that we can use __popcnt64
+  add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-fms-extensions>)
 else()
   add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Werror>)
   add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wall>)

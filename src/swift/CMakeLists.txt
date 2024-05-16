@@ -1,16 +1,3 @@
-
-# NOTE(compnerd) Today regardless of whether or not ObjC interop is enabled,
-# swift will use an autoreleased return value convention for certain CF
-# functions (including some that are used/related to dispatch). This means that
-# the swift compiler in callers to such functions will call the function, and
-# then pass the result of the function to objc_retainAutoreleasedReturnValue. In
-# a context where we have ObjC interop disabled, we do not have access to the
-# objc runtime so an implementation of objc_retainAutoreleasedReturnValue is not
-# available. To work around this, we provide a shim for
-# objc_retainAutoreleasedReturnValue in DispatchStubs.cc that just calls retain
-# on the object. Once we fix the swift compiler to switch to a different model
-# for handling these arguments with objc-interop disabled these shims can be
-# eliminated.
 add_library(DispatchStubs STATIC
   DispatchStubs.cc)
 target_include_directories(DispatchStubs PRIVATE

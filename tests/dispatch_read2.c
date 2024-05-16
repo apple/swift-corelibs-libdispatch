@@ -91,7 +91,11 @@ dispatch_read2(dispatch_fd_t fd,
 		buffer = _aligned_malloc(bufsiz, pagesize);
 #else
 		size_t pagesize = (size_t)sysconf(_SC_PAGESIZE);
+#if defined(HAVE_ALIGNED_ALLOC)
+		buffer = aligned_alloc(pagesize, bufsiz);
+#else
 		posix_memalign((void **)&buffer, pagesize, bufsiz);
+#endif
 #endif
 		ssize_t actual = dispatch_test_fd_read(fd, buffer, bufsiz);
 		if (actual == -1) {

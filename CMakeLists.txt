@@ -18,14 +18,18 @@ if("${CMAKE_C_SIMULATE_ID}" STREQUAL "MSVC")
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL Windows)
-  include(DispatchWindowsSupport)
-  dispatch_windows_arch_spelling(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_MSVC_ARCH)
-  dispatch_windows_include_for_arch(${DISPATCH_MSVC_ARCH} DISPATCH_INCLUDES)
-  include_directories(BEFORE SYSTEM ${DISPATCH_INCLUDES})
-  dispatch_windows_lib_for_arch(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_LIBDIR)
-  link_directories(${DISPATCH_LIBDIR})
+  if(NOT MINGW)
+    include(DispatchWindowsSupport)
+    dispatch_windows_arch_spelling(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_MSVC_ARCH)
+    dispatch_windows_include_for_arch(${DISPATCH_MSVC_ARCH} DISPATCH_INCLUDES)
+    include_directories(BEFORE SYSTEM ${DISPATCH_INCLUDES})
+    dispatch_windows_lib_for_arch(${CMAKE_SYSTEM_PROCESSOR} DISPATCH_LIBDIR)
+    link_directories(${DISPATCH_LIBDIR})
+  endif()
 
   include(CheckCSourceCompiles)
+  include(CheckSymbolExists)
+
   check_c_source_compiles([=[
 #include <Windows.h>
 int main(int argc, char *argv[]) {
@@ -54,6 +58,42 @@ int main(int argc, char *argv[]) {
   if(DISPATCH_HAVE_EXTENDED_SLPI_22000)
     add_compile_definitions(DISPATCH_HAVE_EXTENDED_SLPI_22000)
   endif()
+
+  check_c_source_compiles([=[
+#include <Windows.h>
+#include <winternl.h>
+int main(int argc, char *argv[]) {
+  FILE_PIPE_LOCAL_INFORMATION fpli;
+}
+]=] HAVE_FILE_PIPE_LOCAL_INFORMATION)
+  if(HAVE_FILE_PIPE_LOCAL_INFORMATION)
+    add_compile_definitions(HAVE_FILE_PIPE_LOCAL_INFORMATION)
+  endif()
+
+  check_symbol_exists(mkstemp "stdlib.h" HAVE_MKSTEMP)
+  if(HAVE_MKSTEMP)
+    add_compile_definitions(HAVE_MKSTEMP)
+  endif()
+
+  check_c_source_compiles([=[
+#include <sys/types.h>
+int main(int argc, char *argv[]) {
+  mode_t mode;
+}
+]=] HAVE_MODE_T)
+  if(HAVE_MODE_T)
+    add_compile_definitions(HAVE_MODE_T)
+  endif()
+
+  check_c_source_compiles([=[
+#include <sys/types.h>
+int main(int argc, char *argv[]) {
+  pid_t mode;
+}
+]=] HAVE_PID_T)
+  if(HAVE_PID_T)
+    add_compile_definitions(HAVE_PID_T)
+  endif()
 endif()
 
 set(CMAKE_C_STANDARD 11)
@@ -72,6 +112,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+if(ANDROID)
+  set(CMAKE_HAVE_LIBC_PTHREAD YES)
+endif()
 find_package(Threads REQUIRED)
 
 include(CheckCCompilerFlag)
@@ -150,6 +193,7 @@ endif()
 find_package(BlocksRuntime QUIET)
 
 check_function_exists(_pthread_workqueue_init HAVE__PTHREAD_WORKQUEUE_INIT)
+check_function_exists(aligned_alloc HAVE_ALIGNED_ALLOC)
 check_function_exists(getprogname HAVE_GETPROGNAME)
 check_function_exists(mach_absolute_time HAVE_MACH_ABSOLUTE_TIME)
 check_function_exists(mach_approximate_time HAVE_MACH_APPROXIMATE_TIME)
@@ -276,7 +320,15 @@ add_compile_definitions($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:HA
 
 
 if(ENABLE_SWIFT)
-  set(INSTALL_TARGET_DIR "${CMAKE_INSTALL_LIBDIR}/swift$<$<NOT:$<BOOL:${BUILD_SHARED_LIBS}>>:_static>/$<LOWER_CASE:${CMAKE_SYSTEM_NAME}>" CACHE PATH "Path where the libraries will be installed")
+  if(NOT SWIFT_SYSTEM_NAME)
+    if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
+      set(SWIFT_SYSTEM_NAME macosx)
+    else()
+      set(SWIFT_SYSTEM_NAME "$<LOWER_CASE:${CMAKE_SYSTEM_NAME}>")
+    endif()
+  endif()
+
+  set(INSTALL_TARGET_DIR "${CMAKE_INSTALL_LIBDIR}/swift$<$<NOT:$<BOOL:${BUILD_SHARED_LIBS}>>:_static>/${SWIFT_SYSTEM_NAME}" CACHE PATH "Path where the libraries will be installed")
   set(INSTALL_DISPATCH_HEADERS_DIR "${CMAKE_INSTALL_LIBDIR}/swift$<$<NOT:$<BOOL:${BUILD_SHARED_LIBS}>>:_static>/dispatch" CACHE PATH "Path where the headers will be installed for libdispatch")
   set(INSTALL_BLOCK_HEADERS_DIR "${CMAKE_INSTALL_LIBDIR}/swift$<$<NOT:$<BOOL:${BUILD_SHARED_LIBS}>>:_static>/Block" CACHE PATH "Path where the headers will be installed for the blocks runtime")
   set(INSTALL_OS_HEADERS_DIR "${CMAKE_INSTALL_LIBDIR}/swift$<$<NOT:$<BOOL:${BUILD_SHARED_LIBS}>>:_static>/os" CACHE PATH "Path where the os/ headers will be installed")

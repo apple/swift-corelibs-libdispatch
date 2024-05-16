@@ -398,7 +398,11 @@ test_async_read(char *path, size_t size, int option, dispatch_queue_t queue,
 				buffer = _aligned_malloc(size, si.dwPageSize);
 #else
 				size_t pagesize = (size_t)sysconf(_SC_PAGESIZE);
+#if defined(HAVE_ALIGNED_ALLOC)
+				buffer = aligned_alloc(pagesize, size);
+#else
 				posix_memalign((void **)&buffer, pagesize, size);
+#endif
 #endif
 				ssize_t r = dispatch_test_fd_read(fd, buffer, size);
 				if (r == -1) {

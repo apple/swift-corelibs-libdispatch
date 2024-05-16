@@ -6264,8 +6264,13 @@ _dispatch_worker_thread(void *context)
 static unsigned WINAPI
 _dispatch_worker_thread_thunk(LPVOID lpParameter)
 {
-  _dispatch_worker_thread(lpParameter);
-  return 0;
+	HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
+	if (FAILED(hr)) {
+		_dispatch_client_assert_fail("Error %ld initializing Windows Runtime", hr);
+	}
+	_dispatch_worker_thread(lpParameter);
+	CoUninitialize();
+	return 0;
 }
 #endif // defined(_WIN32)
 #endif // DISPATCH_USE_PTHREAD_POOL
