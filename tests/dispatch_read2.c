@@ -91,7 +91,7 @@ dispatch_read2(dispatch_fd_t fd,
 		buffer = _aligned_malloc(bufsiz, pagesize);
 #else
 		size_t pagesize = (size_t)sysconf(_SC_PAGESIZE);
-		buffer = aligned_alloc(pagesize, bufsiz);
+		posix_memalign((void **)&buffer, pagesize, bufsiz);
 #endif
 		ssize_t actual = dispatch_test_fd_read(fd, buffer, bufsiz);
 		if (actual == -1) {
@@ -150,7 +150,7 @@ test_read(void)
 		test_stop();
 	}
 #else
-	// investigate what the impact of lack of file cache disabling has 
+	// investigate what the impact of lack of file cache disabling has
 	// for this test
 #endif
 	size_t size = (size_t)dispatch_test_fd_lseek(fd, 0, SEEK_END);
