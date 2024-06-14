@@ -5,12 +5,12 @@ module Dispatch {
 	link "BlocksRuntime"
 }
 
-module DispatchIntrospection [system] [extern_c] {
+module DispatchIntrospection [system] {
 	header "introspection.h"
 	export *
 }
 
-module CDispatch [system] [extern_c] {
+module CDispatch [system] {
 	umbrella header "dispatch.h"
 	export *
 	requires blocks

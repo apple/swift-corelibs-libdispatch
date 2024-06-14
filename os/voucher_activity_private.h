@@ -24,7 +24,10 @@
 #if OS_VOUCHER_ACTIVITY_SPI
 #if __has_include(<mach/mach_time.h>)
 #include <mach/mach_time.h>
-#include <firehose/tracepoint_private.h>
+#ifndef __DISPATCH_BUILDING_DISPATCH__
+#include <dispatch/private.h>
+#endif /* !__DISPATCH_BUILDING_DISPATCH__ */
+#include <firehose/firehose_types_private.h>
 #endif
 #if __APPLE__
 #include <os/base.h>
@@ -32,7 +35,7 @@
 #endif
 #include <sys/uio.h>
 #include <os/object.h>
-#include "voucher_private.h"
+#include <os/voucher_private.h>
 
 #define OS_VOUCHER_ACTIVITY_SPI_VERSION 20161003
 

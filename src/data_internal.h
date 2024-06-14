@@ -57,10 +57,10 @@ DISPATCH_CLASS_DECL(data, OBJECT);
 
 struct dispatch_data_s {
 #if DISPATCH_DATA_IS_BRIDGED_TO_NSDATA
-	const void *do_vtable;
+	const void *__ptrauth_objc_isa_pointer do_vtable;
 	dispatch_queue_t do_targetq;
 	void *ctxt;
-	void *finalizer;
+	dispatch_function_t DISPATCH_FUNCTION_POINTER finalizer;
 #else
 	DISPATCH_OBJECT_HEADER(data);
 #endif // DISPATCH_DATA_IS_BRIDGED_TO_NSDATA

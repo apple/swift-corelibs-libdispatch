@@ -24,12 +24,13 @@
 #if !HAVE_STRLCPY
 size_t strlcpy(char *dst, const char *src, size_t size)
 {
-	size_t res = strlen(dst) + strlen(src) + 1;
-	if (size > 0) {
-		size_t n = size - 1;
-		strncpy(dst, src, n);
-		dst[n] = 0;
+	size_t srclen = strlen(src);
+	if (srclen < size) {
+		strncpy(dst, src, srclen + 1);
+	} else if (size > 0) {
+		strncpy(dst, src, size-1);
+		dst[size-1] = '\0';
 	}
-	return res;
+	return srclen;
 }
 #endif

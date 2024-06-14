@@ -54,7 +54,7 @@
 #endif
 #endif
 
-#define DISPATCH_API_VERSION 20180109
+#define DISPATCH_API_VERSION 20181008
 
 #ifndef __DISPATCH_BUILDING_DISPATCH__
 #ifndef __DISPATCH_INDIRECT__
@@ -62,6 +62,7 @@
 #endif
 
 #include <os/object.h>
+#include <os/workgroup.h>
 #include <dispatch/base.h>
 #include <dispatch/time.h>
 #include <dispatch/object.h>
@@ -73,6 +74,8 @@
 #include <dispatch/once.h>
 #include <dispatch/data.h>
 #include <dispatch/io.h>
+#include <dispatch/workloop.h>
+#include <dispatch/dispatch_swift_shims.h>
 
 #undef __DISPATCH_INDIRECT__
 #endif /* !__DISPATCH_BUILDING_DISPATCH__ */

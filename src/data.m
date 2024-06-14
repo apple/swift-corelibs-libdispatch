@@ -150,11 +150,9 @@
 
 @end
 
+OS_OBJECT_NONLAZY_CLASS
 @implementation DISPATCH_CLASS(data_empty)
-
-// Force non-lazy class realization rdar://10640168
-+ (void)load {
-}
+OS_OBJECT_NONLAZY_CLASS_LOAD
 
 - (id)retain {
 	return (id)self;

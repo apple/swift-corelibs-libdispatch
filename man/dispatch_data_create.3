@@ -55,10 +55,12 @@
 .Vt dispatch_data_t dispatch_data_empty ;
 .Sh DESCRIPTION
 Dispatch data objects are opaque containers of bytes that represent one or more
-regions of memory. They are created either from memory buffers managed by the
-application or the system or from other dispatch data objects. Dispatch data
-objects are immutable and the memory regions they represent are required to
-remain unchanged for the lifetime of all data objects that reference them.
+regions of memory.
+They are created either from memory buffers managed by the application or the
+system or from other dispatch data objects.
+Dispatch data objects are immutable and the memory regions they represent are
+required to remain unchanged for the lifetime of all data objects that reference
+them.
 Dispatch data objects avoid copying the represented memory as much as possible.
 Multiple data objects can represent the same memory regions or subsections
 thereof.
@@ -76,8 +78,8 @@ block will be submitted to the specified
 when the object reaches the end of its lifecycle, indicating that the system no
 longer references the
 .Fa buffer .
-This allows the application to deallocate
-the associated storage. The
+This allows the application to deallocate the associated storage.
+The
 .Fa queue
 argument is ignored if one of the following predefined destructors is passed:
 .Bl -tag -width DISPATCH_DATA_DESTRUCTOR_DEFAULT -compact -offset indent
@@ -111,26 +113,29 @@ function creates a new data object by mapping the memory represented by the
 provided
 .Fa data
 object as a single contiguous memory region (moving or copying memory as
-necessary). If the
+necessary).
+If the
 .Fa buffer_ptr
 and
 .Fa size_ptr
 references are not
 .Dv NULL ,
 they are filled with the location and extent of the contiguous region, allowing
-direct read access to the mapped memory. These values are valid only as long as
-the newly created object has not been released.
+direct read access to the mapped memory.
+These values are valid only as long as the newly created object has not been
+released.
 .Sh ACCESS
 The
 .Fn dispatch_data_apply
 function provides read access to represented memory without requiring it to be
-mapped as a single contiguous region. It traverses the memory regions
-represented by the
+mapped as a single contiguous region.
+It traverses the memory regions represented by the
 .Fa data
 argument in logical order, invokes the specified
 .Fa applier
 block for each region and returns a boolean indicating whether traversal
-completed successfully. The
+completed successfully.
+The
 .Fa applier
 block is passed the following arguments for each memory region and returns a
 boolean indicating whether traversal should continue:
@@ -170,7 +175,8 @@ specified by the
 argument among the regions represented by the provided
 .Fa data
 object and returns a newly created copy of the data object representing that
-region. The variable specified by the
+region.
+The variable specified by the
 .Fa offset_ptr
 argument is filled with the logical position where the returned object starts
 in the
@@ -198,17 +204,19 @@ Data objects passed as arguments to a dispatch data
 .Sy create
 or
 .Sy copy
-function can be released when the function returns. The newly created object
-holds implicit references to their constituent memory regions as necessary.
+function can be released when the function returns.
+The newly created object holds implicit references to their constituent memory
+regions as necessary.
 .Pp
 The functions
 .Fn dispatch_data_create_map
 and
 .Fn dispatch_data_apply
 return an interior pointer to represented memory that is only valid as long as
-an associated object has not been released. When Objective-C Automated
-Reference Counting is enabled, care needs to be taken if that object is held in
-a variable with automatic storage. It may need to be annotated with the
+an associated object has not been released.
+When Objective-C Automated Reference Counting is enabled, care needs to be taken
+if that object is held in a variable with automatic storage.
+It may need to be annotated with the
 .Li objc_precise_lifetime
 attribute, or stored in a
 .Li __strong
@@ -216,5 +224,5 @@ instance variable instead, to ensure that the object is not released
 prematurely before memory accesses via the interor pointer have been completed.
 .Sh SEE ALSO
 .Xr dispatch 3 ,
-.Xr dispatch_object 3 ,
-.Xr dispatch_io_read 3
+.Xr dispatch_io_read 3 ,
+.Xr dispatch_object 3

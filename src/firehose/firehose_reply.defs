@@ -27,6 +27,7 @@ subsystem firehoseReply 11700;
 
 serverprefix firehose_client_;
 userprefix firehose_send_;
+ConsumeOnSendError Timeout;
 
 skip; // firehose_register
 
