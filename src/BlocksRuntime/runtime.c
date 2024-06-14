@@ -172,11 +172,7 @@ static void _Block_release_object_default(const void *ptr) {
 }
 
 static void _Block_assign_weak_default(const void *ptr, void *dest) {
-#if !defined(_WIN32)
-    *(long *)dest = (long)ptr;
-#else
     *(void **)dest = (void *)ptr;
-#endif
 }
 
 static void _Block_memmove_default(void *dst, void *src, unsigned long size) {
