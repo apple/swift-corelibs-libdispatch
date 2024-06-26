@@ -178,6 +178,10 @@ if(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin|Windows")
   set_target_properties(dispatch PROPERTIES INSTALL_RPATH "$ORIGIN")
 endif()
 
+if(LINKER_SUPPORTS_BUILD_ID)
+  target_link_options(dispatch PRIVATE "LINKER:--build-id=sha1")
+endif()
+
 if(ENABLE_SWIFT)
   add_subdirectory(swift)
 endif()

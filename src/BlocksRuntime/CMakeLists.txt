@@ -22,6 +22,10 @@ endif()
 set_target_properties(BlocksRuntime PROPERTIES
   POSITION_INDEPENDENT_CODE TRUE)
 
+if(LINKER_SUPPORTS_BUILD_ID)
+  target_link_options(BlocksRuntime PRIVATE "LINKER:--build-id=sha1")
+endif()
+
 add_library(BlocksRuntime::BlocksRuntime ALIAS BlocksRuntime)
 
 install(FILES Block.h
