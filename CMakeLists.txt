@@ -122,6 +122,7 @@ include(CheckCSourceCompiles)
 include(CheckFunctionExists)
 include(CheckIncludeFiles)
 include(CheckLibraryExists)
+include(CheckLinkerFlag)
 include(CheckSymbolExists)
 include(GNUInstallDirs)
 include(CTest)
@@ -174,6 +175,8 @@ endif()
 option(ENABLE_THREAD_LOCAL_STORAGE "enable usage of thread local storage via _Thread_local" ON)
 set(DISPATCH_USE_THREAD_LOCAL_STORAGE ${ENABLE_THREAD_LOCAL_STORAGE})
 
+
+check_linker_flag(C "LINKER:--build-id=sha1" LINKER_SUPPORTS_BUILD_ID)
 
 check_symbol_exists(__GNU_LIBRARY__ "features.h" _GNU_SOURCE)
 if(_GNU_SOURCE)
