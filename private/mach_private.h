@@ -189,7 +189,7 @@ DISPATCH_DECL(dispatch_mach_msg);
  * @const DISPATCH_MACH_MSG_DESTRUCTOR_FREE
  * Message buffer will be deallocated with free(3).
  *
- * @const DISPATCH_MACH_MSG_DESTRUCTOR_FREE
+ * @const DISPATCH_MACH_MSG_DESTRUCTOR_VM_DEALLOCATE
  * Message buffer will be deallocated with vm_deallocate.
  */
 DISPATCH_ENUM(dispatch_mach_msg_destructor, unsigned int,
