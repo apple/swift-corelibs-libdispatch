@@ -534,7 +534,7 @@ dispatch_data_get_flattened_bytes_4libxpc(dispatch_data_t dd)
 	void *flatbuf = _dispatch_data_flatten(dd);
 	if (likely(flatbuf)) {
 		// we need a release so that readers see the content of the buffer
-		if (unlikely(!os_atomic_cmpxchgv2o(dd, buf, NULL, flatbuf,
+		if (unlikely(!os_atomic_cmpxchgv(&dd->buf, NULL, flatbuf,
 				&buffer, release))) {
 			free(flatbuf);
 		} else {

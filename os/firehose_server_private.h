@@ -43,7 +43,7 @@
  * Firehose client objects are os_object_t's, and it's legal to retain/release
  * them with os_retain / os_release.
  */
-OS_OBJECT_DECL_CLASS(firehose_client);
+OS_OBJECT_DECL_SENDABLE_CLASS(firehose_client);
 
 /*!
  * @typedef firehose_event_t
@@ -399,6 +399,7 @@ OS_ENUM(firehose_server_queue, unsigned long,
 	FIREHOSE_SERVER_QUEUE_UNKNOWN,
 	FIREHOSE_SERVER_QUEUE_IO,
 	FIREHOSE_SERVER_QUEUE_MEMORY,
+	FIREHOSE_SERVER_QUEUE_IO_WL,
 );
 
 /*!

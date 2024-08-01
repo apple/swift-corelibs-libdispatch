@@ -148,8 +148,10 @@
 #	endif // VQ_FREE_SPACE_CHANGE
 
 #	if !defined(EVFILT_NW_CHANNEL) && defined(__APPLE__)
-#	define EVFILT_NW_CHANNEL       (-16)
-#	define NOTE_FLOW_ADV_UPDATE    	0x1
+#	define EVFILT_NW_CHANNEL		(-16)
+#	define NOTE_FLOW_ADV_UPDATE		0x1
+#	define NOTE_CHANNEL_EVENT		0x2
+#	define NOTE_IF_ADV_UPD			0x4
 #	endif
 #else // DISPATCH_EVENT_BACKEND_KEVENT
 #	define EV_ADD					0x0001
@@ -187,7 +189,7 @@
 #	define EV_VANISHED				0x0000
 #endif
 
-#define DISPATCH_EV_MSG_NEEDS_FREE	0x10000 // mach message needs to be freed()
+#define DISPATCH_EV_MSG_NEEDS_FREE	0x10000 // mach message and aux needs to be freed()
 
 #define DISPATCH_EVFILT_TIMER				(-EVFILT_SYSCOUNT - 1)
 #define DISPATCH_EVFILT_TIMER_WITH_CLOCK	(-EVFILT_SYSCOUNT - 2)
@@ -232,12 +234,16 @@ typedef unsigned int mach_msg_priority_t;
 #	define MACH_SEND_SYNC_OVERRIDE 0x00100000
 #	endif // MACH_SEND_SYNC_OVERRIDE
 
+#	ifndef MACH_MSG_STRICT_REPLY
+#	define MACH_MSG_STRICT_REPLY  0x00000200
+#	endif
+
 #	ifndef MACH_RCV_SYNC_WAIT
 #	define MACH_RCV_SYNC_WAIT 0x00004000
 #	endif // MACH_RCV_SYNC_WAIT
 
 #	define DISPATCH_MACH_TRAILER_SIZE sizeof(dispatch_mach_trailer_t)
-#	define DISPATCH_MACH_RCV_TRAILER MACH_RCV_TRAILER_CTX
+#	define DISPATCH_MACH_RCV_TRAILER MACH_RCV_TRAILER_AV
 #	define DISPATCH_MACH_RCV_OPTIONS ( \
 		MACH_RCV_MSG | MACH_RCV_LARGE | MACH_RCV_LARGE_IDENTITY | \
 		MACH_RCV_TRAILER_ELEMENTS(DISPATCH_MACH_RCV_TRAILER) | \

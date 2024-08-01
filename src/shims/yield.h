@@ -80,7 +80,7 @@
 #endif
 
 DISPATCH_NOT_TAIL_CALLED DISPATCH_EXPORT
-void *_dispatch_wait_for_enqueuer(void **ptr);
+void *_dispatch_wait_for_enqueuer(void **ptr, void **tailp);
 
 #pragma mark -
 #pragma mark _dispatch_contention_wait_until
@@ -94,7 +94,7 @@ void *_dispatch_wait_for_enqueuer(void **ptr);
 #ifndef DISPATCH_CONTENTION_SPINS_MIN
 #define DISPATCH_CONTENTION_SPINS_MIN (32 - 1)
 #endif
-#if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+#if (TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR) || DISPATCH_TARGET_DK_EMBEDDED
 #define _dispatch_contention_spins() \
 		((DISPATCH_CONTENTION_SPINS_MIN) + ((DISPATCH_CONTENTION_SPINS_MAX) - \
 		(DISPATCH_CONTENTION_SPINS_MIN)) / 2)
@@ -135,6 +135,15 @@ void *_dispatch_wait_for_enqueuer(void **ptr);
 #pragma mark -
 #pragma mark _dispatch_preemption_yield
 
+/* Don't allow directed yield to enqueuer if !_pthread_has_direct_tsd() */
+#ifndef DISPATCH_HAVE_YIELD_TO_ENQUEUER
+#if PTHREAD_HAVE_YIELD_TO_ENQUEUER && !TARGET_OS_SIMULATOR
+#define DISPATCH_HAVE_YIELD_TO_ENQUEUER 1
+#else
+#define DISPATCH_HAVE_YIELD_TO_ENQUEUER 0
+#endif
+#endif /* DISPATCH_HAVE_YIELD_TO_ENQUEUER */
+
 #if HAVE_MACH
 #if defined(SWITCH_OPTION_OSLOCK_DEPRESS)
 #define DISPATCH_YIELD_THREAD_SWITCH_OPTION SWITCH_OPTION_OSLOCK_DEPRESS
@@ -155,6 +164,20 @@ void *_dispatch_wait_for_enqueuer(void **ptr);
 #define _dispatch_preemption_yield(n) { (void)n; sched_yield(); }
 #define _dispatch_preemption_yield_to(th, n) { (void)n; sched_yield(); }
 #endif // HAVE_MACH
+
+#if DISPATCH_HAVE_YIELD_TO_ENQUEUER
+#define _dispatch_set_enqueuer_for(ptr) \
+		_dispatch_thread_setspecific(dispatch_enqueue_key, (void *) (ptr));
+#define _dispatch_clear_enqueuer() \
+		_dispatch_thread_setspecific(dispatch_enqueue_key, NULL);
+#define _dispatch_yield_to_enqueuer(q, n) \
+		(void) _pthread_yield_to_enqueuer_4dispatch(dispatch_enqueue_key, q, n)
+#else
+#define _dispatch_set_enqueuer_for(ptr)
+#define _dispatch_clear_enqueuer(ptr)
+#define _dispatch_yield_to_enqueuer(q, n) \
+		((void) (q), _dispatch_preemption_yield(n))
+#endif /* DISPATCH_HAVE_YIELD_TO_ENQUEUER */
 
 #pragma mark -
 #pragma mark _dispatch_contention_usleep
