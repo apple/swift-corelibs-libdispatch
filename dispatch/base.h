@@ -323,4 +323,4 @@
 
 typedef void (*dispatch_function_t)(void *_Nullable);
 
-#endif // __DISPATCH_BASE__
+#endif /* __DISPATCH_BASE__ */
