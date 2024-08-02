@@ -77,4 +77,4 @@
 #undef __DISPATCH_INDIRECT__
 #endif /* !__DISPATCH_BUILDING_DISPATCH__ */
 
-#endif
+#endif /* __DISPATCH_PUBLIC__ */
