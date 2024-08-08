@@ -122,4 +122,4 @@ __END_DECLS
 
 DISPATCH_ASSUME_NONNULL_END
 
-#endif
+#endif /* __DISPATCH_ONCE__ */
