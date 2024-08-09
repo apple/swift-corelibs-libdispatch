@@ -77,4 +77,8 @@ else()
     add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wno-shorten-64-to-32>)
   endif()
   add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wno-error=assign-enum>)
+
+  # Should re-enable after rdar://133498289 is fixed (ie. fixing the one mismatched cast in apply.c)
+  add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wno-cast-function-type-mismatch>)
+  add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wno-error=unknown-warning-option>)
 endif()
