@@ -231,9 +231,7 @@ static inline void _swift_dispatch_source_set_registration_handler(
   dispatch_source_set_registration_handler(source, block);
 }
 
-#if defined(__ANDROID__)
 extern void _dispatch_install_thread_detach_callback(void (*cb)(void));
-#endif
 
 static inline void _swift_dispatch_retain(dispatch_object_t object) {
   dispatch_retain(object);
