@@ -483,11 +483,9 @@ extension DispatchQueue {
 		dispatch_queue_set_specific(self.__wrapped, k, p, _destructDispatchSpecificValue)
 	}
 
-	#if os(Android)
 	public static func setThreadDetachCallback(_ cb: @escaping @convention(c) () -> Void) {
 		_dispatch_install_thread_detach_callback(cb)
 	}
-	#endif
 }
 
 private func _destructDispatchSpecificValue(ptr: UnsafeMutableRawPointer?) {

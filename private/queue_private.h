@@ -481,20 +481,18 @@ void
 dispatch_async_enforce_qos_class_f(dispatch_queue_t queue,
 		void *_Nullable context, dispatch_function_t work);
 
-#ifdef __ANDROID__
 /*!
  * @function _dispatch_install_thread_detach_callback
  *
  * @param cb
- * Function to be called before each worker thread exits to detach JVM.
+ * Function to be called before each worker thread exits.
  *
- * Hook to be able to detach threads from the Java JVM before they exit.
+ * Hook to e.g. be able to detach threads from the Java JVM before they exit.
  * If JNI has been used on a thread on Android it needs to have been
  * "detached" before the thread exits or the application will crash.
  */
 DISPATCH_EXPORT
 void _dispatch_install_thread_detach_callback(void (*cb)(void));
-#endif
 
 __END_DECLS
 
