@@ -383,9 +383,9 @@ dispatch_get_global_queue(intptr_t priority, uintptr_t flags)
 	}
 	dispatch_qos_t qos = _dispatch_qos_from_queue_priority(priority);
 #if !HAVE_PTHREAD_WORKQUEUE_QOS
-	if (qos == QOS_CLASS_MAINTENANCE) {
+	if (qos == DISPATCH_QOS_MAINTENANCE) {
 		qos = DISPATCH_QOS_BACKGROUND;
-	} else if (qos == QOS_CLASS_USER_INTERACTIVE) {
+	} else if (qos == DISPATCH_QOS_USER_INTERACTIVE) {
 		qos = DISPATCH_QOS_USER_INITIATED;
 	}
 #endif
