@@ -23,6 +23,11 @@
 #include "protocol.h" // _dispatch_send_wakeup_runloop_thread
 #endif
 
+#if defined(__linux__)
+#include <errno.h>
+#include <sys/resource.h>
+#endif
+
 static inline void _dispatch_root_queues_init(void);
 static void _dispatch_lane_barrier_complete(dispatch_lane_class_t dqu,
 		dispatch_qos_t qos, dispatch_wakeup_flags_t flags);
@@ -6169,6 +6174,7 @@ _dispatch_root_queue_init_pthread_pool(dispatch_queue_global_t dq,
 	}
 	if (pool_size && pool_size < thread_pool_size) thread_pool_size = pool_size;
 	dq->dgq_thread_pool_size = thread_pool_size;
+	// TODO: Save priority for later configuration in _dispatch_worker_thread
 	qos_class_t cls = _dispatch_qos_to_qos_class(_dispatch_priority_qos(pri) ?:
 			_dispatch_priority_fallback_qos(pri));
 	if (cls) {
@@ -6216,10 +6222,39 @@ _dispatch_worker_thread(void *context)
 	_dispatch_sigmask();
 #endif
 	_dispatch_introspection_thread_add();
+	dispatch_priority_t pri = dq->dq_priority;
+	pthread_priority_t pp = _dispatch_get_priority();
+
+	// The Linux kernel does not have a direct analogue to the QoS-based
+	// thread policy engine found in XNU.
+	//
+	// We cannot use 'pthread_setschedprio', because all threads with default
+	// scheduling policy (SCHED_OTHER) have the same pthread 'priority'.
+	// For both CFS, which was introduced in Linux 2.6.23, and its successor
+	// EEVDF (since 6.6) 'sched_get_priority_max' and 'sched_get_priority_min'
+	// will just return 0.
+	//
+	// However, as outlined in "man 2 setpriority", the nice value is a
+	// per‐thread attribute: different threads in the same process can have
+	// different nice values. We can thus setup the thread's initial priority
+	// by converting the QoS class and relative priority to a 'nice' value.
+	#if defined(__linux__)
+	pp = _dispatch_priority_to_pp_strip_flags(pri);
+	int nice = _dispatch_pp_to_nice(pp);
+
+	#if HAVE_PTHREAD_SETNAME_NP 
+	pthread_setname_np(pthread_self(), "DispatchWorker");
+	#endif
+
+	errno = 0;
+	int rc = setpriority(PRIO_PROCESS, 0, nice);
+	if (rc != -1 || errno == 0) {
+		_dispatch_thread_setspecific(dispatch_priority_key, (void *)(uintptr_t)pp);
+	}
+
+	#endif // defined(__linux__)
 
 	const int64_t timeout = 5ull * NSEC_PER_SEC;
-	pthread_priority_t pp = _dispatch_get_priority();
-	dispatch_priority_t pri = dq->dq_priority;
 
 	// If the queue is neither
 	// - the manager
