@@ -173,12 +173,12 @@ DISPATCH_DECL_SUBCLASS(dispatch_queue_main, dispatch_queue_serial);
  *
  * @discussion
  * Dispatch concurrent queues are lightweight objects to which regular and
- * barrier workitems may be submited. Barrier workitems are invoked in
+ * barrier workitems may be submitted. Barrier workitems are invoked in
  * exclusion of any other kind of workitem in FIFO order.
  *
  * Regular workitems can be invoked concurrently for the same concurrent queue,
  * in any order. However, regular workitems will not be invoked before any
- * barrier workitem submited ahead of them has been invoked.
+ * barrier workitem submitted ahead of them has been invoked.
  *
  * In other words, if a serial queue is equivalent to a mutex in the Dispatch
  * world, a concurrent queue is equivalent to a reader-writer lock, where
