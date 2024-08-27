@@ -6174,7 +6174,6 @@ _dispatch_root_queue_init_pthread_pool(dispatch_queue_global_t dq,
 	}
 	if (pool_size && pool_size < thread_pool_size) thread_pool_size = pool_size;
 	dq->dgq_thread_pool_size = thread_pool_size;
-	// TODO: Save priority for later configuration in _dispatch_worker_thread
 	qos_class_t cls = _dispatch_qos_to_qos_class(_dispatch_priority_qos(pri) ?:
 			_dispatch_priority_fallback_qos(pri));
 	if (cls) {
