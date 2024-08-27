@@ -210,6 +210,46 @@ _dispatch_qos_to_pp(dispatch_qos_t qos)
 	return pp | _PTHREAD_PRIORITY_PRIORITY_MASK;
 }
 
+
+#if defined(__linux__)
+// These presets roughly match the `android.os.Process' constants
+// used for `setThreadPriority()'.
+//
+// Be aware that with the Completely Fair Scheduler (CFS) the weight is computed
+// as 1024 / (1.25) ^ (nice) where nice is in the range -20 to 19.
+// This means that nice is not a linear scale.
+#define DISPATCH_NICE_BACKGROUND  10
+#define DISPATCH_NICE_UTILITY     2
+#define DISPATCH_NICE_DEFAULT     0
+// Note that you might not have permission to increase the priority
+// of a thread beyond the default priority.
+#define DISPATCH_NICE_USER_INITIATED -2
+#define DISPATCH_NICE_USER_INTERACTIVE -4
+
+DISPATCH_ALWAYS_INLINE
+static inline int _dispatch_pp_to_nice(pthread_priority_t pp)
+{
+	// FIXME: What about relative priorities?
+	uint32_t qos = _dispatch_qos_from_pp(pp);
+
+	switch (qos) {
+		case DISPATCH_QOS_BACKGROUND:
+			return DISPATCH_NICE_BACKGROUND;
+		case DISPATCH_QOS_UTILITY:
+			return DISPATCH_NICE_UTILITY;
+		case DISPATCH_QOS_DEFAULT:
+			return DISPATCH_NICE_DEFAULT;
+		case DISPATCH_QOS_USER_INITIATED:
+			return DISPATCH_NICE_USER_INITIATED;
+		case DISPATCH_QOS_USER_INTERACTIVE:
+			return DISPATCH_NICE_USER_INTERACTIVE;
+	}
+	
+	return DISPATCH_NICE_DEFAULT;
+}
+#endif // defined(__linux__)
+
+
 // including maintenance
 DISPATCH_ALWAYS_INLINE
 static inline bool
