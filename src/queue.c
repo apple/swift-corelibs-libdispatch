@@ -28,6 +28,29 @@
 #include <sys/resource.h>
 #endif
 
+#if defined(_WIN32)
+// Needs to be free'd after use
+static inline wchar_t *_Nullable _dispatch_char_to_wchar_str(const char *str) {
+    int wideCharSize = MultiByteToWideChar(CP_UTF8, 0, str, -1, NULL, 0);
+    if (wideCharSize == 0) {
+        return NULL;
+    }
+
+    wchar_t* wideCharStr = (wchar_t*)malloc(wideCharSize * sizeof(wchar_t));
+    if (wideCharStr == NULL) {
+        return NULL;
+    }
+
+    int result = MultiByteToWideChar(CP_UTF8, 0, str, -1, wideCharStr, wideCharSize);
+    if (result == 0) {
+        free(wideCharStr);
+		return NULL;
+    }
+
+	return wideCharStr;
+}
+#endif
+
 static inline void _dispatch_root_queues_init(void);
 static void _dispatch_lane_barrier_complete(dispatch_lane_class_t dqu,
 		dispatch_qos_t qos, dispatch_wakeup_flags_t flags);
@@ -6237,11 +6260,14 @@ _dispatch_worker_thread(void *context)
 	// per‐thread attribute: different threads in the same process can have
 	// different nice values. We can thus setup the thread's initial priority
 	// by converting the QoS class and relative priority to a 'nice' value.
-	#if defined(__linux__)
+#if defined(__linux__)
 	pp = _dispatch_priority_to_pp_strip_flags(pri);
 	int nice = _dispatch_pp_to_nice(pp);
 
 	#if HAVE_PTHREAD_SETNAME_NP 
+	// pthread thread names are restricted to just 16 characters
+	// including NUL. It does not make sense to pass the queue's
+	// label as a name.
 	pthread_setname_np(pthread_self(), "DispatchWorker");
 	#endif
 
@@ -6249,9 +6275,32 @@ _dispatch_worker_thread(void *context)
 	int rc = setpriority(PRIO_PROCESS, 0, nice);
 	if (rc != -1 || errno == 0) {
 		_dispatch_thread_setspecific(dispatch_priority_key, (void *)(uintptr_t)pp);
+	} else {
+		_dispatch_log("Failed to set thread priority for worker thread: pqc=%p errno=%d\n", pqc, errno);
 	}
+#elif defined(_WIN32)
+	pp = _dispatch_priority_to_pp_strip_flags(pri);
+	int win_priority = _dispatch_pp_to_win32_priority(pp);
+	
+	HANDLE current = GetCurrentThread();
 
-	#endif // defined(__linux__)
+	// Set thread description to the label of the root queue
+	if (dq->dq_label) {
+		wchar_t *desc = _dispatch_char_to_wchar_str(dq->dq_label);
+		if (likely(desc != NULL)) {
+			SetThreadDescription(current, desc);
+			free(desc);
+		}
+	}
+	
+	int rc = SetThreadPriority(current, win_priority);
+	if (rc) {
+		_dispatch_thread_setspecific(dispatch_priority_key, (void *)(uintptr_t)pp);
+	} else {
+		DWORD dwError = GetLastError();
+		_dispatch_log("Failed to set thread priority for worker thread: pqc=%p win_priority=%d dwError=%lu\n", pqc, win_priority, dwError);
+	}
+#endif
 
 	const int64_t timeout = 5ull * NSEC_PER_SEC;
 
@@ -6292,6 +6341,14 @@ _dispatch_worker_thread(void *context)
 	(void)os_atomic_inc2o(dq, dgq_thread_pool_size, release);
 	_dispatch_root_queue_poke(dq, 1, 0);
 	_dispatch_release(dq); // retained in _dispatch_root_queue_poke_slow
+
+#if defined(_WIN32)
+	// Make sure to properly end the background processing mode
+	if (win_priority == THREAD_MODE_BACKGROUND_BEGIN) {
+		SetThreadPriority(current, THREAD_MODE_BACKGROUND_END);
+	}
+#endif
+
 	return NULL;
 }
 #if defined(_WIN32)

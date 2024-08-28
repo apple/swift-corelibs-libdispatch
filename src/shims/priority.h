@@ -249,6 +249,29 @@ static inline int _dispatch_pp_to_nice(pthread_priority_t pp)
 }
 #endif // defined(__linux__)
 
+#if defined(_WIN32)
+DISPATCH_ALWAYS_INLINE
+static inline int _dispatch_pp_to_win32_priority(pthread_priority_t pp) {
+	uint32_t qos = _dispatch_qos_from_pp(pp);
+
+	switch (qos) {
+		case DISPATCH_QOS_BACKGROUND:
+			// Make sure to end background mode before exiting the thread!
+			return THREAD_MODE_BACKGROUND_BEGIN;
+		case DISPATCH_QOS_UTILITY:
+			return THREAD_PRIORITY_BELOW_NORMAL;
+		case DISPATCH_QOS_DEFAULT:
+			return THREAD_PRIORITY_NORMAL;
+		case DISPATCH_QOS_USER_INITIATED:
+			return THREAD_PRIORITY_ABOVE_NORMAL;
+		case DISPATCH_QOS_USER_INTERACTIVE:
+			return THREAD_PRIORITY_HIGHEST;
+	}
+
+	return THREAD_PRIORITY_NORMAL;
+}
+#endif // defined(_WIN32)
+
 
 // including maintenance
 DISPATCH_ALWAYS_INLINE
