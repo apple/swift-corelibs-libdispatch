@@ -99,8 +99,11 @@ function(add_unit_test name)
   target_link_libraries(${name}
                         PRIVATE
                           dispatch
-                          Threads::Threads
-                          BlocksRuntime::BlocksRuntime)
+                          Threads::Threads)
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL Darwin)
+    target_link_libraries(${name} PRIVATE
+      BlocksRuntime::BlocksRuntime)
+  endif()
   target_link_libraries(${name} PRIVATE bsdtests)
   add_test(NAME ${name}
            COMMAND bsdtestharness $<TARGET_FILE:${name}>)
