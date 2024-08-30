@@ -57,6 +57,8 @@ static void busythread(void *ignored)
 	/* prevent i and j been optimized out */
 	volatile uint64_t i = 0, j = 0;
 
+	(void)i;
+	(void)j;
 	OSAtomicIncrement32(&busy_threads_started);
 
 	while(!all_done)
