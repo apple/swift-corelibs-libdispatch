@@ -219,7 +219,11 @@ _dispatch_muxnote_disarm_events(dispatch_muxnote_t dmn,
 			iResult = WSAEventSelect((SOCKET)dmn->dmn_ident, NULL, 0);
 		}
 		if (iResult != 0) {
-			DISPATCH_INTERNAL_CRASH(WSAGetLastError(), "WSAEventSelect");
+			// ignore error if socket was already closed
+			int err = WSAGetLastError();
+			if (err != WSAENOTSOCK) {
+				DISPATCH_INTERNAL_CRASH(err, "WSAEventSelect");
+			}
 		}
 		dmn->dmn_network_events = lNetworkEvents;
 		if (!lNetworkEvents && dmn->dmn_threadpool_wait) {
