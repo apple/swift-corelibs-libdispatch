@@ -25,9 +25,6 @@
 #endif
 #include <stdlib.h>
 #include <assert.h>
-#ifdef __APPLE__
-#include <libkern/OSAtomic.h>
-#endif
 
 #include <bsdtests.h>
 #include <Block.h>

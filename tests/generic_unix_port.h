@@ -1,24 +1,6 @@
 #include <limits.h>
 #include <sys/param.h>
 
-static inline int32_t
-OSAtomicIncrement32(volatile int32_t *var)
-{
-  return __c11_atomic_fetch_add((_Atomic(int)*)var, 1, __ATOMIC_RELAXED)+1;
-}
-
-static inline int32_t
-OSAtomicIncrement32Barrier(volatile int32_t *var)
-{
-    return __c11_atomic_fetch_add((_Atomic(int)*)var, 1, __ATOMIC_SEQ_CST)+1;
-}
-
-static inline int32_t
-OSAtomicAdd32(int32_t val, volatile int32_t *var)
-{
-    return __c11_atomic_fetch_add((_Atomic(int)*)var, val, __ATOMIC_RELAXED)+val;
-}
-
 // Simulation of mach_absolute_time related infrastructure
 // For now, use gettimeofday.
 // Consider using clockgettime(CLOCK_MONOTONIC) instead.

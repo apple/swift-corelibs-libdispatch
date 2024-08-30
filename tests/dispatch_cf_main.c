@@ -21,20 +21,18 @@
 #include <dispatch/dispatch.h>
 #include <stdio.h>
 #include <CoreFoundation/CoreFoundation.h>
-#ifdef __APPLE__
-#include <libkern/OSAtomic.h>
-#endif
+#include <stdatomic.h>
 
 #include <bsdtests.h>
 #include "dispatch_test.h"
 
 const int32_t final = 10;
-static volatile int32_t count;
+static atomic_int count = ATOMIC_VAR_INIT(0);
 
 static void
 work(void* ctxt __attribute__((unused)))
 {
-	int32_t c = OSAtomicIncrement32(&count);
+	int32_t c = __c11_atomic_fetch_add(&count, 1, memory_order_relaxed)+1;
 	if (c < final-1) {
 		dispatch_async_f(dispatch_get_main_queue(), NULL, work);
 		CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopDefaultMode, ^{

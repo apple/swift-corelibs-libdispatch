@@ -26,9 +26,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
-#ifdef __APPLE__
-#include <libkern/OSAtomic.h>
-#endif
 #include <math.h>
 #include <bsdtests.h>
 #include "dispatch_test.h"

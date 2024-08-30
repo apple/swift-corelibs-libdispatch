@@ -88,7 +88,7 @@ enum {
 struct Block_byref {
     void *isa;
     struct Block_byref *forwarding;
-    volatile int32_t flags; // contains ref count
+    _Atomic(int32_t) flags; // contains ref count
     uint32_t size;
 };
 

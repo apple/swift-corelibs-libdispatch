@@ -27,9 +27,7 @@
 #include <assert.h>
 #include <spawn.h>
 #include <signal.h>
-#ifdef __APPLE__
-#include <libkern/OSAtomic.h>
-#endif
+#include <stdatomic.h>
 
 #include <bsdtests.h>
 #include "dispatch_test.h"

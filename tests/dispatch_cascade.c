@@ -108,7 +108,7 @@ cascade(void* context)
 		dispatch_async_f(queues[idx], context, cascade);
 	}
 
-	if (__sync_sub_and_fetch(&iterations, 1) == 0) {
+	if (atomic_fetch_sub(&iterations, 1, memory_order_relaxed) - 1 == 0) {
 		done = 1;
 		histogram();
 		dispatch_async_f(dispatch_get_main_queue(), NULL, cleanup);
