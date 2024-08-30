@@ -8,10 +8,11 @@
 //
 
 #include "Block_private.h"
+#include <stdatomic.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
 #if HAVE_OBJC
 #define __USE_GNU
 #include <dlfcn.h>
@@ -32,9 +33,10 @@
 #define __has_builtin(builtin) 0
 #endif
 
-#if __has_builtin(__sync_bool_compare_and_swap)
+#if __has_builtin(__atomic_compare_exchange_n)
 #define OSAtomicCompareAndSwapInt(_Old, _New, _Ptr)                            \
-  __sync_bool_compare_and_swap(_Ptr, _Old, _New)
+  __atomic_compare_exchange_n(_Ptr, &_Old, _New, false, __ATOMIC_RELAXED,      \
+                              __ATOMIC_RELAXED)
 #else
 #define _CRT_SECURE_NO_WARNINGS 1
 #include <Windows.h>
