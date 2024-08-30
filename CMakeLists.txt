@@ -132,6 +132,7 @@ include(DispatchSanitization)
 include(DispatchCompilerWarnings)
 include(DTrace)
 include(SwiftSupport)
+include(PkgConfigGeneration)
 
 # NOTE(abdulras) this is the CMake supported way to control whether we generate
 # shared or static libraries.  This impacts the behaviour of `add_library` in
@@ -338,7 +339,6 @@ else()
   set(INSTALL_BLOCK_HEADERS_DIR "include" CACHE PATH "Path where the headers will be installed for the blocks runtime")
   set(INSTALL_OS_HEADERS_DIR "include/os" CACHE PATH "Path where the headers will be installed")
 endif()
-
 
 add_subdirectory(dispatch)
 add_subdirectory(man)
