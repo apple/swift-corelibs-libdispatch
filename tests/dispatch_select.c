@@ -67,8 +67,9 @@ stage1(int stage)
 
 	dispatch_source_set_event_handler(source, ^{
 		size_t buffer_size = 500*1024;
-		char buffer[500*1024];
+		char *buffer = malloc(buffer_size*sizeof(char));
 		ssize_t sz = dispatch_test_fd_read(fd, buffer, buffer_size);
+		free(buffer);
 		test_sizet_less_than_or_equal("kevent read 1", sz, buffer_size+1);
 		dispatch_source_cancel(source);
 	});
@@ -129,12 +130,14 @@ stage2(void)
 	dispatch_source_set_event_handler(source, ^{
 		size_t est = dispatch_source_get_data(source);
 		test_sizet_less_than_or_equal("estimated", est, expected - actual);
-		char buffer[500*1024];
-		ssize_t sz = dispatch_test_fd_read(fd, buffer, sizeof(buffer));
+		size_t buffer_size = 500*1024*sizeof(char);
+		char *buffer = malloc(buffer_size);
+		ssize_t sz = dispatch_test_fd_read(fd, buffer, buffer_size);
+		free(buffer);
 		actual += sz;
-		if (sz < (ssize_t)sizeof(buffer))
+		if (sz < (ssize_t)(buffer_size))
 		{
-			sz = dispatch_test_fd_read(fd, buffer, sizeof(buffer));
+			sz = dispatch_test_fd_read(fd, buffer, buffer_size);
 			actual += sz;
 			test_long("EOF", sz, 0);
 			dispatch_source_cancel(source);
