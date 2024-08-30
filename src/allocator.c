@@ -534,23 +534,22 @@ _dispatch_alloc_maybe_madvise_page(dispatch_continuation_t c)
 	volatile bitmap_t *page_bitmaps;
 	get_maps_and_indices_for_continuation((dispatch_continuation_t)page, NULL,
 			NULL, (bitmap_t **)&page_bitmaps, NULL);
-	unsigned int i;
-	for (i = 0; i < BITMAPS_PER_PAGE; i++) {
-		if (page_bitmaps[i] != 0) {
+	unsigned int last_locked;
+	for (last_locked = 0; last_locked < BITMAPS_PER_PAGE; last_locked++) {
+		if (page_bitmaps[last_locked] != 0) {
 			return;
 		}
 	}
 	// They are all unallocated, so we could madvise the page. Try to
 	// take ownership of them all.
-	int last_locked = 0;
-	do {
+	for (last_locked = 0; last_locked < BITMAPS_PER_PAGE; last_locked++) {
 		if (!os_atomic_cmpxchg(&page_bitmaps[last_locked], BITMAP_C(0),
 				BITMAP_ALL_ONES, relaxed)) {
 			// We didn't get one; since there is a cont allocated in
 			// the page, we can't madvise. Give up and unlock all.
 			goto unlock;
 		}
-	} while (++last_locked < (signed)BITMAPS_PER_PAGE);
+	}
 #if DISPATCH_DEBUG
 	//fprintf(stderr, "%s: madvised page %p for cont %p (next = %p), "
 	//		"[%u+1]=%u bitmaps at %p\n", __func__, page, c, c->do_next,
@@ -563,10 +562,10 @@ _dispatch_alloc_maybe_madvise_page(dispatch_continuation_t c)
 			MADV_FREE));
 
 unlock:
-	while (last_locked > 1) {
-		page_bitmaps[--last_locked] = BITMAP_C(0);
-	}
 	if (last_locked) {
+		while (last_locked > 1) {
+			page_bitmaps[--last_locked] = BITMAP_C(0);
+		}
 		os_atomic_store(&page_bitmaps[0], BITMAP_C(0), relaxed);
 	}
 	return;
@@ -654,27 +653,37 @@ _dispatch_allocator_enumerate(task_t remote_task,
 		vm_address_t zone_address, memory_reader_t reader,
 		void (^recorder)(vm_address_t, void *, size_t, bool *stop))
 {
-	const size_t heap_size = remote_dal->dal_magazine_size;
-	const size_t dc_size = remote_dal->dal_allocation_size;
-	const size_t dc_flags_offset = remote_dal->dal_allocation_isa_offset;
-	bool stop = false;
-	void *heap;
+	if (zone_address)
+	{
+		const size_t heap_size = remote_dal->dal_magazine_size;
+		const size_t dc_size = remote_dal->dal_allocation_size;
+		const size_t dc_flags_offset = remote_dal->dal_allocation_isa_offset;
+		bool stop = false;
+		void *heap = NULL;
 
-	while (zone_address) {
-		// FIXME: improve this by not faulting everything and driving it through
-		//        the bitmap.
-		kern_return_t kr = reader(remote_task, zone_address, heap_size, &heap);
-		size_t offs = remote_dal->dal_first_allocation_offset;
-		if (kr) return kr;
-		while (offs < heap_size) {
-			void *isa = *(void **)(heap + offs + dc_flags_offset);
-			if (isa && isa != remote_dal->dal_deferred_free_isa) {
-				recorder(zone_address + offs, heap + offs, dc_size, &stop);
-				if (stop) return KERN_SUCCESS;
+		do
+		{
+			// FIXME: improve this by not faulting everything and driving it through
+			//        the bitmap.
+			kern_return_t kr;
+			size_t offs;
+
+			kr = reader(remote_task, zone_address, heap_size, &heap);
+			if (kr)
+				return kr;
+
+			for (offs = remote_dal->dal_first_allocation_offset; offs < heap_size; offs += dc_size)
+			{
+				void *isa = *(void **)(heap + offs + dc_flags_offset);
+				if (isa && isa != remote_dal->dal_deferred_free_isa)
+				{
+					recorder(zone_address + offs, heap + offs, dc_size, &stop);
+					if (stop)
+						return KERN_SUCCESS;
+				}
 			}
-			offs += dc_size;
-		}
-		zone_address = (vm_address_t)((dispatch_heap_t)heap)->header.dh_next;
+			zone_address = (vm_address_t)((dispatch_heap_t)heap)->header.dh_next;
+		} while (zone_address);
 	}
 
 	return KERN_SUCCESS;
