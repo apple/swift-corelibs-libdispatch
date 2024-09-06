@@ -163,6 +163,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL Windows)
     ShLwApi
     WS2_32
     WinMM
+    mincore
     synchronization)
 endif()
 
