@@ -819,7 +819,8 @@ _dispatch_service_event_loop_timers(dispatch_clock_now_cache_t nows,
 									BOOL shouldWait) {
 	int nextClock = -1;
 	uint64_t nextDelay = ~(uint64_t)0;
-	uint64_t minDelayWithLeeway = ~(uint64_t)0;
+	uint64_t nextLeeway = 0;
+	uint64_t minDeadline = ~(uint64_t)0;
 	BOOL didFireTimer = FALSE;
 
 #if DEBUG_TIMERS
@@ -859,7 +860,7 @@ _dispatch_service_event_loop_timers(dispatch_clock_now_cache_t nows,
 
 		uint64_t delay = _dispatch_windows_timeout[clock].fireTime - now;
 		uint64_t leeway = _dispatch_windows_timeout[clock].leeway;
-		uint64_t delayWithLeeway;
+		uint64_t deadline;
 
 #if DEBUG_TIMERS
 		printf("delay %"PRIu64", leeway %"PRIu64"\n", delay, leeway);
@@ -867,14 +868,15 @@ _dispatch_service_event_loop_timers(dispatch_clock_now_cache_t nows,
 
 		// Use saturating addition here to avoid wrapping
 		if (~(uint64_t)0 - delay < leeway)
-			delayWithLeeway = ~(uint64_t)0;
+			deadline = ~(uint64_t)0;
 		else
-			delayWithLeeway = delay + leeway;
+			deadline = delay + leeway;
 
-		if (delayWithLeeway < minDelayWithLeeway) {
+		if (deadline < minDeadline) {
 			nextClock = clock;
 			nextDelay = delay;
-			minDelayWithLeeway = delayWithLeeway;
+			nextLeeway = leeway;
+			minDeadline = deadline;
 		}
 	}
 
@@ -910,20 +912,9 @@ _dispatch_service_event_loop_timers(dispatch_clock_now_cache_t nows,
 	printf("msToWait = %"PRIu32"\n", msToWait);
 #endif
 
-	// Check if we have at least one tick (15ms) of leeway remaining;
-	// if so, use it up.  This is an approximation, but prevents us from
-	// overrunning because of multiple passes through the loop.
-	if (_dispatch_windows_timeout[nextClock].leeway >= 15000000) {
-#if DEBUG_TIMERS
-		printf("In leeway\n");
-#endif
-		if (shouldWait)
-			_dispatch_windows_timeout[nextClock].leeway -= 15000000;
-	} else {
-		// Otherwise, adjust msToWait down by one tick (15ms), so that we
-		// spin the event loop for any wait shorter than that; this means
-		// that we can accurately wait for 1ms (for instance), rather than
-		// always waiting for exact multiples of 15ms.
+	// If the deadline is less than 15ms away, or we have less than 15ms
+	// of leeway, reduce `msToWait` so that we spin up to the fire time.
+	if (minDeadline < 15000000 || nextLeeway < 15000000) {
 		if (msToWait < 15)
 			msToWait = 0;
 		else
@@ -931,6 +922,10 @@ _dispatch_service_event_loop_timers(dispatch_clock_now_cache_t nows,
 
 #if DEBUG_TIMERS
 		printf("Adjusted msToWait = %"PRIu32"\n", msToWait);
+#endif
+	} else {
+#if DEBUG_TIMERS
+		printf("msToWait = %"PRIu32"\n", msToWait);
 #endif
 	}
 
