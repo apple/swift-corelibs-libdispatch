@@ -1,9 +1,5 @@
 #include "internal.h"
 
-typedef void (WINAPI *_precise_time_fn_t)(PULONGLONG);
-
-DISPATCH_STATIC_GLOBAL(dispatch_once_t _dispatch_precise_time_pred);
-
 typedef NTSTATUS (NTAPI *_NtQueryInformationFile_fn_t)(HANDLE FileHandle,
 		PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation, ULONG Length,
 		FILE_INFORMATION_CLASS FileInformationClass);
