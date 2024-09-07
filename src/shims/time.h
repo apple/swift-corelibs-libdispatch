@@ -151,7 +151,7 @@ _dispatch_uptime(void)
 	return _dispatch_timespec_to_nano(ts);
 #elif defined(_WIN32)
 	ULONGLONG ullUnbiasedTime;
-	_dispatch_QueryUnbiasedInterruptTimePrecise(&ullUnbiasedTime);
+	QueryUnbiasedInterruptTimePrecise(&ullUnbiasedTime);
 	return ullUnbiasedTime * 100;
 #else
 #error platform needs to implement _dispatch_uptime()
@@ -173,7 +173,7 @@ _dispatch_monotonic_time(void)
 	return _dispatch_timespec_to_nano(ts);
 #elif defined(_WIN32)
 	ULONGLONG ullTime;
-	_dispatch_QueryInterruptTimePrecise(&ullTime);
+	QueryInterruptTimePrecise(&ullTime);
 	return ullTime * 100ull;
 #else
 #error platform needs to implement _dispatch_monotonic_time()
