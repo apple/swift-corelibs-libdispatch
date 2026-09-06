@@ -6884,6 +6884,13 @@ _dispatch_main_queue_update_priority_from_thread(void)
 	}
 }
 
+#endif // DISPATCH_COCOA_COMPAT
+#if DISPATCH_COCOA_COMPAT || defined(__wasi__)
+// Shared between the CFRunLoop callback path (DISPATCH_COCOA_COMPAT) and a
+// cooperative single-threaded drain, which owns the thread-bound main
+// queue's drain lock for the lifetime of the program. The runloop-handle
+// initialization and the thread-QoS override propagation are runloop/Darwin
+// machinery and compile only for COCOA_COMPAT.
 static void
 _dispatch_main_queue_drain(dispatch_queue_main_t dq)
 {
@@ -6905,8 +6912,10 @@ _dispatch_main_queue_drain(dispatch_queue_main_t dq)
 				" from the wrong thread");
 	}
 
+#if DISPATCH_COCOA_COMPAT
 	dispatch_once_f(&_dispatch_main_q_handle_pred, dq,
 			_dispatch_runloop_queue_handle_init);
+#endif
 
 	// <rdar://problem/23256682> hide the frame chaining when CFRunLoop
 	// drains the main runloop, as this should not be observable that way
@@ -6915,12 +6924,14 @@ _dispatch_main_queue_drain(dispatch_queue_main_t dq)
 
 	pthread_priority_t pp = _dispatch_get_priority();
 	dispatch_priority_t pri = _dispatch_priority_from_pp(pp);
-	dispatch_qos_t qos = _dispatch_priority_qos(pri);
 	voucher_t voucher = _voucher_copy();
 
+#if DISPATCH_COCOA_COMPAT
+	dispatch_qos_t qos = _dispatch_priority_qos(pri);
 	if (unlikely(qos != _dispatch_priority_qos(dq->dq_priority))) {
 		_dispatch_main_queue_update_priority_from_thread();
 	}
+#endif
 	dispatch_priority_t old_dbp = _dispatch_set_basepri(pri);
 	_dispatch_set_basepri_override_qos(DISPATCH_QOS_SATURATED);
 
@@ -6943,6 +6954,8 @@ _dispatch_main_queue_drain(dispatch_queue_main_t dq)
 	_dispatch_force_cache_cleanup();
 	_dispatch_perfmon_end_notrace();
 }
+#endif // DISPATCH_COCOA_COMPAT || defined(__wasi__)
+#if DISPATCH_COCOA_COMPAT
 
 static bool
 _dispatch_runloop_queue_drain_one(dispatch_lane_t dq)
