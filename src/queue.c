@@ -16,6 +16,8 @@
  * limitations under the License.
  *
  * @APPLE_APACHE_LICENSE_HEADER_END@
+ *
+ * Modified by the Kakehashi Project: added the DISPATCH_KAKEHASHI platform path.
  */
 
 #include "internal.h"
@@ -26,7 +28,7 @@
 #pragma comment(lib, "ole32.lib")
 #endif
 
-#if HAVE_MACH
+#if HAVE_MACH && !DISPATCH_KAKEHASHI
 #include "protocol.h" // _dispatch_send_wakeup_runloop_thread
 #endif
 
@@ -6253,7 +6255,9 @@ _dispatch_worker_thread(void *context)
 	dispatch_priority_t pri = dq->dq_priority;
 	pthread_priority_t pp = _dispatch_get_priority();
 
-	#if HAVE_PTHREAD_SETNAME_NP
+	#if DISPATCH_KAKEHASHI
+	pthread_setname_np("DispatchWorker");
+	#elif HAVE_PTHREAD_SETNAME_NP
 	pthread_setname_np(pthread_self(), "DispatchWorker");
 	#elif HAVE_PTHREAD_SET_NAME_NP
 	pthread_set_name_np(pthread_self(), "DispatchWorker");
@@ -7426,7 +7430,16 @@ libdispatch_init(void)
 #include <sys/syscall.h>
 #endif
 
-#ifdef SYS_gettid
+#if DISPATCH_KAKEHASHI
+DISPATCH_ALWAYS_INLINE
+static inline pid_t
+_gettid(void)
+{
+	uint64_t tid = 0;
+	(void)pthread_threadid_np(NULL, &tid);
+	return (pid_t)tid;
+}
+#elif defined(SYS_gettid)
 DISPATCH_ALWAYS_INLINE
 static inline pid_t
 _gettid(void)

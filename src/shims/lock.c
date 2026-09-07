@@ -16,6 +16,8 @@
  * limitations under the License.
  *
  * @APPLE_APACHE_LICENSE_HEADER_END@
+ *
+ * Modified by the Kakehashi Project: added the DISPATCH_KAKEHASHI platform path.
  */
 
 #include "internal.h"
@@ -27,7 +29,20 @@
 #pragma comment(lib, "synchronization.lib")
 #endif
 
-#if TARGET_OS_MAC
+#if DISPATCH_KAKEHASHI
+#if !HAVE_UL_UNFAIR_LOCK
+DISPATCH_ALWAYS_INLINE
+static inline void
+_dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
+		uint32_t timeout)
+{
+	(void)value;
+	(void)flags;
+	(void)timeout;
+	sched_yield();
+}
+#endif
+#elif TARGET_OS_MAC
 dispatch_static_assert(DLOCK_LOCK_DATA_CONTENTION ==
 		ULF_WAIT_WORKQ_DATA_CONTENTION);
 
@@ -98,8 +113,13 @@ _dispatch_thread_switch(dispatch_lock value, dispatch_lock_options_t flags,
 #define DISPATCH_USE_OS_SEMAPHORE_CACHE 0
 #endif
 
+#if DISPATCH_KAKEHASHI
+#define DISPATCH_SEMAPHORE_VERIFY_MIG(x) ((void)(x))
+#else
+#define DISPATCH_SEMAPHORE_VERIFY_MIG(x) DISPATCH_VERIFY_MIG(x)
+#endif
 #define DISPATCH_SEMAPHORE_VERIFY_KR(x) do { \
-		DISPATCH_VERIFY_MIG(x); \
+		DISPATCH_SEMAPHORE_VERIFY_MIG(x); \
 		if (unlikely((x) == KERN_INVALID_NAME)) { \
 			DISPATCH_CLIENT_CRASH((x), \
 				"Use-after-free of dispatch_semaphore_t or dispatch_group_t"); \
@@ -143,6 +163,7 @@ _dispatch_sema4_create_slow(_dispatch_sema4_t *s4, int policy)
 void
 _dispatch_sema4_dispose_slow(_dispatch_sema4_t *sema, int policy)
 {
+	(void)policy;
 	semaphore_t sema_port = *sema;
 	*sema = MACH_PORT_DEAD;
 #if DISPATCH_USE_OS_SEMAPHORE_CACHE
@@ -356,7 +377,13 @@ static int
 _dlock_wait(uint32_t *uaddr, uint32_t val, uint32_t timeout, uint32_t flags)
 {
 	for (;;) {
+#if DISPATCH_KAKEHASHI
+		uint64_t timeout_ns = (uint64_t)timeout * NSEC_PER_USEC;
+		int rc = __ulock_wait2(flags | ULF_NO_ERRNO, uaddr, val,
+				timeout_ns, 0);
+#else
 		int rc = __ulock_wait(flags | ULF_NO_ERRNO, uaddr, val, timeout);
+#endif
 		if (rc > 0) {
 			return ENOTEMPTY;
 		}

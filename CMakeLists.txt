@@ -1,3 +1,4 @@
+# Modified by the Kakehashi Project: added the DISPATCH_KAKEHASHI platform path.
 cmake_minimum_required(VERSION 3.26...3.29)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules)
@@ -117,7 +118,28 @@ include(CheckSymbolExists)
 include(GNUInstallDirs)
 include(CTest)
 
+# Build the Darwin ABI as a Kakehashi guest dylib. This mode deliberately uses
+# only the SDK and libdispatch's portable sources; clean-room builds must never
+# acquire implementation headers from XNU or another Apple system component.
+option(DISPATCH_KAKEHASHI "build libdispatch for the Kakehashi guest runtime" OFF)
+set(DISPATCH_KAKEHASHI_LIBOBJC_TBD "" CACHE FILEPATH
+  "Kakehashi libobjc text stub used by the guest build")
+
 include(DispatchAppleOptions)
+if(DISPATCH_KAKEHASHI)
+  if(NOT EXISTS "${DISPATCH_KAKEHASHI_LIBOBJC_TBD}")
+    message(FATAL_ERROR
+      "DISPATCH_KAKEHASHI_LIBOBJC_TBD must name Kakehashi's libobjc.tbd")
+  endif()
+  if(WITH_APPLE_XNU_SOURCE OR WITH_APPLE_PTHREAD_SOURCE OR
+     WITH_APPLE_LIBPLATFORM_SOURCE OR WITH_APPLE_LIBCLOSURE_SOURCE OR
+     WITH_APPLE_OBJC4_SOURCE)
+    message(FATAL_ERROR
+      "DISPATCH_KAKEHASHI forbids Apple implementation source/header inputs")
+  endif()
+  add_compile_definitions(DISPATCH_KAKEHASHI=1)
+  list(REMOVE_ITEM CMAKE_CXX_IMPLICIT_LINK_LIBRARIES c++)
+endif()
 include(DispatchSanitization)
 include(DispatchCompilerWarnings)
 include(DTrace)
@@ -136,7 +158,11 @@ set(USE_LIBDISPATCH_INIT_CONSTRUCTOR ${ENABLE_DISPATCH_INIT_CONSTRUCTOR})
 
 option(ENABLE_DTRACE "enable dtrace support" "")
 
-if(APPLE OR BSD)
+if(DISPATCH_KAKEHASHI)
+  # Kakehashi exposes the public pthread ABI but not Darwin's private
+  # pthread-workqueue SPI. Use libdispatch's portable worker pool instead.
+  set(ENABLE_INTERNAL_PTHREAD_WORKQUEUES_DEFAULT ON)
+elseif(APPLE OR BSD)
   set(ENABLE_INTERNAL_PTHREAD_WORKQUEUES_DEFAULT OFF)
 else()
   set(ENABLE_INTERNAL_PTHREAD_WORKQUEUES_DEFAULT ON)
@@ -243,6 +269,18 @@ check_library_exists(pthread sem_init "" USE_POSIX_SEM)
 if(ANDROID)
   set(USE_POSIX_SEM 1)
 endif()
+if(DISPATCH_KAKEHASHI)
+  # The guest ABI has public Mach entry points, but deliberately excludes the
+  # private Darwin Mach/pthread implementation surface used by Apple's build.
+  # Keep the public Mach semaphore ABI, select portable clock paths, and
+  # retain kqueue without enabling private Mach implementation features.
+  set(HAVE_MACH 0)
+  set(HAVE_MACH_ABSOLUTE_TIME 0)
+  set(HAVE_MACH_APPROXIMATE_TIME 0)
+  set(HAVE_PTHREAD_ATTR_SETCPUPERCENT_NP 0)
+  set(USE_MACH_SEM 1)
+  set(USE_POSIX_SEM 0)
+endif()
 
 check_symbol_exists(CLOCK_UPTIME "time.h" HAVE_DECL_CLOCK_UPTIME)
 check_symbol_exists(CLOCK_UPTIME_FAST "time.h" HAVE_DECL_CLOCK_UPTIME_FAST)
@@ -341,6 +379,12 @@ add_subdirectory(os)
 add_subdirectory(private)
 if(NOT APPLE)
   add_subdirectory(src/BlocksRuntime)
+elseif(DISPATCH_KAKEHASHI AND NOT TARGET BlocksRuntime::BlocksRuntime)
+  # Darwin's Blocks runtime is part of libSystem. Keep those symbols undefined
+  # in libdispatch so the Kakehashi libSystem product remains their sole owner.
+  add_library(BlocksRuntime::BlocksRuntime INTERFACE IMPORTED)
+  set_property(TARGET BlocksRuntime::BlocksRuntime PROPERTY
+    INTERFACE_LINK_LIBRARIES "-lSystem")
 endif()
 add_subdirectory(src)
 if(BUILD_TESTING)

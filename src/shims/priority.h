@@ -16,6 +16,8 @@
  * limitations under the License.
  *
  * @APPLE_APACHE_LICENSE_HEADER_END@
+ *
+ * Modified by the Kakehashi Project: added the DISPATCH_KAKEHASHI platform path.
  */
 
 /*
@@ -27,7 +29,22 @@
 #ifndef __DISPATCH_SHIMS_PRIORITY__
 #define __DISPATCH_SHIMS_PRIORITY__
 
-#if HAVE_PTHREAD_QOS_H && __has_include(<pthread/qos_private.h>)
+#if DISPATCH_KAKEHASHI
+#include <sys/qos.h>
+typedef unsigned long pthread_priority_t;
+#define QOS_CLASS_MAINTENANCE ((qos_class_t)0x05)
+#define QOS_MIN_RELATIVE_PRIORITY (-15)
+#define _PTHREAD_PRIORITY_FLAGS_MASK (~0xffffff)
+#define _PTHREAD_PRIORITY_QOS_CLASS_MASK 0x00ffff00
+#define _PTHREAD_PRIORITY_QOS_CLASS_SHIFT (8ull)
+#define _PTHREAD_PRIORITY_PRIORITY_MASK 0x000000ff
+#define _PTHREAD_PRIORITY_OVERCOMMIT_FLAG 0x80000000
+#define _PTHREAD_PRIORITY_SCHED_PRI_FLAG 0x20000000
+#define _PTHREAD_PRIORITY_FALLBACK_FLAG 0x04000000
+#define _PTHREAD_PRIORITY_EVENT_MANAGER_FLAG 0x02000000
+#define _PTHREAD_PRIORITY_NEEDS_UNBIND_FLAG 0x01000000
+#define _PTHREAD_PRIORITY_ENFORCE_FLAG 0x10000000
+#elif HAVE_PTHREAD_QOS_H && __has_include(<pthread/qos_private.h>)
 #include <pthread/qos.h>
 #include <pthread/qos_private.h>
 #ifndef _PTHREAD_PRIORITY_OVERCOMMIT_FLAG

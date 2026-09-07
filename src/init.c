@@ -16,6 +16,8 @@
  * limitations under the License.
  *
  * @APPLE_APACHE_LICENSE_HEADER_END@
+ *
+ * Modified by the Kakehashi Project: added the DISPATCH_KAKEHASHI platform path.
  */
 
 // Contains exported global data and initialization & other routines that must
@@ -34,7 +36,7 @@
 #include <linux/limits.h> // for PATH_MAX
 #endif
 
-#if HAVE_MACH
+#if HAVE_MACH && !DISPATCH_KAKEHASHI
 #include "protocolServer.h"
 #endif
 
@@ -418,7 +420,7 @@ const struct dispatch_queue_attr_s _dispatch_queue_attrs[] = {
 	},
 };
 
-#if DISPATCH_VARIANT_STATIC
+#if DISPATCH_VARIANT_STATIC || DISPATCH_KAKEHASHI
 // <rdar://problem/16778703>
 struct dispatch_queue_attr_s _dispatch_queue_attr_concurrent = {
 	DISPATCH_GLOBAL_OBJECT_HEADER(queue_attr),
@@ -440,7 +442,7 @@ _dispatch_queue_attr_to_info(dispatch_queue_attr_t dqa)
 
 	if (!dqa) return dqai;
 
-#if DISPATCH_VARIANT_STATIC
+#if DISPATCH_VARIANT_STATIC || DISPATCH_KAKEHASHI
 	if (dqa == &_dispatch_queue_attr_concurrent) {
 		dqai.dqai_concurrent = true;
 		return dqai;

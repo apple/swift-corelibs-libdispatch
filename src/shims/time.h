@@ -16,6 +16,8 @@
  * limitations under the License.
  *
  * @APPLE_APACHE_LICENSE_HEADER_END@
+ *
+ * Modified by the Kakehashi Project: added the DISPATCH_KAKEHASHI platform path.
  */
 
 /*
@@ -101,7 +103,7 @@ _dispatch_get_nanoseconds(void)
 	dispatch_static_assert(sizeof(NSEC_PER_SEC) == 8);
 	dispatch_static_assert(sizeof(USEC_PER_SEC) == 8);
 
-#if TARGET_OS_MAC
+#if TARGET_OS_MAC && !DISPATCH_KAKEHASHI
 	return clock_gettime_nsec_np(CLOCK_REALTIME);
 #elif HAVE_DECL_CLOCK_REALTIME
 	struct timespec ts;
@@ -141,7 +143,7 @@ _dispatch_uptime(void)
 {
 #if HAVE_MACH_ABSOLUTE_TIME
 	return mach_absolute_time();
-#elif HAVE_DECL_CLOCK_MONOTONIC && defined(__linux__)
+#elif HAVE_DECL_CLOCK_MONOTONIC && (defined(__linux__) || DISPATCH_KAKEHASHI)
 	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_MONOTONIC, &ts));
 	return _dispatch_timespec_to_nano(ts);
@@ -163,6 +165,10 @@ _dispatch_monotonic_time(void)
 {
 #if HAVE_MACH_ABSOLUTE_TIME
 	return mach_continuous_time();
+#elif DISPATCH_KAKEHASHI
+	struct timespec ts;
+	dispatch_assume_zero(clock_gettime(CLOCK_MONOTONIC, &ts));
+	return _dispatch_timespec_to_nano(ts);
 #elif defined(__linux__)
 	struct timespec ts;
 	dispatch_assume_zero(clock_gettime(CLOCK_BOOTTIME, &ts));
@@ -226,7 +232,7 @@ _dispatch_time_now_cached(dispatch_clock_t clock,
 	if (likely(cache->nows[clock])) {
 		return cache->nows[clock];
 	}
-#if TARGET_OS_MAC
+#if TARGET_OS_MAC && !DISPATCH_KAKEHASHI
 	struct timespec ts;
 	mach_get_times(&cache->nows[DISPATCH_CLOCK_UPTIME],
 			&cache->nows[DISPATCH_CLOCK_MONOTONIC], &ts);

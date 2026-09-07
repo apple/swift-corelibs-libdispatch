@@ -16,6 +16,8 @@
  * limitations under the License.
  *
  * @APPLE_APACHE_LICENSE_HEADER_END@
+ *
+ * Modified by the Kakehashi Project: added the DISPATCH_KAKEHASHI platform path.
  */
 
 /*
@@ -186,7 +188,9 @@ _dispatch_hw_get_config(_dispatch_hw_config_t c)
 #else
 	const char *name = NULL;
 	int r;
-#if defined(__APPLE__)
+#if DISPATCH_KAKEHASHI
+	(void)c;
+#elif defined(__APPLE__)
 	switch (c) {
 	case _dispatch_hw_config_logical_cpus:
 		name = "hw.logicalcpu_max"; break;

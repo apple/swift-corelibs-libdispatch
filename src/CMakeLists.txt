@@ -1,3 +1,4 @@
+# Modified by the Kakehashi Project: added the DISPATCH_KAKEHASHI platform path.
 
 add_library(dispatch
   allocator.c
@@ -7,7 +8,6 @@ add_library(dispatch
   init.c
   introspection.c
   io.c
-  mach.c
   object.c
   once.c
   queue.c
@@ -17,7 +17,6 @@ add_library(dispatch
   transform.c
   voucher.c
   shims.c
-  protocol.defs
   provider.d
   allocator_internal.h
   data_internal.h
@@ -52,6 +51,18 @@ add_library(dispatch
   shims/tsd.h
   shims/yield.c
   shims/yield.h)
+
+if(DISPATCH_KAKEHASHI)
+  target_sources(dispatch PRIVATE
+    kakehashi_compat.c)
+  target_link_libraries(dispatch PRIVATE
+    "${DISPATCH_KAKEHASHI_LIBOBJC_TBD}")
+  set_property(TARGET dispatch PROPERTY LINKER_LANGUAGE C)
+else()
+  target_sources(dispatch PRIVATE
+    mach.c
+    protocol.defs)
+endif()
 
 if(WIN32)
   target_sources(dispatch PRIVATE
@@ -110,6 +121,15 @@ if(DISPATCH_ENABLE_ASSERTS)
   target_compile_definitions(dispatch PRIVATE
     DISPATCH_DEBUG=1)
 endif()
+if(DISPATCH_KAKEHASHI)
+  target_compile_definitions(dispatch PRIVATE
+    OS_FIREHOSE_SPI=0
+    OS_VOUCHER_ACTIVITY_SPI=0
+    OS_VOUCHER_CREATION_SPI=0
+    VOUCHER_USE_MACH_VOUCHER=0)
+  target_compile_options(dispatch PRIVATE
+    "$<$<COMPILE_LANGUAGE:C,CXX>:-include${CMAKE_CURRENT_SOURCE_DIR}/shims/kakehashi.h>")
+endif()
 
 if("${CMAKE_C_COMPILER_FRONTEND_VARIANT}" STREQUAL "MSVC")
   target_compile_options(dispatch PRIVATE /EHs-c-)
@@ -162,11 +182,22 @@ if(WIN32)
 endif()
 
 if(APPLE)
-  set_property(TARGET dispatch APPEND_STRING PROPERTY LINK_FLAGS
-    "-Xlinker -compatibility_version -Xlinker 1"
-    "-Xlinker -current_version -Xlinker ${VERSION}"
-    "-Xlinker -dead_strip"
-    "-Xlinker -alias_list -Xlinker ${PROJECT_SOURCE_DIR}/xcodeconfig/libdispatch.aliases")
+  if(DISPATCH_KAKEHASHI)
+    set_target_properties(dispatch PROPERTIES
+      INSTALL_NAME_DIR "/usr/lib"
+      BUILD_WITH_INSTALL_NAME_DIR YES)
+    target_link_options(dispatch PRIVATE
+      "LINKER:-compatibility_version,1"
+      "LINKER:-current_version,${PROJECT_VERSION}"
+      "LINKER:-dead_strip"
+      "-nostdlib++")
+  else()
+    set_property(TARGET dispatch APPEND_STRING PROPERTY LINK_FLAGS
+      "-Xlinker -compatibility_version -Xlinker 1"
+      "-Xlinker -current_version -Xlinker ${VERSION}"
+      "-Xlinker -dead_strip"
+      "-Xlinker -alias_list -Xlinker ${PROJECT_SOURCE_DIR}/xcodeconfig/libdispatch.aliases")
+  endif()
 endif()
 
 if(NOT APPLE AND NOT WIN32)

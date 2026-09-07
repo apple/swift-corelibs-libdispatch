@@ -16,6 +16,8 @@
  * limitations under the License.
  *
  * @APPLE_APACHE_LICENSE_HEADER_END@
+ *
+ * Modified by the Kakehashi Project: added the DISPATCH_KAKEHASHI platform path.
  */
 
 /*
@@ -34,7 +36,26 @@ DISPATCH_ENUM(dispatch_lock_options, uint32_t,
 	DLOCK_LOCK_DATA_CONTENTION  = 0x00010000,
 );
 
-#if TARGET_OS_MAC
+#if DISPATCH_KAKEHASHI
+
+typedef uint32_t dispatch_tid;
+typedef uint32_t dispatch_lock;
+
+#define DLOCK_OWNER_NULL            ((dispatch_tid)0)
+#define DLOCK_OWNER_MASK            ((dispatch_lock)0xfffffffc)
+#define DLOCK_WAITERS_BIT           ((dispatch_lock)0x00000001)
+#define DLOCK_FAILED_TRYLOCK_BIT    ((dispatch_lock)0x00000002)
+#define _dispatch_tid_self() \
+		((dispatch_tid)(_dispatch_get_tsd_base()->tid << 2))
+
+DISPATCH_ALWAYS_INLINE
+static inline dispatch_tid
+_dispatch_lock_owner(dispatch_lock lock_value)
+{
+	return lock_value & DLOCK_OWNER_MASK;
+}
+
+#elif TARGET_OS_MAC
 
 typedef mach_port_t dispatch_tid;
 typedef uint32_t dispatch_lock;
@@ -206,6 +227,12 @@ _dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
 #define HAVE_UL_UNFAIR_LOCK 1
 #endif
 #endif
+#if DISPATCH_KAKEHASHI
+#undef HAVE_UL_COMPARE_AND_WAIT
+#define HAVE_UL_COMPARE_AND_WAIT 1
+#undef HAVE_UL_UNFAIR_LOCK
+#define HAVE_UL_UNFAIR_LOCK 0
+#endif
 
 #ifndef HAVE_FUTEX
 #if defined(__linux__)
@@ -220,7 +247,8 @@ _dispatch_lock_has_failed_trylock(dispatch_lock lock_value)
 #endif
 #endif // HAVE_FUTEX
 
-#if defined(__x86_64__) || defined(__i386__) || defined(__s390x__)
+#if defined(__x86_64__) || defined(__i386__) || defined(__s390x__) || \
+		DISPATCH_KAKEHASHI
 #define DISPATCH_ONCE_USE_QUIESCENT_COUNTER 0
 #elif __APPLE__
 #define DISPATCH_ONCE_USE_QUIESCENT_COUNTER 1

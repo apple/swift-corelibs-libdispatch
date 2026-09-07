@@ -16,6 +16,8 @@
  * limitations under the License.
  *
  * @APPLE_APACHE_LICENSE_HEADER_END@
+ *
+ * Modified by the Kakehashi Project: added the DISPATCH_KAKEHASHI platform path.
  */
 
 /*
@@ -327,6 +329,8 @@ _dispatch_thread_setspecific_packed_pair(pthread_key_t k1, pthread_key_t k2,
 
 #if defined(_WIN32)
 #define _dispatch_thread_port() ((mach_port_t)0)
+#elif DISPATCH_KAKEHASHI
+#define _dispatch_thread_port() mach_thread_self()
 #elif !DISPATCH_USE_THREAD_LOCAL_STORAGE
 #if DISPATCH_USE_DIRECT_TSD
 #define _dispatch_thread_port() ((mach_port_t)(uintptr_t)\

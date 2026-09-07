@@ -16,6 +16,8 @@
  * limitations under the License.
  *
  * @APPLE_APACHE_LICENSE_HEADER_END@
+ *
+ * Modified by the Kakehashi Project: added the DISPATCH_KAKEHASHI platform path.
  */
 
 #ifndef __DISPATCH_EVENT_EVENT_CONFIG__
@@ -80,13 +82,13 @@
 #endif
 
 #if DISPATCH_EVENT_BACKEND_KEVENT
-#	if defined(EV_UDATA_SPECIFIC) && EV_UDATA_SPECIFIC
+#	if !DISPATCH_KAKEHASHI && defined(EV_UDATA_SPECIFIC) && EV_UDATA_SPECIFIC
 #		define DISPATCH_HAVE_DIRECT_KNOTES 1
 #	else
 #		define DISPATCH_HAVE_DIRECT_KNOTES 0
 #	endif
 
-#	if defined(EV_SET_QOS)
+#	if !DISPATCH_KAKEHASHI && defined(EV_SET_QOS)
 #		define DISPATCH_USE_KEVENT_QOS 1
 #	else
 #		define DISPATCH_USE_KEVENT_QOS 0
@@ -96,13 +98,15 @@
 #		define KEVENT_FLAG_ERROR_EVENTS 0x002
 #	endif
 
-#	ifdef NOTE_LEEWAY
+#	if defined(NOTE_LEEWAY) && !DISPATCH_KAKEHASHI
 #		define DISPATCH_HAVE_TIMER_COALESCING 1
 #   else
+#		undef NOTE_LEEWAY
 #		define NOTE_LEEWAY 0
 #		define DISPATCH_HAVE_TIMER_COALESCING 0
 #	endif // !NOTE_LEEWAY
-#	if defined(NOTE_CRITICAL) && defined(NOTE_BACKGROUND)
+#	if defined(NOTE_CRITICAL) && defined(NOTE_BACKGROUND) && \
+		!DISPATCH_KAKEHASHI
 #		define DISPATCH_HAVE_TIMER_QOS 1
 #	else
 #		undef  NOTE_CRITICAL

@@ -16,6 +16,8 @@
  * limitations under the License.
  *
  * @APPLE_APACHE_LICENSE_HEADER_END@
+ *
+ * Modified by the Kakehashi Project: added the DISPATCH_KAKEHASHI platform path.
  */
 
 /*
@@ -41,7 +43,7 @@
 #include "shims/android_stubs.h"
 #endif // __ANDROID__
 
-#if !HAVE_MACH
+#if !HAVE_MACH && !DISPATCH_KAKEHASHI
 #include "shims/mach.h"
 #endif
 #include "shims/target.h"

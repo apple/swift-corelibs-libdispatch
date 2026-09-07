@@ -16,11 +16,13 @@
  * limitations under the License.
  *
  * @APPLE_APACHE_LICENSE_HEADER_END@
+ *
+ * Modified by the Kakehashi Project: added the DISPATCH_KAKEHASHI platform path.
  */
 
 #include "internal.h"
 #if DISPATCH_EVENT_BACKEND_KEVENT
-#if HAVE_MACH
+#if HAVE_MACH && !DISPATCH_KAKEHASHI
 #include "protocol.h"
 #include "protocolServer.h"
 #endif
@@ -46,7 +48,14 @@ DISPATCH_STATIC_GLOBAL(bool _dispatch_timers_force_max_leeway);
 DISPATCH_STATIC_GLOBAL(dispatch_once_t _dispatch_kq_poll_pred);
 DISPATCH_STATIC_GLOBAL(struct dispatch_muxnote_bucket_s _dispatch_sources[DSL_HASH_SIZE]);
 
-#if defined(__APPLE__)
+#if DISPATCH_KAKEHASHI
+// Kakehashi's portable clock shim expresses targets as nanoseconds. Keep a
+// distinct monotonic marker so the Linux host bridge can translate wall and
+// monotonic absolute deadlines onto one wait clock.
+#define DISPATCH_NOTE_CLOCK_WALL      NOTE_NSECONDS
+#define DISPATCH_NOTE_CLOCK_MONOTONIC NOTE_NSECONDS | NOTE_MACH_CONTINUOUS_TIME
+#define DISPATCH_NOTE_CLOCK_UPTIME    NOTE_NSECONDS | NOTE_MACH_CONTINUOUS_TIME
+#elif defined(__APPLE__)
 #define DISPATCH_NOTE_CLOCK_WALL      NOTE_NSECONDS | NOTE_MACH_CONTINUOUS_TIME
 #define DISPATCH_NOTE_CLOCK_MONOTONIC NOTE_MACHTIME | NOTE_MACH_CONTINUOUS_TIME
 #define DISPATCH_NOTE_CLOCK_UPTIME    NOTE_MACHTIME
@@ -670,9 +679,11 @@ _dispatch_kq_init(void *context)
 	bool *kq_initialized = context;
 
 	_dispatch_fork_becomes_unsafe();
+#if !DISPATCH_KAKEHASHI
 	if (unlikely(getenv("LIBDISPATCH_TIMERS_FORCE_MAX_LEEWAY"))) {
 		_dispatch_timers_force_max_leeway = true;
 	}
+#endif
 	*kq_initialized = true;
 
 #if DISPATCH_USE_KEVENT_WORKQUEUE

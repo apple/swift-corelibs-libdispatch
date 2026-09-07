@@ -16,6 +16,8 @@
  * limitations under the License.
  *
  * @APPLE_APACHE_LICENSE_HEADER_END@
+ *
+ * Modified by the Kakehashi Project: added the DISPATCH_KAKEHASHI platform path.
  */
 
 /*
@@ -827,7 +829,7 @@ extern "C++" {
 #endif
 #endif // DISPATCH_USE_DTRACE || DISPATCH_USE_DTRACE_INTROSPECTION
 
-#if __has_include(<sys/kdebug.h>)
+#if __has_include(<sys/kdebug.h>) && !DISPATCH_KAKEHASHI
 #include <sys/kdebug.h>
 #ifndef DBG_DISPATCH
 #define DBG_DISPATCH 46

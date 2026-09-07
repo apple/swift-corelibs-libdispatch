@@ -1,3 +1,4 @@
+/* Modified by the Kakehashi Project: added the DISPATCH_KAKEHASHI platform path. */
 
 /* Define if building pthread work queues from source */
 #cmakedefine01 DISPATCH_USE_INTERNAL_WORKQUEUE
@@ -101,31 +102,31 @@
 #cmakedefine HAVE_LEAKS
 
 /* Define to 1 if you have the <libkern/OSAtomic.h> header file. */
-#cmakedefine HAVE_LIBKERN_OSATOMIC_H
+#cmakedefine01 HAVE_LIBKERN_OSATOMIC_H
 
 /* Define to 1 if you have the <libkern/OSCrossEndian.h> header file. */
-#cmakedefine HAVE_LIBKERN_OSCROSSENDIAN_H
+#cmakedefine01 HAVE_LIBKERN_OSCROSSENDIAN_H
 
 /* Define to 1 if you have the <libproc_internal.h> header file. */
-#cmakedefine HAVE_LIBPROC_INTERNAL_H
+#cmakedefine01 HAVE_LIBPROC_INTERNAL_H
 
 /* Define if mach is present */
-#cmakedefine HAVE_MACH
+#cmakedefine01 HAVE_MACH
 
 /* Define to 1 if you have the `mach_absolute_time' function. */
-#cmakedefine HAVE_MACH_ABSOLUTE_TIME
+#cmakedefine01 HAVE_MACH_ABSOLUTE_TIME
 
 /* Define to 1 if you have the `mach_approximate_time' function. */
-#cmakedefine HAVE_MACH_APPROXIMATE_TIME
+#cmakedefine01 HAVE_MACH_APPROXIMATE_TIME
 
 /* Define to 1 if you have the `mach_port_construct' function. */
 #cmakedefine HAVE_MACH_PORT_CONSTRUCT
 
 /* Define to 1 if you have the `malloc_create_zone' function. */
-#cmakedefine HAVE_MALLOC_CREATE_ZONE
+#cmakedefine01 HAVE_MALLOC_CREATE_ZONE
 
 /* Define to 1 if you have the <malloc/malloc.h> header file. */
-#cmakedefine HAVE_MALLOC_MALLOC_H
+#cmakedefine01 HAVE_MALLOC_MALLOC_H
 
 /* Define to 1 if you have the <memory.h> header file. */
 #cmakedefine01 HAVE_MEMORY_H
@@ -134,7 +135,7 @@
 #cmakedefine01 HAVE_NORETURN_BUILTIN_TRAP
 
 /* Define if you have the Objective-C runtime */
-#cmakedefine HAVE_OBJC
+#cmakedefine01 HAVE_OBJC
 
 /* Define to 1 if you have the `posix_fadvise' function. */
 #cmakedefine HAVE_POSIX_FADVISE
@@ -143,13 +144,13 @@
 #cmakedefine HAVE_POSIX_SPAWNP
 
 /* Define to 1 if you have the `pthread_key_init_np' function. */
-#cmakedefine HAVE_PTHREAD_KEY_INIT_NP
+#cmakedefine01 HAVE_PTHREAD_KEY_INIT_NP
 
 /* Define to 1 if you have the `pthread_attr_setcpupercent_np' function. */
-#cmakedefine HAVE_PTHREAD_ATTR_SETCPUPERCENT_NP
+#cmakedefine01 HAVE_PTHREAD_ATTR_SETCPUPERCENT_NP
 
 /* Define to 1 if you have the <pthread_machdep.h> header file. */
-#cmakedefine HAVE_PTHREAD_MACHDEP_H
+#cmakedefine01 HAVE_PTHREAD_MACHDEP_H
 
 /* Define to 1 if you have the `pthread_main_np' function. */
 #cmakedefine01 HAVE_PTHREAD_MAIN_NP
@@ -161,7 +162,7 @@
 #cmakedefine01 HAVE_PTHREAD_NP_H
 
 /* Define to 1 if you have the <pthread/qos.h> header file. */
-#cmakedefine HAVE_PTHREAD_QOS_H
+#cmakedefine01 HAVE_PTHREAD_QOS_H
 
 /* Define if pthread work queues are present */
 #cmakedefine01 HAVE_PTHREAD_WORKQUEUES
@@ -194,7 +195,7 @@
 #cmakedefine01 HAVE_SYSCONF
 
 /* Define to 1 if you have the <sys/guarded.h> header file. */
-#cmakedefine HAVE_SYS_GUARDED_H
+#cmakedefine01 HAVE_SYS_GUARDED_H
 
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #cmakedefine01 HAVE_SYS_STAT_H
@@ -206,7 +207,7 @@
 #cmakedefine HAVE_TARGETCONDITIONALS_H
 
 /* Define to 1 if you have the `_pthread_workqueue_init' function. */
-#cmakedefine HAVE__PTHREAD_WORKQUEUE_INIT
+#cmakedefine01 HAVE__PTHREAD_WORKQUEUE_INIT
 
 /* Define to 1 if you have the `pthread_setname_np' function. */
 #cmakedefine01 HAVE_PTHREAD_SETNAME_NP
@@ -221,13 +222,13 @@
 #cmakedefine01 HAVE_PTHREAD_GET_NAME_NP
 
 /* Define to use non-portable pthread TSD optimizations for Mac OS X) */
-#cmakedefine USE_APPLE_TSD_OPTIMIZATIONS
+#cmakedefine01 USE_APPLE_TSD_OPTIMIZATIONS
 
 /* Define to tag libdispatch_init as a constructor */
 #cmakedefine01 USE_LIBDISPATCH_INIT_CONSTRUCTOR
 
 /* Define to use Mach semaphores */
-#cmakedefine USE_MACH_SEM
+#cmakedefine01 USE_MACH_SEM
 
 /* Define to use POSIX semaphores */
 #cmakedefine01 USE_POSIX_SEM
@@ -268,7 +269,9 @@
 #cmakedefine _POSIX_SOURCE
 
 /* Define if using Darwin $NOCANCEL */
-#cmakedefine __DARWIN_NON_CANCELABLE
+#ifndef __DARWIN_NON_CANCELABLE
+#cmakedefine01 __DARWIN_NON_CANCELABLE
+#endif
 
 /* Define to 1 if you have the `strlcpy` function. */
 #cmakedefine01 HAVE_STRLCPY
